@@ -1,0 +1,9 @@
+# process → skill_node. 로봇 정지 상태에서만 유효. 그램 환산은 하지 않는다 (dosing 이 한다)
+uint16 samples          # 0 이면 scale.samples 파라미터
+float32 settle_s        # 0 이면 scale.settle_s
+---
+float32[6] force        # get_tool_force(DR_BASE) 평균 [N, Nm]
+float32 fz_mean_n
+float32 fz_std_n
+bool valid
+string message

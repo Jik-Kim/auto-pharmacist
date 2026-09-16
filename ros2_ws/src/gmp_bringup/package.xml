@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>gmp_bringup</name>
+  <version>0.1.0</version>
+  <description>real/virtual 실행 런치와 파라미터 단일 출처 (공통·스테이션·레시피) [조장]</description>
+  <maintainer email="jungji0913@khu.ac.kr">Kim Byeongjik</maintainer>
+  <license>MIT</license>
+  <exec_depend>gmp_skills</exec_depend>
+  <exec_depend>gmp_process</exec_depend>
+  <exec_depend>gmp_hmi</exec_depend>
+  <exec_depend>m0609_rg2_bringup</exec_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>

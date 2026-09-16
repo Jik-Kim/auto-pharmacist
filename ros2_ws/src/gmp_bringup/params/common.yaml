@@ -1,0 +1,42 @@
+# 공통 파라미터 — 값의 단일 출처 (docs/interfaces.md 4절). 코드에 상수를 두지 않는다.
+# 런치 인자(mode·vel_scale·simulated·stations_file)만 이 위에 덮어쓴다.
+/**:
+  ros__parameters:
+    robot:
+      id: dsr01
+      model: m0609
+      tool_name: tool_weight        # 컨트롤러 등록명 (R7: 1.320 kg, CoG 1.96/-32.76/19.14)
+      tcp_name: GripperDA_v1
+      vel: 60.0                     # set_velx 병진 mm/s · 회전 deg/s 상한
+      acc: 60.0
+      vel_scale: 0.3                # 런치가 덮어쓴다. 실물 첫 기동 0.2
+    gripper:
+      backend: modbus               # modbus | dio  (virtual 은 런치가 자동)
+      open_width_mm: 100.0
+      scoop_width_mm: 18.0          # [팀 확정 필요] 스쿱 손잡이 실측 (I-006)
+      cup_width_mm: 60.0            # [팀 확정 필요] 칭량 용기 외경
+      force_n: 20.0                 # 3~40. modbus 는 2.5 N 스텝 (D-06)
+      grip_margin_mm: 2.0           # 폭 추론 마진 (계약 2절)
+      slip_mm: 1.5
+      dio_pins: [1, 2]              # dio 백엔드: DO1 grip / DO2 release (grip_test.py)
+      din_pins: [0]                 # [팀 확정 필요] 파지 완료 DI (Q-03). 0 = 없음
+    scale:
+      method: workpiece             # workpiece | tool_force  (D-07)
+      samples: 20
+      settle_s: 1.0
+      gain: 1.0                     # 9/21 실제 저울 5점 비교로 확정
+      offset_g: 0.0
+      min_resolvable_g: 30.0        # [G1 실측 3σ 로 갱신 — I-001]
+      max_std_g: 10.0
+      simulated: false              # virtual 은 런치가 true 로
+    dosing:
+      max_attempts: 3
+      scoop_nominal_g: 40.0         # [9/18 실측] 스쿱 1회 퍼올림
+      min_fraction: 0.15
+    safety:
+      fz_max_n: 15.0                # Scoop 담그기 접촉 판정·상한 (check_force_condition)
+      compliance_stx: [3000.0, 3000.0, 500.0, 200.0, 200.0, 200.0]   # Z 만 부드럽게
+      scoop_force_n: -8.0           # set_desired_force Z (베이스 기준 아래 방향은 음수 — G4 에서 부호 확인)
+      dip_max_mm: 40.0              # 담금 깊이 상한 (check_position_condition)
+    interlock:
+      safe_station: safe

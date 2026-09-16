@@ -1,0 +1,9 @@
+# 원료통에서 퍼올리기. 원료면 접촉은 check_force_condition 으로 감지
+string material_id
+uint8 attempt           # 재시도 번호 (담그는 깊이·각도를 attempt 로 바꿀 수 있다)
+---
+bool success
+bool contact_detected   # 원료면 접촉을 봤나 — false 면 SCOOP_EMPTY 의심
+string message
+---
+string phase            # "APPROACH" | "DIP" | "LIFT" | "LEVEL"

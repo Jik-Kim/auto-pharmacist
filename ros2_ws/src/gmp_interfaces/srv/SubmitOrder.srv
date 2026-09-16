@@ -1,0 +1,6 @@
+# HMI → process_node. 실행 중이면 거부
+Recipe recipe
+---
+bool accepted
+string batch_id
+string message

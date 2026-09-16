@@ -1,0 +1,8 @@
+# 칭량 용기에 붓기. fraction<1 은 털어내기(과다 시)
+string target_station   # 보통 "scale"
+float32 fraction        # 1.0 전량 / 0.0~1.0 일부 (기울임 각으로 근사)
+---
+bool success
+string message
+---
+string phase            # "APPROACH" | "TILT" | "HOLD" | "RETURN"

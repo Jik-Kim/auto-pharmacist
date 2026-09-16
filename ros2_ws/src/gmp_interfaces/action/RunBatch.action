@@ -1,0 +1,11 @@
+# 배치 실행. HMI/CLI → process_node
+Recipe recipe
+---
+bool success
+uint8 items_done
+uint8 deviations
+string result           # "DONE" | "DISCARDED" | "ABORTED" | "ERROR"
+string message
+---
+CellState state
+DispenseResult last_result

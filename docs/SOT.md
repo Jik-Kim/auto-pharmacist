@@ -1,0 +1,79 @@
+# Source of Truth
+
+> 상태: 골격 생성 시점 (2026-09-16 밤). `PROJECT_RULES.md` R1~R23 의 결정을 코드 기준으로 옮김
+> 갱신: 확정 결정이 생길 때마다 조장이 갱신 (팀 합의 결과만). 규칙(강사 지침·장비 제약)의 원장은 `PROJECT_RULES.md`, 여기는 **설계·코드 결정**만
+
+## 목표
+
+M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3종)을 스쿱으로 퍼서 칭량 용기에 분주하고, 로봇 외력으로 무게를 검증하며,
+허용 오차 밖이면 일탈로 처리해 HMI 의 QA 판정을 받는다. 9/23 까지 **무인 연속 배치 N회**와 **일탈 자동 처리** 영상을 확보하고, 9/29 시연·9/30 발표.
+
+평가 기준(R12)과의 대응은 `PROJECT_RULES.md` 3-8. 이 프로젝트가 점수를 얻는 곳은 **「기능 동작 지속성」(일탈·복구)** 과 **「입출력 데이터 이해도」(배치 기록 HMI)** 다.
+
+## 확정 사항
+
+| ID | 항목 | 결정 |
+|---|---|---|
+| D-01 | 로봇 접근 | **`DSR_ROBOT2` 파이썬 API 만 쓴다** (9/16 교육 방식, `rokey/move.py`). 서비스 클라이언트를 직접 만들지 않는다. 네임스페이스 `dsr01`, 모델 `m0609`, `DR_init` → 노드 생성 → import 순서 |
+| D-02 | **DSR 호출 위치** | 교육 자료 「두산 ROS2 동작 Sequence」 3장 *Multithreaded* 구조를 따른다 — **메인 스레드는 spin, 작업 스레드가 `movej` 같은 블로킹 호출**. 한 가지를 더 조인다: `DSR_ROBOT2` 는 모든 호출에서 `rclpy.spin_until_future_complete(g_node, …)` 로 **`DR_init` 노드를 직접 spin** 하므로(`dsr_common2/imp/DSR_ROBOT2.py:635` 외 전부), 우리가 executor 로 spin 하는 노드는 **`DR_init` 노드와 별개의 노드**(`skill_node`, ns `cell`)여야 한다. `DR_init` 노드(ns `dsr01`)는 executor 에 넣지 않고 **워커 스레드 한 곳에서만 직렬 호출**한다. Action 콜백은 큐에 넣고 기다린다. 로봇을 만지는 노드는 `skill_node` 하나뿐. 스레드 매뉴얼: https://v2-manual.scroll.site/ko/v2-programming-manual/2.12.1/publish/thread |
+| D-03 | 공정 오케스트레이션 | **`core/process_fsm.py` 순수 Python 상태기계.** `py_trees`(apt 에 2.5.0 있음)는 쓰지 않는다 — 5일 예산에 새 프레임워크를 더하지 않고, 상태 전이표가 그대로 SDD 5장이 된다. `PROJECT_RULES.md` R9 의 "py_trees_ros 채택" 은 이 결정으로 **대체** |
+| D-04 | 그리퍼 제어 경로 | **기본 `modbus` 백엔드** — 기존 드라이버 `OnRobotRGControllerServer`(`~/ws_dsr`, 네임스페이스 `dsr01`)의 `/onrobot/sendCommand` 로 폭(1/10 mm 정수 문자열)을 보낸다. **폴백 `dio` 백엔드** — 9/16 교육의 `grip_test.py` 방식(`set_digital_output(1/2)`). 백엔드는 파라미터 `gripper.backend` 하나로 바꾼다. 가상 모드는 `gripper_virtual_node` 가 같은 서비스 이름을 받는다 |
+| D-05 | **파지 판정** | **폭 추론** — 닫기 명령 후 정지 폭이 `목표 폭 + grip_margin_mm` 보다 크면 잡은 것, 목표 폭까지 닫혔으면 놓친 것. 드라이버는 Modbus 로 `grip`·`s1_t`·`s2_t` 비트를 **읽지만 토픽으로 내지 않는다** (`comModbusTcp.getStatus()` 는 dict 로 반환, 서버는 `JointState` 만 발행). 비트를 쓰려면 드라이버 패치가 필요 — I-003 선택 항목. `PROJECT_RULES.md` 3-3 의 "`gsta` bit1 직접 통보" 는 **정정** |
+| D-06 | 파지력 설정 | 드라이버 `sendCommand` 는 수치 파지력을 받지 않고 `'i'`/`'d'` 로 **2.5 N 씩** 올리고 내린다(기동 시 40 N). 어댑터가 명령 파지력을 추적해 스텝 수를 계산한다. 정확도가 부족하면 I-003 패치로 해결 |
+| D-07 | **무게 측정** | **1순위 `get_workpiece_weight()`** (매뉴얼 5.1.1, 강사 지정 절) — 세션 시작 시 빈 그리퍼·계량 자세에서 `reset_workpiece_weight()` 로 잔류 오차를 지우고, 용기를 들어 계량 자세에서 `samples` 회 읽어 평균·표준편차. M0609 는 M 시리즈(JTS)라 사용 가능(Non-FTS A 모델 불가 주의는 해당 없음). `set_workpiece_weight` 는 **부르지 않는다** — 충돌 감지 무효화가 전제라 안전 원칙에 어긋난다. **폴백 `get_tool_force(DR_BASE)` Fz 평균** — 파라미터 `scale.method: workpiece \| tool_force`. 둘 다 JTS 에서 나오므로 **분해능은 9/17 오전 실측이 확정한다** (Q-01). 그램 환산·영점·보정은 `gmp_dosing/core/scale.py` 단일 출처. 가상 모드는 힘값이 없을 가능성이 커 `scale.simulated` 로 대체 (Q-07) |
+| D-08 | 도징 단위 | **실측 분해능에 따라 결정** — 30 g 을 3σ 로 가를 수 있으면 30 g, 아니면 100 g 으로 올리고 허용 오차 ±5 %. 레시피 yaml 만 바뀌고 코드는 그대로다 |
+| D-09 | 스테이션 좌표 | `gmp_bringup/params/stations.yaml` 단일 출처. 9/17 티칭한 `posx` 를 적는다. 설계 좌표(판 820×650, 베이스 (−50, 320))는 `PROJECT_RULES.md` 3-1. **코드에 좌표를 적지 않는다** |
+| D-10 | 툴·TCP | `set_tool("tool_weight")` · `set_tcp("GripperDA_v1")` — 컨트롤러 등록명, 파라미터 `robot.tool_name`/`robot.tcp_name`. 실측 1.320 kg · CoG (1.960, −32.760, 19.140) 은 컨트롤러에 등록 완료 (R7). 가상 모드는 에뮬레이터에 미등록이라 **건너뛴다** |
+| D-11 | 워크스페이스 | `~/ws_cobot_pjt/ws_dsr` 언더레이(벤더, read-only) + 이 저장소 `ros2_ws` 오버레이. 벤더 패키지는 고치지 않는다 (I-003 패치도 포크 형태로) |
+| D-12 | 네임스페이스·이름 | 우리 노드는 launch 가 `namespace:=cell` 을 붙인다 → `/cell/…`. 코드는 상대 이름. DSR 클라이언트 노드만 `dsr01`. 그리퍼 서비스 `/onrobot/sendCommand` 는 드라이버가 절대 이름으로 만든다 |
+| D-13 | 협업·안전 | 사람 상주 없음 (R23). 개입은 **HMI 인터락 요청 → 로봇 안전 자세 → 사람 투입 → 재개** 와 **QA 원격 승인** 둘뿐. 물리 접촉은 두산 충돌 감지(PFL)가 막는다 — 임계값은 `safety.collision_sensitivity` |
+| D-15 | 판 좌표계 | **권장:** 판 위 3점을 티칭해 `set_user_cart_coord` 로 사용자 좌표계를 만들고, `stations.yaml` 의 좌표를 그 좌표계(설계 좌표 820×650, `PROJECT_RULES.md` 3-1)로 적는다. 판이 밀려도 3점만 다시 찍으면 전 스테이션이 따라온다. 9/17 오전 티칭 시간이 부족하면 베이스 좌표 `posx` 로 시작하고 D2 에 전환 |
+| D-16 | **HMI = 웹 (Flask)** | 강사 확인 "웹으로 해도 상관없다" → **웹 채택**. 근거: 「입출력 데이터 이해도」의 기능 요구가 *원격 QA 승인*(R23)이라 다른 기기에서 접속되는 UI 가 요구에 적합하고, 시연에서 "셀 밖에서 승인 누르는 장면"이 생긴다. Kn1 `mro_fleet` 의 Flask+rclpy 스레드 패턴 재사용. PyQt5(R8) 는 **폐기** — rclpy 이벤트 루프 충돌 위험까지 제거 |
+| D-17 | **배치 기록 = SQLite** | GMP 배치 기록 의무·추적성·감사 추적을 파일(JSON)로는 못 채운다. `record_node` 가 **단일 기록자**, HMI 는 읽기만, `events` 는 append-only, `audit` 에 사람의 조작(actor·시각). JSON 은 배치 종료 시 내보내는 **사본**. 계약 7절 |
+| D-14 | 일정 | 실물 5일 9/17·18·21·22·23. **9/23 이 실물 마지노선.** 9/24~28 휴강(영상·PPT·문서), 9/29 시연, 9/30 발표 (R11) |
+
+## 확정 노드·토픽
+
+**`docs/interfaces.md` 계약 v1.0 (9/16)** 이 기준. 실제 정의는 `ros2_ws/src/gmp_interfaces`.
+9/17 병렬 구현의 전제이므로, 바꿔야 하면 **팀 채널에 먼저 알리고 `gmp_interfaces` 와 문서를 같은 커밋에서** 고친다. 리뷰는 영향받는 담당 전원 (AGENTS 교차검수 표).
+
+| 노드 | 패키지 | 책임 |
+|---|---|---|
+| `skill_node` | `gmp_skills` | 로봇 스킬 서버 — `MoveToStation`·`Scoop`·`Pour`·`WeighContainer` Action, `Grip`·`MeasureForce`·`SafePose` Service, `gripper_state` 발행. DSR 워커 스레드 소유 |
+| `process_node` | `gmp_process` | 레시피 실행 상태기계. `RunBatch` Action 서버, `SubmitOrder`·`QaDecision`·`InterlockRequest` Service 서버, `state`·`dispense_result`·`deviation` 발행 |
+| `record_node` | `gmp_hmi` | **단일 기록자.** `state`·`weight`·`dispense_result`·`deviation`·`event` → SQLite (계약 7절). 배치 종료 시 JSON 내보내기 |
+| `hmi_web_node` | `gmp_hmi` | Flask 웹 HMI (:5000). 주문 제출, 상태·계량 그래프, **QA 승인/폐기(원격)**, 인터락, 이력·KPI·감사 추적 조회(DB 읽기) |
+
+## 미결
+
+| ID | 질문 | 결정권자 | 시점 |
+|---|---|---|---|
+| Q-01 | **외력 분해능** — 정지 상태 Fz 표준편차가 몇 N 인가. 30 g(0.3 N) 을 가를 수 있는가 | A + B | **9/17 오전 (게이트)** |
+| Q-02 | 그리퍼 백엔드 — `modbus` 가 실물에서 폭·힘 모두 되는가, 안 되면 `dio` | A | 9/17 |
+| Q-03 | `dio` 백엔드의 DI 핀 — 파지 완료·busy 가 어느 핀으로 오는가 (ws README "디지털 입력 핀 감지") | A | 9/17 |
+| Q-04 | 스쿱 실물 치수 — 손잡이 폭·두께 (파지 폭 `gripper.scoop_width_mm`) | C(하드웨어) | 물건 도착 시 |
+| Q-05 | 판 위 기존 고정물 (케이블·지그) — 스테이션 좌표 충돌 여부 | 팀 | 9/17 |
+| Q-06 | 주제 사전 승인 (R 원장 Q8) | 강사 | 9/17 |
+| Q-07 | 가상 모드에서 `get_tool_force` 가 값을 주는가 (에뮬레이터 힘 미지원 가능성) — 안 주면 가상은 `scale.simulated=true` 로 | A | 9/16 밤 |
+
+## 교육 요구 명령어 ↔ 사용처 (평가 「기능 구현 완전성」 근거)
+
+강사가 지정한 DRL 매뉴얼 4개 절(3 모션 · 4 제어 보조 · 5 기타 설정 · 6 힘/순응·사용자 편의)의 명령을 **어느 스킬이 왜 쓰는지**. `DSR_ROBOT2` 노출 여부는 9/16 확인.
+
+| 절 | 명령 | 사용처 (`gmp_skills`) | 비고 |
+|---|---|---|---|
+| 3.1 위치 | `posj`, `posx`, `trans` | 전 스킬 — `stations.yaml` → 접근점 `trans(pos, [0,0,+approach_mm,0,0,0])` | |
+| 3.2 설정 | `set_velj/accj`, `set_velx/accx`, `set_tcp`, `set_ref_coord` | 기동 시 1회 + 스킬별 속도 스케일 | `set_ref_coord(DR_BASE)` 명시 — 힘제어 방향의 기준 |
+| 3.3 동기 | `movej`(홈·안전 자세), `movel`(접근·작업점), `movesx`(붓기 곡선) | MoveToStation · Pour | |
+| 3.4 비동기 | `amovel` + `check_motion`/`mwait` | 취소 가능한 이동 (인터락·SafePose) | 블로킹 `movel` 은 중간 취소가 안 된다 — I-004 |
+| 3.3/3.4 | `move_periodic`/`amove_periodic` | **Pour 의 털어내기(과다 시 미세 진동)** · Scoop 의 원료 다지기 | 두산 고유 명령 — 차별점 |
+| 4.1 현재값 | `get_current_posx/posj`, `get_tool_force`, `get_external_torque` | 상태 발행 · 계량 폴백 · 미끄러짐/충돌 관측 | |
+| 4.4 안전 설정 | `get_collision_sensitivity`, `get_current_tool`, `get_current_tcp` | 기동 자가진단 — 툴·TCP·감도가 기대값인지 확인하고 아니면 기동 거부 | 「동작 및 운용 안정성」 |
+| 5.1 툴/작업물 | `set_tool`, **`reset_workpiece_weight`, `get_workpiece_weight`** | **계량 1순위** (D-07) | `set_workpiece_weight` 는 안 쓴다 |
+| 5.2 제어 모드 | `set_singularity_handling` | 선택 — 계량 자세 근처 특이점 회피 | |
+| 6.1 힘/순응 | `task_compliance_ctrl`, `set_stiffnessx`, `set_desired_force`, `release_force`, `release_compliance_ctrl` | **Scoop 담그기** — Z 방향 힘제어(`dir=[0,0,1,0,0,0]`, `mod=DR_FC_MOD_REL`)로 원료면까지 내려가 접촉 | 진입/해제 짝 필수 (AGENTS 코드 규칙) |
+| 6.2 편의 | `check_force_condition(DR_AXIS_Z, max=…)`, `check_position_condition` | 접촉 감지 · 담금 깊이 상한 · 충돌 감지 | `set_external_force_reset` 은 DSR_ROBOT2 에 없다 → 영점은 `reset_workpiece_weight` |
+| 6.2 편의 | `set_user_cart_coord`, `coord_transform` | 판 좌표계 (D-15) | |
+| 7.1 IO | `set_digital_output`, `get_digital_input` | 그리퍼 `dio` 백엔드 (D-04) | `wait_digital_input` 은 노출 안 됨 → 폴링 |
+
+> 이 표는 발표 자료의 「교육 내용 ↔ 구현」 슬라이드로 그대로 쓴다. 비어 있는 절이 없도록 설계했다.

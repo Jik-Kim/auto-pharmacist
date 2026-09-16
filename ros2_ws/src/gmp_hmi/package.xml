@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>gmp_hmi</name>
+  <version>0.1.0</version>
+  <description>웹 HMI(Flask — 원격 QA 승인·인터락·이력)와 배치 기록 DB(SQLite, 감사 추적) [D HMI·기록]</description>
+  <maintainer email="jungji0913@khu.ac.kr">Kim Byeongjik</maintainer>
+  <license>MIT</license>
+  <depend>rclpy</depend>
+  <depend>gmp_interfaces</depend>
+  <depend>std_msgs</depend>
+  <exec_depend>python3-flask</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <test_depend>python3-pytest</test_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>

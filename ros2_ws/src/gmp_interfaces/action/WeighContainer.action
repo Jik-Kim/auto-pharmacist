@@ -1,0 +1,9 @@
+# 복합 스킬: 용기 파지 → 계량 자세 → MeasureForce → 내려놓기. 결과는 WeightReading
+string container_station    # 용기가 있는 스테이션 (보통 "scale")
+float32 tare_g              # process 가 아는 풍량. 0 이면 gross 만 채운다
+---
+WeightReading reading
+bool success
+string message
+---
+string phase                # "GRIP" | "LIFT" | "SETTLE" | "MEASURE" | "PLACE"

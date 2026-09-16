@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>gmp_process</name>
+  <version>0.1.0</version>
+  <description>레시피 실행 상태기계, 일탈·인터락, RunBatch/SubmitOrder/QaDecision/InterlockRequest 서버 [C 공정]</description>
+  <maintainer email="jungji0913@khu.ac.kr">Kim Byeongjik</maintainer>
+  <license>MIT</license>
+  <depend>rclpy</depend>
+  <depend>gmp_interfaces</depend>
+  <depend>gmp_dosing</depend>
+  <depend>std_msgs</depend>
+  <test_depend>python3-pytest</test_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>

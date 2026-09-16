@@ -1,0 +1,7 @@
+# 시연 레시피. 단위 g. tol_pct 는 등급별 — ACTIVE 1.0 / EXCIPIENT 5.0 이 목표지만
+# **G1 분해능 결과 전까지는 EXCIPIENT 5.0 으로 통일** (SOT D-08). 30 g 이 안 가려지면 target 을 100 g 대로 올린다.
+product: DEMO-01
+items:
+  - {material_id: A, target_g: 60.0, tol_pct: 5.0, grade: EXCIPIENT}
+  - {material_id: B, target_g: 40.0, tol_pct: 5.0, grade: EXCIPIENT}
+  - {material_id: C, target_g: 30.0, tol_pct: 5.0, grade: ACTIVE}

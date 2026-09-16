@@ -1,0 +1,5 @@
+# process → skill_node. 진행 중인 스킬을 취소하고 안전 자세로. 인터락·에러 공통
+string reason
+---
+bool success
+string message

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>GMP 조제 칭량 셀</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+ body{font-family:system-ui,sans-serif;margin:0;background:#0f1419;color:#e6e6e6}
+ header{padding:10px 16px;background:#1b2330;display:flex;gap:16px;align-items:center}
+ header b{font-size:18px} .mode{padding:2px 10px;border-radius:12px;background:#334}
+ .mode.RUNNING{background:#1f7a3a}.mode.DEVIATION{background:#a35d00}.mode.PAUSED{background:#3b5bb5}.mode.ERROR{background:#a11}
+ main{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px}
+ .card{background:#1b2330;border-radius:8px;padding:12px}.card h3{margin:0 0 8px;font-size:14px;color:#9ab}
+ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:4px 6px;border-bottom:1px solid #2a3442;text-align:left}
+ button{padding:6px 12px;border:0;border-radius:6px;background:#2d6cdf;color:#fff;cursor:pointer}button.warn{background:#a35d00}button.bad{background:#a11}
+ input,select{padding:6px;border-radius:6px;border:1px solid #345;background:#0f1419;color:#eee}
+ canvas{width:100%;height:160px;background:#0f1419;border-radius:6px}.msg{font-size:12px;color:#9ab;margin-top:6px}
+ .dev{border-left:4px solid #a35d00;padding:6px 8px;margin:6px 0;background:#232b38}
+</style></head><body>
+<header><b>GMP 조제 칭량 셀</b> <span id="mode" class="mode">—</span> <span id="step">수신 대기</span> <span id="batch"></span>
+ <span style="margin-left:auto">그리퍼 <span id="grip">—</span></span></header>
+<main>
+ <section class="card"><h3>주문 (배치 레시피)</h3>
+  <form id="orderForm"><select name="recipe">{% for r in recipes %}<option>{{r}}</option>{% endfor %}</select>
+  <input name="actor" placeholder="작업자 ID" required> <button>주문 제출</button></form><div class="msg" id="orderMsg"></div>
+  <h3 style="margin-top:12px">인터락 (사람 투입)</h3>
+  <form id="lockForm"><input name="actor" placeholder="작업자 ID" required> <input name="reason" placeholder="사유 (REFILL / RECOVERY)" value="REFILL">
+  <button class="warn" data-req="1">ENTER — 로봇 안전 자세 후 허가</button> <button data-req="2">EXIT — 재개</button></form><div class="msg" id="lockMsg"></div></section>
+ <section class="card"><h3>일탈 — QA 판정 (셀 밖에서)</h3><div id="devs">없음</div>
+  <input id="qaActor" placeholder="QA ID" style="margin-top:6px"><div class="msg" id="qaMsg"></div></section>
+ <section class="card"><h3>계량 (순량 g, 최근 100)</h3><canvas id="chart" width="600" height="160"></canvas>
+  <table><thead><tr><th>원료</th><th>목표</th><th>실측</th><th>오차 %</th><th>판정</th><th>시도</th></tr></thead><tbody id="results"></tbody></table></section>
+ <section class="card"><h3>배치 이력 (DB) <button id="kpiBtn" style="float:right">KPI</button></h3>
+  <table><thead><tr><th>배치</th><th>제품</th><th>결과</th><th>원료</th><th>일탈</th><th>사이클 s</th></tr></thead><tbody id="hist"></tbody></table>
+  <pre id="kpi" class="msg"></pre><h3 style="margin-top:10px">감사 추적</h3><table><tbody id="audit"></tbody></table></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+async function post(url,data){const r=await fetch(url,{method:'POST',body:new URLSearchParams(data)});return r.json()}
+$('orderForm').onsubmit=async e=>{e.preventDefault();const j=await post('/order',Object.fromEntries(new FormData(e.target)));$('orderMsg').textContent=(j.ok?'접수 ':'거부 ')+j.message+' '+(j.batch_id||'')};
+$('lockForm').querySelectorAll('button').forEach(b=>b.onclick=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData($('lockForm')));d.request=b.dataset.req;$('lockMsg').textContent='요청 중…';const j=await post('/interlock',d);$('lockMsg').textContent=(j.ok?'허가 ':'거부 ')+j.message});
+async function qa(batch,dev,decision){const j=await post('/qa',{batch_id:batch,deviation_id:dev,decision,actor:$('qaActor').value});$('qaMsg').textContent=(j.ok?'판정 접수 ':'거부 ')+j.message}
+function draw(ws){const c=$('chart'),x=c.getContext('2d');x.clearRect(0,0,c.width,c.height);if(!ws.length)return;const v=ws.map(w=>w.net_g),mx=Math.max(...v,1),mn=Math.min(...v,0);x.strokeStyle='#4c8dff';x.beginPath();ws.forEach((w,i)=>{const px=10+i*(c.width-20)/Math.max(ws.length-1,1),py=c.height-10-(w.net_g-mn)/(mx-mn||1)*(c.height-20);i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();x.fillStyle='#9ab';x.fillText(mx.toFixed(1)+' g',4,12);x.fillText(mn.toFixed(1)+' g',4,c.height-2);ws.forEach((w,i)=>{if(!w.valid){x.fillStyle='#a11';x.fillRect(10+i*(c.width-20)/Math.max(ws.length-1,1)-2,c.height-14,4,4)}})}
+async function tick(){try{const s=await (await fetch('/status',{cache:'no-store'})).json();const st=s.state||{};$('mode').textContent=st.mode||'—';$('mode').className='mode '+(st.mode||'');$('step').textContent=st.step||'';$('batch').textContent=st.batch_id||'';
+ const g=s.gripper||{};$('grip').textContent=g.width_mm==null?'—':`${g.width_mm.toFixed(1)} mm ${g.grip?'●':'○'} ${g.backend||''}`;draw(s.weights||[]);
+ $('results').innerHTML=(s.results||[]).map(r=>`<tr><td>${r.material_id}</td><td>${r.target_g.toFixed(1)}</td><td>${r.actual_g.toFixed(1)}</td><td>${r.error_pct.toFixed(2)}</td><td>${r.verdict}</td><td>${r.attempts}</td></tr>`).join('');
+ const pend=(s.deviations||[]).filter(d=>d.decision==='PENDING');$('devs').innerHTML=pend.length?pend.map(d=>`<div class="dev"><b>${d.kind}</b> ${d.detail} <small>${d.deviation_id}</small><br><button onclick="qa('${d.batch_id}','${d.deviation_id}',1)">승인 — 계속</button> <button class="bad" onclick="qa('${d.batch_id}','${d.deviation_id}',2)">폐기</button></div>`).join(''):'판정 대기 없음'}catch(e){$('step').textContent='서버 연결 없음'}}
+async function hist(){try{const h=await (await fetch('/history',{cache:'no-store'})).json();$('hist').innerHTML=h.map(b=>`<tr><td>${b.batch_id}</td><td>${b.product||''}</td><td>${b.result||'진행'}</td><td>${b.n_items}</td><td>${b.n_dev}</td><td>${b.cycle_s==null?'':b.cycle_s.toFixed(0)}</td></tr>`).join('');
+ const a=await (await fetch('/audit',{cache:'no-store'})).json();$('audit').innerHTML=a.map(r=>`<tr><td>${new Date(r.t*1000).toLocaleTimeString()}</td><td>${r.actor}</td><td>${r.action}</td><td>${r.target||''}</td><td>${r.detail||''}</td></tr>`).join('')}catch(e){}}
+$('kpiBtn').onclick=async()=>{$('kpi').textContent=JSON.stringify(await (await fetch('/kpi')).json(),null,1)};
+setInterval(tick,500);setInterval(hist,5000);tick();hist();
+</script></body></html>

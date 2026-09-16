@@ -1,0 +1,21 @@
+# ROS2 build — 정상 위치는 ros2_ws/ 안이다. 밖에서 colcon 을 돌렸을 때 딸려 올라가는 것을 막는 그물
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+/build/
+/install/
+/log/
+ros2_ws/src/*/build/
+ros2_ws/src/*/install/
+ros2_ws/src/*/log/
+__pycache__/
+*.pyc
+.pytest_cache/
+# 배치 기록·계측 원본은 Drive 로 (요약 CSV 만 커밋)
+records/
+*.bag
+*.mp4
+*.db
+docs/feedback.local.md
+.vscode/
+.~lock.*#

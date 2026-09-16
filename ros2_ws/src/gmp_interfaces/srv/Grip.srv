@@ -1,0 +1,10 @@
+# process → skill_node. 어댑터가 백엔드에 맞게 변환한다
+bool close              # true 닫기 / false 열기
+float32 width_mm        # 목표 폭. 열기는 gripper.open_width_mm 로 무시 가능
+float32 force_n         # 3~40. modbus 는 2.5 N 스텝, dio 는 컴퓨트박스 프리셋이라 무시
+float32 timeout_s
+---
+bool success
+float32 final_width_mm
+bool grip_inferred
+string message

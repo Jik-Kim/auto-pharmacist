@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>gmp_skills</name>
+  <version>0.1.0</version>
+  <description>로봇 스킬 서버 — DSR_ROBOT2·RG2 어댑터, 스테이션 이동·파지·스쿱·붓기·계량. 로봇을 만지는 유일한 노드 [A 스킬]</description>
+  <maintainer email="jungji0913@khu.ac.kr">Kim Byeongjik</maintainer>
+  <license>MIT</license>
+  <depend>rclpy</depend>
+  <depend>gmp_interfaces</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>onrobot_rg_msgs</depend>
+  <depend>dsr_msgs2</depend>
+  <exec_depend>dsr_common2</exec_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>python3-pytest</test_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>
