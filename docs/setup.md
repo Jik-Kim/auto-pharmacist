@@ -20,8 +20,10 @@ cd ~/auto-pharmacist/ros2_ws && colcon build --symlink-install && source install
 ## 터미널마다 맨 처음
 
 ```bash
-source ~/auto-pharmacist/tools/env.sh      # /opt/ros → ws_dsr → auto-pharmacist 순서로 source
+source ~/auto-pharmacist/tools/env.sh      # ROS_DOMAIN_ID=70 설정 + /opt/ros → ws_dsr → auto-pharmacist 순서로 source
 ```
+
+`ROS_DOMAIN_ID` 는 **70** 으로 조 전원 동일해야 한다. `.bashrc` 에 다른 값이 있으면 env.sh 가 덮어쓴다.
 
 ## 실행
 
