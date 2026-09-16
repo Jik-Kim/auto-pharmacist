@@ -38,5 +38,8 @@
       compliance_stx: [3000.0, 3000.0, 500.0, 200.0, 200.0, 200.0]   # Z 만 부드럽게
       scoop_force_n: -8.0           # set_desired_force Z (베이스 기준 아래 방향은 음수 — G4 에서 부호 확인)
       dip_max_mm: 40.0              # 담금 깊이 상한 (check_position_condition)
+      nudge_force_n: 8.0            # 사람 접촉(nudge) 판정 — |F| 가 이 값을 nudge_window_s 이상 넘으면 (D-21)
+      nudge_window_s: 0.2
+      nudge_cooldown_s: 1.5         # 같은 접촉을 두 번 세지 않게. 두 번째 nudge = 재개
     interlock:
       safe_station: safe
