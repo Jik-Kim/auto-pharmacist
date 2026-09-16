@@ -1,0 +1,999 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>auto-pharmacist 설계 브리프</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #F3F5FA;
+    --surface: #FFFFFF;
+    --surface-2: #EBEFF7;
+    --ink: #161B2A;
+    --ink-2: #3A4258;
+    --muted: #5F6980;
+    --line: #D9DEEA;
+    --line-2: #C3CADB;
+    --accent: #3451D1;
+    --accent-ink: #2A42AD;
+    --accent-soft: #E4E9FB;
+    --accent-soft-2: #C9D3F7;
+    --warm: #D9782A;
+    --warm-soft: #FBEBDD;
+    --warm-ink: #A85717;
+    --ok: #1F7A8C;
+    --ok-soft: #DDEFF3;
+    --shadow: 0 1px 2px rgba(22,27,42,.06), 0 8px 24px -12px rgba(22,27,42,.18);
+    --radius: 10px;
+    --sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0E121C;
+      --surface: #161C2A;
+      --surface-2: #1C2334;
+      --ink: #E9EDF6;
+      --ink-2: #C5CCDC;
+      --muted: #9AA5BC;
+      --line: #283147;
+      --line-2: #38425C;
+      --accent: #8AA2FF;
+      --accent-ink: #A9BAFF;
+      --accent-soft: #1E2745;
+      --accent-soft-2: #2A3660;
+      --warm: #F2A25E;
+      --warm-soft: #3A2716;
+      --warm-ink: #F5B87F;
+      --ok: #6CC5D6;
+      --ok-soft: #14303A;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0E121C;
+    --surface: #161C2A;
+    --surface-2: #1C2334;
+    --ink: #E9EDF6;
+    --ink-2: #C5CCDC;
+    --muted: #9AA5BC;
+    --line: #283147;
+    --line-2: #38425C;
+    --accent: #8AA2FF;
+    --accent-ink: #A9BAFF;
+    --accent-soft: #1E2745;
+    --accent-soft-2: #2A3660;
+    --warm: #F2A25E;
+    --warm-soft: #3A2716;
+    --warm-ink: #F5B87F;
+    --ok: #6CC5D6;
+    --ok-soft: #14303A;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15.5px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  a { color: var(--accent-ink); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, .mono { font-family: var(--mono); font-size: .88em; }
+  code {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: .05em .4em;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  strong { font-weight: 600; color: var(--ink); }
+  h1, h2, h3, h4 { text-wrap: balance; margin: 0; line-height: 1.25; font-weight: 700; letter-spacing: -.01em; }
+  p { margin: 0; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 0 96px; }
+
+  /* ── header ── */
+  .hdr {
+    padding-block: 44px 28px;
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    gap: 18px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+  }
+  .eyebrow .tag {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 4px;
+    padding: 2px 8px;
+    letter-spacing: .1em;
+  }
+  :root[data-theme="dark"] .eyebrow .tag { color: #0E121C; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .eyebrow .tag { color: #0E121C; } }
+  .hdr h1 { font-size: clamp(30px, 4.6vw, 46px); letter-spacing: -.025em; }
+  .hdr h1 .mono { font-weight: 600; letter-spacing: -.02em; color: var(--accent-ink); font-size: .92em; }
+  .lede { font-size: 18px; line-height: 1.65; max-width: 52ch; color: var(--ink-2); }
+  .lede b { color: var(--ink); font-weight: 600; }
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .fact { padding: 12px 16px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .fact .k { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .fact .v { font-weight: 600; font-size: 15px; margin-top: 2px; }
+  .fact .v small { font-weight: 400; color: var(--muted); font-size: 13px; }
+
+  /* ── layout ── */
+  .grid { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; margin-top: 8px; }
+  nav.toc {
+    position: sticky; top: 0; align-self: start;
+    padding-block: 28px;
+    font-size: 13.5px;
+  }
+  nav.toc .lbl { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+  nav.toc a { display: block; color: var(--ink-2); padding: 5px 0 5px 12px; border-left: 2px solid var(--line); line-height: 1.4; }
+  nav.toc a:hover { color: var(--ink); text-decoration: none; border-left-color: var(--line-2); }
+  nav.toc a.on { color: var(--accent-ink); border-left-color: var(--accent); font-weight: 600; }
+  nav.toc a.key { font-weight: 600; }
+  main { min-width: 0; max-width: 880px; }
+  section { padding-block: 40px; border-bottom: 1px solid var(--line); scroll-margin-top: 16px; }
+  section:last-child { border-bottom: 0; }
+  .sec-eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent-ink); margin-bottom: 10px; }
+  section h2 { font-size: 26px; margin-bottom: 14px; }
+  section h3 { font-size: 17px; margin: 28px 0 10px; }
+  .intro { color: var(--ink-2); max-width: 66ch; }
+  .intro + .intro { margin-top: 10px; }
+
+  /* ── components ── */
+  .callout {
+    margin-top: 18px;
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    padding: 14px 18px;
+    color: var(--ink);
+  }
+  .callout.warm { border-left-color: var(--warm); background: var(--warm-soft); }
+  .callout .t { font-weight: 600; margin-bottom: 4px; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  .tbl { overflow-x: auto; margin-top: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; background: var(--surface-2); }
+  tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td .mono { color: var(--ink-2); }
+
+  .checks { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .checks li { display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+  .checks .dot { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--ok-soft); color: var(--ok); display: grid; place-items: center; font-size: 12px; font-weight: 700; margin-top: 3px; }
+  .checks b { display: block; font-weight: 600; }
+  .checks span { color: var(--muted); }
+
+  /* command cards */
+  .cmds { display: grid; gap: 14px; margin-top: 18px; }
+  .cmd {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    display: grid; grid-template-columns: 150px minmax(0,1fr); overflow: hidden;
+  }
+  .cmd .sec { background: var(--surface-2); padding: 14px 16px; border-right: 1px solid var(--line); }
+  .cmd .sec .n { font-family: var(--mono); font-size: 12px; color: var(--accent-ink); letter-spacing: .06em; }
+  .cmd .sec .t { font-weight: 600; font-size: 14.5px; line-height: 1.35; margin-top: 2px; }
+  .cmd .body { padding: 14px 16px; display: grid; gap: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-family: var(--mono); font-size: 12.5px; background: var(--accent-soft); color: var(--accent-ink); border: 1px solid var(--accent-soft-2); border-radius: 5px; padding: 2px 8px; white-space: nowrap; }
+  .chip.hot { background: var(--accent); color: #fff; border-color: var(--accent); }
+  :root[data-theme="dark"] .chip.hot { color: #0E121C; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .chip.hot { color: #0E121C; } }
+  .cmd .use { font-size: 14px; color: var(--ink-2); }
+  .cmd .use b { color: var(--ink); }
+  .cmd .note { font-size: 13px; color: var(--muted); }
+
+  /* process steps */
+  .steps { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 0; counter-reset: s; }
+  .step { display: grid; grid-template-columns: 44px minmax(0,1fr); gap: 14px; position: relative; padding-bottom: 18px; }
+  .step::before {
+    counter-increment: s; content: counter(s);
+    width: 32px; height: 32px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent);
+    color: var(--accent-ink); font-family: var(--mono); font-weight: 600; font-size: 13px;
+    display: grid; place-items: center; z-index: 1;
+  }
+  .step::after { content: ""; position: absolute; left: 15px; top: 32px; bottom: 0; width: 2px; background: var(--line-2); }
+  .step:last-child::after { display: none; }
+  .step .st { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+  .step .ti { font-weight: 600; font-size: 15.5px; }
+  .step .ds { font-size: 14px; color: var(--ink-2); margin-top: 2px; }
+  .step.loop .ti::after { content: "반복"; font-family: var(--mono); font-size: 11px; color: var(--accent-ink); background: var(--accent-soft); border-radius: 4px; padding: 1px 6px; margin-left: 8px; vertical-align: middle; }
+  .branch { margin-top: 6px; display: grid; gap: 4px; font-size: 13.5px; }
+  .branch div { display: flex; gap: 8px; align-items: baseline; }
+  .pill { flex: none; font-family: var(--mono); font-size: 11.5px; font-weight: 600; border-radius: 4px; padding: 1px 7px; letter-spacing: .04em; }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); }
+  .pill.warn { background: var(--warm-soft); color: var(--warm-ink); }
+  .pill.dev { background: var(--warm); color: #fff; }
+  :root[data-theme="dark"] .pill.dev { color: #0E121C; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pill.dev { color: #0E121C; } }
+
+  /* two column info */
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-top: 18px; }
+  .box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+  .box h4 { font-size: 15px; margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
+  .box h4 .k { font-family: var(--mono); font-size: 11px; color: var(--accent-ink); background: var(--accent-soft); border-radius: 4px; padding: 1px 6px; letter-spacing: .06em; }
+  .box p, .box li { font-size: 14px; color: var(--ink-2); }
+  .box ul { margin: 6px 0 0; padding-left: 18px; }
+  .formula { font-family: var(--mono); font-size: 13.5px; background: var(--surface-2); border-radius: 6px; padding: 8px 12px; margin-top: 8px; color: var(--ink); overflow-x: auto; white-space: nowrap; }
+
+  /* workcell svg */
+  .fig { margin-top: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+  .fig svg { width: 100%; height: auto; display: block; font-family: var(--sans); }
+  .fig .cap { font-size: 13px; color: var(--muted); margin-top: 8px; display: flex; gap: 16px; flex-wrap: wrap; }
+  .fig .cap span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .svg-board { fill: var(--ground); stroke: var(--line-2); }
+  .svg-human { fill: var(--warm-soft); }
+  .svg-pass { fill: var(--accent-soft); }
+  .svg-reach { fill: none; stroke: var(--accent); stroke-dasharray: 6 5; opacity: .55; }
+  .svg-reach2 { fill: none; stroke: var(--line-2); stroke-dasharray: 3 4; }
+  .svg-st { fill: var(--surface); stroke: var(--accent); stroke-width: 1.5; }
+  .svg-st.key { fill: var(--accent-soft); stroke-width: 2.5; }
+  .svg-st.edge { stroke: var(--warm); }
+  .svg-t { fill: var(--ink); font-size: 15px; font-weight: 600; }
+  .svg-t2 { fill: var(--muted); font-size: 12px; font-family: var(--mono); }
+  .svg-t3 { fill: var(--warm-ink); font-size: 14px; font-weight: 600; }
+  .svg-base { fill: var(--ink); }
+  .svg-axis { fill: var(--muted); font-size: 12px; font-family: var(--mono); }
+
+  /* node diagram */
+  .arch { margin-top: 18px; display: grid; gap: 10px; }
+  .lane { display: grid; grid-template-columns: 110px minmax(0,1fr); gap: 12px; align-items: stretch; }
+  .lane .nm { font-family: var(--mono); font-size: 12px; color: var(--muted); padding-top: 10px; letter-spacing: .06em; }
+  .nodes { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  .node { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+  .node.vendor { background: var(--surface-2); border-style: dashed; }
+  .node.hot { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+  .node b { display: block; font-family: var(--mono); font-size: 13px; color: var(--ink); font-weight: 600; }
+  .node span { color: var(--muted); }
+
+  /* schedule */
+  .timeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 18px; }
+  .day { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+  .day.real { border-color: var(--accent-soft-2); background: var(--accent-soft); }
+  .day.off { opacity: .7; }
+  .day.demo { border-color: var(--warm); }
+  .day b { display: block; font-family: var(--mono); font-size: 13px; }
+  .day span { color: var(--ink-2); }
+
+  /* ask list */
+  .ask { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 10px; }
+  .ask li { display: grid; grid-template-columns: 26px minmax(0,1fr); gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+  .ask input { width: 18px; height: 18px; margin: 4px 0 0; accent-color: var(--accent); }
+  .ask b { display: block; font-weight: 600; font-size: 15px; }
+  .ask p { font-size: 14px; color: var(--ink-2); margin-top: 3px; }
+  .ask li:has(input:checked) { border-color: var(--accent); }
+  .ask li:has(input:checked) b { color: var(--accent-ink); }
+
+  .opts { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 10px; }
+  .opt { display: grid; grid-template-columns: 26px 44px minmax(0,1fr); gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; align-items: start; }
+  .opt input { width: 18px; height: 18px; margin: 4px 0 0; accent-color: var(--accent); }
+  .opt .rk { font-family: var(--mono); font-weight: 600; color: var(--accent-ink); font-size: 15px; padding-top: 2px; }
+  .opt b { display: block; font-weight: 600; font-size: 15px; }
+  .opt p { font-size: 14px; color: var(--ink-2); margin-top: 3px; }
+  .opt .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .opt .meta span { font-family: var(--mono); font-size: 11.5px; border-radius: 4px; padding: 2px 7px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+  .opt .meta span.e { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent-soft-2); }
+  .opt .meta span.d1 { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+  .opt .meta span.d2 { background: var(--warm-soft); color: var(--warm-ink); border-color: transparent; }
+  .opt.rec { border-color: var(--accent-soft-2); box-shadow: inset 3px 0 0 var(--accent); }
+  .opt:has(input:checked) { border-color: var(--accent); }
+  .opt:has(input:checked) b { color: var(--accent-ink); }
+  .foot { margin-top: 40px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; display: flex; gap: 16px; flex-wrap: wrap; }
+
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: 1fr; gap: 0; }
+    nav.toc { position: sticky; top: 0; background: var(--ground); z-index: 5; padding-block: 12px; border-bottom: 1px solid var(--line); margin-inline: -20px; padding-inline: 20px; }
+    nav.toc .lbl { display: none; }
+    nav.toc .links { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+    nav.toc a { flex: none; border-left: 0; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; background: var(--surface); font-size: 13px; }
+    nav.toc a.on { background: var(--accent-soft); border-color: var(--accent-soft-2); }
+    .cmd { grid-template-columns: 1fr; }
+    .cmd .sec { border-right: 0; border-bottom: 1px solid var(--line); }
+    .lane { grid-template-columns: 1fr; gap: 4px; }
+    .lane .nm { padding-top: 0; }
+  }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style></head><body>
+
+<div class="wrap">
+  <header class="hdr">
+    <div class="eyebrow"><span class="tag">확정 · 9/16 강사 승인</span><span>[협동-1] ROS 2 로봇 자동화 공정 시스템</span><span>2026-09-17</span></div>
+    <h1><span class="mono">auto-pharmacist</span> — 협동로봇 조제 칭량 셀</h1>
+    <p class="lede">배치 레시피대로 원료를 <b>스쿱으로 퍼서 정량 분주</b>하고, 로봇 자체 힘·토크 센서로 <b>무게를 스스로 검증</b>하며, 허용 오차를 벗어나면 <b>셀 밖 QA 에게 원격 판정을 요청</b>하는 무인 조제 셀입니다. 카메라 없이, 추가 장비 없이, M0609 와 RG2 만으로 구현합니다.</p>
+    <div class="facts">
+      <div class="fact"><div class="k">로봇 · 그리퍼</div><div class="v">Doosan M0609 <small>+ OnRobot RG2</small></div></div>
+      <div class="fact"><div class="k">소프트웨어</div><div class="v">ROS 2 Jazzy <small>· Python · DSR_ROBOT2</small></div></div>
+      <div class="fact"><div class="k">센서</div><div class="v">비전 없음 <small>· 관절 토크(JTS) · 그리퍼 폭</small></div></div>
+      <div class="fact"><div class="k">사람의 역할</div><div class="v">셀 밖에서만 <small>· 웹 HMI 승인 · 패스박스</small></div></div>
+      <div class="fact"><div class="k">팀</div><div class="v">조장 고희태 <small>· A 고희태 · B 김민준 · C 김병직 · D 서동권</small></div></div>
+      <div class="fact"><div class="k">실물 일정</div><div class="v">9/17 ~ 9/23 <small>· 시연 9/29 · 발표 9/30</small></div></div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <nav class="toc" aria-label="목차">
+      <div class="lbl">목차</div>
+      <div class="links">
+        <a href="#summary">30초 요약</a>
+        <a href="#why">왜 제약 조제인가</a>
+        <a href="#cell">워크셀 구성</a>
+        <a href="#cycle">공정 사이클</a>
+        <a href="#funcs" class="key">사용하는 로봇 기능</a>
+        <a href="#sense">비전 없이 판단하는 법</a>
+        <a href="#deviation">일탈·자동 복구</a>
+        <a href="#arch">시스템 구조</a>
+        <a href="#eval">평가 기준 대응</a>
+        <a href="#extras">추가 기능 후보</a>
+        <a href="#ask" class="key">확인 요청 사항</a>
+      </div>
+    </nav>
+
+    <main>
+      <section id="summary">
+        <div class="sec-eyebrow">Summary</div>
+        <h2>30초 요약</h2>
+        <p class="intro">수업에서 정리된 <strong>「레시피 + pick&amp;place」</strong> 틀을 그대로 두고, 불확실성이 있는 공정으로 한 단계 올렸습니다. 집어 옮기는 대신 <strong>퍼서 계량</strong>하기 때문에 매 사이클 결과가 달라지고, 로봇이 그 결과를 재서 <strong>스스로 보정하거나 사람을 부르는</strong> 판단 로직이 필요해집니다. 이 판단 로직과 그 기록이 프로젝트의 본체입니다.</p>
+        <p class="intro">강사님 지침과의 대응은 아래와 같습니다.</p>
+        <ul class="checks">
+          <li><span class="dot">✓</span><div><b>비전 사용 안 함</b><span>파지·계량·접촉을 그리퍼 폭, 관절 토크, 힘 조건만으로 판정</span></div></li>
+          <li><span class="dot">✓</span><div><b>사람 개입 최소화</b><span>사람은 빈 약통·원료를 매거진에 넣어 둘 뿐. 용기 이동·조제·적재는 로봇. 개입은 QA 원격 승인과 패스박스 인터락 둘뿐</span></div></li>
+          <li><span class="dot">✓</span><div><b>협동로봇이어야 하는 이유</b><span>무균 청정실은 안전 펜스를 못 세움 → 펜스리스 + 접촉 안전(PFL)</span></div></li>
+          <li><span class="dot">✓</span><div><b>앞 기수와 겹치지 않음</b><span>샌딩·급식·비파괴·팔레타이징·충전·글루잉 어느 것과도 다름</span></div></li>
+          <li><span class="dot">✓</span><div><b>추가 장비 없음</b><span>원료통·스쿱·용기는 소모품 수준. 컨베이어·센서 추가 없음</span></div></li>
+          <li><span class="dot">✓</span><div><b>지정 매뉴얼 4개 절 전부 사용</b><span>모션 · 제어 보조 · 기타 설정 · 힘/순응 — 아래 5장에 사용처 명시</span></div></li>
+        </ul>
+        <h3>30초 영상 — 공정 한 사이클과 일탈 처리</h3>
+        <div class="fig" style="padding:0;overflow:hidden">
+          <p class="intro">영상: <code>docs/diagrams/intro.mp4</code> (생성: <code>python3 tools/make_intro_video.py</code>)</p>
+          <div class="cap" style="padding:10px 14px"><span>평면도 위 2D 애니메이션 · 스테이션 좌표는 설계값 · 실물 촬영본(9/23)으로 교체 예정 · 원본 <code>tools/make_intro_video.py</code></span></div>
+        </div>
+      </section>
+
+      <section id="why">
+        <div class="sec-eyebrow">Why pharma</div>
+        <h2>왜 제약 조제인가</h2>
+        <p class="intro">같은 「레시피대로 섞기」라도 칵테일 같은 소재는 기능마다 "왜 필요한가"에 답이 없습니다. 제약 조제는 모든 기능이 <strong>GMP 규정</strong>에서 유도되어, 요구사항 문서(BRD)와 설계 문서(SDD)를 근거 있게 쓸 수 있습니다.</p>
+        <div class="tbl"><table>
+          <thead><tr><th>기능</th><th>칵테일 案의 근거</th><th>제약 조제 案의 근거</th></tr></thead>
+          <tbody>
+            <tr><td>무인 운전</td><td>편의</td><td><strong>무균실에서 사람이 최대 오염원</strong></td></tr>
+            <tr><td>정밀 칭량</td><td>맛</td><td><strong>약전 허용 오차</strong> — 법적 요구</td></tr>
+            <tr><td>데이터 기록</td><td>선택</td><td><strong>배치 기록(Batch Record)</strong> 은 법적 의무</td></tr>
+            <tr><td>사람 확인</td><td>연출</td><td><strong>QA 이중 확인</strong> 은 GMP 규정</td></tr>
+            <tr><td>오차 처리</td><td>무시</td><td><strong>일탈(Deviation) 처리 절차</strong> 필수</td></tr>
+          </tbody>
+        </table></div>
+        <div class="callout">
+          <div class="t">협동로봇 정당성 — "사람 옆에서 일하려고"가 아니라 "펜스를 칠 수 없어서"</div>
+          청정실은 단방향 기류 유지, 소독 용이성, ㎡당 비용, 밸리데이션 항목 때문에 안전 펜스가 오염 관리의 적입니다. 산업용 로봇은 펜스가 필수라 애초에 진입이 안 되고, 힘 제한(PFL)으로 안전을 담보하는 협동로봇만 들어갈 수 있습니다. 실제 무균 공정의 논리입니다.
+        </div>
+      </section>
+
+      <section id="cell">
+        <div class="sec-eyebrow">Workcell</div>
+        <h2>워크셀 구성</h2>
+        <p class="intro">판은 820 × 650 mm, 베이스는 판 왼쪽 바깥 (−50, 320) 에 있습니다. M0609 리치 900 mm 로 <strong>판 오른쪽 15 % (x &gt; 700) 에는 원리적으로 닿지 않습니다.</strong> 이 영역을 결함이 아니라 <strong>사람 전용 안전 구역</strong>으로 편입했습니다. 로봇과 사람은 같은 공간에 있지 않고, 물자는 패스박스로만 오갑니다.</p>
+
+        <div class="fig">
+          <svg viewBox="-190 -40 1070 740" role="img" aria-label="워크셀 평면 배치도. 판 820×650 mm, 베이스 (-50,320), 스테이션 9곳과 사람 구역">
+            <!-- board -->
+            <rect class="svg-board" x="0" y="0" width="820" height="650" rx="6"/>
+            <!-- zones -->
+            <rect class="svg-human" x="700" y="0" width="120" height="650"/>
+            <rect class="svg-pass" x="622" y="0" width="36" height="650" opacity=".7"/>
+            <!-- reach arcs centered at (-50,320) -->
+            <clipPath id="boardclip"><rect x="0" y="0" width="820" height="650"/></clipPath>
+            <g clip-path="url(#boardclip)">
+              <circle class="svg-reach2" cx="-50" cy="320" r="900"/>
+              <circle class="svg-reach" cx="-50" cy="320" r="750"/>
+              <circle class="svg-reach2" cx="-50" cy="320" r="250"/>
+            </g>
+            <!-- base -->
+            <circle class="svg-base" cx="-50" cy="320" r="34"/>
+            <circle cx="-50" cy="320" r="12" fill="var(--surface)"/>
+            <text class="svg-t2" x="-50" y="380" text-anchor="middle">M0609 base</text>
+            <text class="svg-t2" x="-50" y="398" text-anchor="middle">(−50, 320)</text>
+            <!-- stations: rect centered on coords -->
+            <g>
+              <rect class="svg-st key" x="290" y="280" width="120" height="80" rx="8"/>
+              <text class="svg-t" x="350" y="314" text-anchor="middle">칭량·조제</text>
+              <text class="svg-t2" x="350" y="336" text-anchor="middle">(350, 320)</text>
+
+              <rect class="svg-st" x="225" y="100" width="90" height="80" rx="8"/>
+              <text class="svg-t" x="270" y="134" text-anchor="middle">원료 A</text>
+              <text class="svg-t2" x="270" y="156" text-anchor="middle">(270, 140)</text>
+
+              <rect class="svg-st" x="405" y="80" width="90" height="80" rx="8"/>
+              <text class="svg-t" x="450" y="114" text-anchor="middle">원료 B</text>
+              <text class="svg-t2" x="450" y="136" text-anchor="middle">(450, 120)</text>
+
+              <rect class="svg-st" x="225" y="460" width="90" height="80" rx="8"/>
+              <text class="svg-t" x="270" y="494" text-anchor="middle">원료 C</text>
+              <text class="svg-t2" x="270" y="516" text-anchor="middle">(270, 500)</text>
+
+              <rect class="svg-st" x="405" y="490" width="90" height="80" rx="8"/>
+              <text class="svg-t" x="450" y="524" text-anchor="middle">원료 D 예비</text>
+              <text class="svg-t2" x="450" y="546" text-anchor="middle">(450, 530)</text>
+
+              <rect class="svg-st" x="150" y="270" width="100" height="60" rx="8"/>
+              <text class="svg-t" x="200" y="296" text-anchor="middle">스쿱 거치대</text>
+              <text class="svg-t2" x="200" y="316" text-anchor="middle">원료별 전용</text>
+
+              <rect class="svg-st" x="495" y="290" width="110" height="60" rx="8"/>
+              <text class="svg-t" x="550" y="316" text-anchor="middle">빈 약통 매거진</text>
+              <text class="svg-t2" x="550" y="336" text-anchor="middle">낱개 슬롯 3</text>
+
+              <rect class="svg-st edge" x="535" y="480" width="90" height="70" rx="8"/>
+              <text class="svg-t" x="580" y="510" text-anchor="middle">완료품</text>
+              <text class="svg-t2" x="580" y="530" text-anchor="middle">(580, 520)</text>
+
+              <rect class="svg-st edge" x="600" y="280" width="80" height="80" rx="8"/>
+              <text class="svg-t" x="640" y="314" text-anchor="middle">패스박스</text>
+              <text class="svg-t2" x="640" y="336" text-anchor="middle">(640, 320)</text>
+
+              <rect class="svg-st" x="150" y="530" width="100" height="60" rx="8"/>
+              <text class="svg-t" x="200" y="556" text-anchor="middle">폐기함</text>
+              <text class="svg-t2" x="200" y="576" text-anchor="middle">(200, 560)</text>
+            </g>
+            <!-- human zone label -->
+            <text class="svg-t3" x="760" y="60" text-anchor="middle">사람 구역</text>
+            <text class="svg-t2" x="760" y="80" text-anchor="middle">x &gt; 700</text>
+            <text class="svg-t2" x="760" y="98" text-anchor="middle">로봇 도달 불가</text>
+            <!-- axis -->
+            <text class="svg-axis" x="0" y="675">x = 0</text>
+            <text class="svg-axis" x="820" y="675" text-anchor="end">820 mm</text>
+            <text class="svg-axis" x="-12" y="4" text-anchor="end">y = 0</text>
+            <text class="svg-axis" x="-12" y="650" text-anchor="end">650</text>
+            <text class="svg-t2" x="-180" y="-16">평면도 · 단위 mm · 설계 좌표 (9/17 티칭값으로 확정)</text>
+          </svg>
+          <div class="cap">
+            <span><i class="sw" style="background:var(--accent-soft);border:1.5px solid var(--accent)"></i>사이클당 방문 최다 — 정면 400 mm</span>
+            <span><i class="sw" style="background:var(--surface);border:1.5px solid var(--warm)"></i>도달 한계 — 의도적 배치</span>
+            <span><i class="sw" style="background:var(--warm-soft)"></i>사람 구역</span>
+            <span><i class="sw" style="border-top:2px dashed var(--accent);height:0;border-radius:0"></i>실용 리치 750</span>
+            <span><i class="sw" style="border-top:2px dotted var(--line-2);height:0;border-radius:0"></i>최대 리치 900 · 특이점 회피 250</span>
+          </div>
+        </div>
+
+        <h3>왜 병을 잡지 않고 스쿱으로 퍼내는가</h3>
+        <div class="two">
+          <div class="box">
+            <h4><span class="k">문제</span>RG2 안전 스위치</h4>
+            <p>광구병(Ø 60~70 mm)을 잡으면 병 상부가 핑거 안쪽으로 들어가 <strong>안전 스위치가 작동</strong>합니다. 무인 운전 중 예기치 않은 정지 원인이 됩니다.</p>
+            <div class="tbl" style="margin-top:10px"><table>
+              <thead><tr><th>파지 폭</th><th class="num">20</th><th class="num">40</th><th class="num">60</th><th class="num">80</th><th class="num">100 mm</th></tr></thead>
+              <tbody><tr><td>최대 작업물 높이</td><td class="num">51</td><td class="num">49</td><td class="num"><strong>45</strong></td><td class="num">41</td><td class="num">37 mm</td></tr></tbody>
+            </table></div>
+          </div>
+          <div class="box">
+            <h4><span class="k">해법</span>원료통 고정 · 스쿱 파지</h4>
+            <ul>
+              <li>손잡이가 얇고 평평해 높이 제한과 무관, 면접촉이라 파지 안정</li>
+              <li><strong>원료별 전용 스쿱</strong> — 교차오염 방지, 실제 GMP 요구</li>
+              <li>스쿱 교체 스텝이 공정에 자연스럽게 추가됨</li>
+              <li>퍼낸 양을 스쿱째 계량하는 <strong>1차 폐루프</strong>가 생김</li>
+            </ul>
+          </div>
+        </div>
+        <p class="intro" style="margin-top:14px">툴 무게는 자동 측정으로 <strong>1.320 kg</strong>, 무게중심 (1.960, −32.760, 19.140) 을 컨트롤러에 등록했습니다. 힘 제어와 작업물 무게 측정의 전제 조건입니다.</p>
+      </section>
+
+      <section id="cycle">
+        <div class="sec-eyebrow">Process</div>
+        <h2>공정 사이클</h2>
+        <p class="intro">사람은 빈 약통을 매거진 슬롯에 넣어 두기만 하고, 용기 이동은 전부 로봇이 합니다. 원료 1종마다 5 ~ 9 단계를 반복합니다. 시연 레시피는 원료 3종 (A 200 g · B 150 g · C 100 g, 허용 오차 ±5 %). 강사 언급(측정 오차가 50 g 을 넘을 수 있음)에 따라 100 g 대로 올려 두었고, 9/17 오전 실측이 30 g 을 가르면 낮춥니다.</p>
+        <ol class="steps">
+          <li class="step"><div><div class="st">ACCEPTED</div><div class="ti">배치 주문 수신</div><div class="ds">HMI 에서 레시피 선택 → 주문 제출. 배치 ID 발급, 기록 시작.</div></div></li>
+          <li class="step"><div><div class="st">SELF_CHECK</div><div class="ti">기동 자가진단</div><div class="ds">툴·TCP·충돌 감도가 기대값인지 확인하고 빈 그리퍼 힘 영점을 잰다. 다르면 기동 거부.</div></div></li>
+          <li class="step"><div><div class="st">PICK_CONTAINER</div><div class="ti">빈 약통 반송 — 매거진 → 칭량 위치</div><div class="ds">매거진 슬롯에서 약통을 파지해 칭량 위치에 내려놓는다. 기존 이동·파지 스킬의 조합이라 새 인터페이스 없음.</div>
+            <div class="branch"><div><span class="pill warn">GRIP_FAIL</span>정지 폭으로 파지 실패 감지 → 재시도 최대 3회</div></div></div></li>
+          <li class="step"><div><div class="st">TARE</div><div class="ti">빈 용기 풍량 측정</div><div class="ds">칭량 위치에서 용기를 들어 빈 무게(tare)를 기록.</div></div></li>
+          <li class="step loop"><div><div class="st">PICK_SCOOP</div><div class="ti">전용 스쿱 픽업</div><div class="ds">거치대에서 해당 원료의 스쿱을 파지. 정지 폭으로 파지 성공 여부 판정.</div>
+            <div class="branch"><div><span class="pill warn">GRIP_FAIL</span>재파지 최대 3회 → 넘으면 일탈</div></div></div></li>
+          <li class="step loop"><div><div class="st">SCOOP</div><div class="ti">원료 퍼올리기</div><div class="ds">Z 방향 힘 제어로 원료면까지 내려가 접촉을 감지한 뒤 퍼낸다.</div>
+            <div class="branch"><div><span class="pill warn">SCOOP_EMPTY</span>접촉 없음 → 재시도, 연속 3회면 <span class="pill dev">MATERIAL_EMPTY</span> → 패스박스 보충 인터락</div></div></div></li>
+          <li class="step loop"><div><div class="st">POUR</div><div class="ti">조제 용기에 투입</div><div class="ds">곡선 이동(movesx)으로 붓고, 과다 우려 시 주기 진동(move_periodic)으로 조금씩 털어낸다.</div></div></li>
+          <li class="step loop"><div><div class="st">WEIGH</div><div class="ti">용기 무게 검증 — 2차 폐루프</div><div class="ds">용기를 들어 계량 자세에서 여러 번 읽어 평균. 목표 대비 오차율로 판정.</div>
+            <div class="branch">
+              <div><span class="pill ok">OK</span>오차 ≤ 허용 → 다음 원료</div>
+              <div><span class="pill warn">UNDER</span>미달 → 투입 비율을 줄여 보정 투입 (최대 3회)</div>
+              <div><span class="pill dev">OVER</span>초과 → 되돌릴 수 없으므로 <strong>일탈</strong>. QA 원격 판정 대기</div>
+            </div></div></li>
+          <li class="step loop"><div><div class="st">RETURN_SCOOP</div><div class="ti">스쿱 반납</div><div class="ds">원료별 전용 거치 슬롯에 되돌린다. 다음 원료가 있으면 5 단계로.</div></div></li>
+          <li class="step"><div><div class="st">FINISH</div><div class="ti">완료품 반송 · 안전 자세</div><div class="ds">조제된 약통을 용기째 완료품 트레이(매거진과 같은 슬롯 번호)로 옮기고 안전 자세. 폐기 판정이면 폐기함으로. 배치 기록 종료, JSON 사본 내보내기.</div></div></li>
+        </ol>
+        <div class="callout">
+          <div class="t">이중 폐루프가 설계의 핵심</div>
+          스쿱 계량(1차)으로 퍼낸 양을 조정하고, 용기 계량(2차)으로 누적량을 검증합니다. 단순 투입이 아니라 <strong>목표에 도달할 때까지 측정·보정</strong>하며, 초과는 회수 동작을 만들지 않고 일탈로 처리합니다. 도징 결정은 ROS 와 무관한 순수 함수라 로봇 없이 pytest 로 검증합니다.
+        </div>
+      </section>
+
+      <section id="funcs">
+        <div class="sec-eyebrow">Robot functions — 컨펌 핵심</div>
+        <h2>사용하는 로봇 기능</h2>
+        <p class="intro">강사님이 지정하신 DRL 매뉴얼 4개 절(3 모션 · 4 제어 보조 · 5 기타 설정 · 6 힘/순응·사용자 편의)의 명령을 <strong>어느 스킬이 왜 쓰는지</strong>입니다. 전부 <code>DSR_ROBOT2</code> 파이썬 API 로 호출하며, 9/16 소스에서 노출 여부를 확인했습니다. 비어 있는 절이 없도록 설계했습니다.</p>
+
+        <div class="cmds">
+          <div class="cmd">
+            <div class="sec"><div class="n">3.1 · 3.2</div><div class="t">위치 · 설정</div></div>
+            <div class="body">
+              <div class="chips"><span class="chip">posj</span><span class="chip">posx</span><span class="chip">trans</span><span class="chip">set_velj / accj</span><span class="chip">set_velx / accx</span><span class="chip">set_tcp</span><span class="chip">set_ref_coord</span></div>
+              <div class="use"><b>전 스킬.</b> 스테이션 좌표는 <code>stations.yaml</code> 한 곳에만 두고, 접근점은 <code>trans(pos, [0,0,+60,0,0,0])</code> 로 만든다. 기동 시 속도·TCP 를 1회 설정하고 스킬별로 속도 스케일을 바꾼다.</div>
+              <div class="note"><code>set_ref_coord(DR_BASE)</code> 를 명시 — 힘 제어 방향의 기준 좌표계이기 때문.</div>
+            </div>
+          </div>
+
+          <div class="cmd">
+            <div class="sec"><div class="n">3.3 · 3.4</div><div class="t">동기 · 비동기 모션</div></div>
+            <div class="body">
+              <div class="chips"><span class="chip">movej</span><span class="chip">movel</span><span class="chip">movesx</span><span class="chip">amovel</span><span class="chip">check_motion</span><span class="chip">mwait</span><span class="chip hot">move_periodic</span><span class="chip hot">amove_periodic</span></div>
+              <div class="use"><b>MoveToStation · Pour.</b> 홈·안전 자세는 <code>movej</code>, 접근·작업점은 <code>movel</code>, 붓기 곡선은 <code>movesx</code>. 인터락·안전 자세처럼 <strong>중간에 취소해야 하는 이동</strong>은 <code>amovel</code> 로 보내고 <code>check_motion</code> 으로 감시한다.</div>
+              <div class="note"><strong>두산 고유 명령 <code>move_periodic</code></strong> 을 Pour 의 털어내기(용기 위에서 소량씩 떨어뜨려 과다 방지)와 Scoop 의 퍼낸 양 고르기(들어 올린 뒤 흔들어 수북한 정도를 일정하게)에 쓴다. 통 안에서 흔들지는 않는다. 이 프로젝트의 차별점.</div>
+            </div>
+          </div>
+
+          <div class="cmd">
+            <div class="sec"><div class="n">4.1 · 4.4</div><div class="t">제어 보조 — 현재값 · 안전 설정</div></div>
+            <div class="body">
+              <div class="chips"><span class="chip">get_current_posx / posj</span><span class="chip">get_tool_force</span><span class="chip">get_external_torque</span><span class="chip">get_collision_sensitivity</span><span class="chip">get_current_tool</span><span class="chip">get_current_tcp</span></div>
+              <div class="use"><b>상태 발행 · 기동 자가진단.</b> 툴·TCP·충돌 감도가 기대값과 다르면 <strong>기동을 거부</strong>한다 (「동작 및 운용 안정성」). <code>get_tool_force</code> 는 계량 폴백과 미끄러짐·충돌 관측에 쓴다.</div>
+            </div>
+          </div>
+
+          <div class="cmd">
+            <div class="sec"><div class="n">5.1 · 5.2</div><div class="t">기타 설정 — 툴 · 작업물</div></div>
+            <div class="body">
+              <div class="chips"><span class="chip">set_tool</span><span class="chip hot">reset_workpiece_weight</span><span class="chip hot">get_workpiece_weight</span><span class="chip">set_singularity_handling</span></div>
+              <div class="use"><b>WeighContainer — 계량 1순위.</b> 세션 시작 시 빈 그리퍼로 <code>reset_workpiece_weight</code> 해 잔류 오차를 지우고, 용기를 든 채 계량 자세에서 <code>get_workpiece_weight</code> 를 N 회 읽어 평균·표준편차를 낸다. M0609 는 관절 토크 센서(JTS) 모델이라 사용 가능.</div>
+              <div class="note"><code>set_workpiece_weight</code> 는 부르지 않는다 — 충돌 감지를 무효화하는 전제라 안전 원칙에 어긋난다. 특이점 회피는 계량 자세 근처에서 선택 적용.</div>
+            </div>
+          </div>
+
+          <div class="cmd">
+            <div class="sec"><div class="n">6.1</div><div class="t">힘 / 순응 제어</div></div>
+            <div class="body">
+              <div class="chips"><span class="chip hot">task_compliance_ctrl</span><span class="chip">set_stiffnessx</span><span class="chip hot">set_desired_force</span><span class="chip">release_force</span><span class="chip">release_compliance_ctrl</span></div>
+              <div class="use"><b>Scoop 담그기.</b> Z 방향 힘 제어(<code>dir=[0,0,1,0,0,0]</code>, <code>DR_FC_MOD_REL</code>)로 원료면까지 내려가 접촉한다. 원료 높이가 매번 달라도 위치를 미리 알 필요가 없다.</div>
+              <div class="note">진입/해제를 반드시 짝으로 — <code>task_compliance_ctrl → set_desired_force → … → release_force → release_compliance_ctrl</code>. 코드 규칙으로 강제.</div>
+            </div>
+          </div>
+
+          <div class="cmd">
+            <div class="sec"><div class="n">6.2</div><div class="t">사용자 편의 — 조건 · 좌표계</div></div>
+            <div class="body">
+              <div class="chips"><span class="chip hot">check_force_condition</span><span class="chip">check_position_condition</span><span class="chip">set_user_cart_coord</span><span class="chip">coord_transform</span></div>
+              <div class="use"><b>접촉 감지 · 담금 깊이 상한 · 판 좌표계.</b> <code>check_force_condition(DR_AXIS_Z, max=…)</code> 으로 접촉을 판정하고 <code>check_position_condition</code> 으로 담금 깊이를 제한한다. 판 위 3점을 티칭해 <code>set_user_cart_coord</code> 로 사용자 좌표계를 만들면, 판이 밀려도 3점만 다시 찍으면 전 스테이션이 따라온다.</div>
+            </div>
+          </div>
+
+          <div class="cmd">
+            <div class="sec"><div class="n">7.1</div><div class="t">I/O</div></div>
+            <div class="body">
+              <div class="chips"><span class="chip">set_digital_output</span><span class="chip">get_digital_input</span></div>
+              <div class="use"><b>그리퍼 폴백 경로.</b> 기본은 기존 드라이버의 Modbus 서비스(<code>/onrobot/sendCommand</code>)로 폭을 보내고, 실물에서 문제가 있으면 9/16 교육 방식인 디지털 출력 1/2 로 전환한다. 파라미터 하나로 바꾼다.</div>
+              <div class="note"><code>wait_digital_input</code> 은 파이썬 API 에 없어 폴링으로 대체.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="sense">
+        <div class="sec-eyebrow">Sensing without vision</div>
+        <h2>비전 없이 판단하는 법</h2>
+        <p class="intro">카메라 대신 로봇이 이미 갖고 있는 세 가지 신호를 씁니다. 관절 토크로 얻는 <strong>무게와 힘</strong>, 그리퍼의 <strong>폭</strong>, 그리고 힘 제어의 <strong>조건 판정</strong>입니다.</p>
+        <div class="two">
+          <div class="box">
+            <h4><span class="k">무게</span>작업물 무게 측정</h4>
+            <p>1순위 <code>get_workpiece_weight</code>. 폴백은 베이스 좌표 Z 힘 평균. 중력 성분이 자세에 따라 달라 <strong>계량 자세를 하나로 고정</strong>합니다.</p>
+            <div class="formula">g = −Fz_base / 9.80665 × 1000</div>
+            <p style="margin-top:8px">분해능은 9/17 오전 실측이 확정합니다. 30 g 을 3σ 로 가를 수 있으면 30 g 단위, 아니면 100 g 단위로 올립니다. 레시피 파일만 바뀌고 코드는 그대로입니다.</p>
+          </div>
+          <div class="box">
+            <h4><span class="k">판정</span>도징 판정 규칙</h4>
+            <div class="formula">error_pct = (actual − target) / target × 100</div>
+            <ul>
+              <li><strong>OK</strong> — |error| ≤ 허용 오차</li>
+              <li><strong>UNDER</strong> — 미달. 투입 비율을 줄여 보정, 최대 3회</li>
+              <li><strong>OVER</strong> — 초과. 되돌릴 수 없으므로 일탈 → QA 판정</li>
+            </ul>
+            <p style="margin-top:8px">무한 루프는 무인 운전을 죽이므로 재시도 상한을 넘으면 사람을 부릅니다.</p>
+          </div>
+          <div class="box">
+            <h4><span class="k">파지</span>폭 추론</h4>
+            <p>닫기 명령 후 <strong>정지 폭이 목표 폭 + 2.0 mm 보다 크면 잡은 것</strong>, 목표 폭까지 닫혔으면 놓친 것. 작업 중 폭이 1.5 mm 넘게 변하면 미끄러짐으로 봅니다 (RG2 백래시 0.3 + 반복 정밀도 0.2 mm 의 3배).</p>
+            <p style="margin-top:8px">기존 드라이버가 grip 비트를 토픽으로 내보내지 않아 폭으로 추론합니다. 파지력은 드라이버 명령 단위인 2.5 N 스텝으로 올리고 내립니다.</p>
+          </div>
+          <div class="box">
+            <h4><span class="k">접촉</span>힘 제어 조건</h4>
+            <p>스쿱을 원료에 담글 때 Z 힘 제어로 내려가며 <code>check_force_condition</code> 이 참이 되는 순간을 접촉으로 판정. 접촉 없이 깊이 상한에 닿으면 <strong>원료 소진</strong>으로 봅니다. 포토센서 없이 재고를 간접 감지하는 방법입니다.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="deviation">
+        <div class="sec-eyebrow">Deviation &amp; recovery</div>
+        <h2>일탈과 자동 복구</h2>
+        <p class="intro">평가 항목 「기능 동작 지속성」에 직접 대응하는 부분입니다. 복구는 <strong>재시도 → 우회 → 폴백 → 사람 호출</strong> 4단이며, 사람 호출도 셀 밖에서 HMI 로 끝납니다.</p>
+        <div class="tbl"><table>
+          <thead><tr><th>일탈</th><th>감지</th><th>자동 복구</th><th>사람 개입</th></tr></thead>
+          <tbody>
+            <tr><td><strong>GRIP_FAIL</strong> 파지 실패 (스쿱·약통)</td><td>정지 폭 ≤ 목표 폭 + 2 mm</td><td>재파지 3회</td><td>넘으면 QA 판정</td></tr>
+            <tr><td><strong>SCOOP_EMPTY</strong> 퍼낸 것 없음</td><td>담금 중 접촉 미감지</td><td>재시도 3회</td><td>—</td></tr>
+            <tr><td><strong>MATERIAL_EMPTY</strong> 원료 소진</td><td>SCOOP_EMPTY 연속 3회</td><td>안전 자세 후퇴 → 보충 대기</td><td>패스박스 인터락으로 보충 → 재개</td></tr>
+            <tr><td><strong>OVERFILL</strong> 과다 투입</td><td>WEIGH 판정 OVER</td><td>없음 — 회수 불가</td><td><strong>QA 원격 판정</strong>: 승인(다음 원료) / 폐기(폐기함 투입)</td></tr>
+            <tr><td><strong>TIMEOUT</strong> 보정 상한 초과</td><td>UNDER 보정 3회 후에도 미달</td><td>없음</td><td>QA 원격 판정</td></tr>
+            <tr><td><strong>SLIP</strong> 미끄러짐</td><td>작업 중 폭 변화 &gt; 1.5 mm</td><td>후퇴 → 재파지 → 파지력 상향</td><td>—</td></tr>
+            <tr><td><strong>COLLISION</strong> 충돌 감지</td><td>두산 컨트롤러 충돌 감지 (PFL)</td><td>정지 → 안전 자세 → 재개</td><td>반복 시 점검 요청</td></tr>
+            <tr><td><strong>INTERLOCK</strong> 사람 반입 요청</td><td>HMI ENTER 요청</td><td>안전 자세 도달 후 허가 → EXIT 시 이전 상태 재개</td><td>물자 교환</td></tr>
+          </tbody>
+        </table></div>
+        <div class="callout warm">
+          <div class="t">시연 시나리오 (9/29)</div>
+          (a) 스쿱을 빼둔 채 시작 → GRIP_FAIL 자동 재시도 · (b) 원료통 비움 → MATERIAL_EMPTY → 인터락 보충 → 재개 · (c) 과다 투입 유도 → OVERFILL → 셀 밖에서 HMI 로 QA 판정. 세 경우 모두 일탈이 HMI 에 뜨고 배치 기록에 남습니다.
+        </div>
+      </section>
+
+      <section id="arch">
+        <div class="sec-eyebrow">Architecture</div>
+        <h2>시스템 구조</h2>
+        <p class="intro">PC 한 대에서 전부 띄웁니다. 두산·OnRobot 벤더 브링업(네임스페이스 <code>dsr01</code>) 위에 우리 노드 4개(네임스페이스 <code>cell</code>)를 얹습니다. <strong>로봇에 명령을 내는 노드는 하나</strong>, <strong>DB 에 쓰는 노드도 하나</strong>입니다. 발행자가 둘이면 로그만 보고 누가 움직였는지 가릴 수 없기 때문입니다.</p>
+        <div class="fig system-flow" style="background:#FFFFFF;border-color:#D9DEEA">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" width="100%" font-family="IBM Plex Sans KR, Noto Sans CJK KR, NanumSquare, Apple SD Gothic Neo, Malgun Gothic, sans-serif">
+  <defs>
+    <marker id="a-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#7B8497"/></marker>
+    <marker id="a-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3A4258"/></marker>
+    <marker id="a-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#C0392B"/></marker>
+    <marker id="a-warm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#D9782A"/></marker>
+    <marker id="a-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#2E86C1"/></marker>
+    <marker id="a-ind" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3451D1"/></marker>
+    <style>
+      .box { fill:#FFFFFF; stroke:#3A4258; stroke-width:1.6; }
+      .panel { fill:#F3F5FA; stroke:#C3CADB; stroke-width:1.4; }
+      .t { fill:#161B2A; font-size:17px; font-weight:700; }
+      .s { fill:#5F6980; font-size:12.5px; }
+      .s2 { fill:#3A4258; font-size:13px; }
+      .lbl { fill:#3A4258; font-size:13px; font-weight:600; }
+      .mono { font-family: IBM Plex Mono, NanumGothicCoding, Menlo, monospace; }
+      .ico { font-size:30px; }
+      .step { fill:#161B2A; font-size:13.5px; font-weight:600; }
+      .num { fill:#FFFFFF; font-size:12px; font-weight:700; font-family: IBM Plex Mono, Menlo, monospace; }
+      .chip { fill:#FBEBDD; stroke:#D9782A; stroke-width:1; }
+      .chipt { fill:#A85717; font-size:11.5px; font-weight:600; font-family: IBM Plex Mono, Menlo, monospace; }
+      .ln { stroke:#7B8497; stroke-width:2; fill:none; }
+      .ln2 { stroke:#3A4258; stroke-width:2.4; fill:none; }
+    </style>
+  </defs>
+
+  <!-- ─── 바깥 (사람 · 웹 · 기록) ─── -->
+  <g>
+    <rect class="box" x="40" y="40" width="180" height="130" rx="12"/>
+    <text class="ico" x="130" y="88" text-anchor="middle">🧑‍🔬</text>
+    <text class="t" x="130" y="120" text-anchor="middle" font-size="16">QA · 작업자</text>
+    <text class="s" x="130" y="142" text-anchor="middle">셀 밖 — 상주하지 않는다</text>
+
+    <rect class="box" x="290" y="40" width="270" height="130" rx="12"/>
+    <text class="ico" x="330" y="90">🖥️</text>
+    <text class="t" x="365" y="78">웹 HMI (브라우저)</text>
+    <text class="s2" x="365" y="102">주문 제출 · 상태·계량 그래프</text>
+    <text class="s2" x="365" y="122">QA 승인 / 폐기 · 인터락 요청</text>
+    <text class="s2" x="365" y="142">이력 · KPI · 감사 추적 조회</text>
+
+    <rect class="box" x="630" y="40" width="240" height="130" rx="12"/>
+    <text class="ico" x="665" y="90">🌐</text>
+    <text class="t" x="700" y="78" font-size="16">hmi_web_node</text>
+    <text class="s2 mono" x="700" y="100">Flask :5000</text>
+    <text class="s" x="700" y="122">rclpy 클라이언트 스레드</text>
+    <text class="s" x="700" y="142">DB 는 읽기만</text>
+
+    <!-- DB cylinder -->
+    <g>
+      <path class="box" d="M950 62 a95 14 0 0 1 190 0 v86 a95 14 0 0 1 -190 0 z"/>
+      <ellipse cx="1045" cy="62" rx="95" ry="14" fill="#E4E9FB" stroke="#3A4258" stroke-width="1.6"/>
+      <text class="ico" x="1045" y="104" text-anchor="middle" font-size="26">🗄️</text>
+      <text class="t" x="1045" y="128" text-anchor="middle" font-size="15">SQLite 배치 기록</text>
+      <text class="s mono" x="1045" y="146" text-anchor="middle">cell.db · events · audit</text>
+    </g>
+
+    <rect class="box" x="1200" y="40" width="170" height="130" rx="12"/>
+    <text class="ico" x="1285" y="88" text-anchor="middle">📋</text>
+    <text class="t" x="1285" y="120" text-anchor="middle" font-size="16">레시피 YAML</text>
+    <text class="s" x="1285" y="142" text-anchor="middle">원료 · 목표 g · 허용 오차</text>
+
+    <!-- 연결: 사용자 ↔ 웹 -->
+    <line class="ln" x1="222" y1="105" x2="288" y2="105" marker-start="url(#a-gray)" marker-end="url(#a-gray)"/>
+    <!-- 웹 ↔ flask -->
+    <line class="ln" x1="562" y1="105" x2="628" y2="105" marker-start="url(#a-gray)" marker-end="url(#a-gray)"/>
+    <text class="s" x="595" y="92" text-anchor="middle">요청 / 응답</text>
+    <text class="s" x="595" y="128" text-anchor="middle">0.5 s 폴링</text>
+    <!-- flask → DB 읽기 -->
+    <line class="ln" x1="872" y1="105" x2="948" y2="105" marker-start="url(#a-gray)"/>
+    <text class="s" x="910" y="92" text-anchor="middle">읽기</text>
+  </g>
+
+  <!-- ─── ROS 2 경계 ─── -->
+  <rect x="30" y="240" width="1110" height="480" rx="26" fill="#FFF6F5" stroke="#E8746A" stroke-width="7"/>
+  <text x="56" y="282" font-size="24" font-weight="800" fill="#161B2A">ROS 2</text>
+  <text class="s mono" x="140" y="282" font-size="13">ns /cell  ·  PC 1대</text>
+
+  <!-- 세로 연결: flask ↔ process (명령/상태) -->
+  <line class="ln2" x1="720" y1="172" x2="720" y2="300" marker-start="url(#a-ink)" marker-end="url(#a-ink)"/>
+  <text class="lbl" x="732" y="208">주문 · QA 판정 · 인터락 (Service)</text>
+  <text class="lbl" x="732" y="228">상태 · 계량 · 일탈 (Topic)</text>
+  <!-- record → DB -->
+  <line class="ln2" x1="1045" y1="573" x2="1045" y2="176" marker-end="url(#a-ink)" stroke-dasharray="6 4"/>
+  <text class="lbl" x="1058" y="212">기록</text>
+  <text class="lbl" x="1058" y="230">(단일 기록자)</text>
+  <!-- 레시피 → process -->
+  <path class="ln2" d="M1285 172 V186 H760 V174" fill="none" marker-end="url(#a-ink)"/>
+  <text class="s" x="1180" y="182" text-anchor="middle" font-size="12">레시피 목록 → 주문에 실음</text>
+
+  <!-- 동작 시퀀스 패널 -->
+  <rect class="panel" x="50" y="332" width="640" height="213" rx="14"/>
+  <text class="lbl" x="70" y="356" font-size="15">동작 시퀀스</text>
+  <g transform="translate(60,372)">
+    <!-- 8 steps, pitch 78 -->
+    <g transform="translate(0,0)"><circle cx="12" cy="12" r="11" fill="#161B2A"/><text class="num" x="12" y="16" text-anchor="middle">1</text><text class="ico" x="39" y="58" text-anchor="middle">🧴</text><text class="step" x="39" y="86" text-anchor="middle">약통 반송</text><text class="s" x="39" y="102" text-anchor="middle">매거진→칭량</text></g>
+    <g transform="translate(78,0)"><circle cx="12" cy="12" r="11" fill="#161B2A"/><text class="num" x="12" y="16" text-anchor="middle">2</text><text class="ico" x="39" y="58" text-anchor="middle">⚖️</text><text class="step" x="39" y="86" text-anchor="middle">풍량 측정</text><text class="s" x="39" y="102" text-anchor="middle">tare</text></g>
+    <g transform="translate(156,0)"><circle cx="12" cy="12" r="11" fill="#3451D1"/><text class="num" x="12" y="16" text-anchor="middle">3</text><text class="ico" x="39" y="58" text-anchor="middle">🥄</text><text class="step" x="39" y="86" text-anchor="middle">스쿱 픽업</text><text class="s" x="39" y="102" text-anchor="middle">원료별 전용</text></g>
+    <g transform="translate(234,0)"><circle cx="12" cy="12" r="11" fill="#3451D1"/><text class="num" x="12" y="16" text-anchor="middle">4</text><text class="ico" x="39" y="58" text-anchor="middle">🫙</text><text class="step" x="39" y="86" text-anchor="middle">퍼올리기</text><text class="s" x="39" y="102" text-anchor="middle">힘제어 접촉</text></g>
+    <g transform="translate(312,0)"><circle cx="12" cy="12" r="11" fill="#3451D1"/><text class="num" x="12" y="16" text-anchor="middle">5</text><text class="ico" x="39" y="58" text-anchor="middle">🫗</text><text class="step" x="39" y="86" text-anchor="middle">투입</text><text class="s" x="39" y="102" text-anchor="middle">털어내기</text></g>
+    <g transform="translate(390,0)"><circle cx="12" cy="12" r="11" fill="#3451D1"/><text class="num" x="12" y="16" text-anchor="middle">6</text><text class="ico" x="39" y="58" text-anchor="middle">🧮</text><text class="step" x="39" y="86" text-anchor="middle">무게 검증</text><text class="s" x="39" y="102" text-anchor="middle">OK/UNDER/OVER</text></g>
+    <g transform="translate(468,0)"><circle cx="12" cy="12" r="11" fill="#3451D1"/><text class="num" x="12" y="16" text-anchor="middle">7</text><text class="ico" x="39" y="58" text-anchor="middle">↩️</text><text class="step" x="39" y="86" text-anchor="middle">스쿱 반납</text><text class="s" x="39" y="102" text-anchor="middle">다음 원료</text></g>
+    <g transform="translate(546,0)"><circle cx="12" cy="12" r="11" fill="#161B2A"/><text class="num" x="12" y="16" text-anchor="middle">8</text><text class="ico" x="39" y="58" text-anchor="middle">📦</text><text class="step" x="39" y="86" text-anchor="middle">완료품 적재</text><text class="s" x="39" y="102" text-anchor="middle">용기째 트레이</text></g>
+    <!-- 반복 괄호 3~7 -->
+    <path d="M160 110 v8 h468 v-8" fill="none" stroke="#3451D1" stroke-width="1.8"/>
+    <text x="394" y="134" text-anchor="middle" font-size="12.5" font-weight="600" fill="#3451D1">원료별 반복 (3 → 7)</text>
+    <!-- 보정 루프 6→4 -->
+    <path d="M429 142 v6 q0 8 -8 8 h-90 q-8 0 -8 -8 v-6" fill="none" stroke="#D9782A" stroke-width="1.8" marker-end="url(#a-warm)" stroke-dasharray="4 3"/>
+    <text x="376" y="168" text-anchor="middle" font-size="11.5" font-weight="600" fill="#A85717">6 UNDER → 4 보정 투입 (≤3회)</text>
+  </g>
+
+  <!-- 일탈 처리 (Deviation Shield) -->
+  <rect class="box" x="700" y="332" width="315" height="213" rx="14" fill="#FFFFFF"/>
+  <text class="ico" x="714" y="366" font-size="24">🛡️</text>
+  <text class="t" x="746" y="358" font-size="15">일탈 처리 (Deviation Shield)</text>
+  <text class="s" x="746" y="376" font-size="11.5">감지 → 재시도 → 우회 → 폴백 → 사람 호출</text>
+  <g transform="translate(714,388)">
+    <rect class="chip" x="0" y="0" width="82" height="22" rx="6"/><text class="chipt" x="41" y="15" text-anchor="middle">GRIP_FAIL</text>
+    <rect class="chip" x="88" y="0" width="102" height="22" rx="6"/><text class="chipt" x="139" y="15" text-anchor="middle">SCOOP_EMPTY</text>
+    <rect class="chip" x="196" y="0" width="50" height="22" rx="6"/><text class="chipt" x="221" y="15" text-anchor="middle">SLIP</text>
+    <rect class="chip" x="0" y="28" width="122" height="22" rx="6"/><text class="chipt" x="61" y="43" text-anchor="middle">MATERIAL_EMPTY</text>
+    <rect class="chip" x="128" y="28" width="78" height="22" rx="6"/><text class="chipt" x="167" y="43" text-anchor="middle">OVERFILL</text>
+    <rect class="chip" x="212" y="28" width="74" height="22" rx="6"/><text class="chipt" x="249" y="43" text-anchor="middle">TIMEOUT</text>
+  </g>
+  <line x1="714" y1="448" x2="1000" y2="448" stroke="#C3CADB" stroke-width="1"/>
+  <text class="s2" x="714" y="468" font-size="12.5"><tspan font-weight="700" fill="#3451D1">재시도</tspan>  파지·퍼올리기 각 3회</text>
+  <text class="s2" x="714" y="488" font-size="12.5"><tspan font-weight="700" fill="#3451D1">우회·폴백</tspan>  파지력 ↑ · 투입 비율 ↓ · dio 백엔드</text>
+  <text class="s2" x="714" y="508" font-size="12.5"><tspan font-weight="700" fill="#D9782A">사람 호출</tspan>  QA 원격 판정 · 인터락 보충</text>
+  <text class="s2" x="714" y="528" font-size="12.5"><tspan font-weight="700" fill="#C0392B">안전 정지</tspan>  충돌·통신 두절 → SafePose</text>
+
+  <!-- process_node 라벨 (시퀀스+실드 묶음) -->
+  <text class="ico" x="56" y="322" font-size="24">🧠</text>
+  <text class="t" x="88" y="318" font-size="17">process_node</text>
+  <text class="s" x="215" y="318" font-size="12.5">메인 컨트롤러 · 레시피 실행 상태기계 (RunBatch) — 동작 시퀀스 + 일탈 처리</text>
+
+  <!-- skill_node -->
+  <rect class="box" x="50" y="575" width="730" height="120" rx="12"/>
+  <text class="ico" x="72" y="618" font-size="26">🦾</text>
+  <text class="t" x="108" y="610" font-size="16">skill_node — 로봇 스킬 서버</text>
+  <text class="s2" x="108" y="632"><tspan class="mono">MoveToStation · Grip · Scoop · Pour · WeighContainer · SafePose · MeasureForce</tspan></text>
+  <text class="s2" x="108" y="654">로봇을 만지는 <tspan font-weight="700">유일한</tspan> 노드 · DSR 워커 스레드 1개 = 명령은 항상 직렬</text>
+  <text class="s" x="108" y="676">파지 판정 = 폭 추론 · 계량 = get_workpiece_weight · 접촉 = check_force_condition</text>
+  <!-- process ↔ skill -->
+  <line class="ln2" x1="370" y1="547" x2="370" y2="573" marker-start="url(#a-ink)" marker-end="url(#a-ink)"/>
+  <text class="lbl" x="382" y="566">Action / Service</text>
+
+  <!-- record_node -->
+  <rect class="box" x="810" y="575" width="310" height="120" rx="12"/>
+  <text class="ico" x="828" y="618" font-size="26">📝</text>
+  <text class="t" x="864" y="610" font-size="16">record_node</text>
+  <text class="s2" x="864" y="632" font-size="12.5">단일 기록자 — 상태·계량·판정·일탈·이벤트</text>
+  <text class="s2" x="864" y="652" font-size="12.5">HMI 조작(승인·폐기·인터락) → 감사 테이블</text>
+  <text class="s" x="864" y="672">배치 종료 시 JSON 사본 내보내기</text>
+  <!-- process → record (토픽 구독) -->
+  <line class="ln" x1="900" y1="547" x2="900" y2="573" marker-end="url(#a-gray)"/>
+  <text class="s" x="912" y="565">Topic</text>
+
+  <!-- ─── 외부 이벤트 (오른쪽) ─── -->
+  <g>
+    <rect class="box" x="1170" y="300" width="200" height="78" rx="12" stroke="#C0392B" stroke-width="2"/>
+    <text class="ico" x="1200" y="348">🛑</text>
+    <text class="t" x="1240" y="333" font-size="16">비상정지</text>
+    <text class="s" x="1240" y="356">E-stop · 컨트롤러 직결</text>
+
+    <rect class="box" x="1170" y="392" width="200" height="78" rx="12" stroke="#D9782A" stroke-width="2"/>
+    <text class="ico" x="1200" y="440">💥</text>
+    <text class="t" x="1240" y="425" font-size="16">충돌 감지</text>
+    <text class="s" x="1240" y="448">PFL · 관절 토크</text>
+
+    <rect class="box" x="1170" y="484" width="200" height="78" rx="12" stroke="#2E86C1" stroke-width="2"/>
+    <text class="ico" x="1200" y="532">📡</text>
+    <text class="t" x="1240" y="517" font-size="16">통신 두절</text>
+    <text class="s" x="1240" y="540">하트비트 · 타임아웃</text>
+
+    <rect class="box" x="1170" y="576" width="200" height="78" rx="12" stroke="#3451D1" stroke-width="2"/>
+    <text class="ico" x="1200" y="624">🚪</text>
+    <text class="t" x="1240" y="609" font-size="16">인터락 (패스박스)</text>
+    <text class="s" x="1240" y="632">사람 반입 요청</text>
+
+    <!-- 화살표 -->
+    <path d="M1168 339 H1154 V800 H1124" fill="none" stroke="#C0392B" stroke-width="2.2" marker-end="url(#a-red)"/>
+        <text font-size="12" font-weight="600" fill="#C0392B" x="1130" y="826">EMERGENCY_STOP</text>
+
+    <line x1="1168" y1="431" x2="1123" y2="431" stroke="#D9782A" stroke-width="2.2" marker-end="url(#a-warm)"/>
+    <text font-size="12" font-weight="600" fill="#A85717" x="1145" y="422" text-anchor="middle">SAFE_STOP</text>
+
+    <line x1="1168" y1="523" x2="1123" y2="523" stroke="#2E86C1" stroke-width="2.2" marker-end="url(#a-blue)"/>
+    <text font-size="12" font-weight="600" fill="#2E86C1" x="1145" y="514" text-anchor="middle">STOP</text>
+
+    <line x1="1168" y1="615" x2="1123" y2="615" stroke="#3451D1" stroke-width="2.2" marker-end="url(#a-ind)"/>
+    <text font-size="12" font-weight="600" fill="#3451D1" x="1145" y="606" text-anchor="middle">PAUSE</text>
+  </g>
+
+  <!-- ─── 로봇 시스템 ─── -->
+  <rect class="box" x="400" y="750" width="720" height="120" rx="12"/>
+  <text class="ico" x="422" y="796" font-size="30">🤖</text>
+  <text class="t" x="466" y="782" font-size="16">로봇 시스템 — Doosan M0609</text>
+  <text class="s2 mono" x="466" y="802">dsr_controller2 · ns /dsr01 · DSR_ROBOT2 API</text>
+  <rect x="466" y="816" width="330" height="40" rx="8" fill="#F3F5FA" stroke="#3A4258" stroke-width="1.4"/>
+  <text class="s2" x="631" y="841" text-anchor="middle"><tspan font-weight="700">RG2 그리퍼</tspan>  Modbus TCP · <tspan class="mono">/onrobot/sendCommand</tspan></text>
+  <text class="s" x="820" y="830">센서: 관절 토크(JTS) → 무게·힘</text>
+  <text class="s" x="820" y="850">그리퍼 폭 50 Hz · 카메라 없음</text>
+
+  <!-- skill ↔ robot -->
+  <line class="ln2" x1="520" y1="697" x2="520" y2="748" marker-end="url(#a-ink)"/>
+  <text class="lbl" x="508" y="728" text-anchor="end">로봇 제어 (movel · 힘제어 · IO)</text>
+  <line class="ln2" x1="640" y1="748" x2="640" y2="697" marker-end="url(#a-ink)"/>
+  <text class="lbl" x="652" y="728">관절 토크 · 무게 · 그리퍼 폭</text>
+
+  <!-- 왼쪽 아래 메모 -->
+  <rect x="50" y="750" width="300" height="120" rx="12" fill="#E4E9FB" stroke="#C9D3F7" stroke-width="1.4"/>
+  <text class="t" x="70" y="782" font-size="15" fill="#2A42AD">비전 없이 판단</text>
+  <text class="s2" x="70" y="806">파지 — 정지 폭 &gt; 목표 + 2 mm</text>
+  <text class="s2" x="70" y="826">무게 — get_workpiece_weight 평균</text>
+  <text class="s2" x="70" y="846">접촉 — Z 힘 조건 · 깊이 상한</text>
+</svg>
+
+<div class="cap" style="color:#5F6980"><span>시스템 흐름도 — 바깥(사람·웹·기록) / ROS 2 경계(공정 상태기계 + 일탈 처리 + 스킬·기록 노드) / 외부 이벤트 4종 / 로봇 시스템. 원본 <code>docs/diagrams/system_flow.svg</code></span></div>
+</div>
+<div class="arch">
+          <div class="lane"><div class="nm">벤더 /dsr01</div><div class="nodes">
+            <div class="node vendor"><b>dsr_controller2</b><span>ros2_control · 모션·힘 서비스</span></div>
+            <div class="node vendor"><b>OnRobotRGControllerServer</b><span>Modbus TCP · /onrobot/sendCommand</span></div>
+            <div class="node vendor"><b>virtual: DRCF 에뮬레이터</b><span>+ gripper_virtual_node</span></div>
+          </div></div>
+          <div class="lane"><div class="nm">우리 /cell</div><div class="nodes">
+            <div class="node hot"><b>skill_node</b><span>로봇 스킬 서버. MoveToStation · Scoop · Pour · WeighContainer Action, Grip · MeasureForce · SafePose Service. 로봇을 만지는 유일한 노드</span></div>
+            <div class="node"><b>process_node</b><span>레시피 실행 상태기계. RunBatch Action, SubmitOrder · QaDecision · InterlockRequest Service</span></div>
+            <div class="node hot"><b>record_node</b><span>단일 기록자. 상태·계량·판정·일탈·이벤트 → SQLite. 사람 조작은 감사 테이블</span></div>
+            <div class="node"><b>hmi_web_node</b><span>Flask 웹 HMI. 주문 · 상태 · 계량 그래프 · QA 승인/폐기 · 인터락 · 이력 · KPI. DB 읽기만</span></div>
+          </div></div>
+          <div class="lane"><div class="nm">사람</div><div class="nodes">
+            <div class="node"><b>브라우저</b><span>로봇 PC 또는 셀 밖 QA 기기. 웹이라 다른 기기에서 접속되어 "셀 밖에서 승인" 장면이 성립</span></div>
+          </div></div>
+        </div>
+        <div class="two">
+          <div class="box">
+            <h4><span class="k">스레드</span>DSR 호출 구조</h4>
+            <p>교육 자료 「두산 ROS2 동작 Sequence」 3장 Multithreaded 구조. 메인 스레드는 spin, <strong>워커 스레드 하나</strong>가 <code>movej</code> 같은 블로킹 호출을 직렬로 실행합니다. 워커가 하나라 두 스킬이 동시에 팔을 움직이는 일이 구조적으로 없습니다.</p>
+          </div>
+          <div class="box">
+            <h4><span class="k">기록</span>배치 기록 = SQLite</h4>
+            <p>GMP 배치 기록 의무·추적성·감사 추적을 파일로는 못 채웁니다. 이벤트는 append-only, HMI 에서 누른 승인·폐기·인터락은 누가·언제를 감사 테이블에 남깁니다. 배치 종료 시 JSON 사본을 내보냅니다. <strong>HMI 가 곧 배치 기록서</strong>입니다.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="eval">
+        <div class="sec-eyebrow">Evaluation</div>
+        <h2>평가 기준 대응</h2>
+        <div class="tbl"><table>
+          <thead><tr><th>조별 평가 항목</th><th>대응 설계</th><th>증빙</th></tr></thead>
+          <tbody>
+            <tr><td>기능 구현 완전성</td><td>지정 매뉴얼 4개 절의 명령을 전부 실제 스킬에 배치</td><td>5장 표 그대로 슬라이드 1장</td></tr>
+            <tr><td>기능 구현 정확성</td><td>스킬별 Action 단위 검증, 도징 정책은 pytest, 성공률 기록</td><td>테스트 결과 · 배치 기록</td></tr>
+            <tr><td>동작 및 운용 안정성</td><td>기동 자가진단, 단일 로봇 명령자, 무인 연속 배치 N회, MTBI(사람 개입 사이 평균 운전 시간)</td><td>9/23 타임랩스 영상 · KPI 화면</td></tr>
+            <tr><td>입출력 데이터 이해도</td><td>웹 HMI — 주문 입력, 상태·계량 그래프, 원격 QA 승인, 이력·감사 추적 조회</td><td>시연 중 셀 밖 승인 장면</td></tr>
+            <tr><td><strong>기능 동작 지속성</strong></td><td><strong>7장 일탈·자동 복구 카탈로그 그 자체</strong></td><td>시연 시나리오 (a)(b)(c)</td></tr>
+          </tbody>
+        </table></div>
+        <p class="intro" style="margin-top:14px">개인 평가(팀 운영·의사소통·문제 해결)는 규칙 원장 <code>PROJECT_RULES.md</code> 의 변경 이력, Git 커밋, 이슈 로그(문제→원인→조치)로 증빙합니다.</p>
+
+        <h3>일정</h3>
+        <div class="timeline">
+          <div class="day real"><b>9/17 수</b><span>게이트 G1~G4: 무게 분해능 · 그리퍼 · 티칭 · 힘제어 접촉</span></div>
+          <div class="day real"><b>9/18 목</b><span>스킬 4종 실물 검증</span></div>
+          <div class="day real"><b>9/21 월</b><span>레시피 1종 자율 1사이클</span></div>
+          <div class="day real"><b>9/22 화</b><span>일탈 3종 + HMI 승인</span></div>
+          <div class="day real"><b>9/23 수</b><span>무인 연속 배치 · 영상 확보 <strong>(실물 마지노선)</strong></span></div>
+          <div class="day off"><b>9/24~28</b><span>휴강 — 영상·PPT·BRD/SDD</span></div>
+          <div class="day demo"><b>9/29 월</b><span>시연</span></div>
+          <div class="day demo"><b>9/30 화</b><span>발표</span></div>
+        </div>
+      </section>
+
+      <section id="extras">
+        <div class="sec-eyebrow">Optional features — 선택 요청</div>
+        <h2>추가 기능 후보</h2>
+        <p class="intro">기본 범위(1~9장)는 구현하는 것으로 하고, 그 위에 얹을 후보입니다. 전부 <strong>추가 장비 없이 파이썬만으로</strong> 됩니다. <strong>9/16 강사 선택: 1 · 3 · 5 · 7 채택.</strong> 7 은 강사 제안대로 "사람이 로봇을 건드리면 반응" 으로 방식을 바꿨습니다. 2·4·6·8 은 보류.</p>
+        <ul class="opts">
+          <li class="opt rec"><input type="checkbox" id="x1" checked disabled><span class="rk">1</span><label for="x1"><b>스쿱·용기 규격 식별 — 폭 지문</b><p>원료별 스쿱 손잡이 폭을 15 / 18 / 21 mm 로 다르게 만들고, 파지 후 정지 폭으로 "맞는 원료의 스쿱인지" 검증. 잘못 꽂힌 스쿱 = 교차오염 → 일탈 <code>WRONG_TOOL</code>. 약통도 같은 원리로 규격 확인. 시연: 스쿱을 바꿔 꽂아 두고 시작 → 잡자마자 정지, HMI 에 표시.</p><div class="meta"><span class="e">정확성</span><span class="e">지속성</span><span class="d1">난이도 낮음</span><span>비전 없이 식별 — 정체성 장면</span></div></label></li>
+          <li class="opt"><input type="checkbox" id="x2"><span class="rk">2</span><label for="x2"><b>자가 보정 도징</b><p>스쿱 1회 퍼내는 양을 실측으로 지수이동평균 갱신. 배치가 거듭될수록 보정 시도 횟수가 줄어드는 것을 KPI 그래프로 보여준다. "학습하는 도징".</p><div class="meta"><span class="e">정확성</span><span class="e">데이터 이해도</span><span class="d1">난이도 낮음</span></div></label></li>
+          <li class="opt rec"><input type="checkbox" id="x3" checked disabled><span class="rk">3</span><label for="x3"><b>재기동 이어하기</b><p>노드가 죽거나 전원이 나가도 DB 의 마지막 상태·원료 인덱스·누적 무게로 중단 지점부터 재개. 재개 전 용기를 다시 계량해 안전 확인. 시연: 실행 중 종료 → 재실행 → 이어서 완료.</p><div class="meta"><span class="e">기능 동작 지속성</span><span class="d2">난이도 중간</span><span>앞 기수 미시연</span></div></label></li>
+          <li class="opt rec"><input type="checkbox" id="x4"><span class="rk">4</span><label for="x4"><b>전자 서명 + 배치 기록서 출력</b><p>QA 승인 시 사용자 ID + PIN, 감사 테이블에 서명 해시를 이전 행과 연결해 위변조 감지. 배치 종료 시 인쇄용 배치 기록서(HTML) 자동 생성. 제약 규정(21 CFR Part 11)에 근거.</p><div class="meta"><span class="e">데이터 이해도</span><span class="d1">난이도 낮음</span></div></label></li>
+          <li class="opt"><input type="checkbox" id="x5" checked disabled><span class="rk">5</span><label for="x5"><b>원료 잔량 추정 + 예방 보충</b><p>퍼낸 양 누적으로 원료통 잔량을 계산하고 힘제어 접촉 높이로 교차검증. 소진 전에 HMI 가 "다음 배치 전 보충 권고" → 소진 일탈을 예방.</p><div class="meta"><span class="e">안정성</span><span class="e">데이터 이해도</span><span class="d1">난이도 낮음</span></div></label></li>
+          <li class="opt"><input type="checkbox" id="x6"><span class="rk">6</span><label for="x6"><b>SPC 관리도</b><p>배치별 오차율 관리도(±3σ 한계선). 한계 밖·연속 추세 시 경고. 제약 QC 가 실제로 쓰는 그래프.</p><div class="meta"><span class="e">데이터 이해도</span><span class="d1">난이도 낮음</span></div></label></li>
+          <li class="opt rec"><input type="checkbox" id="x7" checked disabled><span class="rk">7</span><label for="x7"><b>사람 접촉 반응 — 건드리면 정지, 다시 건드리면 재개</b><p>인터락 중이거나 계량 대기 중에 사람이 로봇을 툭 치면 일시정지, 다시 치면 이어서 진행. DRL 의 <code>wait_nudge()</code> 는 파이썬 API 에 없어 <code>get_tool_force</code> 폴링(8 N · 0.2 s)으로 같은 동작을 구현. 이동 중에는 두산 충돌 감지가 담당.</p><div class="meta"><span class="e">안정성</span><span class="e">협동 근거</span><span class="d1">난이도 낮음</span></div></label></li>
+          <li class="opt"><input type="checkbox" id="x8"><span class="rk">8</span><label for="x8"><b>주문 생성기 (MES 시뮬레이터) + 우선순위 큐</b><p>주문 여러 건을 큐에 넣고 자동 연속 처리, 긴급 주문 우선. 무인 연속 배치 N회 시연을 사람 손 없이 돌린다.</p><div class="meta"><span class="e">안정성 (MTBI)</span><span class="d1">난이도 낮음</span></div></label></li>
+        </ul>
+        <div class="callout warm">
+          <div class="t">넣지 않기로 한 것</div>
+          PyTorch 이상 탐지(배치 수십 건으로는 학습이 성립하지 않음) · 원격 알림(시연장 인터넷 의존, 평가와 무관) · 핸드가이딩 교시(펜던트 모드 전환이 필요해 무인 컨셉과 충돌).
+        </div>
+      </section>
+
+      <section id="ask">
+        <div class="sec-eyebrow">Confirmation</div>
+        <h2>강사님께 확인 요청 사항</h2>
+        <p class="intro"><strong>9/16 전부 확인받았습니다.</strong> 주제는 이대로 확정, 9/17 부터 실물 작업을 시작합니다. 강사님 추가 언급 한 가지: 계량은 "매뉴얼에 50 g 이 있지만 실제로는 그 이상일 수 있으니 원료 무게를 조금 크게 가져가라" — 정확한 의미는 조장이 재확인하고, 그때까지 시연 레시피는 200 / 150 / 100 g 으로 올려 두었습니다. 9/17 오전 실측으로 최종 결정합니다.</p>
+        <ul class="ask">
+          <li><input type="checkbox" id="ask-1" checked disabled><label for="ask-1"><b>주제 승인 — 제약 조제 칭량 셀</b><p>레시피 + pick&amp;place 틀을 "퍼서 계량·검증"으로 심화한 방향이 과제 취지에 맞는지.</p></label></li>
+          <li><input type="checkbox" id="ask-2" checked disabled><label for="ask-2"><b>사용 기능 범위 (5장)</b><p>지정 매뉴얼 4개 절의 명령 배치가 "기능 구현 완전성" 요구를 충족하는지. 추가로 반드시 써야 할 명령이 있는지.</p></label></li>
+          <li><input type="checkbox" id="ask-3" checked disabled><label for="ask-3"><b>계량 방식 — <code>get_workpiece_weight</code> 1순위, 힘 평균 폴백</b><p>관절 토크 기반 무게 측정으로 30 g 단위 도징이 무리라면 100 g 단위로 올리는 방안이 타당한지. 분해능은 9/17 오전 실측.</p></label></li>
+          <li><input type="checkbox" id="ask-4" checked disabled><label for="ask-4"><b>협동로봇 정당성 — 작업자 상주 배제 + 펜스리스</b><p>사람이 셀 안에 서지 않고 HMI 원격 승인·패스박스 인터락·PFL 접촉 안전으로 "협동"을 설명하는 논리가 받아들여지는지.</p></label></li>
+          <li><input type="checkbox" id="ask-5" checked disabled><label for="ask-5"><b>HMI 는 웹, 배치 기록은 SQLite</b><p>9/16 "웹도 상관없다" 확인에 따라 웹(Flask)으로 갑니다. 셀 밖 기기에서 승인하는 시연에 적합하다고 봅니다.</p></label></li>
+          <li><input type="checkbox" id="ask-6" checked disabled><label for="ask-6"><b>소모품 준비 — 원료통 3개, 스쿱 3개(손잡이 폭 15~20 mm 납작형), 약통 3개, 비드형 원료</b><p>약통 조건: 입구 안지름 50 mm 이상(스쿱으로 붓기), 파지부 외경 90 mm 이하, 파지점 위 돌출 40 mm 이하(RG2 안전 스위치). 추가 장비가 아닌 소모품 수준입니다. 판 위 기존 고정물과 스테이션 위치가 겹치지 않는지도 9/17 에 확인합니다.</p></label></li>
+        </ul>
+        <div class="foot">
+          <span>저장소 · github.com/Jik-Kim/auto-pharmacist</span>
+          <span>기준 문서 · PROJECT_RULES.md (규칙 원장) · docs/SOT.md (설계 결정) · docs/interfaces.md (계약 v1.1)</span>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+    var secs = links.map(function (a) { return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
+    if (!('IntersectionObserver' in window) || !secs.length) return;
+    var current = null;
+    function setOn(id) {
+      if (current === id) return;
+      current = id;
+      links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + id); });
+    }
+    var io = new IntersectionObserver(function (entries) {
+      var vis = entries.filter(function (e) { return e.isIntersecting; })
+        .sort(function (a, b) { return a.boundingClientRect.top - b.boundingClientRect.top; });
+      if (vis.length) setOn(vis[0].target.id);
+    }, { rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+    secs.forEach(function (s) { io.observe(s); });
+    setOn(secs[0].id);
+  })();
+</script>
+</body></html>
