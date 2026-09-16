@@ -45,3 +45,13 @@ ros2 topic echo /cell/state --once
 ros2 service call /cell/measure_force gmp_interfaces/srv/MeasureForce "{samples: 20, settle_s: 1.0}"
 ros2 action send_goal /cell/move_to_station gmp_interfaces/action/MoveToStation "{station_id: safe, approach: 1}"
 ```
+
+## 빌드 트러블슈팅 (9/16 실제 발생분)
+
+벤더 워크스페이스 `~/ws_cobot_pjt/ws_dsr` 와 이 저장소 모두 **`colcon build --symlink-install` 로 고정**한다. 일반 빌드와 섞으면 아래 1번이 난다.
+
+| 증상 | 원인 | 조치 |
+|---|---|---|
+| `failed to create symbolic link … Is a directory` (msgs 패키지) | 일반 빌드가 복사해 둔 실제 폴더 위에 symlink 빌드가 링크를 만들려 함 | 해당 패키지의 `build/<pkg>` `install/<pkg>` 삭제 후 재빌드 |
+| `'distutils.core.setup()' was never called` (ament_python) | `setup.py` entry point 의 모듈명이 잘못됨 (하이픈 등). `python3 setup.py --dry-run --name` 으로 진짜 에러 확인 | 파일명·모듈명은 소문자·숫자·밑줄만 사용 |
+| `executable 'xxx.py' not found on the libexec directory` | 스크립트 원본에 실행 권한(+x) 없음. symlink 빌드는 원본 권한이 그대로 보임 | `chmod +x <스크립트>` (재빌드 불필요) |
