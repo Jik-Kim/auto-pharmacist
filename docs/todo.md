@@ -36,6 +36,7 @@
 - [ ] 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02) · 마감 9/18
 
 ## gmp_skills [A 스킬]
+- [ ] **[추가 7] nudge 감지**: 워커 유휴 루프·계량 settle·붓기 대기에서 `get_tool_force` 100 ms 폴링, 임계 초과 시 `CellEvent(NUDGE)` 발행. G1 때 빈 그리퍼 정지 외력 σ 로 임계 8 N 검증 · 마감 9/18
 - [ ] **[추가 1] 폭 지문**: 스쿱 손잡이 폭 15/18/21 mm 제작(테이프), `stations.yaml`/`common.yaml` 에 원료별 기대 폭, `Grip` 응답 `final_width_mm` 정밀도 실측 · 마감 9/18
 - [ ] `adapters/dsr_arm.py`: `DR_init`·`set_tool/tcp`·`movej/movel`·`get_tool_force`·`reset/get_workpiece_weight`·힘제어 짝 함수 — **가상에서 movej 까지** · 마감 9/16
 - [ ] `adapters/rg2_gripper.py`: `modbus` 백엔드 (`/onrobot/sendCommand` 폭 정수, `/onrobot_joint_states` → 폭 mm), `virtual` 백엔드 (rad 문자열), 폭 추론 · 마감 9/17
@@ -67,6 +68,7 @@
 - [ ] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) · 마감 9/21
 - [ ] 스테이션 물리 배치·테이프 표시 (하드웨어) · 마감 9/17
 - [ ] 고의 장애 주입 T6 (a)(b)(c) 재현 · 마감 9/22
+- [ ] **[추가 7] NUDGE 전이**: `RUNNING→PAUSED(NUDGE)`, 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 재사용) + 테스트 · 마감 9/18
 - [ ] **[추가 1] 폭 지문**: `PICK_SCOOP`·`PICK_CONTAINER` 의 `Grip` 결과 폭이 원료별 기대 폭(±margin) 과 다르면 `Deviation(WRONG_TOOL)` → QA · 마감 9/21 (A 와)
 - [ ] **[추가 3] 재기동 이어하기**: 기동 시 DB 의 미완료 배치 조회 → 상태·원료 인덱스·tare 복원 → 용기 재계량 후 재개. 시연: 실행 중 Ctrl-C → 재실행 · 마감 9/22 (D 와)
 
@@ -79,6 +81,7 @@
 - [ ] process_node 가 `BATCH_START` 이벤트에 product 를 싣게 C 와 합의 (batches.product 채우기) · 마감 9/18
 - [ ] 계량 그래프에 목표선·허용 오차 밴드, 배치 클릭 → `/batch/<id>` 상세 · 마감 9/21
 - [ ] **[추가 3] 재기동 이어하기**: `db.py` 에 미완료 배치·마지막 상태 조회 API, `record_node` 가 상태 전이마다 저장 · 마감 9/21 (C 와)
+- [ ] **[추가 7] HMI**: PAUSED 사유(NUDGE/REFILL) 표시, 이벤트 타임라인에 NUDGE · 마감 9/19
 - [ ] **[추가 5] 잔량 표시**: HMI 에 원료별 잔량 게이지 + "보충 권고" 배너 · 마감 9/22 (B 와)
 - [ ] `tools/report.py`: DB 에서 계약 6절 지표 표 출력 (`/kpi` 와 같은 쿼리) · 마감 9/25
 - [ ] 1분 영상 편집·PPT (조장과) · 마감 9/28
