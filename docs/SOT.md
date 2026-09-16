@@ -66,7 +66,7 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 | 3.2 설정 | `set_velj/accj`, `set_velx/accx`, `set_tcp`, `set_ref_coord` | 기동 시 1회 + 스킬별 속도 스케일 | `set_ref_coord(DR_BASE)` 명시 — 힘제어 방향의 기준 |
 | 3.3 동기 | `movej`(홈·안전 자세), `movel`(접근·작업점), `movesx`(붓기 곡선) | MoveToStation · Pour | |
 | 3.4 비동기 | `amovel` + `check_motion`/`mwait` | 취소 가능한 이동 (인터락·SafePose) | 블로킹 `movel` 은 중간 취소가 안 된다 — I-004 |
-| 3.3/3.4 | `move_periodic`/`amove_periodic` | **Pour 의 털어내기(과다 시 미세 진동)** · Scoop 의 원료 다지기 | 두산 고유 명령 — 차별점 |
+| 3.3/3.4 | `move_periodic`/`amove_periodic` | **Pour 의 털어내기(용기 위에서 소량씩)** · Scoop 의 퍼낸 양 고르기(들어 올린 뒤 흔들어 평탄화 — 통 안에서는 흔들지 않는다) | 두산 고유 명령 — 차별점 |
 | 4.1 현재값 | `get_current_posx/posj`, `get_tool_force`, `get_external_torque` | 상태 발행 · 계량 폴백 · 미끄러짐/충돌 관측 | |
 | 4.4 안전 설정 | `get_collision_sensitivity`, `get_current_tool`, `get_current_tcp` | 기동 자가진단 — 툴·TCP·감도가 기대값인지 확인하고 아니면 기동 거부 | 「동작 및 운용 안정성」 |
 | 5.1 툴/작업물 | `set_tool`, **`reset_workpiece_weight`, `get_workpiece_weight`** | **계량 1순위** (D-07) | `set_workpiece_weight` 는 안 쓴다 |
