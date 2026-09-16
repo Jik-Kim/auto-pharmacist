@@ -14,7 +14,7 @@
       backend: modbus               # modbus | dio  (virtual 은 런치가 자동)
       open_width_mm: 100.0
       scoop_width_mm: 18.0          # [팀 확정 필요] 스쿱 손잡이 실측 (I-006)
-      cup_width_mm: 60.0            # [팀 확정 필요] 칭량 용기 외경
+      cup_width_mm: 60.0            # [구매 후 실측] 약통 파지부 외경 (D-18: 입구 근처를 잡는다, 파지점 위 돌출 ≤ 40 mm)
       force_n: 20.0                 # 3~40. modbus 는 2.5 N 스텝 (D-06)
       grip_margin_mm: 2.0           # 폭 추론 마진 (계약 2절)
       slip_mm: 1.5

@@ -13,7 +13,7 @@ stations:
   material_2:  {posx: [450.0, 120.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 2", material_id: "B"}
   material_3:  {posx: [270.0, 500.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 3", material_id: "C"}
   material_4:  {posx: [450.0, 530.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 4 (예비)", material_id: "D"}
-  magazine:    {posx: [550.0, 320.0, 200.0, 0.0, 180.0, 0.0], note: "빈 용기 매거진"}
-  output_tray: {posx: [580.0, 520.0, 200.0, 0.0, 180.0, 0.0], note: "완료품 트레이"}
+  magazine:    {posx: [550.0, 320.0, 200.0, 0.0, 180.0, 0.0], note: "빈 약통 매거진 — 낱개 슬롯 (겹쳐 쌓지 않는다, D-18). slot 0 이 posx, 이후 y 방향 pitch", slots: 3, slot_pitch_mm: 80.0}
+  output_tray: {posx: [580.0, 520.0, 200.0, 0.0, 180.0, 0.0], note: "완료품 트레이 — 매거진과 같은 슬롯 번호에 내려놓는다", slots: 3, slot_pitch_mm: 80.0}
   passbox:     {posx: [640.0, 320.0, 200.0, 0.0, 180.0, 0.0], note: "패스박스 — 로봇 도달 한계, 사람은 x>700 에서"}
   reject_bin:  {posx: [200.0, 560.0, 200.0, 0.0, 180.0, 0.0], note: "폐기함"}
