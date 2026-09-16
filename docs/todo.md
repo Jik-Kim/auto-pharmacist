@@ -29,12 +29,14 @@
 <!-- STATS:END -->
 
 ## gmp_interfaces [조장]
+- [ ] **계약 v1.2**: `Deviation.kind` 에 `WRONG_TOOL` 추가, `docs/interfaces.md` 동시 갱신, 팀 채널 공지 · 마감 9/17
 - [x] 계약 v1.0 — msg 8 · srv 6 · action 5 정의, `docs/interfaces.md` · 마감 9/16
 - [ ] G1 결과로 도징 단위 확정 → `RecipeItem.tol_pct` 기본값·레시피 yaml 갱신 (SOT D-08) · 마감 9/17
 - [x] 계약 v1.1 — `Deviation.operator_id`, `record_summary` 폐지, 7절 DB 스키마 · 마감 9/16
 - [ ] 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02) · 마감 9/18
 
 ## gmp_skills [A 스킬]
+- [ ] **[추가 1] 폭 지문**: 스쿱 손잡이 폭 15/18/21 mm 제작(테이프), `stations.yaml`/`common.yaml` 에 원료별 기대 폭, `Grip` 응답 `final_width_mm` 정밀도 실측 · 마감 9/18
 - [ ] `adapters/dsr_arm.py`: `DR_init`·`set_tool/tcp`·`movej/movel`·`get_tool_force`·`reset/get_workpiece_weight`·힘제어 짝 함수 — **가상에서 movej 까지** · 마감 9/16
 - [ ] `adapters/rg2_gripper.py`: `modbus` 백엔드 (`/onrobot/sendCommand` 폭 정수, `/onrobot_joint_states` → 폭 mm), `virtual` 백엔드 (rad 문자열), 폭 추론 · 마감 9/17
 - [ ] `nodes/skill_node.py`: 워커 스레드 + 큐, `MoveToStation`·`Grip`·`MeasureForce`·`SafePose` — 가상 동작 · 마감 9/17
@@ -49,6 +51,7 @@
 - [ ] `gripper_state` 10 Hz 발행, 미끄러짐 감지(`slip_mm`) · 마감 9/21
 
 ## gmp_dosing [B 도징]
+- [ ] **[추가 5] 원료 잔량 추정**: `core/inventory.py` — 원료별 초기량·누적 투입량·접촉 높이(z) 로 잔량 추정, 보충 임계 판단 (순수 함수 + 테스트) · 마감 9/21
 - [ ] `core/scale.py`: `WeightModel` — 힘/작업물무게 → g, 영점(tare) 저장·적용, σ 계산, `valid` 판정 · 마감 9/16
 - [ ] `core/dosing.py`: `decide(target_g, actual_g, tol_pct, attempts, history) → Decision(action, fraction)` — `OK/UNDER/OVER/TIMEOUT`, 보정 투입 시 `fraction` 축소 규칙 · 마감 9/16
 - [ ] `test/test_dosing.py`: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ 가 tol 보다 클 때 `valid=false` · 마감 9/17
@@ -64,6 +67,8 @@
 - [ ] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) · 마감 9/21
 - [ ] 스테이션 물리 배치·테이프 표시 (하드웨어) · 마감 9/17
 - [ ] 고의 장애 주입 T6 (a)(b)(c) 재현 · 마감 9/22
+- [ ] **[추가 1] 폭 지문**: `PICK_SCOOP`·`PICK_CONTAINER` 의 `Grip` 결과 폭이 원료별 기대 폭(±margin) 과 다르면 `Deviation(WRONG_TOOL)` → QA · 마감 9/21 (A 와)
+- [ ] **[추가 3] 재기동 이어하기**: 기동 시 DB 의 미완료 배치 조회 → 상태·원료 인덱스·tare 복원 → 용기 재계량 후 재개. 시연: 실행 중 Ctrl-C → 재실행 · 마감 9/22 (D 와)
 
 ## gmp_hmi [D HMI·기록]
 - [x] `config/schema.sql` · `core/db.py`: 6 테이블, 쓰기·조회·KPI·JSON 내보내기, 단위 테스트 · 마감 9/16
@@ -73,6 +78,8 @@
 - [ ] 다른 기기(폰·노트북)에서 `http://<로봇PC>:5000` 접속 확인 — 시연 T6(c) 장면 · 마감 9/18
 - [ ] process_node 가 `BATCH_START` 이벤트에 product 를 싣게 C 와 합의 (batches.product 채우기) · 마감 9/18
 - [ ] 계량 그래프에 목표선·허용 오차 밴드, 배치 클릭 → `/batch/<id>` 상세 · 마감 9/21
+- [ ] **[추가 3] 재기동 이어하기**: `db.py` 에 미완료 배치·마지막 상태 조회 API, `record_node` 가 상태 전이마다 저장 · 마감 9/21 (C 와)
+- [ ] **[추가 5] 잔량 표시**: HMI 에 원료별 잔량 게이지 + "보충 권고" 배너 · 마감 9/22 (B 와)
 - [ ] `tools/report.py`: DB 에서 계약 6절 지표 표 출력 (`/kpi` 와 같은 쿼리) · 마감 9/25
 - [ ] 1분 영상 편집·PPT (조장과) · 마감 9/28
 
