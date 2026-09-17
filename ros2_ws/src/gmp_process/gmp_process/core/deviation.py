@@ -7,15 +7,16 @@ policy(kind, count) → (action, requires_decision)
   FORCED     강제 개입 — MTBI 분모에 든다
 """
 RULES = {
-    'GRIP_FAIL':      (3, 'RETRY', 'FORCED'),
-    'SLIP':           (2, 'RETRY', 'FORCED'),
-    'SCOOP_EMPTY':    (3, 'RETRY', 'REFILL'),
-    'MATERIAL_EMPTY': (0, 'REFILL', 'REFILL'),
-    'OVERFILL':       (0, 'QA', 'QA'),
-    'TIMEOUT':        (0, 'QA', 'QA'),
-    'WEIGH_INVALID':  (2, 'RETRY', 'QA'),
-    'SAFETY_SWITCH':  (1, 'RETRY', 'FORCED'),
-    'FORCE_LIMIT':    (1, 'RETRY', 'FORCED'),
+    'GRIP_FAIL':       (3, 'RETRY', 'FORCED'),
+    'SLIP':            (2, 'RETRY', 'FORCED'),
+    'SCOOP_EMPTY':     (3, 'RETRY', 'REFILL'),
+    'MATERIAL_EMPTY':  (0, 'REFILL', 'REFILL'),
+    'OVERFILL':        (0, 'QA', 'QA'),
+    'TIMEOUT':         (0, 'QA', 'QA'),
+    'WEIGH_INVALID':   (2, 'RETRY', 'QA'),
+    'VERIFY_MISMATCH': (0, 'QA', 'QA'),   # 스쿱 누적 투입량 vs 용기 계량 불일치 (D-22 2차 검증) — 계약 v1.2 kind
+    'SAFETY_SWITCH':   (1, 'RETRY', 'FORCED'),
+    'FORCE_LIMIT':     (1, 'RETRY', 'FORCED'),
 }
 
 

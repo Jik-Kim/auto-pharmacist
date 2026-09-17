@@ -2,7 +2,7 @@
 
 | 파일 | 문서 | 상태 |
 |---|---|---|
-| `GMP_Dispense_BRD_v0.1.md` | 사업 요구사항 — 규칙 원장(`PROJECT_RULES.md`)의 R·Q 와 평가 기준(3-8)을 요구사항 ID(FR/NF/AC)로 옮긴다 | 9/24~28 작성 |
+| `GMP_Dispense_BRD_v0.1.md` | 사업 요구사항 — 규칙 원장(`PROJECT_RULES.md`)의 R·Q 와 평가 기준(3-8)을 강사 BRD 양식(8장 + BR/SR/FR/NFR/IR/TR 정의서)으로 옮긴다 | **v0.1 초안 9/17 (검토 중)** → v1.0 9/24~28 |
 | `GMP_Dispense_SDD_v0.1.md` | 시스템 설계 — `docs/SOT.md` 결정, `docs/interfaces.md` 계약, `docs/architecture.md` 상태 전이표를 장으로 옮긴다 | 9/24~28 작성 |
 
 ## 규칙

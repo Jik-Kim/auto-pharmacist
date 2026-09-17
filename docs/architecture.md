@@ -31,7 +31,7 @@
 
 ## 공정 사이클 ↔ 노드
 
-`process_node` 의 상태기계(`core/process_fsm.py`)가 아래 순서로 스킬을 부른다. 원료마다 5~10 을 반복한다. 용기 반송(carry)은 `MoveToStation`+`Grip` 의 조합이라 계약에 새 Action 이 없다.
+`process_node` 의 상태기계(`core/process_fsm.py`)가 아래 순서로 스킬을 부른다. 원료마다 5~11 을 반복한다. **로봇이 저울**이므로 스쿱을 든 채 재는 것(`weigh_scoop`)이 가장 싸고, 용기 계량(`WeighContainer`)은 그리퍼가 비어야 해서 배치 끝 VERIFY 한 번만 한다 (D-22). 용기 반송(carry)은 `MoveToStation`+`Grip` 의 조합이라 계약에 새 Action 이 없다.
 
 | 단계 | 상태 | 스킬 호출 | 판정·분기 |
 |---|---|---|---|
@@ -40,13 +40,16 @@
 | 3 | `PICK_CONTAINER` | **carry**: `MoveToStation(magazine, slot)` → `Grip(close, cup)` → `MoveToStation(scale)` → `Grip(open)` | 사람이 매거진에 넣어 둔 빈 약통을 로봇이 칭량 위치로 가져온다 (D-18). `grip_inferred=false` → `GRIP_FAIL` 재시도 ≤ 3 |
 | 4 | `TARE` | `WeighContainer(tare_g=0)` | 빈 용기 풍량 기록 |
 | 5 | `PICK_SCOOP` | `MoveToStation(scoop_rack)` → `Grip(close, scoop_width)` | `grip_inferred=false` → `Deviation(GRIP_FAIL)` 재시도 ≤ 3 |
-| 6 | `SCOOP` | `Scoop(material_id)` | `contact_detected=false` → `SCOOP_EMPTY` → 재시도, 연속 3회 → `MATERIAL_EMPTY` → 인터락 보충 요청 |
-| 7 | `POUR` | `Pour(scale, fraction)` | |
-| 8 | `WEIGH` | `WeighContainer(tare_g)` → `dosing.decide()` | `OK` → 9 / `UNDER` → 6 (보정, fraction 축소) / `OVER` → `Deviation(OVERFILL, requires_decision)` → `DEVIATION` |
-| 9 | `RETURN_SCOOP` | `MoveToStation(scoop_rack)` → `Grip(open)` | 원료별 전용 스쿱 반납 (교차오염 방지) |
-| 10 | 다음 원료 → 5 | | |
-| 11 | `FINISH` | **carry**: `scale` → `output_tray(slot)` … `SafePose` | 완료품을 용기째 트레이로. `DONE` 발행, 기록 종료 |
-| E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료 / DISCARD → **carry** `scale` → `reject_bin` → `DISCARDED` |
+| 6 | `SCOOP_TARE` | **`weigh_scoop`**(빈 스쿱, 든 채로) | 스쿱 풍량 — 원료마다 1회 (D-22) |
+| 7 | `SCOOP` | `Scoop(material_id)` | `contact_detected=false` → `SCOOP_EMPTY` → 재시도, 연속 3회 → `MATERIAL_EMPTY` → 인터락 보충 요청 |
+| 8 | `WEIGH_SCOOP` | `weigh_scoop`(붓기 전) | 퍼낸 양 = gross − 스쿱 풍량. **붓기 비율 = min(1, 부족량/퍼낸 양)** — 초과 예방 (1차 폐루프) |
+| 9 | `POUR` | `Pour(scale, fraction)` | |
+| 10 | `WEIGH_RESIDUAL` | `weigh_scoop`(붓기 후) → `dosing.decide()` | 잔량 = gross − 스쿱 풍량, **투입량 += 퍼낸 양 − 잔량**. `OK` → 11 / `UNDER` → 7 (보정, ≤3) / `OVER` → `Deviation(OVERFILL, requires_decision)` → `DEVIATION` |
+| 11 | `RETURN_SCOOP` | `MoveToStation(scoop_rack)` → `Grip(open)` | 원료별 전용 스쿱 반납 (교차오염 방지) |
+| 12 | 다음 원료 → 5 | | |
+| 13 | `VERIFY` | `WeighContainer(tare_g)` — **용기를 들어** 계량 (그리퍼 비어 있음) | 순량 vs Σ투입량 차이 > `min_resolvable_g` → `Deviation(VERIFY_MISMATCH)` → QA (2차 검증) |
+| 14 | `FINISH` | **carry**: `scale` → `output_tray(slot)` … `SafePose` | 완료품을 용기째 트레이로. `DONE` 발행, 기록 종료 |
+| E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료(VERIFY 였으면 FINISH) / DISCARD → 스쿱 반납 → **carry** `scale` → `reject_bin` → `DISCARDED` |
 | E | `PAUSED` | `SafePose` | `InterlockRequest(ENTER)` → 안전 자세 도달 후 granted / `EXIT` → 이전 상태 재개 |
 
 **도징 결정은 `gmp_dosing/core/dosing.py` 가 한다** (순수 함수: 목표·실측·이력 → 다음 행동). 상태기계는 그 결정을 스킬 호출로 옮길 뿐이다.

@@ -8,12 +8,19 @@
         req = fsm.on_result(req, result)      # 다음 요청 또는 None(끝)
     fsm.state, fsm.mode, fsm.deviations, fsm.results 를 발행
 
-요청은 dict(kind=..., ...) 하나. kind: move | grip | carry | scoop | pour | weigh | measure | safe | wait_qa | wait_interlock
-carry 는 용기 반송(src 슬롯 → dst) 복합 요청. process_node 가 MoveToStation(ABOVE→AT) → Grip(close, cup) → ABOVE →
-dst(ABOVE→AT) → Grip(open) → ABOVE 로 조합한다. 결과 grip_inferred=false 면 GRIP_FAIL (D-18).
-상태 이름은 CellState.step 에 그대로 실린다 (docs/architecture.md 전이표).
+요청은 dict(kind=..., ...) 하나.
+kind: move | grip | carry | scoop | pour | weigh | weigh_scoop | measure | safe | wait_qa | wait_interlock
+  carry       용기 반송(src 슬롯 → dst) 복합 요청. process_node 가 MoveToStation(ABOVE→AT) → Grip(close, cup) → ABOVE →
+              dst(ABOVE→AT) → Grip(open) → ABOVE 로 조합한다. 결과 grip_inferred=false 면 GRIP_FAIL (D-18).
+  weigh       용기를 들어 계량 (WeighContainer: 파지 → 계량 자세 → 읽기 → 내려놓기). 그리퍼가 비어 있어야 한다.
+  weigh_scoop 지금 들고 있는 스쿱을 계량 자세로 가져가 그대로 잰다 (파지·내려놓기 없음). 결과 gross_g·valid.
+              계약 v1.2 항목 — A 와 합의 (docs/issues.md I-007).
 
-TODO([C]) 9/17: 전이표 전부. 지금은 골격과 정상 경로의 형태만.
+원료 1종의 흐름 (SOT D-22, 9/17 팀 합의 — 로봇이 저울이므로 스쿱을 든 채 재는 것이 가장 싸다):
+  PICK_SCOOP → SCOOP_TARE(빈 스쿱 무게) → SCOOP → WEIGH_SCOOP(붓기 전: 퍼낸 양 → 붓기 비율 = 1차 폐루프)
+  → POUR → WEIGH_RESIDUAL(붓기 후: 스쿱 잔량 → 실제 투입량 누적 → decide) → RETURN_SCOOP
+원료가 다 끝나면 VERIFY(용기를 들어 계량, 스쿱 누적값과 대조 = 2차 검증) → FINISH.
+상태 이름은 CellState.step 에 그대로 실린다 (docs/architecture.md 전이표).
 """
 from dataclasses import dataclass, field
 
@@ -29,7 +36,10 @@ class ItemRun:
     scoop_id: str
     attempts: int = 0
     invalid: int = 0
-    actual_g: float = 0.0
+    scoop_tare_g: float = 0.0    # 빈 스쿱 (SCOOP_TARE)
+    scooped_g: float = 0.0       # 붓기 전 스쿱 안의 원료 (WEIGH_SCOOP)
+    residual_g: float = 0.0      # 붓기 후 스쿱에 남은 원료 (WEIGH_RESIDUAL)
+    actual_g: float = 0.0        # 용기에 들어간 누적 투입량 = Σ(scooped − residual)
     verdict: str = ''
 
 
@@ -41,11 +51,14 @@ class ProcessFSM:
     state: str = 'IDLE'
     mode: str = 'IDLE'
     idx: int = 0
-    tare_g: float = 0.0
+    tare_g: float = 0.0          # 빈 용기 (TARE)
+    verify_net_g: float = 0.0    # VERIFY 에서 잰 용기 순량
     results: list = field(default_factory=list)
     deviations: list = field(default_factory=list)
     _counts: dict = field(default_factory=dict)
     _resume: object = None       # 인터락/QA 후 돌아갈 요청
+    _qa_step: str = ''           # QA 판정을 기다리는 일탈이 난 스텝 — APPROVED/DISCARDED 뒤 경로를 가른다
+    _verify_invalid: int = 0
     slot: int = 0                # 매거진·트레이 슬롯 (process_node 가 배치마다 올린다)
 
     # ── 진입 ─────────────────────────────────────────────────────────
@@ -57,6 +70,37 @@ class ProcessFSM:
         it = self.spec.items[self.idx]
         return ItemRun(it.material_id, it.target_g, it.tol_pct, it.scoop_id)
 
+    # ── 요청 생성 ─────────────────────────────────────────────────────
+    def _weigh_scoop(self) -> dict:
+        return {'kind': 'weigh_scoop', 'station': 'scale', 'tare_g': self.cur.scoop_tare_g}
+
+    def _weigh_cup(self, tare_g: float) -> dict:
+        return {'kind': 'weigh', 'station': 'scale', 'tare_g': tare_g}
+
+    def _scoop(self, fraction: float = 1.0) -> dict:
+        self.cur.attempts += 1
+        return {'kind': 'scoop', 'material_id': self.cur.material_id, 'attempt': self.cur.attempts,
+                'fraction': fraction}                 # 담그기 깊이 힌트일 뿐 — 붓기 비율은 WEIGH_SCOOP 가 정한다
+
+    def _carry(self, src: str, dst: str) -> dict:
+        return {'kind': 'carry', 'src': src, 'dst': dst, 'slot': self.slot, 'target': 'cup'}
+
+    def _pour_fraction(self, need_g: float, scooped_g: float) -> float:
+        """1차 폐루프 — 퍼낸 양이 부족량보다 많으면 부족량만큼만 붓는다 (초과는 되돌릴 수 없다).
+        TODO([B]) 도징 정책이므로 gmp_dosing/core/dosing.py 로 옮기는 것이 맞다 — B 와 합의 후 이동."""
+        if scooped_g <= 0.0 or scooped_g <= need_g:
+            return 1.0
+        return max(self.dosing_cfg.min_fraction, min(1.0, need_g / scooped_g))
+
+    def _invalid_or(self, res: dict, step: str, retry: dict):
+        """계량 무효(valid=false)면 재계량, 상한을 넘으면 WEIGH_INVALID → QA. 유효하면 None."""
+        if res.get('valid', False):
+            return None
+        self.cur.invalid += 1
+        if self.cur.invalid >= self.dosing_cfg.max_invalid:
+            return self._deviate('WEIGH_INVALID', step)
+        return retry
+
     # ── 전이 ─────────────────────────────────────────────────────────
     def on_result(self, req: dict, res: dict):
         k, st = req['kind'], self.state
@@ -64,7 +108,7 @@ class ProcessFSM:
         if 'then' in req and k in ('safe', 'move', 'carry'):
             nxt = req['then']
             if nxt is None:
-                return None                      # ERROR / DISCARDED / (FINISH 대체) 종료
+                return None                      # ERROR 종료
             if nxt == 'wait_interlock':
                 return {'kind': 'wait_interlock'}
         if k == 'measure' and st == 'SELF_CHECK':
@@ -74,7 +118,7 @@ class ProcessFSM:
             if not res.get('grip_inferred', False):
                 return self._deviate('GRIP_FAIL', 'PICK_CONTAINER', retry=req)
             self.state = 'TARE'
-            return {'kind': 'weigh', 'station': 'scale', 'tare_g': 0.0}
+            return self._weigh_cup(0.0)
         if k == 'weigh' and st == 'TARE':
             self.tare_g = res.get('gross_g', 0.0)
             self.scale.set_tare(self.tare_g)
@@ -86,33 +130,48 @@ class ProcessFSM:
         if k == 'grip' and st == 'PICK_SCOOP':
             if not res.get('grip_inferred', False):
                 return self._deviate('GRIP_FAIL', 'PICK_SCOOP', retry={'kind': 'grip', 'close': True, 'target': 'scoop'})
+            self.state = 'SCOOP_TARE'
+            return self._weigh_scoop()                 # 빈 스쿱 무게 — 원료마다 1회
+        if k == 'weigh_scoop' and st == 'SCOOP_TARE':
+            r = self._invalid_or(res, 'SCOOP_TARE', req)
+            if r is not None:
+                return r
+            self.cur.scoop_tare_g = res.get('gross_g', 0.0)
             self.state = 'SCOOP'
-            self.cur.attempts += 1
-            return {'kind': 'scoop', 'material_id': self.cur.material_id, 'attempt': self.cur.attempts}
+            return self._scoop()
         if k == 'scoop' and st == 'SCOOP':
             if not res.get('contact_detected', True):
                 return self._deviate('SCOOP_EMPTY', 'SCOOP', retry=req)
+            self.state = 'WEIGH_SCOOP'
+            return self._weigh_scoop()                 # 붓기 전 — 퍼낸 양
+        if k == 'weigh_scoop' and st == 'WEIGH_SCOOP':
+            r = self._invalid_or(res, 'WEIGH_SCOOP', req)
+            if r is not None:
+                return r
+            self.cur.scooped_g = max(0.0, res.get('gross_g', 0.0) - self.cur.scoop_tare_g)
+            need = self.cur.target_g - self.cur.actual_g
             self.state = 'POUR'
-            return {'kind': 'pour', 'station': 'scale', 'fraction': res.get('fraction', 1.0)}
+            return {'kind': 'pour', 'station': 'scale', 'fraction': self._pour_fraction(need, self.cur.scooped_g)}
         if k == 'pour' and st == 'POUR':
-            self.state = 'WEIGH'
-            return {'kind': 'weigh', 'station': 'scale', 'tare_g': self.tare_g}
-        if k == 'weigh' and st == 'WEIGH':
-            d = decide(self.cur.target_g, res.get('net_g', 0.0), self.cur.tol_pct, self.cur.attempts,
-                       res.get('valid', False), self.cur.invalid, self.dosing_cfg)
-            self.cur.actual_g, self.cur.verdict = res.get('net_g', 0.0), d.verdict
+            self.state = 'WEIGH_RESIDUAL'
+            return self._weigh_scoop()                 # 붓기 후 — 스쿱 잔량
+        if k == 'weigh_scoop' and st == 'WEIGH_RESIDUAL':
+            r = self._invalid_or(res, 'WEIGH_RESIDUAL', req)
+            if r is not None:
+                return r
+            self.cur.residual_g = max(0.0, res.get('gross_g', 0.0) - self.cur.scoop_tare_g)
+            self.cur.actual_g += max(0.0, self.cur.scooped_g - self.cur.residual_g)
+            d = decide(self.cur.target_g, self.cur.actual_g, self.cur.tol_pct, self.cur.attempts,
+                       True, self.cur.invalid, self.dosing_cfg)
+            self.cur.verdict = d.verdict
             if d.action == 'DONE':
                 self.results.append(self.cur)
                 self.state = 'RETURN_SCOOP'
                 return {'kind': 'move', 'station': 'scoop_rack', 'approach': 'AT'}
             if d.action == 'SCOOP':
-                if d.verdict == 'INVALID':
-                    self.cur.invalid += 1
-                    return {'kind': 'weigh', 'station': 'scale', 'tare_g': self.tare_g}
-                self.state, self.cur.attempts = 'SCOOP', self.cur.attempts + 1
-                return {'kind': 'scoop', 'material_id': self.cur.material_id, 'attempt': self.cur.attempts,
-                        'fraction': d.fraction}
-            return self._deviate(d.kind, 'WEIGH')
+                self.state = 'SCOOP'
+                return self._scoop(d.fraction)
+            return self._deviate(d.kind, 'WEIGH_RESIDUAL')
         if k == 'move' and st == 'RETURN_SCOOP':
             return {'kind': 'grip', 'close': False}
         if k == 'grip' and st == 'RETURN_SCOOP':
@@ -120,6 +179,18 @@ class ProcessFSM:
             if self.idx < len(self.spec.items):
                 self.cur, self.state = self._item(), 'PICK_SCOOP'
                 return {'kind': 'move', 'station': 'scoop_rack', 'approach': 'AT'}
+            self.state = 'VERIFY'
+            return self._weigh_cup(self.tare_g)        # 2차 검증 — 용기를 들어 잰다 (그리퍼 비어 있음)
+        if k == 'weigh' and st == 'VERIFY':
+            if not res.get('valid', False):
+                self._verify_invalid += 1
+                if self._verify_invalid >= self.dosing_cfg.max_invalid:
+                    return self._deviate('WEIGH_INVALID', 'VERIFY')
+                return req
+            self.verify_net_g = res.get('net_g', 0.0)
+            expected = sum(r.actual_g for r in self.results)
+            if abs(self.verify_net_g - expected) > self.scale.cfg.min_resolvable_g:
+                return self._deviate('VERIFY_MISMATCH', 'VERIFY')
             self.state = 'FINISH'
             return self._carry('scale', 'output_tray')
         if k == 'carry' and st == 'FINISH':
@@ -127,6 +198,11 @@ class ProcessFSM:
                 return self._deviate('GRIP_FAIL', 'FINISH', retry=req)
             self.state, self.mode = 'DONE', 'DONE'
             return None
+        # DISCARDED — 스쿱을 든 채였다면 먼저 반납하고(move → grip open) 용기째 폐기함으로
+        if k == 'move' and st == 'DISCARDED':
+            return {'kind': 'grip', 'close': False}
+        if k == 'grip' and st == 'DISCARDED':
+            return self._carry('scale', 'reject_bin')
         if k == 'carry' and st == 'DISCARDED':
             if not res.get('grip_inferred', False):
                 return self._deviate('GRIP_FAIL', 'DISCARDED', retry=req)
@@ -153,18 +229,22 @@ class ProcessFSM:
             self.state, self.mode = 'PAUSED', 'PAUSED'
             return {'kind': 'safe', 'then': 'wait_interlock', 'reason': 'REFILL'}
         if action == 'QA':
+            self._qa_step = step
             self.state, self.mode = 'DEVIATION', 'DEVIATION'
             return {'kind': 'wait_qa', 'deviation': self.deviations[-1]}
         self.state, self.mode = 'ERROR', 'ERROR'
         return {'kind': 'safe', 'then': None, 'reason': 'RECOVERY'}
 
     def _after_qa(self, decision: str):
+        holding_scoop = self._qa_step != 'VERIFY'      # VERIFY 는 스쿱을 반납한 뒤라 그리퍼가 비어 있다
         if decision == 'APPROVED':
-            self.results.append(self.cur)
+            if not holding_scoop:                      # 대조 불일치를 QA 가 승인 → 그대로 완료품으로
+                self.state, self.mode = 'FINISH', 'RUNNING'
+                return self._carry('scale', 'output_tray')
+            self.results.append(self.cur)              # 원료 단위 일탈 승인 → 결과에 남기고 스쿱 반납
             self.state, self.mode = 'RETURN_SCOOP', 'RUNNING'
             return {'kind': 'move', 'station': 'scoop_rack', 'approach': 'AT'}
         self.state, self.mode = 'DISCARDED', 'DONE'
-        return self._carry('scale', 'reject_bin')          # 용기째 폐기 — 결과는 on_result 의 DISCARDED 분기
-
-    def _carry(self, src: str, dst: str) -> dict:
-        return {'kind': 'carry', 'src': src, 'dst': dst, 'slot': self.slot, 'target': 'cup'}
+        if holding_scoop:                              # 스쿱부터 반납해야 용기를 잡을 수 있다
+            return {'kind': 'move', 'station': 'scoop_rack', 'approach': 'AT'}
+        return self._carry('scale', 'reject_bin')      # 용기째 폐기 — 결과는 on_result 의 DISCARDED 분기
