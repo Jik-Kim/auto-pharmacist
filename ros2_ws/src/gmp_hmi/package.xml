@@ -8,6 +8,7 @@
   <license>MIT</license>
   <depend>rclpy</depend>
   <depend>gmp_interfaces</depend>
+  <depend>gmp_process</depend>   <!-- core/recipe.py 스키마·검증 재사용 -->
   <depend>std_msgs</depend>
   <exec_depend>python3-flask</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
