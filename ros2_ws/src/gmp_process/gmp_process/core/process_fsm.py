@@ -8,7 +8,9 @@
         req = fsm.on_result(req, result)      # 다음 요청 또는 None(끝)
     fsm.state, fsm.mode, fsm.deviations, fsm.results 를 발행
 
-요청은 dict(kind=..., ...) 하나. kind: move | grip | scoop | pour | weigh | measure | safe | wait_qa | wait_interlock
+요청은 dict(kind=..., ...) 하나. kind: move | grip | carry | scoop | pour | weigh | measure | safe | wait_qa | wait_interlock
+carry 는 용기 반송(src 슬롯 → dst) 복합 요청. process_node 가 MoveToStation(ABOVE→AT) → Grip(close, cup) → ABOVE →
+dst(ABOVE→AT) → Grip(open) → ABOVE 로 조합한다. 결과 grip_inferred=false 면 GRIP_FAIL (D-18).
 상태 이름은 CellState.step 에 그대로 실린다 (docs/architecture.md 전이표).
 
 TODO([C]) 9/17: 전이표 전부. 지금은 골격과 정상 경로의 형태만.
@@ -44,6 +46,7 @@ class ProcessFSM:
     deviations: list = field(default_factory=list)
     _counts: dict = field(default_factory=dict)
     _resume: object = None       # 인터락/QA 후 돌아갈 요청
+    slot: int = 0                # 매거진·트레이 슬롯 (process_node 가 배치마다 올린다)
 
     # ── 진입 ─────────────────────────────────────────────────────────
     def start(self):
@@ -58,13 +61,18 @@ class ProcessFSM:
     def on_result(self, req: dict, res: dict):
         k, st = req['kind'], self.state
         # 종료·대기 전이 — 요청에 then 이 명시된 경우가 우선
-        if 'then' in req and k in ('safe', 'move'):
+        if 'then' in req and k in ('safe', 'move', 'carry'):
             nxt = req['then']
             if nxt is None:
                 return None                      # ERROR / DISCARDED / (FINISH 대체) 종료
             if nxt == 'wait_interlock':
                 return {'kind': 'wait_interlock'}
         if k == 'measure' and st == 'SELF_CHECK':
+            self.state = 'PICK_CONTAINER'
+            return self._carry('magazine', 'scale')
+        if k == 'carry' and st == 'PICK_CONTAINER':
+            if not res.get('grip_inferred', False):
+                return self._deviate('GRIP_FAIL', 'PICK_CONTAINER', retry=req)
             self.state = 'TARE'
             return {'kind': 'weigh', 'station': 'scale', 'tare_g': 0.0}
         if k == 'weigh' and st == 'TARE':
@@ -113,9 +121,15 @@ class ProcessFSM:
                 self.cur, self.state = self._item(), 'PICK_SCOOP'
                 return {'kind': 'move', 'station': 'scoop_rack', 'approach': 'AT'}
             self.state = 'FINISH'
-            return {'kind': 'move', 'station': 'output_tray', 'approach': 'AT'}
-        if k == 'move' and st == 'FINISH':
+            return self._carry('scale', 'output_tray')
+        if k == 'carry' and st == 'FINISH':
+            if not res.get('grip_inferred', False):
+                return self._deviate('GRIP_FAIL', 'FINISH', retry=req)
             self.state, self.mode = 'DONE', 'DONE'
+            return None
+        if k == 'carry' and st == 'DISCARDED':
+            if not res.get('grip_inferred', False):
+                return self._deviate('GRIP_FAIL', 'DISCARDED', retry=req)
             return None
         if k == 'wait_qa':
             return self._after_qa(res.get('decision'))
@@ -150,4 +164,7 @@ class ProcessFSM:
             self.state, self.mode = 'RETURN_SCOOP', 'RUNNING'
             return {'kind': 'move', 'station': 'scoop_rack', 'approach': 'AT'}
         self.state, self.mode = 'DISCARDED', 'DONE'
-        return {'kind': 'move', 'station': 'reject_bin', 'approach': 'AT', 'then': None}
+        return self._carry('scale', 'reject_bin')          # 용기째 폐기 — 결과는 on_result 의 DISCARDED 분기
+
+    def _carry(self, src: str, dst: str) -> dict:
+        return {'kind': 'carry', 'src': src, 'dst': dst, 'slot': self.slot, 'target': 'cup'}

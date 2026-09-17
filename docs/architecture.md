@@ -31,21 +31,22 @@
 
 ## 공정 사이클 ↔ 노드
 
-`process_node` 의 상태기계(`core/process_fsm.py`)가 아래 순서로 스킬을 부른다. 원료마다 4~9 를 반복한다.
+`process_node` 의 상태기계(`core/process_fsm.py`)가 아래 순서로 스킬을 부른다. 원료마다 5~10 을 반복한다. 용기 반송(carry)은 `MoveToStation`+`Grip` 의 조합이라 계약에 새 Action 이 없다.
 
 | 단계 | 상태 | 스킬 호출 | 판정·분기 |
 |---|---|---|---|
 | 1 | `ACCEPTED` | — | `SubmitOrder` 수락, batch_id 발급 |
 | 2 | `SELF_CHECK` | `MeasureForce`(빈 그리퍼) · 툴/TCP 확인 | 실패 → `ERROR` |
-| 3 | `TARE` | `MoveToStation(scale)` → `WeighContainer(tare_g=0)` | 빈 용기 풍량 기록 |
-| 4 | `PICK_SCOOP` | `MoveToStation(scoop_rack)` → `Grip(close, scoop_width)` | `grip_inferred=false` → `Deviation(GRIP_FAIL)` 재시도 ≤ 3 |
-| 5 | `SCOOP` | `Scoop(material_id)` | `contact_detected=false` → `SCOOP_EMPTY` → 재시도, 연속 3회 → `MATERIAL_EMPTY` → 인터락 보충 요청 |
-| 6 | `POUR` | `Pour(scale, fraction)` | |
-| 7 | `WEIGH` | `WeighContainer(tare_g)` → `dosing.decide()` | `OK` → 8 / `UNDER` → 5 (보정, fraction 축소) / `OVER` → `Deviation(OVERFILL, requires_decision)` → `DEVIATION` |
-| 8 | `RETURN_SCOOP` | `MoveToStation(scoop_rack)` → `Grip(open)` | 원료별 전용 스쿱 반납 (교차오염 방지) |
-| 9 | 다음 원료 → 4 | | |
-| 10 | `FINISH` | `MoveToStation(output_tray)` … `SafePose` | `DONE` 발행, 기록 종료 |
-| E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료 / DISCARD → `MoveToStation(reject_bin)` → `DISCARDED` |
+| 3 | `PICK_CONTAINER` | **carry**: `MoveToStation(magazine, slot)` → `Grip(close, cup)` → `MoveToStation(scale)` → `Grip(open)` | 사람이 매거진에 넣어 둔 빈 약통을 로봇이 칭량 위치로 가져온다 (D-18). `grip_inferred=false` → `GRIP_FAIL` 재시도 ≤ 3 |
+| 4 | `TARE` | `WeighContainer(tare_g=0)` | 빈 용기 풍량 기록 |
+| 5 | `PICK_SCOOP` | `MoveToStation(scoop_rack)` → `Grip(close, scoop_width)` | `grip_inferred=false` → `Deviation(GRIP_FAIL)` 재시도 ≤ 3 |
+| 6 | `SCOOP` | `Scoop(material_id)` | `contact_detected=false` → `SCOOP_EMPTY` → 재시도, 연속 3회 → `MATERIAL_EMPTY` → 인터락 보충 요청 |
+| 7 | `POUR` | `Pour(scale, fraction)` | |
+| 8 | `WEIGH` | `WeighContainer(tare_g)` → `dosing.decide()` | `OK` → 9 / `UNDER` → 6 (보정, fraction 축소) / `OVER` → `Deviation(OVERFILL, requires_decision)` → `DEVIATION` |
+| 9 | `RETURN_SCOOP` | `MoveToStation(scoop_rack)` → `Grip(open)` | 원료별 전용 스쿱 반납 (교차오염 방지) |
+| 10 | 다음 원료 → 5 | | |
+| 11 | `FINISH` | **carry**: `scale` → `output_tray(slot)` … `SafePose` | 완료품을 용기째 트레이로. `DONE` 발행, 기록 종료 |
+| E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료 / DISCARD → **carry** `scale` → `reject_bin` → `DISCARDED` |
 | E | `PAUSED` | `SafePose` | `InterlockRequest(ENTER)` → 안전 자세 도달 후 granted / `EXIT` → 이전 상태 재개 |
 
 **도징 결정은 `gmp_dosing/core/dosing.py` 가 한다** (순수 함수: 목표·실측·이력 → 다음 행동). 상태기계는 그 결정을 스킬 호출로 옮길 뿐이다.

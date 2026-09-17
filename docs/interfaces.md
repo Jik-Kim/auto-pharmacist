@@ -113,6 +113,7 @@
 
 **규칙**
 - 배치 종료 시 `records/<batch_id>.json` 으로 내보낸다 — **DB 가 원본, JSON 은 사본**(제출·인쇄용).
+- 사람 접촉(D-21): `skill_node` 가 `CellEvent(code='NUDGE', text='<|F| N>')` 발행 → process `RUNNING→PAUSED(NUDGE)`, 다음 `NUDGE` 로 재개 (`PAUSED→이전 상태`). 일탈이 아니라 이벤트다 — MTBI 분모에 들지 않는다.
 - HMI 조작은 `CellEvent(code='HMI_ORDER'|'HMI_QA_APPROVE'|'HMI_QA_DISCARD'|'HMI_INTERLOCK_ENTER'|'HMI_INTERLOCK_EXIT', text='<actor> <detail>')` 로 발행한다. actor 가 비면 `unknown` — 시연에서는 반드시 ID 를 넣는다.
 - 지표(6절)는 `tools/report.py` 가 이 DB 에서만 읽는다. CSV 를 따로 두지 않는다 — 두 기록이 갈라지면 둘 다 못 믿는다.
 

@@ -22,7 +22,7 @@ def run(fsm, oracle, max_steps=200):
 def test_happy_path_two_items():
     poured = {'n': 0}
     def oracle(req):
-        if req['kind'] == 'grip':
+        if req['kind'] in ('grip', 'carry'):
             return {'grip_inferred': True}
         if req['kind'] == 'scoop':
             poured['n'] += 1
@@ -31,14 +31,16 @@ def test_happy_path_two_items():
             return {'gross_g': 50.0, 'net_g': 100.0 if poured['n'] <= 1 else 50.0, 'valid': True}
         return {}
     fsm = _fsm()
-    run(fsm, oracle)
+    trace = run(fsm, oracle)
     assert fsm.state == 'DONE' and len(fsm.results) == 2 and not fsm.deviations
+    # 용기 반송: 매거진 → 칭량 (첫 carry), 칭량 → 완료품 트레이 (마지막 carry)
+    assert trace[1] == ('PICK_CONTAINER', 'carry') and trace[-1] == ('FINISH', 'carry')
 
 
 def test_under_then_correction():
     weights = iter([50.0, 70.0, 100.0])
     def oracle(req):
-        if req['kind'] == 'grip':
+        if req['kind'] in ('grip', 'carry'):
             return {'grip_inferred': True}
         if req['kind'] == 'scoop':
             return {'contact_detected': True}
@@ -53,7 +55,7 @@ def test_under_then_correction():
 
 def test_overfill_goes_to_qa_and_discard():
     def oracle(req):
-        if req['kind'] == 'grip':
+        if req['kind'] in ('grip', 'carry'):
             return {'grip_inferred': True}
         if req['kind'] == 'scoop':
             return {'contact_detected': True}
@@ -63,13 +65,14 @@ def test_overfill_goes_to_qa_and_discard():
             return {'decision': 'DISCARDED'}
         return {}
     fsm = _fsm()
-    run(fsm, oracle, 40)
+    trace = run(fsm, oracle, 40)
     assert fsm.deviations[0]['kind'] == 'OVERFILL' and fsm.state == 'DISCARDED'
+    assert trace[-1] == ('DISCARDED', 'carry')          # 용기째 폐기함으로
 
 
 def test_grip_fail_retries_then_forced():
     def oracle(req):
-        if req['kind'] == 'grip':
+        if req['kind'] in ('grip', 'carry'):
             return {'grip_inferred': False}
         if req['kind'] == 'weigh':
             return {'gross_g': 50.0, 'valid': True}
@@ -77,3 +80,27 @@ def test_grip_fail_retries_then_forced():
     fsm = _fsm()
     run(fsm, oracle, 40)
     assert [d['kind'] for d in fsm.deviations] == ['GRIP_FAIL'] * 4 and fsm.state == 'ERROR'
+
+
+def test_container_grip_fail_retries_at_pick_container():
+    n = {'carry': 0, 'scoop': 0}
+    def oracle(req):
+        if req['kind'] == 'carry':
+            n['carry'] += 1
+            return {'grip_inferred': n['carry'] >= 2}     # 첫 반송만 실패 → 재시도 후 성공
+        if req['kind'] == 'grip':
+            return {'grip_inferred': True}
+        if req['kind'] == 'scoop':
+            n['scoop'] += 1
+            return {'contact_detected': True}
+        if req['kind'] == 'weigh':
+            if req['tare_g'] == 0.0:
+                return {'gross_g': 30.0, 'valid': True}                       # TARE
+            return {'net_g': 100.0 if n['scoop'] <= 1 else 50.0, 'valid': True}
+        return {}
+    fsm = _fsm()
+    trace = run(fsm, oracle)
+    assert fsm.deviations == [{'kind': 'GRIP_FAIL', 'step': 'PICK_CONTAINER', 'count': 1, 'action': 'RETRY',
+                               'material_id': None}]
+    assert trace[:3] == [('SELF_CHECK', 'measure'), ('PICK_CONTAINER', 'carry'), ('PICK_CONTAINER', 'carry')]
+    assert fsm.tare_g == 30.0 and fsm.state == 'DONE' and len(fsm.results) == 2

@@ -99,7 +99,12 @@ class ProcessNode(Node):
             self._pub_state()
 
     def _execute(self, req: dict) -> dict:
-        """요청 kind 별 스킬 호출. TODO([C]) 9/18 — 지금은 골격."""
+        """요청 kind 별 스킬 호출. TODO([C]) 9/18 — 지금은 골격.
+
+        carry (D-18): MoveToStation(src, ABOVE) → (src, AT, slot) → Grip(close, gripper.cup_width_mm) → (src, ABOVE)
+                      → MoveToStation(dst, ABOVE) → (dst, AT, slot) → Grip(open) → (dst, ABOVE).
+                      결과 {'grip_inferred': Grip 결과}. 슬롯 오프셋은 stations.yaml slot_pitch_mm × slot.
+        """
         k = req['kind']
         if k == 'wait_qa':
             self._qa.clear(); self._qa.wait()

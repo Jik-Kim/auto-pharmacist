@@ -9,7 +9,7 @@
 | T0 | — | 로봇 전원 · 컴퓨트박스 · 랜선 · 비상정지 해제 · **툴 `tool_weight` / TCP `GripperDA_v1` 선택 확인** | 티치펜던트 Auto 모드 |
 | T1 | 브링업 | `ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100` | `[skill_node] SELF_CHECK OK` 로그 (툴·TCP·충돌 감도 일치) |
 | T2 | HMI | (T1 에 포함) HMI 창 | 상태 `IDLE`, 그리퍼 폭 표시 |
-| T3 | 사람 | 원료통 3개·스쿱 3개·빈 용기 매거진·트레이가 **테이프 표시 위치**에 있는지 | — |
+| T3 | 사람 | 원료통 3개·스쿱 3개·**빈 약통 3개를 매거진 슬롯 0~2 에 낱개로**·빈 트레이가 **테이프 표시 위치**에 있는지. 이후 용기는 사람이 만지지 않는다 (D-18) | — |
 | T4 | HMI | 레시피 `demo_batch` 선택 → 주문 제출 | 상태 `RUNNING` |
 | T5 | — | 자율 운전. **손대지 않는다** | 원료 3종 `OK`, `DONE` |
 | T6 | 시연 | 일탈 시나리오: (a) 스쿱을 빼둔 채 시작 → `GRIP_FAIL` 자동 재시도 (b) 원료통 비움 → `MATERIAL_EMPTY` → 인터락 보충 → 재개 (c) 과다 투입 유도 → `OVERFILL` → HMI QA 판정 | 각각 `deviation` 이 뜨고 기록에 남는다 |

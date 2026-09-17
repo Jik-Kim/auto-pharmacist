@@ -17,11 +17,11 @@
 
 | 담당 | 패키지 | 영역 |
 |---|---|---|
-| **조장** [팀 확정] | `docs/`, `gmp_interfaces`, `gmp_bringup` | 일정·통합·막힐 때의 판단. **A~D 중 한 영역을 겸한다.** PM 은 없다 — 리뷰는 교차검수 (`AGENTS.md`) |
-| **A** [스킬] | `gmp_skills` | DSR_ROBOT2 어댑터, RG2 어댑터, 스테이션 이동·파지·스쿱·붓기·계량 Action/Service — **로봇을 만지는 유일한 노드** |
-| **B** [도징] | `gmp_dosing` | 힘→그램 환산·영점·보정(`core/scale.py`), 이중 폐루프 도징 정책(`core/dosing.py`) — ROS 비의존 라이브러리 |
-| **C** [공정] | `gmp_process` | 레시피 실행 상태기계, 일탈 분기, 인터락, `RunBatch` Action 서버 |
-| **D** [HMI·기록] | `gmp_hmi` | 웹 HMI(주문·상태·원격 QA 승인·인터락·이력), 배치 기록 DB(SQLite·감사 추적) |
+| **조장 고희태** (A 겸임) | `docs/`, `gmp_interfaces`, `gmp_bringup` | 일정·통합·막힐 때의 판단. **A~D 중 한 영역을 겸한다.** PM 은 없다 — 리뷰는 교차검수 (`AGENTS.md`) |
+| **A 고희태** [스킬] | `gmp_skills` | DSR_ROBOT2 어댑터, RG2 어댑터, 스테이션 이동·파지·스쿱·붓기·계량 Action/Service — **로봇을 만지는 유일한 노드** |
+| **B 김민준** [도징] | `gmp_dosing` | 힘→그램 환산·영점·보정(`core/scale.py`), 이중 폐루프 도징 정책(`core/dosing.py`) — ROS 비의존 라이브러리 |
+| **C 김병직** [공정] | `gmp_process` | 레시피 실행 상태기계, 일탈 분기, 인터락, `RunBatch` Action 서버 |
+| **D 서동권** [HMI·기록] | `gmp_hmi` | 웹 HMI(주문·상태·원격 QA 승인·인터락·이력), 배치 기록 DB(SQLite·감사 추적) |
 
-4명 전원이 A~D 한 영역씩. 부담당 짝 A↔C, B↔D. 실명은 팀이 정하는 대로 `docs/responsibilities.md` 에 적는다. 세부 결정과 미결 사항은 `docs/SOT.md`,
+4명 전원이 A~D 한 영역씩 (9/16 확정). 부담당 짝 A↔C (고희태↔김병직), B↔D (김민준↔서동권). **주제는 9/16 강사 승인으로 최종 확정** (`PROJECT_RULES.md` R26). 세부 결정과 미결 사항은 `docs/SOT.md`,
 제약·근거의 원장은 `PROJECT_RULES.md`, 요구사항(BRD)·설계(SDD)는 `docs/spec/`.

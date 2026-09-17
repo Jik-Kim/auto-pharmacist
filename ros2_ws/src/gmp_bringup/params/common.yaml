@@ -14,7 +14,7 @@
       backend: modbus               # modbus | dio  (virtual 은 런치가 자동)
       open_width_mm: 100.0
       scoop_width_mm: 18.0          # [팀 확정 필요] 스쿱 손잡이 실측 (I-006)
-      cup_width_mm: 60.0            # [팀 확정 필요] 칭량 용기 외경
+      cup_width_mm: 60.0            # [구매 후 실측] 약통 파지부 외경 (D-18: 입구 근처를 잡는다, 파지점 위 돌출 ≤ 40 mm)
       force_n: 20.0                 # 3~40. modbus 는 2.5 N 스텝 (D-06)
       grip_margin_mm: 2.0           # 폭 추론 마진 (계약 2절)
       slip_mm: 1.5
@@ -38,5 +38,8 @@
       compliance_stx: [3000.0, 3000.0, 500.0, 200.0, 200.0, 200.0]   # Z 만 부드럽게
       scoop_force_n: -8.0           # set_desired_force Z (베이스 기준 아래 방향은 음수 — G4 에서 부호 확인)
       dip_max_mm: 40.0              # 담금 깊이 상한 (check_position_condition)
+      nudge_force_n: 8.0            # 사람 접촉(nudge) 판정 — |F| 가 이 값을 nudge_window_s 이상 넘으면 (D-21)
+      nudge_window_s: 0.2
+      nudge_cooldown_s: 1.5         # 같은 접촉을 두 번 세지 않게. 두 번째 nudge = 재개
     interlock:
       safe_station: safe
