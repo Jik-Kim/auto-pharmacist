@@ -116,7 +116,7 @@
     </mxGraphModel>
   </diagram>
   <diagram id="skill-detail" name="2 정상 기능 플로우">
-    <mxGraphModel dx="1736" dy="1131" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="3700" math="0" shadow="0">
+    <mxGraphModel dx="3936" dy="1131" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="3700" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -281,43 +281,52 @@
         <mxCell id="p2-clear" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=middle;" value="스쿱을 세우고&lt;br&gt;병에서 안전하게 이탈" vertex="1">
           <mxGeometry height="90" width="250" x="790" y="2260" as="geometry" />
         </mxCell>
-        <mxCell id="p2-weigh" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=middle;" value="현재 병 무게 측정" vertex="1">
-          <mxGeometry height="80" width="250" x="1160" y="2265" as="geometry" />
+        <mxCell id="p2-return-scoop" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=middle;" value="스쿱 거치대로 이동해&lt;br&gt;사용한 스쿱 반환" vertex="1">
+          <mxGeometry height="90" width="250" x="1090" y="2260" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-pick-bottle-weigh" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=middle;" value="조제 위치의 병으로 이동해&lt;br&gt;병 집기" vertex="1">
+          <mxGeometry height="90" width="250" x="1390" y="2260" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-weigh" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=middle;" value="병을 칭량 자세로 이동해&lt;br&gt;현재 무게 측정" vertex="1">
+          <mxGeometry height="90" width="250" x="1690" y="2260" as="geometry" />
         </mxCell>
         <mxCell id="p2-reading-stable" parent="1" style="shape=rhombus;perimeter=rhombusPerimeter;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;fontStyle=1;align=center;verticalAlign=middle;" value="측정값이 안정적이고&lt;br&gt;유효한가?" vertex="1">
-          <mxGeometry height="110" width="250" x="1490" y="2250" as="geometry" />
+          <mxGeometry height="110" width="250" x="1690" y="2400" as="geometry" />
         </mxCell>
         <mxCell id="p2-remeasure" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=middle;" value="병의 흔들림이 멈출 때까지 대기&lt;br&gt;같은 자세에서 다시 측정" vertex="1">
-          <mxGeometry height="90" width="260" x="1820" y="2260" as="geometry" />
+          <mxGeometry height="100" width="170" x="1980" y="2405" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-place-after-weigh" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=middle;" value="병을 조제 위치에&lt;br&gt;다시 놓기" vertex="1">
+          <mxGeometry height="90" width="250" x="1390" y="2410" as="geometry" />
         </mxCell>
         <mxCell id="p2-calc" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=middle;" value="현재 원료의 실제 투입량 계산&lt;br&gt;현재 병 무게 − 원료 투입 전 기준 무게" vertex="1">
-          <mxGeometry height="100" width="280" x="1475" y="2410" as="geometry" />
+          <mxGeometry height="100" width="280" x="1060" y="2405" as="geometry" />
         </mxCell>
         <mxCell id="p2-range" parent="1" style="shape=rhombus;perimeter=rhombusPerimeter;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;fontStyle=1;align=center;verticalAlign=middle;" value="실제 투입량은&lt;br&gt;허용 범위와 비교해 어떤가?" vertex="1">
-          <mxGeometry height="125" width="280" x="1475" y="2560" as="geometry" />
+          <mxGeometry height="125" width="280" x="700" y="2392.5" as="geometry" />
         </mxCell>
         <mxCell id="p2-correction" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=middle;" value="부족한 양 계산&lt;br&gt;다음 투입량을 더 작게 조정&lt;br&gt;보정 횟수 1 증가" vertex="1">
-          <mxGeometry height="105" width="270" x="1050" y="2570" as="geometry" />
+          <mxGeometry height="105" width="270" x="380" y="2580" as="geometry" />
         </mxCell>
         <mxCell id="p2-attempts" parent="1" style="shape=rhombus;perimeter=rhombusPerimeter;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;fontStyle=1;align=center;verticalAlign=middle;" value="허용된 보정 횟수&lt;br&gt;안인가?" vertex="1">
-          <mxGeometry height="110" width="240" x="700" y="2567.5" as="geometry" />
+          <mxGeometry height="110" width="240" x="90" y="2577.5" as="geometry" />
         </mxCell>
         <mxCell id="p2-qa-timeout" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=middle;" value="자동 보정 중지&lt;br&gt;QA 판단 요청" vertex="1">
-          <mxGeometry height="90" width="210" x="390" y="2577.5" as="geometry" />
+          <mxGeometry height="90" width="210" x="105" y="2730" as="geometry" />
         </mxCell>
         <mxCell id="p2-over" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=middle;" value="초과 투입은 되돌릴 수 없음&lt;br&gt;추가 투입 중지&lt;br&gt;QA 승인 또는 폐기 분기" vertex="1">
-          <mxGeometry height="115" width="260" x="1835" y="2565" as="geometry" />
+          <mxGeometry height="115" width="260" x="1060" y="2575" as="geometry" />
         </mxCell>
-        <mxCell id="p2-item-done" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F3E8;strokeColor=#2E7D32;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=middle;" value="현재 원료 투입 완료 기록&lt;br&gt;스쿱을 전용 위치에 반환" vertex="1">
-          <mxGeometry height="100" width="280" x="1475" y="2735" as="geometry" />
+        <mxCell id="p2-item-done" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3F3E8;strokeColor=#2E7D32;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=middle;" value="현재 원료 투입 완료 기록" vertex="1">
+          <mxGeometry height="90" width="280" x="700" y="2585" as="geometry" />
         </mxCell>
         <mxCell id="p2-next-item" parent="1" style="shape=rhombus;perimeter=rhombusPerimeter;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;fontStyle=1;align=center;verticalAlign=middle;" value="투입할 원료가&lt;br&gt;더 남았는가?" vertex="1">
-          <mxGeometry height="115" width="260" x="1485" y="2860" as="geometry" />
+          <mxGeometry height="115" width="260" x="710" y="2740" as="geometry" />
         </mxCell>
         <mxCell id="p2-weigh-note" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1F7A8C;fontColor=#1F7A8C;fontSize=11;align=left;verticalAlign=top;spacingTop=10;spacingLeft=10;spacingRight=10;" value="계량 기준&lt;br&gt;&lt;br&gt;• 공병 무게는 배치 시작 시 한 번 저장&lt;br&gt;• 각 원료를 넣기 직전 병 무게를 다시 기준으로 저장&lt;br&gt;• 현재 원료 투입량 = 투입 후 무게 − 투입 전 무게&lt;br&gt;• 목표량의 허용 오차 안이면 해당 원료 완료" vertex="1">
           <mxGeometry height="150" width="330" x="1780" y="1150" as="geometry" />
         </mxCell>
-        <mxCell id="p2-correction-note" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D9782A;fontColor=#D9782A;fontSize=11;align=left;verticalAlign=top;spacingTop=10;spacingLeft=10;spacingRight=10;" value="보정 투입 원칙&lt;br&gt;&lt;br&gt;• 처음에는 계획한 기본량을 투입&lt;br&gt;• 부족하면 남은 양에 맞춰 다음 투입량을 줄임&lt;br&gt;• 매 투입 후 반드시 다시 계량&lt;br&gt;• 허용 횟수를 넘기면 자동 반복을 멈추고 사람 판단을 요청&lt;br&gt;• 초과 투입은 자동 복구하지 않음" vertex="1">
+        <mxCell id="p2-correction-note" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D9782A;fontColor=#D9782A;fontSize=11;align=left;verticalAlign=top;spacingTop=10;spacingLeft=10;spacingRight=10;" value="보정 투입 원칙&lt;br&gt;&lt;br&gt;• 처음에는 계획한 기본량을 투입&lt;br&gt;• 투입 후 스쿱을 먼저 반환하고 병을 집어 계량&lt;br&gt;• 부족하면 전용 스쿱을 다시 집고 다음 투입량을 줄임&lt;br&gt;• 매 투입 후 반드시 같은 순서로 다시 계량&lt;br&gt;• 허용 횟수를 넘기면 자동 반복을 멈추고 사람 판단을 요청&lt;br&gt;• 초과 투입은 자동 복구하지 않음" vertex="1">
           <mxGeometry height="255" width="330" x="1780" y="1840" as="geometry" />
         </mxCell>
         <mxCell id="p2-e16" edge="1" parent="1" source="p2-place-bottle" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p2-item" value="공병 준비 완료">
@@ -395,27 +404,33 @@
         <mxCell id="p2-e35" edge="1" parent="1" source="p2-pour" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;" target="p2-clear" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="p2-e36" edge="1" parent="1" source="p2-clear" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;" target="p2-weigh" value="">
+        <mxCell id="p2-e36" edge="1" parent="1" source="p2-clear" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;" target="p2-return-scoop" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-e36a" edge="1" parent="1" source="p2-return-scoop" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;" target="p2-pick-bottle-weigh" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-e36b" edge="1" parent="1" source="p2-pick-bottle-weigh" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;" target="p2-weigh" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="p2-e37" edge="1" parent="1" source="p2-weigh" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;" target="p2-reading-stable" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="p2-e38" edge="1" parent="1" source="p2-reading-stable" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2E7D32;strokeWidth=1.5;fontColor=#2E7D32;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;entryX=0.5;entryY=0;exitDx=0;exitDy=0;" target="p2-calc" value="예">
-          <mxGeometry relative="1" as="geometry">
-            <mxPoint x="1605" y="2360" as="sourcePoint" />
-          </mxGeometry>
+        <mxCell id="p2-e38" edge="1" parent="1" source="p2-reading-stable" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2E7D32;strokeWidth=1.5;fontColor=#2E7D32;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" target="p2-place-after-weigh" value="예">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="p2-e39" edge="1" parent="1" source="p2-reading-stable" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;" target="p2-remeasure" value="아니오">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="p2-e40" edge="1" parent="1" source="p2-remeasure" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;entryX=0.5;entryY=0;" target="p2-weigh" value="재측정">
+        <mxCell id="p2-e40" edge="1" parent="1" source="p2-remeasure" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;entryX=1;entryY=0.5;" target="p2-weigh" value="재측정">
           <mxGeometry relative="1" y="-15" as="geometry">
             <Array as="points">
-              <mxPoint x="1950" y="2210" />
-              <mxPoint x="1285" y="2210" />
+              <mxPoint x="2065" y="2305" />
             </Array>
           </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-e40a" edge="1" parent="1" source="p2-place-after-weigh" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;" target="p2-calc" value="">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="p2-e41" edge="1" parent="1" source="p2-calc" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;" target="p2-range" value="">
           <mxGeometry relative="1" as="geometry" />
@@ -426,11 +441,14 @@
         <mxCell id="p2-e43" edge="1" parent="1" source="p2-correction" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;" target="p2-attempts" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="p2-e44" edge="1" parent="1" source="p2-attempts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" target="p2-move-material" value="예 · 보정 투입">
-          <mxGeometry relative="1" y="-20" as="geometry">
+        <mxCell id="p2-e44" edge="1" parent="1" source="p2-attempts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;exitDx=0;exitDy=0;" target="p2-move-scoop" value="예 · 전용 스쿱 다시 선택">
+          <mxGeometry relative="1" x="-0.1545" as="geometry">
+            <mxPoint as="offset" />
             <Array as="points">
-              <mxPoint x="640" y="2625" />
-              <mxPoint x="640" y="1340" />
+              <mxPoint x="210" y="2420.06" />
+              <mxPoint x="610" y="2420.06" />
+              <mxPoint x="610" y="1170.06" />
+              <mxPoint x="960" y="1170.06" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -440,8 +458,13 @@
         <mxCell id="p2-e46" edge="1" parent="1" source="p2-range" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2E7D32;strokeWidth=1.5;fontColor=#2E7D32;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p2-item-done" value="허용 범위">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="p2-e47" edge="1" parent="1" source="p2-range" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;" target="p2-over" value="상한 초과">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="p2-e47" edge="1" parent="1" source="p2-range" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="p2-over" value="상한 초과">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="840" y="2530.06" />
+              <mxPoint x="1190" y="2530.06" />
+            </Array>
+          </mxGeometry>
         </mxCell>
         <mxCell id="p2-e48" edge="1" parent="1" source="p2-item-done" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2E7D32;strokeWidth=1.5;" target="p2-next-item" value="">
           <mxGeometry relative="1" as="geometry" />
@@ -449,8 +472,10 @@
         <mxCell id="p2-e49" edge="1" parent="1" source="p2-next-item" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" target="p2-item" value="예 · 다음 원료">
           <mxGeometry relative="1" y="-25" as="geometry">
             <Array as="points">
-              <mxPoint x="60" y="2918" />
-              <mxPoint x="60" y="1060" />
+              <mxPoint x="680" y="2797.47" />
+              <mxPoint x="680" y="2860.06" />
+              <mxPoint x="70" y="2860.06" />
+              <mxPoint x="70" y="1060.06" />
             </Array>
           </mxGeometry>
         </mxCell>
@@ -490,10 +515,9 @@
         <mxCell id="p2-e50" edge="1" parent="1" source="p2-next-item" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;entryX=0.5;entryY=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="p2-final-weigh" value="아니오 · 모든 원료 완료">
           <mxGeometry relative="1" y="25" as="geometry">
             <Array as="points">
-              <mxPoint x="1615.06" y="3005" />
-              <mxPoint x="215.06" y="3005" />
+              <mxPoint x="840" y="3005" />
+              <mxPoint x="215" y="3005" />
             </Array>
-            <mxPoint x="1630" y="2980" as="sourcePoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="p2-e51" edge="1" parent="1" source="p2-final-weigh" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;" target="p2-final-ok" value="">
@@ -536,6 +560,18 @@
         </mxCell>
         <mxCell id="j0W3aMw6K7Ecsa70O2od-1" parent="1" style="text;whiteSpace=wrap;html=1;" value="&amp;nbsp;" vertex="1">
           <mxGeometry height="40" width="40" x="190" y="3000" as="geometry" />
+        </mxCell>
+        <mxCell id="0mky30p_WdRF2TCV2-FE-1" parent="1" style="text;whiteSpace=wrap;html=1;" value="&amp;nbsp;" vertex="1">
+          <mxGeometry height="40" width="40" x="240" y="1380" as="geometry" />
+        </mxCell>
+        <mxCell id="0mky30p_WdRF2TCV2-FE-2" parent="1" style="text;whiteSpace=wrap;html=1;" value="&amp;nbsp;" vertex="1">
+          <mxGeometry height="40" width="40" x="460" y="1600" as="geometry" />
+        </mxCell>
+        <mxCell id="0mky30p_WdRF2TCV2-FE-3" parent="1" style="text;whiteSpace=wrap;html=1;" value="&amp;nbsp;" vertex="1">
+          <mxGeometry height="40" width="40" x="20" y="1750" as="geometry" />
+        </mxCell>
+        <mxCell id="0mky30p_WdRF2TCV2-FE-4" parent="1" style="text;whiteSpace=wrap;html=1;" value="&amp;nbsp;" vertex="1">
+          <mxGeometry height="40" width="40" x="-160" y="1800" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
