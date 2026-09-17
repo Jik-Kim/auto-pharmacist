@@ -20,7 +20,7 @@ BEGIN, END = '<!-- STATS:BEGIN -->', '<!-- STATS:END -->'
 YEAR = 2026
 
 ITEM = re.compile(r'^- \[([ xX])\]\s*(.*)$')
-DUE = re.compile(r'마감\s*(\d{1,2})/(\d{1,2})\s*$')
+DUE = re.compile(r'마감\s*(\d{1,2})/(\d{1,2})')   # 줄 끝 앵커 없음 — 뒤에 '(A 와)' 가 붙어도 읽는다
 SECTION = re.compile(r'^## (.+)$')
 
 
@@ -37,15 +37,15 @@ def parse(lines):
         if m and cur is not None:
             done = m.group(1).lower() == 'x'
             text = m.group(2).strip()
-            d = DUE.search(text)
-            due = datetime.date(YEAR, int(d.group(1)), int(d.group(2))) if d else None
+            ds = DUE.findall(text)          # 여럿이면 마지막 것 (마감은 줄 뒤쪽에 온다)
+            due = datetime.date(YEAR, int(ds[-1][0]), int(ds[-1][1])) if ds else None
             cur[1].append((done, text, due))
     return [s for s in out if s[1]]
 
 
 def strip_md(t):
     """마감 표기와 강조·코드 표시를 걷어낸 본문. 표 안에서 읽히게 한다."""
-    t = re.sub(r'\s*·?\s*마감\s*\d+/\d+\s*$', '', t)
+    t = re.sub(r'\s*·?\s*마감\s*\d+/\d+\s*', ' ', t)
     t = t.replace('**', '').replace('`', '')
     t = re.sub(r'\s+', ' ', t).strip()
     return t if len(t) <= 72 else t[:71] + '…'
