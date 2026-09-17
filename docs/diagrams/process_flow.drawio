@@ -1,1 +1,931 @@
-<mxfile host="app.diagrams.net" type="device"><diagram id="1 노드 입출력" name="1 노드 입출력"><mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1400"><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="c2" value="gmp_process — process_node 입출력 (계약 v1.1 · ns /cell)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;fontColor=#161B2A;fontSize=18;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1860" height="40" as="geometry"/></mxCell><mxCell id="c3" value="hmi_web_node (D)&lt;br&gt;&lt;br&gt;웹 HMI · Flask :5000&lt;br&gt;&lt;br&gt;주문 제출&lt;br&gt;QA 승인 / 폐기&lt;br&gt;인터락 ENTER / EXIT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="140" width="200" height="420" as="geometry"/></mxCell><mxCell id="c4" value="process_node (C)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3451D1;fontColor=#161B2A;fontSize=14;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="560" y="100" width="700" height="560" as="geometry"/></mxCell><mxCell id="c5" value="rclpy 콜백 스레드&lt;br&gt;&lt;br&gt;_srv_submit → FSM 생성, run_loop 시작&lt;br&gt;_srv_qa → _qa_decision 저장, _qa.set()&lt;br&gt;_srv_interlock → ENTER: cancel→safe_pose→granted&lt;br&gt;                        EXIT: _interlock_exit.set()&lt;br&gt;event(NUDGE) 구독 → 게이트 토글&lt;br&gt;&lt;br&gt;콜백은 값만 저장한다. 로봇을 부르지 않는다" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="590" y="150" width="300" height="200" as="geometry"/></mxCell><mxCell id="c6" value="run_loop 스레드 (배치마다 1개)&lt;br&gt;&lt;br&gt;req = fsm.start()&lt;br&gt;while req:&lt;br&gt;    res = _execute(req)   ← 스킬 한 번에 하나&lt;br&gt;    req = fsm.on_result(req, res)&lt;br&gt;    발행(state·weight·result·deviation·event)&lt;br&gt;&lt;br&gt;wait_qa / wait_interlock 는 Event.wait()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="930" y="150" width="300" height="200" as="geometry"/></mxCell><mxCell id="c7" value="core/process_fsm.py — ProcessFSM (ROS 비의존, pytest)&lt;br&gt;&lt;br&gt;state · mode · idx(원료) · tare_g · cur(ItemRun: attempts·invalid·actual·verdict) · results · deviations · _counts · _resume · slot&lt;br&gt;&lt;br&gt;start() → 첫 요청     on_result(req, res) → 다음 요청 dict 또는 None(끝)&lt;br&gt;_deviate(kind, step) → deviation.py policy(kind, count) → RETRY / REFILL / QA / FORCED&lt;br&gt;_carry(src, dst) → {&quot;kind&quot;:&quot;carry&quot;, src, dst, slot}&lt;br&gt;&lt;br&gt;의존: gmp_dosing.core.dosing.decide(target, net, tol, attempts, valid, invalid, cfg) → DONE / SCOOP(fraction) / DEVIATION(kind)&lt;br&gt;        core/recipe.py parse() → RecipeSpec(product, items[Item(material_id, target_g, tol_pct, grade, scoop_id)])" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="590" y="390" width="640" height="240" as="geometry"/></mxCell><mxCell id="c8" value="Event / 플래그" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;dashed=1;" edge="1" parent="1" source="c5" target="c6"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c9" value="dict 요청 ↔ dict 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c6" target="c7"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c10" value="skill_node (A)&lt;br&gt;&lt;br&gt;로봇을 만지는 유일한 노드&lt;br&gt;DSR 워커 스레드 1개 — 직렬&lt;br&gt;&lt;br&gt;Action 서버 4&lt;br&gt;  move_to_station · scoop · pour · weigh_container&lt;br&gt;Service 서버 3&lt;br&gt;  grip · measure_force · safe_pose&lt;br&gt;&lt;br&gt;발행: gripper_state · event(NUDGE)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1580" y="100" width="320" height="560" as="geometry"/></mxCell><mxCell id="c11" value="record_node (D) — SQLite 단일 기록자        hmi_web_node (D) — 화면 표시&lt;br&gt;&lt;br&gt;구독: state · weight · dispense_result · deviation · event" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="560" y="900" width="700" height="110" as="geometry"/></mxCell><mxCell id="c12" value="Service submit_order&lt;br&gt;SubmitOrder: Recipe → accepted, batch_id&lt;br&gt;실행 중이면 accepted=false" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.2;exitDx=0;exitDy=0;entryX=0;entryY=0.12;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3" target="c4"><mxGeometry x="0" y="-24" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c13" value="Service qa_decision&lt;br&gt;batch_id, deviation_id, decision, operator_id → accepted&lt;br&gt;DEVIATION 아니면 거부" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.45;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3" target="c4"><mxGeometry x="0" y="-24" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c14" value="Service interlock&lt;br&gt;ENTER=1 / EXIT=2, reason → granted&lt;br&gt;ENTER 는 safe_pose 성공 후 granted" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.48;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3" target="c4"><mxGeometry x="0" y="-24" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c15" value="Action run_batch (RunBatch)&lt;br&gt;CLI·시험용, 우선순위 낮음" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;dashed=1;exitX=1;exitY=0.92;exitDx=0;exitDy=0;entryX=0;entryY=0.66;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3" target="c4"><mxGeometry x="0" y="-18" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c16" value="Action move_to_station&lt;br&gt;station_id, approach ABOVE/AT, vel_scale&lt;br&gt;→ success, reached" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.1;exitDx=0;exitDy=0;entryX=0;entryY=0.1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10"><mxGeometry x="0" y="-24" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c17" value="Action scoop&lt;br&gt;material_id, attempt&lt;br&gt;→ success, contact_detected" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.22;exitDx=0;exitDy=0;entryX=0;entryY=0.22;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10"><mxGeometry x="0" y="-24" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c18" value="Action pour&lt;br&gt;target_station, fraction → success" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.34;exitDx=0;exitDy=0;entryX=0;entryY=0.34;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10"><mxGeometry x="0" y="-18" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c19" value="Action weigh_container&lt;br&gt;container_station, tare_g&lt;br&gt;→ reading: gross / net / std / valid" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.46;exitDx=0;exitDy=0;entryX=0;entryY=0.46;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10"><mxGeometry x="0" y="-24" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c20" value="Service grip&lt;br&gt;close, width_mm, force_n, timeout_s&lt;br&gt;→ success, final_width_mm, grip_inferred" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.58;exitDx=0;exitDy=0;entryX=0;entryY=0.58;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10"><mxGeometry x="0" y="-24" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c21" value="Service measure_force&lt;br&gt;samples, settle_s&lt;br&gt;→ fz_mean_n, fz_std_n, valid" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10"><mxGeometry x="0" y="-24" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c22" value="Service safe_pose&lt;br&gt;reason → success" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.82;exitDx=0;exitDy=0;entryX=0;entryY=0.82;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10"><mxGeometry x="0" y="-18" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c23" value="Topic event  code=NUDGE&lt;br&gt;사람 접촉 (D-21) → 루프 게이트" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;dashed=1;exitX=0;exitY=0.94;exitDx=0;exitDy=0;entryX=1;entryY=0.94;entryDx=0;entryDy=0;" edge="1" parent="1" source="c10" target="c4"><mxGeometry x="0" y="18" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c24" value="Topic state&lt;br&gt;CellState · 0.5 s + 전이&lt;br&gt;TRANSIENT_LOCAL" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.1;exitY=1;exitDx=0;exitDy=0;entryX=0.1;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c11"><mxGeometry x="-0.55" y="0" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c25" value="Topic weight&lt;br&gt;WeightReading · weigh 마다" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.3;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c11"><mxGeometry x="0.05" y="0" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c26" value="Topic dispense_result&lt;br&gt;원료 종료 시" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c11"><mxGeometry x="0.6" y="0" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c27" value="Topic deviation&lt;br&gt;TRANSIENT_LOCAL · QA 후 재발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c11"><mxGeometry x="-0.55" y="0" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c28" value="Topic event&lt;br&gt;BATCH_START/END · STEP&lt;br&gt;INTERLOCK_* · INTERVENTION_FORCED" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.9;exitY=1;exitDx=0;exitDy=0;entryX=0.9;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c11"><mxGeometry x="0.05" y="0" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c29" value="읽는 법&lt;br&gt;&lt;br&gt;파란 실선 = HMI 가 부르는 Service (process 가 서버)&lt;br&gt;주황 = process 가 부르는 스킬 (skill_node 가 서버)&lt;br&gt;청록 = process 가 발행하는 Topic&lt;br&gt;빨강 점선 = skill_node → process 구독&lt;br&gt;&lt;br&gt;원칙: 스킬은 한 번에 하나 · 콜백은 값만 저장 · FSM 은 로봇을 모른다" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="40" y="600" width="440" height="230" as="geometry"/></mxCell><mxCell id="c30" value="미합의 1건 (A 와)&lt;br&gt;용기 반송 슬롯 번호를 MoveToStation 에 어떻게 넘길지&lt;br&gt;— station_id 접미사 &quot;magazine#1&quot;  vs  계약 v1.2 uint8 slot" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1580" y="900" width="320" height="110" as="geometry"/></mxCell></root></mxGraphModel></diagram><diagram id="2 상태 전이도" name="2 상태 전이도"><mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1400"><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="c2" value="ProcessFSM 상태 전이도 — core/process_fsm.py (상태 이름 = CellState.step)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;fontColor=#161B2A;fontSize=18;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1860" height="40" as="geometry"/></mxCell><mxCell id="c3" value="IDLE&lt;br&gt;submit_order 대기" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="120" width="190" height="64" as="geometry"/></mxCell><mxCell id="c4" value="SELF_CHECK&lt;br&gt;req: measure" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="320" y="120" width="190" height="64" as="geometry"/></mxCell><mxCell id="c5" value="PICK_CONTAINER&lt;br&gt;req: carry magazine→scale" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="600" y="120" width="190" height="64" as="geometry"/></mxCell><mxCell id="c6" value="TARE&lt;br&gt;req: weigh(tare 0)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="880" y="120" width="190" height="64" as="geometry"/></mxCell><mxCell id="c7" value="PICK_SCOOP&lt;br&gt;req: move(scoop_rack) → grip" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="320" y="400" width="190" height="64" as="geometry"/></mxCell><mxCell id="c8" value="SCOOP&lt;br&gt;req: scoop(material, attempt)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="600" y="400" width="190" height="64" as="geometry"/></mxCell><mxCell id="c9" value="POUR&lt;br&gt;req: pour(scale, fraction)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="880" y="400" width="190" height="64" as="geometry"/></mxCell><mxCell id="c10" value="WEIGH&lt;br&gt;req: weigh(scale, tare) → decide()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1160" y="400" width="190" height="64" as="geometry"/></mxCell><mxCell id="c11" value="RETURN_SCOOP&lt;br&gt;req: move(scoop_rack) → grip(open)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="600" y="680" width="190" height="64" as="geometry"/></mxCell><mxCell id="c12" value="FINISH&lt;br&gt;req: carry scale→output_tray" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1160" y="680" width="190" height="64" as="geometry"/></mxCell><mxCell id="c13" value="DONE&lt;br&gt;event BATCH_END" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1440" y="680" width="190" height="64" as="geometry"/></mxCell><mxCell id="c14" value="ERROR&lt;br&gt;req: safe(then None)&lt;br&gt;event INTERVENTION_FORCED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="960" width="190" height="64" as="geometry"/></mxCell><mxCell id="c15" value="PAUSED&lt;br&gt;req: safe → wait_interlock" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="600" y="960" width="190" height="64" as="geometry"/></mxCell><mxCell id="c16" value="DEVIATION&lt;br&gt;req: wait_qa (QA 원격 판정)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1160" y="960" width="190" height="64" as="geometry"/></mxCell><mxCell id="c17" value="DISCARDED&lt;br&gt;req: carry scale→reject_bin" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1440" y="960" width="190" height="64" as="geometry"/></mxCell><mxCell id="c18" value="submit_order 수락&lt;br&gt;batch_id 발급 · event BATCH_START" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c3" target="c4"><mxGeometry x="0" y="-22" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c19" value="measure valid" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c4" target="c5"><mxGeometry x="0" y="-14" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c20" value="carry grip_inferred=true" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c5" target="c6"><mxGeometry x="0" y="-14" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c21" value="tare_g 저장 · scale.set_tare() · cur = 원료 0 · weight 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c6" target="c7"><mxGeometry x="0" y="-14" relative="1" as="geometry"><Array as="points"><mxPoint x="975.0" y="300"/><mxPoint x="348.5" y="300"/></Array></mxGeometry></mxCell><mxCell id="c22" value="grip_inferred=true · attempts=1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c7" target="c8"><mxGeometry x="0" y="16" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c23" value="contact_detected=true · fraction 전달" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c8" target="c9"><mxGeometry x="0" y="16" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c24" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c9" target="c10"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c25" value="OK (|err| ≤ tol) → dispense_result 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.35;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c10" target="c11"><mxGeometry x="-0.2" y="-14" relative="1" as="geometry"><Array as="points"><mxPoint x="1226.5" y="600"/><mxPoint x="830" y="600"/><mxPoint x="830" y="712"/></Array></mxGeometry></mxCell><mxCell id="c26" value="grip(open) · idx+1 · 다음 원료 있음" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c11" target="c7"><mxGeometry x="0.3" y="-14" relative="1" as="geometry"><Array as="points"><mxPoint x="415.0" y="712"/></Array></mxGeometry></mxCell><mxCell id="c27" value="마지막 원료였음" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c11" target="c12"><mxGeometry x="0" y="-14" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c28" value="carry ok" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c12" target="c13"><mxGeometry x="0" y="-14" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c29" value="UNDER, attempts&lt;3 → scoop(fraction = 부족량 / 스쿱 1회량)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c10" target="c8"><mxGeometry x="0" y="-14" relative="1" as="geometry"><Array as="points"><mxPoint x="1217.0" y="340"/><mxPoint x="742.5" y="340"/></Array></mxGeometry></mxCell><mxCell id="c30" value="INVALID (valid=false) ≤2 → 재계량" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.75;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="c10" target="c10"><mxGeometry x="0.3" y="14" relative="1" as="geometry"><Array as="points"><mxPoint x="1302.5" y="365"/><mxPoint x="1380" y="365"/><mxPoint x="1380" y="419"/></Array></mxGeometry></mxCell><mxCell id="c31" value="OVER → OVERFILL&lt;br&gt;UNDER 4회째 → TIMEOUT&lt;br&gt;INVALID 3회 → WEIGH_INVALID" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c10" target="c16"><mxGeometry x="-0.55" y="-70" relative="1" as="geometry"><Array as="points"><mxPoint x="1410" y="438"/><mxPoint x="1410" y="992"/></Array></mxGeometry></mxCell><mxCell id="c32" value="GRIP_FAIL ≤3 → 같은 carry 재시도" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.35;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c5" target="c5"><mxGeometry x="0" y="-14" relative="1" as="geometry"><Array as="points"><mxPoint x="666.5" y="85"/><mxPoint x="742.5" y="85"/></Array></mxGeometry></mxCell><mxCell id="c33" value="GRIP_FAIL ≤3 → grip 재시도&lt;br&gt;[추가1] 폭 불일치 → WRONG_TOOL → DEVIATION" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.35;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c7" target="c7"><mxGeometry x="0" y="-22" relative="1" as="geometry"><Array as="points"><mxPoint x="386.5" y="365"/><mxPoint x="462.5" y="365"/></Array></mxGeometry></mxCell><mxCell id="c34" value="SCOOP_EMPTY ≤3 → scoop 재시도" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.2;exitY=0;exitDx=0;exitDy=0;entryX=0.55;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c8" target="c8"><mxGeometry x="0" y="-14" relative="1" as="geometry"><Array as="points"><mxPoint x="638.0" y="365"/><mxPoint x="704.5" y="365"/></Array></mxGeometry></mxCell><mxCell id="c35" value="GRIP_FAIL ≤3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c12" target="c12"><mxGeometry x="0" y="-12" relative="1" as="geometry"><Array as="points"><mxPoint x="1217.0" y="650"/><mxPoint x="1293.0" y="650"/></Array></mxGeometry></mxCell><mxCell id="c36" value="SCOOP_EMPTY 4회 = MATERIAL_EMPTY → REFILL&lt;br&gt;_resume = 이 scoop 요청" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c8" target="c15"><mxGeometry x="0.65" y="0" relative="1" as="geometry"><Array as="points"><mxPoint x="628.5" y="940"/></Array></mxGeometry></mxCell><mxCell id="c37" value="interlock EXIT → _resume 재실행&lt;br&gt;(REFILL 은 개입으로 세지 않는다)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.85;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c15" target="c8"><mxGeometry x="0.65" y="0" relative="1" as="geometry"><Array as="points"><mxPoint x="761.5" y="940"/></Array></mxGeometry></mxCell><mxCell id="c38" value="APPROVED → 결과에 남기고 스쿱 반납" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c16" target="c11"><mxGeometry x="-0.3" y="-14" relative="1" as="geometry"><Array as="points"><mxPoint x="695.0" y="992"/></Array></mxGeometry></mxCell><mxCell id="c39" value="DISCARDED&lt;br&gt;용기째 폐기함" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c16" target="c17"><mxGeometry x="0" y="-22" relative="1" as="geometry"></mxGeometry></mxCell><mxCell id="c40" value="GRIP_FAIL 4회 (FORCED)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c5" target="c14"><mxGeometry x="-0.6" y="-14" relative="1" as="geometry"><Array as="points"><mxPoint x="628.5" y="230"/><mxPoint x="200" y="230"/><mxPoint x="200" y="930"/><mxPoint x="135.0" y="930"/></Array></mxGeometry></mxCell><mxCell id="c41" value="GRIP_FAIL 4회 (FORCED)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="c7" target="c14"><mxGeometry x="0.2" y="-50" relative="1" as="geometry"><Array as="points"><mxPoint x="240" y="432"/><mxPoint x="240" y="979"/></Array></mxGeometry></mxCell><mxCell id="c42" value="measure invalid (TODO)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=0.3;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c14"><mxGeometry x="0.5" y="-14" relative="1" as="geometry"><Array as="points"><mxPoint x="97.0" y="165"/></Array></mxGeometry></mxCell><mxCell id="c43" value="루프 게이트 (FSM 밖, D-21 추가 7)&lt;br&gt;&lt;br&gt;skill_node 가 event NUDGE 를 쏘면 run_loop 가 다음 요청 전에 멈추고&lt;br&gt;state.mode = PAUSED(note=&quot;NUDGE&quot;) 발행, 두 번째 NUDGE 로 재개.&lt;br&gt;인터락 중·계량 대기 중에만 감지된다 (블로킹 movel 중은 두산 충돌 감지 담당)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1440" y="120" width="380" height="150" as="geometry"/></mxCell><mxCell id="c44" value="일탈 정책 (deviation.py)&lt;br&gt;&lt;br&gt;GRIP_FAIL  3회 RETRY → FORCED&lt;br&gt;SCOOP_EMPTY  3회 RETRY → REFILL&lt;br&gt;MATERIAL_EMPTY  즉시 REFILL&lt;br&gt;OVERFILL / TIMEOUT  즉시 QA&lt;br&gt;WEIGH_INVALID  2회 RETRY → QA&lt;br&gt;SLIP 2 · SAFETY_SWITCH 1 · FORCE_LIMIT 1 → FORCED&lt;br&gt;WRONG_TOOL [v1.2]  즉시 QA&lt;br&gt;&lt;br&gt;count = 같은 배치·같은 스텝·같은 kind" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1660" y="400" width="240" height="250" as="geometry"/></mxCell><mxCell id="c45" value="범례   파랑 = 정상 경로   주황 = 일탈·재시도   청록 = 복구·완료   빨강 = 강제 개입·폐기(종료)   회색 = 대기·재계량&lt;br&gt;전이표 밖 조합은 on_result 가 RuntimeError(&quot;전이 없음&quot;) 를 던진다 — 새 상태·kind 를 넣으면 전이와 테스트(test_process_fsm.py)를 같이 넣는다" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="40" y="1100" width="1860" height="70" as="geometry"/></mxCell></root></mxGraphModel></diagram><diagram id="3 요청↔스킬 번역 (_execute)" name="3 요청↔스킬 번역 (_execute)"><mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1400"><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="c2" value="process_node._execute — FSM 요청 kind → 스킬 호출 → 결과 dict" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;fontColor=#161B2A;fontSize=18;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="20" width="1860" height="40" as="geometry"/></mxCell><mxCell id="c3" value="kind" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#161B2A;strokeColor=#161B2A;fontColor=#FFFFFF;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="90" width="160" height="30" as="geometry"/></mxCell><mxCell id="c4" value="요청 필드" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#161B2A;strokeColor=#161B2A;fontColor=#FFFFFF;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="200" y="90" width="260" height="30" as="geometry"/></mxCell><mxCell id="c5" value="노드가 부르는 스킬 (skill_node)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#161B2A;strokeColor=#161B2A;fontColor=#FFFFFF;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="460" y="90" width="760" height="30" as="geometry"/></mxCell><mxCell id="c6" value="돌려줄 결과 dict (FSM 이 읽는 키)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#161B2A;strokeColor=#161B2A;fontColor=#FFFFFF;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1220" y="90" width="380" height="30" as="geometry"/></mxCell><mxCell id="c7" value="measure" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="120" width="160" height="44" as="geometry"/></mxCell><mxCell id="c8" value="—" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="200" y="120" width="260" height="44" as="geometry"/></mxCell><mxCell id="c9" value="measure_force(samples 0, settle 0)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="460" y="120" width="760" height="44" as="geometry"/></mxCell><mxCell id="c10" value="{'valid', 'fz_std_n'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1220" y="120" width="380" height="44" as="geometry"/></mxCell><mxCell id="c11" value="carry" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="164" width="160" height="70" as="geometry"/></mxCell><mxCell id="c12" value="src · dst · slot · target=cup" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="200" y="164" width="260" height="70" as="geometry"/></mxCell><mxCell id="c13" value="move(src,ABOVE) → move(src,AT) → grip(close, cup_width) →&lt;br&gt;move(src,ABOVE) → move(dst,ABOVE) → move(dst,AT) → grip(open) → move(dst,ABOVE)&lt;br&gt;파지 실패면 dst 로 가지 않고 즉시 반환" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="460" y="164" width="760" height="70" as="geometry"/></mxCell><mxCell id="c14" value="{'grip_inferred'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1220" y="164" width="380" height="70" as="geometry"/></mxCell><mxCell id="c15" value="weigh" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="234" width="160" height="44" as="geometry"/></mxCell><mxCell id="c16" value="station · tare_g" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="200" y="234" width="260" height="44" as="geometry"/></mxCell><mxCell id="c17" value="weigh_container(station, tare_g)  + weight 토픽 발행" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="460" y="234" width="760" height="44" as="geometry"/></mxCell><mxCell id="c18" value="{'gross_g','net_g','std_g','valid'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1220" y="234" width="380" height="44" as="geometry"/></mxCell><mxCell id="c19" value="move" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="278" width="160" height="44" as="geometry"/></mxCell><mxCell id="c20" value="station · approach" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="200" y="278" width="260" height="44" as="geometry"/></mxCell><mxCell id="c21" value="move_to_station(station, ABOVE/AT)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="460" y="278" width="760" height="44" as="geometry"/></mxCell><mxCell id="c22" value="{'success','reached'} → state.station" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1220" y="278" width="380" height="44" as="geometry"/></mxCell><mxCell id="c23" value="grip" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="322" width="160" height="44" as="geometry"/></mxCell><mxCell id="c24" value="close · target(scoop/cup)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="200" y="322" width="260" height="44" as="geometry"/></mxCell><mxCell id="c25" value="grip(close, width = scoop_width | cup_width, force)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="460" y="322" width="760" height="44" as="geometry"/></mxCell><mxCell id="c26" value="{'grip_inferred','final_width_mm'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1220" y="322" width="380" height="44" as="geometry"/></mxCell><mxCell id="c27" value="scoop" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="366" width="160" height="44" as="geometry"/></mxCell><mxCell id="c28" value="material_id · attempt · fraction" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="200" y="366" width="260" height="44" as="geometry"/></mxCell><mxCell id="c29" value="scoop(material_id, attempt)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="460" y="366" width="760" height="44" as="geometry"/></mxCell><mxCell id="c30" value="{'contact_detected','fraction'(요청값 그대로)}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1220" y="366" width="380" height="44" as="geometry"/></mxCell><mxCell id="c31" value="pour" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="410" width="160" height="44" as="geometry"/></mxCell><mxCell id="c32" value="station · fraction" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="200" y="410" width="260" height="44" as="geometry"/></mxCell><mxCell id="c33" value="pour(station, fraction)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="460" y="410" width="760" height="44" as="geometry"/></mxCell><mxCell id="c34" value="{'success'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1220" y="410" width="380" height="44" as="geometry"/></mxCell><mxCell id="c35" value="safe" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="454" width="160" height="44" as="geometry"/></mxCell><mxCell id="c36" value="reason · then" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="200" y="454" width="260" height="44" as="geometry"/></mxCell><mxCell id="c37" value="safe_pose(reason)   전이는 then 이 정한다" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="460" y="454" width="760" height="44" as="geometry"/></mxCell><mxCell id="c38" value="{}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1220" y="454" width="380" height="44" as="geometry"/></mxCell><mxCell id="c39" value="wait_qa" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="498" width="160" height="44" as="geometry"/></mxCell><mxCell id="c40" value="deviation" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="200" y="498" width="260" height="44" as="geometry"/></mxCell><mxCell id="c41" value="스킬 없음 — _qa.clear(); _qa.wait()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="460" y="498" width="760" height="44" as="geometry"/></mxCell><mxCell id="c42" value="{'decision': APPROVED|DISCARDED}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1220" y="498" width="380" height="44" as="geometry"/></mxCell><mxCell id="c43" value="wait_interlock" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="542" width="160" height="44" as="geometry"/></mxCell><mxCell id="c44" value="—" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="200" y="542" width="260" height="44" as="geometry"/></mxCell><mxCell id="c45" value="스킬 없음 — _interlock_exit.clear(); wait()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="460" y="542" width="760" height="44" as="geometry"/></mxCell><mxCell id="c46" value="{}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="1220" y="542" width="380" height="44" as="geometry"/></mxCell><mxCell id="c47" value="_call_action(client, goal) 보조 함수 하나로 통일&lt;br&gt;  1) client.wait_for_server(5 s)   2) send_goal_async → goal_handle   3) get_result_async → Future&lt;br&gt;  4) Event 로 동기 대기 (run_loop 는 executor 스레드가 아니므로 spin 하지 말 것 — MultiThreadedExecutor 가 콜백을 돌린다)&lt;br&gt;  5) 인터락 ENTER 가 오면 goal_handle.cancel_goal_async()  → 취소 결과 후 safe_pose&lt;br&gt;&lt;br&gt;실패(success=false)는 표에 없다 → FORCE_LIMIT 일탈로 _deviate(RETRY 1회 → FORCED) 권장" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="40" y="616" width="760" height="130" as="geometry"/></mxCell><mxCell id="c48" value="발행 시점&lt;br&gt;  weight            weigh 결과마다 (TARE 포함)&lt;br&gt;  dispense_result   원료가 끝날 때 — WEIGH 에서 DONE 또는 DEVIATION 으로 갈 때&lt;br&gt;  deviation         _deviate() 마다 (fsm.deviations 길이 증가 감지) + QA 판정 후 decision·operator_id 채워 같은 deviation_id 로 재발행&lt;br&gt;  event             BATCH_START(product) · STEP(전이) · INTERLOCK_ENTER/EXIT · INTERVENTION_FORCED(ERROR) · BATCH_END&lt;br&gt;  state             0.5 s 타이머 + 전이 직후 1회" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1"><mxGeometry x="820" y="616" width="780" height="130" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>
+<mxfile host="app.diagrams.net" pages="4">
+  <diagram id="1 노드 입출력" name="1 노드 입출력">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1400">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" value="gmp_process — process_node 입출력 (계약 v1.1 · ns /cell)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;fontColor=#161B2A;fontSize=18;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1860" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" value="hmi_web_node (D)&lt;br&gt;&lt;br&gt;웹 HMI · Flask :5000&lt;br&gt;&lt;br&gt;주문 제출&lt;br&gt;QA 승인 / 폐기&lt;br&gt;인터락 ENTER / EXIT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="140" width="200" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" value="process_node (C)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3451D1;fontColor=#161B2A;fontSize=14;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="100" width="700" height="560" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" value="rclpy 콜백 스레드&lt;br&gt;&lt;br&gt;_srv_submit → FSM 생성, run_loop 시작&lt;br&gt;_srv_qa → _qa_decision 저장, _qa.set()&lt;br&gt;_srv_interlock → ENTER: cancel→safe_pose→granted&lt;br&gt;                        EXIT: _interlock_exit.set()&lt;br&gt;event(NUDGE) 구독 → 게이트 토글&lt;br&gt;&lt;br&gt;콜백은 값만 저장한다. 로봇을 부르지 않는다" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="590" y="150" width="300" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" value="run_loop 스레드 (배치마다 1개)&lt;br&gt;&lt;br&gt;req = fsm.start()&lt;br&gt;while req:&lt;br&gt;    res = _execute(req)   ← 스킬 한 번에 하나&lt;br&gt;    req = fsm.on_result(req, res)&lt;br&gt;    발행(state·weight·result·deviation·event)&lt;br&gt;&lt;br&gt;wait_qa / wait_interlock 는 Event.wait()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="930" y="150" width="300" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" value="core/process_fsm.py — ProcessFSM (ROS 비의존, pytest)&lt;br&gt;&lt;br&gt;state · mode · idx(원료) · tare_g · verify_net_g · cur(ItemRun: attempts·invalid·scoop_tare·scooped·residual·actual·verdict) · results · deviations · _counts · _resume · _qa_step · slot&lt;br&gt;&lt;br&gt;start() → 첫 요청     on_result(req, res) → 다음 요청 dict 또는 None(끝)&lt;br&gt;_deviate(kind, step) → deviation.py policy(kind, count) → RETRY / REFILL / QA / FORCED&lt;br&gt;_carry(src, dst) → {&quot;kind&quot;:&quot;carry&quot;, src, dst, slot}&lt;br&gt;&lt;br&gt;의존: gmp_dosing.core.dosing.decide(target, net, tol, attempts, valid, invalid, cfg) → DONE / SCOOP(fraction) / DEVIATION(kind)&lt;br&gt;        core/recipe.py parse() → RecipeSpec(product, items[Item(material_id, target_g, tol_pct, grade, scoop_id)])" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="590" y="390" width="640" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" value="Event / 플래그" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;dashed=1;" edge="1" parent="1" source="c5" target="c6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c9" value="dict 요청 ↔ dict 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c6" target="c7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c10" value="skill_node (A)&lt;br&gt;&lt;br&gt;로봇을 만지는 유일한 노드&lt;br&gt;DSR 워커 스레드 1개 — 직렬&lt;br&gt;&lt;br&gt;Action 서버 4&lt;br&gt;  move_to_station · scoop · pour · weigh_container&lt;br&gt;Service 서버 3&lt;br&gt;  grip · measure_force · safe_pose&lt;br&gt;&lt;br&gt;발행: gripper_state · event(NUDGE)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="100" width="320" height="560" as="geometry" />
+        </mxCell>
+        <mxCell id="c11" value="record_node (D) — SQLite 단일 기록자        hmi_web_node (D) — 화면 표시&lt;br&gt;&lt;br&gt;구독: state · weight · dispense_result · deviation · event" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="560" y="900" width="700" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" value="Service submit_order&lt;br&gt;SubmitOrder: Recipe → accepted, batch_id&lt;br&gt;실행 중이면 accepted=false" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.2;exitDx=0;exitDy=0;entryX=0;entryY=0.12;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3" target="c4">
+          <mxGeometry x="0" y="-24" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c13" value="Service qa_decision&lt;br&gt;batch_id, deviation_id, decision, operator_id → accepted&lt;br&gt;DEVIATION 아니면 거부" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.45;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3" target="c4">
+          <mxGeometry x="0" y="-24" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c14" value="Service interlock&lt;br&gt;ENTER=1 / EXIT=2, reason → granted&lt;br&gt;ENTER 는 safe_pose 성공 후 granted" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.48;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3" target="c4">
+          <mxGeometry x="0" y="-24" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c15" value="Action run_batch (RunBatch)&lt;br&gt;CLI·시험용, 우선순위 낮음" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;dashed=1;exitX=1;exitY=0.92;exitDx=0;exitDy=0;entryX=0;entryY=0.66;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3" target="c4">
+          <mxGeometry x="0" y="-18" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c16" value="Action move_to_station&lt;br&gt;station_id, approach ABOVE/AT, vel_scale&lt;br&gt;→ success, reached" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.1;exitDx=0;exitDy=0;entryX=0;entryY=0.1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10">
+          <mxGeometry x="0" y="-24" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c17" value="Action scoop&lt;br&gt;material_id, attempt&lt;br&gt;→ success, contact_detected" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.22;exitDx=0;exitDy=0;entryX=0;entryY=0.22;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10">
+          <mxGeometry x="0" y="-24" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c18" value="Action pour&lt;br&gt;target_station, fraction → success" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.34;exitDx=0;exitDy=0;entryX=0;entryY=0.34;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10">
+          <mxGeometry x="0" y="-18" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c19" value="Action weigh_container (용기 들어) · weigh_scoop [v1.2]&lt;br&gt;container_station, tare_g&lt;br&gt;→ reading: gross / net / std / valid" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.46;exitDx=0;exitDy=0;entryX=0;entryY=0.46;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10">
+          <mxGeometry x="0" y="-24" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c20" value="Service grip&lt;br&gt;close, width_mm, force_n, timeout_s&lt;br&gt;→ success, final_width_mm, grip_inferred" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.58;exitDx=0;exitDy=0;entryX=0;entryY=0.58;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10">
+          <mxGeometry x="0" y="-24" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c21" value="Service measure_force&lt;br&gt;samples, settle_s&lt;br&gt;→ fz_mean_n, fz_std_n, valid" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10">
+          <mxGeometry x="0" y="-24" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c22" value="Service safe_pose&lt;br&gt;reason → success" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.82;exitDx=0;exitDy=0;entryX=0;entryY=0.82;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10">
+          <mxGeometry x="0" y="-18" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c23" value="Topic event  code=NUDGE&lt;br&gt;사람 접촉 (D-21) → 루프 게이트" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;dashed=1;exitX=0;exitY=0.94;exitDx=0;exitDy=0;entryX=1;entryY=0.94;entryDx=0;entryDy=0;" edge="1" parent="1" source="c10" target="c4">
+          <mxGeometry x="0" y="18" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c24" value="Topic state&lt;br&gt;CellState · 0.5 s + 전이&lt;br&gt;TRANSIENT_LOCAL" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.1;exitY=1;exitDx=0;exitDy=0;entryX=0.1;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c11">
+          <mxGeometry x="-0.55" y="0" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c25" value="Topic weight&lt;br&gt;WeightReading · weigh 마다" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.3;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c11">
+          <mxGeometry x="0.05" y="0" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c26" value="Topic dispense_result&lt;br&gt;원료 종료 시" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c11">
+          <mxGeometry x="0.6" y="0" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c27" value="Topic deviation&lt;br&gt;TRANSIENT_LOCAL · QA 후 재발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c11">
+          <mxGeometry x="-0.55" y="0" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c28" value="Topic event&lt;br&gt;BATCH_START/END · STEP&lt;br&gt;INTERLOCK_* · INTERVENTION_FORCED" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.9;exitY=1;exitDx=0;exitDy=0;entryX=0.9;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c11">
+          <mxGeometry x="0.05" y="0" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c29" value="읽는 법&lt;br&gt;&lt;br&gt;파란 실선 = HMI 가 부르는 Service (process 가 서버)&lt;br&gt;주황 = process 가 부르는 스킬 (skill_node 가 서버)&lt;br&gt;청록 = process 가 발행하는 Topic&lt;br&gt;빨강 점선 = skill_node → process 구독&lt;br&gt;&lt;br&gt;원칙: 스킬은 한 번에 하나 · 콜백은 값만 저장 · FSM 은 로봇을 모른다" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="600" width="440" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="c30" value="미합의 1건 (A 와)&lt;br&gt;용기 반송 슬롯 번호를 MoveToStation 에 어떻게 넘길지&lt;br&gt;— station_id 접미사 &quot;magazine#1&quot;  vs  계약 v1.2 uint8 slot" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="900" width="320" height="110" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="2 상태 전이도" name="2 상태 전이도">
+    <mxGraphModel dx="3388" dy="956" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;fontColor=#161B2A;fontSize=18;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="ProcessFSM 상태 전이도 — core/process_fsm.py (상태 이름 = CellState.step)" vertex="1">
+          <mxGeometry height="40" width="1860" x="40" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="IDLE&lt;br&gt;submit_order 대기" vertex="1">
+          <mxGeometry height="72" width="190" x="40" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="SELF_CHECK&lt;br&gt;req: measure — 빈 그리퍼 외력&lt;br&gt;(영점·센서 확인, 용기 아님)" vertex="1">
+          <mxGeometry height="72" width="190" x="320" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="PICK_CONTAINER&lt;br&gt;req: carry magazine→scale" vertex="1">
+          <mxGeometry height="72" width="190" x="600" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="TARE&lt;br&gt;req: weigh — 빈 용기 들어&lt;br&gt;풍량 (배치 1회)" vertex="1">
+          <mxGeometry height="72" width="190" x="880" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="PICK_SCOOP&lt;br&gt;req: move(scoop_rack) → grip" vertex="1">
+          <mxGeometry height="72" width="190" x="40" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="SCOOP_TARE&lt;br&gt;req: weigh_scoop — 빈 스쿱&lt;br&gt;든 채 (원료마다 1회)" vertex="1">
+          <mxGeometry height="72" width="190" x="320" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="c9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="SCOOP&lt;br&gt;req: scoop(material, attempt)" vertex="1">
+          <mxGeometry height="72" width="190" x="600" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="c10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="WEIGH_SCOOP&lt;br&gt;req: weigh_scoop — 붓기 전&lt;br&gt;퍼낸 양 → 붓기 비율" vertex="1">
+          <mxGeometry height="72" width="190" x="880" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="c11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="POUR&lt;br&gt;req: pour(scale, fraction)" vertex="1">
+          <mxGeometry height="72" width="190" x="1160" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="WEIGH_RESIDUAL&lt;br&gt;req: weigh_scoop — 붓기 후 스쿱 잔량&lt;br&gt;투입량 = 전 − 후 → decide()" vertex="1">
+          <mxGeometry height="72" width="190" x="1440" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="c13" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="RETURN_SCOOP&lt;br&gt;req: move(scoop_rack) → grip(open)" vertex="1">
+          <mxGeometry height="72" width="190" x="320" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="c14" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="VERIFY&lt;br&gt;req: weigh — 용기 들어 총량 − 풍량&lt;br&gt;배치 끝 1회, Σ투입량과 대조" vertex="1">
+          <mxGeometry height="72" width="190" x="880" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="c15" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="FINISH&lt;br&gt;req: carry scale→output_tray" vertex="1">
+          <mxGeometry height="72" width="190" x="1160" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="c16" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="DONE&lt;br&gt;event BATCH_END" vertex="1">
+          <mxGeometry height="72" width="190" x="1440" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="c17" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="ERROR&lt;br&gt;req: safe(then None)&lt;br&gt;event INTERVENTION_FORCED" vertex="1">
+          <mxGeometry height="72" width="190" x="40" y="960" as="geometry" />
+        </mxCell>
+        <mxCell id="c18" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="PAUSED&lt;br&gt;req: safe → wait_interlock" vertex="1">
+          <mxGeometry height="72" width="190" x="600" y="960" as="geometry" />
+        </mxCell>
+        <mxCell id="c19" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="DEVIATION&lt;br&gt;req: wait_qa (QA 원격 판정)" vertex="1">
+          <mxGeometry height="72" width="190" x="1160" y="960" as="geometry" />
+        </mxCell>
+        <mxCell id="c20" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="DISCARDED&lt;br&gt;req: (스쿱 반납 →) carry scale→reject_bin" vertex="1">
+          <mxGeometry height="72" width="190" x="1440" y="960" as="geometry" />
+        </mxCell>
+        <mxCell id="c21" edge="1" parent="1" source="c3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c4" value="submit_order 수락&lt;br&gt;batch_id 발급 · event BATCH_START">
+          <mxGeometry relative="1" y="-22" as="geometry" />
+        </mxCell>
+        <mxCell id="c22" edge="1" parent="1" source="c4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c5" value="measure valid">
+          <mxGeometry relative="1" y="-14" as="geometry" />
+        </mxCell>
+        <mxCell id="c23" edge="1" parent="1" source="c5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c6" value="carry grip_inferred=true">
+          <mxGeometry relative="1" y="-14" as="geometry" />
+        </mxCell>
+        <mxCell id="c24" edge="1" parent="1" source="c6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="c7" value="tare_g 저장 · scale.set_tare() · cur = 원료 0 · weight 발행">
+          <mxGeometry relative="1" y="-14" as="geometry">
+            <Array as="points">
+              <mxPoint x="975" y="300" />
+              <mxPoint x="135" y="300" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c25" edge="1" parent="1" source="c7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c8" value="grip_inferred=true">
+          <mxGeometry relative="1" y="16" as="geometry" />
+        </mxCell>
+        <mxCell id="c26" edge="1" parent="1" source="c8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c9" value="scoop_tare_g 저장&lt;br&gt;attempts=1">
+          <mxGeometry relative="1" y="22" as="geometry" />
+        </mxCell>
+        <mxCell id="c27" edge="1" parent="1" source="c9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c10" value="contact_detected=true">
+          <mxGeometry relative="1" y="16" as="geometry" />
+        </mxCell>
+        <mxCell id="c28" edge="1" parent="1" source="c10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c11" value="scooped = gross − tare&lt;br&gt;fraction = min(1, 부족량/scooped)">
+          <mxGeometry relative="1" y="22" as="geometry" />
+        </mxCell>
+        <mxCell id="c29" edge="1" parent="1" source="c11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c12" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c30" edge="1" parent="1" source="c12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.7;entryDx=0;entryDy=0;" target="c13" value="OK (|err| ≤ tol) · actual += scooped − residual → dispense_result 발행">
+          <mxGeometry relative="1" x="-0.25" y="-14" as="geometry">
+            <Array as="points">
+              <mxPoint x="1468.5" y="600" />
+              <mxPoint x="550" y="600" />
+              <mxPoint x="550" y="725" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c31" edge="1" parent="1" source="c13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="c7" value="grip(open) · idx+1 · 다음 원료 있음">
+          <mxGeometry relative="1" y="-14" as="geometry">
+            <Array as="points">
+              <mxPoint x="415" y="640" />
+              <mxPoint x="135" y="640" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c32" edge="1" parent="1" source="c13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" target="c14" value="마지막 원료였음 (그리퍼 비어 있음)">
+          <mxGeometry relative="1" y="-14" as="geometry" />
+        </mxCell>
+        <mxCell id="c33" edge="1" parent="1" source="c14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c15" value="|net − Σactual| ≤ min_resolvable_g">
+          <mxGeometry relative="1" y="-14" as="geometry" />
+        </mxCell>
+        <mxCell id="c34" edge="1" parent="1" source="c15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c16" value="carry ok">
+          <mxGeometry relative="1" y="-14" as="geometry" />
+        </mxCell>
+        <mxCell id="c35" edge="1" parent="1" source="c12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" target="c9" value="UNDER, attempts&lt;3 → scoop(attempt+1, fraction 힌트)">
+          <mxGeometry relative="1" y="-14" as="geometry">
+            <Array as="points">
+              <mxPoint x="1497" y="340" />
+              <mxPoint x="742.5" y="340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c36" edge="1" parent="1" source="c8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=1;entryDx=0;entryDy=0;" target="c8" value="INVALID ≤2 → 재계량&lt;br&gt;3회 WEIGH_INVALID → QA">
+          <mxGeometry relative="1" y="22" as="geometry">
+            <Array as="points">
+              <mxPoint x="377" y="507" />
+              <mxPoint x="453" y="507" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c37" edge="1" parent="1" source="c10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=1;entryDx=0;entryDy=0;" target="c10" value="INVALID ≤2 → 재계량&lt;br&gt;3회 WEIGH_INVALID → QA">
+          <mxGeometry relative="1" y="22" as="geometry">
+            <Array as="points">
+              <mxPoint x="937" y="507" />
+              <mxPoint x="1013" y="507" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c38" edge="1" parent="1" source="c12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=1;entryDx=0;entryDy=0;" target="c12" value="INVALID ≤2 → 재계량&lt;br&gt;3회 WEIGH_INVALID → QA">
+          <mxGeometry relative="1" y="22" as="geometry">
+            <Array as="points">
+              <mxPoint x="1497" y="507" />
+              <mxPoint x="1573" y="507" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c39" edge="1" parent="1" source="c14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" target="c14" value="INVALID ≤2 → 재계량">
+          <mxGeometry relative="1" y="-12" as="geometry">
+            <Array as="points">
+              <mxPoint x="937" y="650" />
+              <mxPoint x="1013" y="650" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c40" edge="1" parent="1" source="c12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" target="c19" value="OVER → OVERFILL&lt;br&gt;UNDER 4회째 → TIMEOUT">
+          <mxGeometry relative="1" x="-0.5" y="-60" as="geometry">
+            <Array as="points">
+              <mxPoint x="1690" y="438" />
+              <mxPoint x="1690" y="840" />
+              <mxPoint x="1293" y="840" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c41" edge="1" parent="1" source="c14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="c19" value="불일치 → VERIFY_MISMATCH">
+          <mxGeometry relative="1" y="14" as="geometry">
+            <Array as="points">
+              <mxPoint x="1013" y="870" />
+              <mxPoint x="1255" y="870" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c42" edge="1" parent="1" source="c5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.35;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" target="c5" value="GRIP_FAIL ≤3 → 같은 carry 재시도">
+          <mxGeometry relative="1" y="-14" as="geometry">
+            <Array as="points">
+              <mxPoint x="666.5" y="85" />
+              <mxPoint x="742.5" y="85" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c43" edge="1" parent="1" source="c7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.35;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" target="c7" value="GRIP_FAIL ≤3 → grip 재시도&lt;br&gt;[추가1] 폭 불일치 → WRONG_TOOL → DEVIATION">
+          <mxGeometry relative="1" y="-22" as="geometry">
+            <Array as="points">
+              <mxPoint x="106.5" y="365" />
+              <mxPoint x="182.5" y="365" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c44" edge="1" parent="1" source="c9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.2;exitY=0;exitDx=0;exitDy=0;entryX=0.55;entryY=0;entryDx=0;entryDy=0;" target="c9" value="SCOOP_EMPTY ≤3 → scoop 재시도">
+          <mxGeometry relative="1" y="-14" as="geometry">
+            <Array as="points">
+              <mxPoint x="638" y="365" />
+              <mxPoint x="704.5" y="365" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c45" edge="1" parent="1" source="c15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" target="c15" value="GRIP_FAIL ≤3">
+          <mxGeometry relative="1" y="-12" as="geometry">
+            <Array as="points">
+              <mxPoint x="1217" y="650" />
+              <mxPoint x="1293" y="650" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c46" edge="1" parent="1" source="c9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" target="c18" value="SCOOP_EMPTY 4회 = MATERIAL_EMPTY → REFILL&lt;br&gt;_resume = 이 scoop 요청">
+          <mxGeometry relative="1" x="0.65" as="geometry">
+            <Array as="points">
+              <mxPoint x="628.5" y="940" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c47" edge="1" parent="1" source="c18" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.85;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" target="c9" value="interlock EXIT → _resume 재실행&lt;br&gt;(REFILL 은 개입으로 세지 않는다)">
+          <mxGeometry relative="1" x="0.65" as="geometry">
+            <Array as="points">
+              <mxPoint x="761.5" y="940" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c48" edge="1" parent="1" source="c19" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" target="c13" value="APPROVED (원료 일탈) → 결과에 남기고 스쿱 반납">
+          <mxGeometry relative="1" x="0.2" y="14" as="geometry">
+            <Array as="points">
+              <mxPoint x="1217" y="900" />
+              <mxPoint x="481.5" y="900" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c49" edge="1" parent="1" source="c19" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.9;exitY=0;exitDx=0;exitDy=0;entryX=0.9;entryY=1;entryDx=0;entryDy=0;" target="c15" value="APPROVED&lt;br&gt;(VERIFY 불일치)">
+          <mxGeometry relative="1" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="c50" edge="1" parent="1" source="c19" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c20" value="DISCARDED&lt;br&gt;스쿱 든 채면 먼저 반납">
+          <mxGeometry relative="1" y="-22" as="geometry" />
+        </mxCell>
+        <mxCell id="c51" edge="1" parent="1" source="c5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.3;entryY=0;entryDx=0;entryDy=0;" target="c17" value="GRIP_FAIL 4회 (FORCED)">
+          <mxGeometry relative="1" x="-0.6" y="-14" as="geometry">
+            <Array as="points">
+              <mxPoint x="628.5" y="230" />
+              <mxPoint x="15" y="230" />
+              <mxPoint x="15" y="930" />
+              <mxPoint x="97" y="930" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c52" edge="1" parent="1" source="c7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" target="c17" value="GRIP_FAIL 4회 (FORCED)">
+          <mxGeometry relative="1" x="0.3" y="-40" as="geometry">
+            <Array as="points">
+              <mxPoint x="68.5" y="900" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c53" edge="1" parent="1" source="c4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" target="c17" value="measure invalid (TODO)">
+          <mxGeometry relative="1" x="0.5" y="-14" as="geometry">
+            <Array as="points">
+              <mxPoint x="173" y="165" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c54" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="루프 게이트 (FSM 밖, D-21 추가 7)&lt;br&gt;&lt;br&gt;skill_node 가 event NUDGE 를 쏘면 run_loop 가 다음 요청 전에 멈추고&lt;br&gt;state.mode = PAUSED(note=&quot;NUDGE&quot;) 발행, 두 번째 NUDGE 로 재개.&lt;br&gt;인터락 중·계량 대기 중에만 감지된다 (블로킹 movel 중은 두산 충돌 감지 담당)" vertex="1">
+          <mxGeometry height="150" width="380" x="1440" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="c55" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="일탈 정책 (deviation.py)&lt;br&gt;&lt;br&gt;GRIP_FAIL  3회 RETRY → FORCED&lt;br&gt;SCOOP_EMPTY  3회 RETRY → REFILL&lt;br&gt;MATERIAL_EMPTY  즉시 REFILL&lt;br&gt;OVERFILL / TIMEOUT  즉시 QA&lt;br&gt;WEIGH_INVALID  2회 RETRY → QA&lt;br&gt;VERIFY_MISMATCH [v1.2]  즉시 QA&lt;br&gt;SLIP 2 · SAFETY_SWITCH 1 · FORCE_LIMIT 1 → FORCED&lt;br&gt;WRONG_TOOL [v1.2]  즉시 QA&lt;br&gt;&lt;br&gt;count = 같은 배치·같은 스텝·같은 kind" vertex="1">
+          <mxGeometry height="270" width="240" x="1660" y="880" as="geometry" />
+        </mxCell>
+        <mxCell id="c56" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="D-22 원료 1종 = 6단계: 빈 스쿱 계량 → 퍼올림 → 붓기 전 계량(퍼낸 양 → 붓기 비율, 초과 예방) → 붓기 → 붓기 후 계량(잔량 → 투입량 누적 → 판정) → 반납. 로봇이 저울이라 스쿱을 든 채 재는 것이 가장 싸고, 용기 계량(들어 올림)은 그리퍼가 비어야 해서 배치 끝 VERIFY 한 번.&lt;br&gt;범례   파랑 = 정상 경로   주황 = 일탈·재시도   청록 = 복구·완료   빨강 = 강제 개입·폐기(종료)   회색 = 대기·재계량&lt;br&gt;전이표 밖 조합은 on_result 가 RuntimeError(&quot;전이 없음&quot;) 를 던진다 — 새 상태·kind 를 넣으면 전이와 테스트(test_process_fsm.py)를 같이 넣는다" vertex="1">
+          <mxGeometry height="90" width="1860" x="40" y="1180" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="3 요청↔스킬 번역 (_execute)" name="3 요청↔스킬 번역 (_execute)">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1400">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" value="process_node._execute — FSM 요청 kind → 스킬 호출 → 결과 dict" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;fontColor=#161B2A;fontSize=18;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1860" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" value="kind" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#161B2A;strokeColor=#161B2A;fontColor=#FFFFFF;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" value="요청 필드" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#161B2A;strokeColor=#161B2A;fontColor=#FFFFFF;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="200" y="90" width="260" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" value="노드가 부르는 스킬 (skill_node)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#161B2A;strokeColor=#161B2A;fontColor=#FFFFFF;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="460" y="90" width="760" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" value="돌려줄 결과 dict (FSM 이 읽는 키)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#161B2A;strokeColor=#161B2A;fontColor=#FFFFFF;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="90" width="380" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" value="measure" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="120" width="160" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" value="—" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="120" width="260" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c9" value="measure_force(samples 0, settle 0)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="120" width="760" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c10" value="{&#39;valid&#39;, &#39;fz_std_n&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="120" width="380" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c11" value="carry" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="164" width="160" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" value="src · dst · slot · target=cup" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="164" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c13" value="move(src,ABOVE) → move(src,AT) → grip(close, cup_width) →&lt;br&gt;move(src,ABOVE) → move(dst,ABOVE) → move(dst,AT) → grip(open) → move(dst,ABOVE)&lt;br&gt;파지 실패면 dst 로 가지 않고 즉시 반환" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="164" width="760" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c14" value="{&#39;grip_inferred&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="164" width="380" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c15" value="weigh" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="234" width="160" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c16" value="station · tare_g" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="234" width="260" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c17" value="weigh_container(station, tare_g) — 용기를 들어 잰다 (TARE · VERIFY)  + weight 토픽 발행" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="234" width="760" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c18" value="{&#39;gross_g&#39;,&#39;net_g&#39;,&#39;std_g&#39;,&#39;valid&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="234" width="380" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c19" value="weigh_scoop" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="278" width="160" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c20" value="station · tare_g(빈 스쿱)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="278" width="260" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c21" value="[v1.2 I-007] 들고 있는 스쿱을 계량 자세로 → 읽기 (SCOOP_TARE · WEIGH_SCOOP · WEIGH_RESIDUAL)&lt;br&gt;계약 전 임시: weigh_container 에 mode 또는 measure_force  + weight 발행" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="278" width="760" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c22" value="{&#39;gross_g&#39;,&#39;std_g&#39;,&#39;valid&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="278" width="380" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c23" value="move" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="348" width="160" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c24" value="station · approach" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="348" width="260" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c25" value="move_to_station(station, ABOVE/AT)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="348" width="760" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c26" value="{&#39;success&#39;,&#39;reached&#39;} → state.station" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="348" width="380" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c27" value="grip" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="392" width="160" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c28" value="close · target(scoop/cup)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="392" width="260" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c29" value="grip(close, width = scoop_width | cup_width, force)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="392" width="760" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c30" value="{&#39;grip_inferred&#39;,&#39;final_width_mm&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="392" width="380" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c31" value="scoop" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="436" width="160" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c32" value="material_id · attempt · fraction" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="436" width="260" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c33" value="scoop(material_id, attempt)   fraction 은 담그기 깊이 힌트" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="436" width="760" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c34" value="{&#39;contact_detected&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="436" width="380" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c35" value="pour" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="480" width="160" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c36" value="station · fraction" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="480" width="260" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c37" value="pour(station, fraction)   fraction = min(1, 부족량/퍼낸 양) — WEIGH_SCOOP 가 정함" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="480" width="760" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c38" value="{&#39;success&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="480" width="380" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c39" value="safe" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="524" width="160" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c40" value="reason · then" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="524" width="260" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c41" value="safe_pose(reason)   전이는 then 이 정한다" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="524" width="760" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c42" value="{}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="524" width="380" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c43" value="wait_qa" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="568" width="160" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c44" value="deviation" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="568" width="260" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c45" value="스킬 없음 — _qa.clear(); _qa.wait()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="568" width="760" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c46" value="{&#39;decision&#39;: APPROVED|DISCARDED}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="568" width="380" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c47" value="wait_interlock" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="612" width="160" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c48" value="—" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="200" y="612" width="260" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c49" value="스킬 없음 — _interlock_exit.clear(); wait()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="612" width="760" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c50" value="{}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="612" width="380" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="c51" value="_call_action(client, goal) 보조 함수 하나로 통일&lt;br&gt;  1) client.wait_for_server(5 s)   2) send_goal_async → goal_handle   3) get_result_async → Future&lt;br&gt;  4) Event 로 동기 대기 (run_loop 는 executor 스레드가 아니므로 spin 하지 말 것 — MultiThreadedExecutor 가 콜백을 돌린다)&lt;br&gt;  5) 인터락 ENTER 가 오면 goal_handle.cancel_goal_async()  → 취소 결과 후 safe_pose&lt;br&gt;&lt;br&gt;실패(success=false)는 표에 없다 → FORCE_LIMIT 일탈로 _deviate(RETRY 1회 → FORCED) 권장" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="686" width="760" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="c52" value="발행 시점&lt;br&gt;  weight            weigh 결과마다 (TARE 포함)&lt;br&gt;  dispense_result   원료가 끝날 때 — WEIGH_RESIDUAL 에서 DONE 또는 DEVIATION 으로 갈 때&lt;br&gt;  deviation         _deviate() 마다 (fsm.deviations 길이 증가 감지) + QA 판정 후 decision·operator_id 채워 같은 deviation_id 로 재발행&lt;br&gt;  event             BATCH_START(product) · STEP(전이) · INTERLOCK_ENTER/EXIT · INTERVENTION_FORCED(ERROR) · BATCH_END&lt;br&gt;  state             0.5 s 타이머 + 전이 직후 1회" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="820" y="686" width="780" height="130" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="4 상태별 노드·토픽 흐름" name="4 상태별 노드·토픽 흐름">
+    <mxGraphModel dx="1006" dy="655" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="3300" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;fontColor=#161B2A;fontSize=16;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="상태마다 무엇이 들어오고(HMI 서비스 · NUDGE 이벤트) 무엇이 나가는가(스킬 호출 · 도징 라이브러리 · 기록 토픽) — 2페이지 전이도를 세로로 편 것. 전이 조건은 2페이지" vertex="1">
+          <mxGeometry height="40" width="1860" x="40" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="D record_node — 토픽 (나감) → SQLite&lt;br&gt;/cell/state · weight · dispense_result · deviation · event" vertex="1">
+          <mxGeometry height="60" width="360" x="40" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;dashed=1;" value="" vertex="1">
+          <mxGeometry height="2850" width="360" x="40" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="D hmi_web_node — Service (들어옴)&lt;br&gt;/cell/submit_order · qa_decision · interlock" vertex="1">
+          <mxGeometry height="60" width="300" x="440" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;dashed=1;" value="" vertex="1">
+          <mxGeometry height="2850" width="300" x="440" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="C process_node&lt;br&gt;상태 (CellState.step)" vertex="1">
+          <mxGeometry height="60" width="220" x="800" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;dashed=1;" value="" vertex="1">
+          <mxGeometry height="2850" width="220" x="800" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="c9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="A skill_node — Action / Service (나감 → 결과 돌아옴)&lt;br&gt;/cell/move_to_station · scoop · pour · weigh_container · grip · measure_force · safe_pose" vertex="1">
+          <mxGeometry height="60" width="380" x="1080" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c10" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;dashed=1;" value="" vertex="1">
+          <mxGeometry height="2850" width="380" x="1080" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="c11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="B gmp_dosing — 라이브러리 (import, ROS 없음)&lt;br&gt;core/scale.py · core/dosing.py" vertex="1">
+          <mxGeometry height="60" width="360" x="1500" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;dashed=1;" value="" vertex="1">
+          <mxGeometry height="2850" width="360" x="1500" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="c13" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="IDLE" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="c14" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="SubmitOrder srv&lt;br&gt;recipe → accepted, batch_id&lt;br&gt;event HMI_ORDER(actor) → audit" vertex="1">
+          <mxGeometry height="61" width="280" x="450" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="c15" edge="1" parent="1" source="c14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" target="c13" value="srv 요청">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c16" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="recipe.parse() / from_msg() 검증&lt;br&gt;scale.resolvable(target, tol)" vertex="1">
+          <mxGeometry height="46" width="340" x="1510" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="c17" edge="1" parent="1" source="c13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c16" value="import 호출">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c18" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="state IDLE→ACCEPTED&lt;br&gt;event BATCH_START(product)" vertex="1">
+          <mxGeometry height="46" width="340" x="50" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="c19" edge="1" parent="1" source="c13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.9;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="c18" value="topic 발행">
+          <mxGeometry relative="1" x="-0.35" y="12" as="geometry">
+            <Array as="points">
+              <mxPoint x="795" y="245" />
+              <mxPoint x="220" y="245" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c20" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="SELF_CHECK&lt;br&gt;빈 그리퍼 외력확인" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="c21" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="MeasureForce srv (빈 그리퍼)&lt;br&gt;samples, settle_s → fz_mean, fz_std, valid" vertex="1">
+          <mxGeometry height="46" width="360" x="1090" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="c22" edge="1" parent="1" source="c20" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c21" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c23" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="state · event STEP" vertex="1">
+          <mxGeometry height="31" width="340" x="50" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="c24" edge="1" parent="1" source="c20" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c23" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c25" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="PICK_CONTAINER&lt;div&gt;빈 용기 작업공간 이동&lt;/div&gt;" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="c26" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="carry = MoveToStation act ×4 + Grip srv ×2&lt;br&gt;magazine(slot) → scale, cup_width&lt;br&gt;→ grip_inferred" vertex="1">
+          <mxGeometry height="61" width="360" x="1090" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="c27" edge="1" parent="1" source="c25" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c26" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c28" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="state&lt;br&gt;deviation(GRIP_FAIL 시)" vertex="1">
+          <mxGeometry height="46" width="340" x="50" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="c29" edge="1" parent="1" source="c25" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c28" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c30" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="TARE" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="c31" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="WeighContainer act (용기 들어)&lt;br&gt;scale, tare 0 → reading(gross, std, valid)" vertex="1">
+          <mxGeometry height="46" width="360" x="1090" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="c32" edge="1" parent="1" source="c30" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c31" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c33" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="scale.set_tare(gross)" vertex="1">
+          <mxGeometry height="31" width="340" x="1510" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="c34" edge="1" parent="1" source="c30" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.9;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="c33" value="import 호출">
+          <mxGeometry relative="1" x="0.35" y="12" as="geometry">
+            <Array as="points">
+              <mxPoint x="1035" y="695" />
+              <mxPoint x="1680" y="695" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c35" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="weight(gross, valid=…) · state" vertex="1">
+          <mxGeometry height="31" width="340" x="50" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="c36" edge="1" parent="1" source="c30" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c35" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c37" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="PICK_SCOOP" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="750" as="geometry" />
+        </mxCell>
+        <mxCell id="c38" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="MoveToStation act (scoop_rack, AT)&lt;br&gt;Grip srv (close, scoop_width, force)&lt;br&gt;→ grip_inferred, final_width_mm" vertex="1">
+          <mxGeometry height="61" width="360" x="1090" y="750" as="geometry" />
+        </mxCell>
+        <mxCell id="c39" edge="1" parent="1" source="c37" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c38" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c40" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="state&lt;br&gt;deviation(GRIP_FAIL · WRONG_TOOL[v1.2])" vertex="1">
+          <mxGeometry height="46" width="340" x="50" y="750" as="geometry" />
+        </mxCell>
+        <mxCell id="c41" edge="1" parent="1" source="c37" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c40" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c42" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="SCOOP_TARE" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="900" as="geometry" />
+        </mxCell>
+        <mxCell id="c43" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="weigh_scoop [v1.2 I-007] (빈 스쿱, 든 채)&lt;br&gt;→ gross, std, valid" vertex="1">
+          <mxGeometry height="46" width="360" x="1090" y="900" as="geometry" />
+        </mxCell>
+        <mxCell id="c44" edge="1" parent="1" source="c42" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c43" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c45" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="weight(스쿱 풍량) · state" vertex="1">
+          <mxGeometry height="31" width="340" x="50" y="900" as="geometry" />
+        </mxCell>
+        <mxCell id="c46" edge="1" parent="1" source="c42" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c45" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c47" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="SCOOP" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="1050" as="geometry" />
+        </mxCell>
+        <mxCell id="c48" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="Scoop act&lt;br&gt;material_id, attempt → contact_detected" vertex="1">
+          <mxGeometry height="46" width="360" x="1090" y="1050" as="geometry" />
+        </mxCell>
+        <mxCell id="c49" edge="1" parent="1" source="c47" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c48" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c50" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="state&lt;br&gt;deviation(SCOOP_EMPTY · MATERIAL_EMPTY)" vertex="1">
+          <mxGeometry height="46" width="340" x="50" y="1050" as="geometry" />
+        </mxCell>
+        <mxCell id="c51" edge="1" parent="1" source="c47" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c50" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c52" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="WEIGH_SCOOP" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="1200" as="geometry" />
+        </mxCell>
+        <mxCell id="c53" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="weigh_scoop [v1.2] (붓기 전, 든 채)&lt;br&gt;→ gross, valid" vertex="1">
+          <mxGeometry height="46" width="360" x="1090" y="1200" as="geometry" />
+        </mxCell>
+        <mxCell id="c54" edge="1" parent="1" source="c52" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c53" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c55" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="_pour_fraction(need, scooped)&lt;br&gt;= min(1, 부족량/퍼낸 양)  [B 로 이관 예정]" vertex="1">
+          <mxGeometry height="46" width="340" x="1510" y="1200" as="geometry" />
+        </mxCell>
+        <mxCell id="c56" edge="1" parent="1" source="c52" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.9;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="c55" value="import 호출">
+          <mxGeometry relative="1" x="0.35" y="12" as="geometry">
+            <Array as="points">
+              <mxPoint x="1035" y="1295" />
+              <mxPoint x="1680" y="1295" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c57" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="weight(퍼낸 양) · state" vertex="1">
+          <mxGeometry height="31" width="340" x="50" y="1200" as="geometry" />
+        </mxCell>
+        <mxCell id="c58" edge="1" parent="1" source="c52" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c57" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c59" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="POUR" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="1350" as="geometry" />
+        </mxCell>
+        <mxCell id="c60" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="Pour act&lt;br&gt;scale, fraction → success" vertex="1">
+          <mxGeometry height="46" width="360" x="1090" y="1350" as="geometry" />
+        </mxCell>
+        <mxCell id="c61" edge="1" parent="1" source="c59" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c60" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c62" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="state" vertex="1">
+          <mxGeometry height="31" width="340" x="50" y="1350" as="geometry" />
+        </mxCell>
+        <mxCell id="c63" edge="1" parent="1" source="c59" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c62" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c64" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="WEIGH_RESIDUAL" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="1500" as="geometry" />
+        </mxCell>
+        <mxCell id="c65" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="weigh_scoop [v1.2] (붓기 후, 든 채)&lt;br&gt;→ gross, valid" vertex="1">
+          <mxGeometry height="46" width="360" x="1090" y="1500" as="geometry" />
+        </mxCell>
+        <mxCell id="c66" edge="1" parent="1" source="c64" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c65" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c67" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="decide(target, actual, tol, attempts,&lt;br&gt;valid, invalid, cfg)&lt;br&gt;→ DONE / SCOOP(fraction) / DEVIATION(kind)" vertex="1">
+          <mxGeometry height="61" width="340" x="1510" y="1500" as="geometry" />
+        </mxCell>
+        <mxCell id="c68" edge="1" parent="1" source="c64" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.9;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="c67" value="import 호출">
+          <mxGeometry relative="1" x="0.35" y="12" as="geometry">
+            <Array as="points">
+              <mxPoint x="1035" y="1595" />
+              <mxPoint x="1680" y="1595" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c69" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="weight(잔량) · state&lt;br&gt;dispense_result (DONE·DEVIATION 시)&lt;br&gt;deviation(OVERFILL · TIMEOUT · WEIGH_INVALID)" vertex="1">
+          <mxGeometry height="61" width="340" x="50" y="1500" as="geometry" />
+        </mxCell>
+        <mxCell id="c70" edge="1" parent="1" source="c64" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c69" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c71" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="RETURN_SCOOP" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="1650" as="geometry" />
+        </mxCell>
+        <mxCell id="c72" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="MoveToStation act (scoop_rack, AT)&lt;br&gt;Grip srv (open)" vertex="1">
+          <mxGeometry height="46" width="360" x="1090" y="1650" as="geometry" />
+        </mxCell>
+        <mxCell id="c73" edge="1" parent="1" source="c71" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c72" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c74" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="state" vertex="1">
+          <mxGeometry height="31" width="340" x="50" y="1650" as="geometry" />
+        </mxCell>
+        <mxCell id="c75" edge="1" parent="1" source="c71" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c74" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c76" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="VERIFY" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="1800" as="geometry" />
+        </mxCell>
+        <mxCell id="c77" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="WeighContainer act (용기 들어, 배치 1회)&lt;br&gt;scale, tare_g → reading(net)" vertex="1">
+          <mxGeometry height="46" width="360" x="1090" y="1800" as="geometry" />
+        </mxCell>
+        <mxCell id="c78" edge="1" parent="1" source="c76" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c77" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c79" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="scale.cfg.min_resolvable_g&lt;br&gt;(Σ투입량 대조 허용 차)" vertex="1">
+          <mxGeometry height="46" width="340" x="1510" y="1800" as="geometry" />
+        </mxCell>
+        <mxCell id="c80" edge="1" parent="1" source="c76" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.9;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="c79" value="import 호출">
+          <mxGeometry relative="1" x="0.35" y="12" as="geometry">
+            <Array as="points">
+              <mxPoint x="1035" y="1895" />
+              <mxPoint x="1680" y="1895" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c81" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="weight(net) · state&lt;br&gt;deviation(VERIFY_MISMATCH[v1.2])" vertex="1">
+          <mxGeometry height="46" width="340" x="50" y="1800" as="geometry" />
+        </mxCell>
+        <mxCell id="c82" edge="1" parent="1" source="c76" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c81" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c83" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="FINISH" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="1950" as="geometry" />
+        </mxCell>
+        <mxCell id="c84" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="carry scale → output_tray(slot)&lt;br&gt;SafePose srv" vertex="1">
+          <mxGeometry height="46" width="360" x="1090" y="1950" as="geometry" />
+        </mxCell>
+        <mxCell id="c85" edge="1" parent="1" source="c83" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c84" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c86" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="state DONE · event BATCH_END&lt;br&gt;(record_node 가 JSON 내보내기)" vertex="1">
+          <mxGeometry height="46" width="340" x="50" y="1950" as="geometry" />
+        </mxCell>
+        <mxCell id="c87" edge="1" parent="1" source="c83" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c86" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c88" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="DONE" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="2100" as="geometry" />
+        </mxCell>
+        <mxCell id="c89" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="(발행 없음 — HMI 는 DB 를 읽어&lt;br&gt;이력·KPI 표시)" vertex="1">
+          <mxGeometry height="46" width="340" x="50" y="2100" as="geometry" />
+        </mxCell>
+        <mxCell id="c90" edge="1" parent="1" source="c88" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c89" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c91" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="DEVIATION" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="2250" as="geometry" />
+        </mxCell>
+        <mxCell id="c92" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="QaDecision srv&lt;br&gt;APPROVE / DISCARD, operator_id&lt;br&gt;event HMI_QA_APPROVE/DISCARD → audit" vertex="1">
+          <mxGeometry height="61" width="280" x="450" y="2250" as="geometry" />
+        </mxCell>
+        <mxCell id="c93" edge="1" parent="1" source="c92" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" target="c91" value="srv 요청">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c94" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="(로봇 대기 — 호출 없음)" vertex="1">
+          <mxGeometry height="31" width="360" x="1090" y="2250" as="geometry" />
+        </mxCell>
+        <mxCell id="c95" edge="1" parent="1" source="c91" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c94" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c96" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="deviation 재발행&lt;br&gt;(decision, operator_id, 같은 id) · state" vertex="1">
+          <mxGeometry height="46" width="340" x="50" y="2250" as="geometry" />
+        </mxCell>
+        <mxCell id="c97" edge="1" parent="1" source="c91" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.9;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="c96" value="topic 발행">
+          <mxGeometry relative="1" x="-0.35" y="12" as="geometry">
+            <Array as="points">
+              <mxPoint x="795" y="2345" />
+              <mxPoint x="220" y="2345" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c98" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="PAUSED (REFILL)" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="2400" as="geometry" />
+        </mxCell>
+        <mxCell id="c99" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="InterlockRequest srv&lt;br&gt;ENTER(reason) → granted / EXIT&lt;br&gt;event HMI_INTERLOCK_ENTER/EXIT → audit" vertex="1">
+          <mxGeometry height="61" width="280" x="450" y="2400" as="geometry" />
+        </mxCell>
+        <mxCell id="c100" edge="1" parent="1" source="c99" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" target="c98" value="srv 요청">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c101" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="SafePose srv (ENTER 시)&lt;br&gt;진행 중 Action 은 cancel_goal 먼저 (I-004)" vertex="1">
+          <mxGeometry height="46" width="360" x="1090" y="2400" as="geometry" />
+        </mxCell>
+        <mxCell id="c102" edge="1" parent="1" source="c98" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c101" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c103" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="event INTERLOCK_ENTER/EXIT&lt;br&gt;state PAUSED" vertex="1">
+          <mxGeometry height="46" width="340" x="50" y="2400" as="geometry" />
+        </mxCell>
+        <mxCell id="c104" edge="1" parent="1" source="c98" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.9;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="c103" value="topic 발행">
+          <mxGeometry relative="1" x="-0.35" y="12" as="geometry">
+            <Array as="points">
+              <mxPoint x="795" y="2495" />
+              <mxPoint x="220" y="2495" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c105" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="PAUSED (NUDGE)" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="2550" as="geometry" />
+        </mxCell>
+        <mxCell id="c106" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="event NUDGE ← skill_node 발행&lt;br&gt;(get_tool_force 폴링, D-21)&lt;br&gt;process 는 구독 → 루프 게이트 토글" vertex="1">
+          <mxGeometry height="61" width="360" x="1090" y="2550" as="geometry" />
+        </mxCell>
+        <mxCell id="c107" edge="1" parent="1" source="c106" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c105" value="event (구독)">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c108" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="state PAUSED(note NUDGE)&lt;br&gt;event NUDGE (skill 이 낸 것을 record 가 저장)" vertex="1">
+          <mxGeometry height="46" width="340" x="50" y="2550" as="geometry" />
+        </mxCell>
+        <mxCell id="c109" edge="1" parent="1" source="c105" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c108" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c110" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="ERROR" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="2700" as="geometry" />
+        </mxCell>
+        <mxCell id="c111" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="SafePose srv (then None)" vertex="1">
+          <mxGeometry height="31" width="360" x="1090" y="2700" as="geometry" />
+        </mxCell>
+        <mxCell id="c112" edge="1" parent="1" source="c110" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c111" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c113" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="event INTERVENTION_FORCED&lt;br&gt;state ERROR" vertex="1">
+          <mxGeometry height="46" width="340" x="50" y="2700" as="geometry" />
+        </mxCell>
+        <mxCell id="c114" edge="1" parent="1" source="c110" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c113" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c115" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="DISCARDED" vertex="1">
+          <mxGeometry height="50" width="200" x="810" y="2850" as="geometry" />
+        </mxCell>
+        <mxCell id="c116" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="MoveToStation + Grip(open) (스쿱 반납)&lt;br&gt;carry scale → reject_bin" vertex="1">
+          <mxGeometry height="46" width="360" x="1090" y="2850" as="geometry" />
+        </mxCell>
+        <mxCell id="c117" edge="1" parent="1" source="c115" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c116" value="호출 → 결과">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c118" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="state DONE(DISCARDED)&lt;br&gt;event BATCH_END" vertex="1">
+          <mxGeometry height="46" width="340" x="50" y="2850" as="geometry" />
+        </mxCell>
+        <mxCell id="c119" edge="1" parent="1" source="c115" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c118" value="topic 발행">
+          <mxGeometry relative="1" y="-10" as="geometry" />
+        </mxCell>
+        <mxCell id="c120" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="읽는 법   왼쪽 = 나가는 토픽(D record_node 가 SQLite 에 씀, HMI 는 DB 를 읽는다) · 가운데 왼쪽 = HMI 가 부르는 서비스(들어옴) · 오른쪽 = process 가 부르는 A 스킬(요청 → 결과) · 맨 오른쪽 = B 라이브러리 함수(같은 프로세스 안, 토픽 없음)&lt;br&gt;weigh_scoop 와 VERIFY_MISMATCH · WRONG_TOOL 은 계약 v1.2 (I-007). state 는 전 상태에서 2 Hz + 전이 직후 발행. 모든 발행은 /cell/ 아래, QoS 는 docs/interfaces.md 3절.&lt;br&gt;이 페이지의 상자 문구는 docs/process_flow.md 1·2·4절과 같은 내용이다 — 바뀌면 tools/make_process_drawio.py 를 고쳐 다시 생성한다" vertex="1">
+          <mxGeometry height="90" width="1820" x="40" y="3020" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

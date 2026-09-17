@@ -30,7 +30,8 @@
 | `action/MoveToStation` | 스테이션 이동 (`ABOVE` 접근점 / `AT` 작업점) | 좌표는 `stations.yaml` 단일 출처 |
 | `action/Scoop` | 원료통에서 퍼올리기 | 원료면 접촉 감지 포함 |
 | `action/Pour` | 칭량 용기에 붓기 (`fraction<1` 이면 털어내기) | 기울임 각·속도는 파라미터 |
-| `action/WeighContainer` | 용기를 들어 계량하고 내려놓기 (복합 스킬) | 결과는 `WeightReading` |
+| `action/WeighContainer` | 용기를 들어 계량하고 내려놓기 (복합 스킬) | 결과는 `WeightReading`. **그리퍼가 비어 있어야 한다** — TARE 와 배치 끝 VERIFY 에서만 (D-22) |
+| **`action/WeighHeld`** (v1.2 예정, 미합의) | **들고 있는 것(스쿱)을 그대로** 계량 자세로 가져가 재기 — 파지·내려놓기 없음 | D-22 의 `weigh_scoop`. `WeighContainer` 에 `mode` 필드로 넣는 안도 가능 — A 와 합의 (I-007). `Deviation.kind` 에 `VERIFY_MISMATCH` 도 v1.2 |
 | `action/RunBatch` | HMI/CLI → process. 배치 실행 | 피드백 `CellState` + 마지막 `DispenseResult` |
 
 ## 2. 확정된 값 — 더 논의하지 않는다
@@ -79,7 +80,7 @@
 |---|---|---|
 | `common.yaml` | `robot.*`(id·모델·툴·TCP·속도), `gripper.*`(백엔드·폭·힘·마진), `scale.*`(표본·정착·환산·영점), `dosing.*`(시도 상한·털어내기 비율), `safety.*`(힘 상한·충돌 감도), `interlock.*`, 타임아웃 | 조장 (값은 담당이 제안) |
 | `stations.yaml` | 스테이션 ID → `posx`(mm·deg) 접근점/작업점, 계량 자세. **데이터 yaml** — 런치가 경로만 넘기고 `skill_node` 가 직접 읽는다 | A (티칭) |
-| `recipes/*.yaml` | 배치 레시피. HMI 가 읽어 `SubmitOrder` 로 보낸다 | C |
+| `recipes/*.yaml` | 배치 레시피. **스키마·검증은 `gmp_process/core/recipe.py` 가 단일 출처** — D 의 HMI 는 `recipe.load()` 로 읽어 `SubmitOrder` 로 보낸다 (인라인 파싱 금지). 값은 G1 결과로 조장이 확정 (D-08) | **C** (스키마·검증) |
 
 ## 5. QoS
 

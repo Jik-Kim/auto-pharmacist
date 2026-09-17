@@ -21,11 +21,10 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from ament_index_python.packages import get_package_share_directory
 
-import yaml
-
 from gmp_interfaces.msg import CellEvent, CellState, Deviation, DispenseResult, GripperState, Recipe, RecipeItem, WeightReading
 from gmp_interfaces.srv import InterlockRequest, QaDecision, SubmitOrder
 from gmp_hmi.core.db import DECISIONS, KINDS, VERDICTS, CellDB
+from gmp_process.core.recipe import load as load_recipe   # 레시피 스키마·검증 단일 출처 (C) — 여기서 다시 파싱하지 않는다
 
 MODES = {v: k for k, v in vars(CellState).items() if k.isupper() and isinstance(v, int)}
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -104,14 +103,12 @@ class HmiRosNode(Node):
 
     def submit(self, name, actor):
         d = self.get_parameter('recipes_dir').value or os.path.join(get_package_share_directory('gmp_bringup'), 'params', 'recipes')
-        with open(os.path.join(d, f'{name}.yaml'), encoding='utf-8') as f:
-            spec = yaml.safe_load(f) or {}
-        r = Recipe(product=str(spec.get('product', name)))
+        spec = load_recipe(os.path.join(d, f'{name}.yaml'))   # 필수 필드·원료 중복·양수 검증을 여기서 통과한다
+        r = Recipe(product=spec.product or name)
         r.header.stamp = self.get_clock().now().to_msg()
-        for it in spec.get('items', []):
-            grade = it.get('grade', 'EXCIPIENT')
-            r.items.append(RecipeItem(material_id=str(it['material_id']), target_g=float(it['target_g']), tol_pct=float(it['tol_pct']),
-                                      grade=RecipeItem.ACTIVE if grade == 'ACTIVE' else RecipeItem.EXCIPIENT, scoop_id=str(it.get('scoop_id', ''))))
+        for it in spec.items:
+            r.items.append(RecipeItem(material_id=it.material_id, target_g=it.target_g, tol_pct=it.tol_pct,
+                                      grade=it.grade, scoop_id=it.scoop_id))
         res = self._call(self.cli_order, SubmitOrder.Request(recipe=r))
         self.audit('ORDER', actor, f'{name} → {res.batch_id if res else "no-response"}')
         return res
@@ -145,7 +142,10 @@ def build_app(node: HmiRosNode, db: CellDB):
 
     @app.route('/order', methods=['POST'])
     def order():
-        res = node.submit(request.form['recipe'], request.form.get('actor', ''))
+        try:
+            res = node.submit(request.form['recipe'], request.form.get('actor', ''))
+        except (ValueError, KeyError, OSError) as e:      # 레시피 yaml 이 스키마에 안 맞음
+            return jsonify(ok=False, message=f'레시피 오류: {e}', batch_id='')
         return jsonify(ok=bool(res and res.accepted), message=(res.message if res else 'process_node 응답 없음'),
                        batch_id=(res.batch_id if res else ''))
 
