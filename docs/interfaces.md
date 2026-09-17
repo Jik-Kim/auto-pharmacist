@@ -30,7 +30,8 @@
 | `action/MoveToStation` | 스테이션 이동 (`ABOVE` 접근점 / `AT` 작업점) | 좌표는 `stations.yaml` 단일 출처 |
 | `action/Scoop` | 원료통에서 퍼올리기 | 원료면 접촉 감지 포함 |
 | `action/Pour` | 칭량 용기에 붓기 (`fraction<1` 이면 털어내기) | 기울임 각·속도는 파라미터 |
-| `action/WeighContainer` | 용기를 들어 계량하고 내려놓기 (복합 스킬) | 결과는 `WeightReading` |
+| `action/WeighContainer` | 용기를 들어 계량하고 내려놓기 (복합 스킬) | 결과는 `WeightReading`. **그리퍼가 비어 있어야 한다** — TARE 와 배치 끝 VERIFY 에서만 (D-22) |
+| **`action/WeighHeld`** (v1.2 예정, 미합의) | **들고 있는 것(스쿱)을 그대로** 계량 자세로 가져가 재기 — 파지·내려놓기 없음 | D-22 의 `weigh_scoop`. `WeighContainer` 에 `mode` 필드로 넣는 안도 가능 — A 와 합의 (I-007). `Deviation.kind` 에 `VERIFY_MISMATCH` 도 v1.2 |
 | `action/RunBatch` | HMI/CLI → process. 배치 실행 | 피드백 `CellState` + 마지막 `DispenseResult` |
 
 ## 2. 확정된 값 — 더 논의하지 않는다

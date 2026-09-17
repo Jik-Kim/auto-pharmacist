@@ -5,31 +5,46 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 7/44 완료** (███░░░░░░░░░░░░░░░░░)  ·  기준 09/16
+**전체 9/55 완료** (███░░░░░░░░░░░░░░░░░)  ·  기준 09/17
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
-| gmp_interfaces [조장] | 2/4 | `█████░░░░░` | — |
-| gmp_skills [A 스킬] | 0/12 | `░░░░░░░░░░` | — |
-| gmp_dosing [B 도징] | 0/6 | `░░░░░░░░░░` | — |
-| gmp_process [C 공정] | 0/7 | `░░░░░░░░░░` | — |
-| gmp_hmi [D HMI·기록] | 3/9 | `███░░░░░░░` | — |
-| gmp_bringup [조장] | 2/6 | `███░░░░░░░` | — |
+| gmp_interfaces [조장] | 2/5 | `████░░░░░░` | — |
+| gmp_skills [A 스킬] | 0/14 | `░░░░░░░░░░` | **1** |
+| gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **2** |
+| gmp_process [C 공정] | 2/11 | `██░░░░░░░░` | **1** |
+| gmp_hmi [D HMI·기록] | 3/12 | `██░░░░░░░░` | — |
+| gmp_bringup [조장] | 2/6 | `███░░░░░░░` | **1** |
 
-**오늘 마감 5건**
+**마감이 지난 항목 5건**
 
-- gmp_skills — adapters/dsr_arm.py: DR_init·set_tool/tcp·movej/movel·get_tool_force·re…
-- gmp_dosing — core/scale.py: WeightModel — 힘/작업물무게 → g, 영점(tare) 저장·적용, σ 계산, valid 판정
-- gmp_dosing — core/dosing.py: decide(target_g, actual_g, tol_pct, attempts, history) …
-- gmp_process — core/recipe.py: yaml → Recipe 변환, 순서·필수 필드 검증
-- gmp_bringup — tools/env.sh 세 워크스페이스 source
+- `9/16` gmp_skills — adapters/dsr_arm.py: DR_init·set_tool/tcp·movej/movel·get_tool_force·re…
+- `9/16` gmp_dosing — core/scale.py: WeightModel — 힘/작업물무게 → g, 영점(tare) 저장·적용, σ 계산, valid 판정
+- `9/16` gmp_dosing — core/dosing.py: decide(target_g, actual_g, tol_pct, attempts, history) …
+- `9/16` gmp_process — core/recipe.py: yaml → Recipe 변환, 순서·필수 필드 검증
+- `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
+
+**오늘 마감 12건**
+
+- gmp_interfaces — 계약 v1.2: Deviation.kind 에 WRONG_TOOL·VERIFY_MISMATCH 추가, WeighHeld Acti…
+- gmp_interfaces — G1 결과로 도징 단위 확정 → RecipeItem.tol_pct 기본값·레시피 yaml 갱신 (SOT D-08)
+- gmp_skills — adapters/rg2_gripper.py: modbus 백엔드 (/onrobot/sendCommand 폭 정수, /onrobo…
+- gmp_skills — nodes/skill_node.py: 워커 스레드 + 큐, MoveToStation·Grip·MeasureForce·SafePo…
+- gmp_skills — G1 외력 분해능 측정 (I-001) — 결과를 SOT D-08 에
+- gmp_skills — G2 그리퍼 modbus 실물 확인 (Q-02) — 안 되면 dio 백엔드 (Q-03 핀)
+- gmp_skills — G3 stations.yaml 9곳 티칭 — 판 좌표계(D-15) 우선, 안 되면 base posx
+- gmp_dosing — test/test_dosing.py: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ…
+- gmp_dosing — G1 σ 로 scale.min_resolvable_g 갱신, 30 g / 100 g 단위 확정 (조장과)
+- gmp_process — 스테이션 물리 배치·테이프 표시 (하드웨어)
+- gmp_hmi — sudo apt install python3-flask 후 가상 모드에서 주문 → 상태 → QA 승인 → 이력 조회 한 바퀴
+- gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
 
 > 이 표는 `python3 tools/todo_stats.py` 가 체크박스를 세어 다시 쓴다. 손으로 고치지 않는다.
 
 <!-- STATS:END -->
 
 ## gmp_interfaces [조장]
-- [ ] **계약 v1.2**: `Deviation.kind` 에 `WRONG_TOOL` 추가, `docs/interfaces.md` 동시 갱신, 팀 채널 공지 · 마감 9/17
+- [ ] **계약 v1.2**: `Deviation.kind` 에 `WRONG_TOOL`·`VERIFY_MISMATCH` 추가, **`WeighHeld` Action(들고 있는 스쿱 계량, D-22·I-007)** 신설, `docs/interfaces.md` 동시 갱신, 팀 채널 공지 · 마감 9/17
 - [x] 계약 v1.0 — msg 8 · srv 6 · action 5 정의, `docs/interfaces.md` · 마감 9/16
 - [ ] G1 결과로 도징 단위 확정 → `RecipeItem.tol_pct` 기본값·레시피 yaml 갱신 (SOT D-08) · 마감 9/17
 - [x] 계약 v1.1 — `Deviation.operator_id`, `record_summary` 폐지, 7절 DB 스키마 · 마감 9/16
@@ -62,8 +77,9 @@
 
 ## gmp_process [C 공정]
 - [ ] `core/recipe.py`: yaml → `Recipe` 변환, 순서·필수 필드 검증 · 마감 9/16
-- [ ] `core/process_fsm.py`: 상태·전이표(`docs/architecture.md`) 순수 구현, 이벤트 입력 → 다음 상태 + 스킬 요청 · 마감 9/17
-- [ ] `test/test_process_fsm.py`: 정상 3원료 완주, UNDER 보정 루프, OVER → DEVIATION → APPROVE/DISCARD, 인터락 ENTER/EXIT 재개 · 마감 9/17
+- [x] `core/process_fsm.py`: 상태·전이표(`docs/architecture.md`) 순수 구현, 이벤트 입력 → 다음 상태 + 스킬 요청 — **D-22 6단계(스쿱 계량 3회 + VERIFY)** 반영 · 마감 9/17
+- [x] `test/test_process_fsm.py`: 정상 완주(6단계 순서), 붓기 전 계량으로 초과 예방, UNDER 보정 누적, OVER → QA → DISCARD(스쿱 반납 후), VERIFY 불일치 → QA, 계량 무효 재시도, 파지 실패, REFILL 재개 — 9건 · 마감 9/17
+- [ ] **[D-22]** `_pour_fraction` 을 B 의 `dosing.py` 로 이관, `weigh_scoop` 임시 구현(계약 전) → v1.2 후 교체 · 마감 9/18 (A·B 와)
 - [ ] `nodes/process_node.py`: 스킬 Action/Service 클라이언트, `RunBatch`·`SubmitOrder`·`QaDecision`·`InterlockRequest` 서버, `state`(2 Hz, TRANSIENT_LOCAL)·`weight`·`dispense_result`·`deviation`·`event` 발행 — **가상에서 레시피 1건 완주** · 마감 9/18
 - [ ] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) · 마감 9/21
 - [ ] 스테이션 물리 배치·테이프 표시 (하드웨어) · 마감 9/17

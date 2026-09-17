@@ -64,7 +64,8 @@
 | Action | `move_to_station` | `MoveToStation` | `station_id`, `approach`(ABOVE=0/AT=1), `vel_scale` | `success`, `reached` → `state.station` |
 | Action | `scoop` | `Scoop` | `material_id`, `attempt` | `success`, **`contact_detected`** |
 | Action | `pour` | `Pour` | `target_station`("scale"), `fraction`(0~1) | `success` |
-| Action | `weigh_container` | `WeighContainer` | `container_station`("scale"), `tare_g` | **`reading`**(WeightReading: gross/net/std/valid) |
+| Action | `weigh_container` | `WeighContainer` | `container_station`("scale"), `tare_g` | **`reading`**(WeightReading: gross/net/std/valid) — **용기를 들어** 잰다 (파지 → 계량 자세 → 읽기 → 내려놓기), 그리퍼가 비어 있어야 한다 |
+| Action | **`weigh_scoop`** [계약 v1.2, I-007] | (미정: `WeighHeld` 신설 또는 `WeighContainer.mode=held`) | `tare_g`(빈 스쿱) | `reading` — **들고 있는 스쿱을 그대로** 계량 자세로 가져가 잰다. 파지·내려놓기 없음 |
 | Service | `grip` | `Grip` | `close`, `width_mm`, `force_n`, `timeout_s` | `success`, `final_width_mm`, **`grip_inferred`** |
 | Service | `measure_force` | `MeasureForce` | `samples`, `settle_s` | `fz_mean_n`, `fz_std_n`, `valid` |
 | Service | `safe_pose` | `SafePose` | `reason` | `success` |
@@ -77,11 +78,12 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 |---|---|---|---|
 | `measure` | — | `measure_force(samples=0, settle_s=0)` | `{'valid', 'fz_std_n'}` (SELF_CHECK: valid 아니면 ERROR 로 보낼 것 — TODO) |
 | `carry` | `src`, `dst`, `slot`, `target`='cup' | `move(src, ABOVE)` → `move(src, AT)` → `grip(close, cup_width)` → `move(src, ABOVE)` → `move(dst, ABOVE)` → `move(dst, AT)` → `grip(open)` → `move(dst, ABOVE)` | `{'grip_inferred': <close 의 결과>}` — 파지 실패면 dst 로 가지 말고 바로 반환 |
-| `weigh` | `station`, `tare_g` | `weigh_container(station, tare_g)` | `{'gross_g', 'net_g', 'std_g', 'valid'}` ← `reading` 에서 복사. 동시에 `weight` 토픽 발행 |
+| `weigh` | `station`, `tare_g` | `weigh_container(station, tare_g)` — 용기를 들어 잰다 (TARE · VERIFY 두 곳) | `{'gross_g', 'net_g', 'std_g', 'valid'}` ← `reading` 에서 복사. 동시에 `weight` 토픽 발행 |
+| `weigh_scoop` | `station`, `tare_g`(빈 스쿱) | **[v1.2]** 들고 있는 스쿱을 계량 자세로 → 읽기 (SCOOP_TARE · WEIGH_SCOOP · WEIGH_RESIDUAL 세 곳). 계약 확정 전에는 `weigh_container` 에 `mode` 를 넣거나 `measure_force` 로 임시 구현 | `{'gross_g', 'std_g', 'valid'}` + `weight` 발행 (`tare_g`=스쿱 풍량, `net_g`=스쿱 안 원료) |
 | `move` | `station`, `approach`('AT'/'ABOVE') | `move_to_station` | `{'success', 'reached'}` |
 | `grip` | `close`, `target`('scoop'/'cup') | `grip(close, width=scoop_width 또는 cup_width, force)` | `{'grip_inferred', 'final_width_mm'}` |
-| `scoop` | `material_id`, `attempt`, (`fraction`) | `scoop(material_id, attempt)` | `{'contact_detected', 'fraction'}` — fraction 은 요청값을 그대로 되돌려 준다 (POUR 가 쓴다) |
-| `pour` | `station`, `fraction` | `pour(station, fraction)` | `{'success'}` |
+| `scoop` | `material_id`, `attempt`, `fraction` | `scoop(material_id, attempt)` — `fraction` 은 담그기 깊이 **힌트**일 뿐 (보정 투입은 얕게) | `{'contact_detected'}` — 붓기 비율은 WEIGH_SCOOP 가 퍼낸 양으로 다시 정한다 |
+| `pour` | `station`, `fraction` | `pour(station, fraction)` — `fraction` = min(1, 부족량 / 퍼낸 양) (FSM `_pour_fraction`) | `{'success'}` |
 | `safe` | `reason`, `then` | `safe_pose(reason)` | `{}` — 전이는 요청의 `then` 이 정한다 |
 | `wait_qa` | `deviation` | 아무 스킬도 안 부름. `_qa.wait()` | `{'decision': 'APPROVED'/'DISCARDED'}` |
 | `wait_interlock` | — | `_interlock_exit.wait()` | `{}` |
@@ -90,28 +92,32 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 
 ## 3. 상태 전이도
 
+그림판: `docs/diagrams/process_flow.drawio` (draw.io, `tools/make_process_drawio.py` 가 생성) — 1 노드 입출력 · 2 상태 전이도 · 3 요청↔스킬 번역 · **4 상태별 노드·토픽 흐름 (A·B·D 와 무엇이 오가는지 상태마다)**.
+
+원료 1종은 **6단계**(SOT D-22): 빈 스쿱 계량 → 퍼올림 → 붓기 전 계량(1차 폐루프) → 붓기 → 붓기 후 계량(잔량 → 투입량) → 판정. 용기 계량은 배치 끝 VERIFY 한 번.
+
 ```
- IDLE ──submit_order──▶ SELF_CHECK ──measure ok──▶ PICK_CONTAINER ──carry ok──▶ TARE ──weigh──▶ ┐
-                            │ measure invalid                │ grip_inferred=false               │
-                            ▼                                ▼ GRIP_FAIL ×3 → 재시도            │
-                          ERROR                              ×4 → ERROR                          │
-                                                                                                 │
-   ┌─────────────────────────────── 원료 i ──────────────────────────────────────────────────────┘
+ IDLE ──submit_order──▶ SELF_CHECK ──measure ok──▶ PICK_CONTAINER ──carry ok──▶ TARE ──weigh(용기)──▶ ┐
+                            │ measure invalid                │ grip_inferred=false                    │
+                            ▼                                ▼ GRIP_FAIL ×3 → 재시도                 │
+                          ERROR                              ×4 → ERROR                               │
+                                                                                                      │
+   ┌──────────────────────────────── 원료 i (D-22 6단계) ─────────────────────────────────────────────┘
    │
    ▼
- PICK_SCOOP ──move(scoop_rack)──▶ grip(close) ──inferred──▶ SCOOP ──contact──▶ POUR ──▶ WEIGH
-   ▲                                 │ ×3 재시도                │ ×3 재시도            │
-   │                                 ▼ ×4 ERROR                 ▼ 연속 3회             ├─ OK ────▶ RETURN_SCOOP ──▶ (다음 원료 → PICK_SCOOP)
-   │                                                        MATERIAL_EMPTY            │                              (마지막이면 → FINISH)
-   │                                                        → PAUSED ──interlock EXIT──┤─ UNDER ─▶ SCOOP (fraction↓, attempts+1, ≤3)
-   │                                                            (safe + wait_interlock)│─ INVALID ▶ WEIGH 재계량 (≤2)
-   │                                                                                   │─ OVER ──▶ DEVIATION(OVERFILL)
-   │                                                                                   └─ 4회째 UNDER ▶ DEVIATION(TIMEOUT)
-   │
-   │  DEVIATION ──wait_qa──▶ APPROVED ──▶ RETURN_SCOOP (원료는 결과 목록에 남김)
-   │                       └▶ DISCARDED ─▶ carry(scale→reject_bin) ──▶ DISCARDED(종료)
-   │
- FINISH ──carry(scale→output_tray)──▶ DONE
+ PICK_SCOOP ──grip ok──▶ SCOOP_TARE ──weigh_scoop──▶ SCOOP ──contact──▶ WEIGH_SCOOP ──weigh_scoop──▶ POUR ──▶ WEIGH_RESIDUAL
+   │ GRIP_FAIL ×3           (빈 스쿱 무게)             ▲  │ SCOOP_EMPTY ×3   (퍼낸 양 →                 (fraction)      │ (잔량 → 투입량 누적
+   ▼ ×4 ERROR                                          │  ▼ 연속 3회 = MATERIAL_EMPTY  붓기 비율 = 부족량/퍼낸 양)         │  → decide)
+                                                       │ PAUSED ──interlock EXIT──▶ _resume(scoop)                    ├─ OK ────────▶ RETURN_SCOOP
+                                                       └──────────────── UNDER, attempts<3 → scoop(attempt+1) ◀───────┤                 │ 다음 원료 → PICK_SCOOP
+                                                                                                                      ├─ OVER ──────▶ DEVIATION(OVERFILL)
+   계량 무효(valid=false): 각 계량 상태에서 같은 요청 재시도 ≤2, 3회째 WEIGH_INVALID → DEVIATION                       └─ 4회째 UNDER ▶ DEVIATION(TIMEOUT)
+
+ RETURN_SCOOP ──마지막 원료였음──▶ VERIFY ──weigh(용기를 들어) · |net − Σ투입량| ≤ min_resolvable_g──▶ FINISH ──carry(scale→output_tray)──▶ DONE
+                                     └─ 불일치 ─▶ DEVIATION(VERIFY_MISMATCH) ──APPROVED──▶ FINISH
+
+ DEVIATION ──wait_qa──▶ APPROVED ──▶ RETURN_SCOOP (원료는 결과 목록에 남김) · VERIFY 에서 왔으면 FINISH
+                      └▶ DISCARDED ─▶ (스쿱 든 채면 move(scoop_rack)·grip(open) 먼저) ─▶ carry(scale→reject_bin) ──▶ DISCARDED(종료)
 ```
 
 **PAUSED 는 두 경로**: (a) MATERIAL_EMPTY → `safe` → `wait_interlock` → EXIT 로 `_resume` 요청 재실행 (b) 사람 접촉 NUDGE → 노드 게이트가 다음 요청 전에 멈춤 → 두 번째 NUDGE 로 재개 (D-21, FSM 은 모름).
@@ -124,16 +130,19 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 | `SELF_CHECK` | `measure` → valid, fz_std | valid 아니면 ERROR (TODO). 툴·TCP·감도 확인은 skill_node 가 기동 시 함 | `carry(magazine→scale, slot)` | `event BATCH_START`, `state` |
 | `PICK_CONTAINER` | `carry` → grip_inferred | false → `_deviate(GRIP_FAIL)` (같은 carry 재시도) | `weigh(scale, tare 0)` | `deviation` (실패 시) |
 | `TARE` | `weigh` → gross | `tare_g = gross`, `scale.set_tare()`. cur = 원료 0 | `move(scoop_rack, AT)` | `weight` |
-| `PICK_SCOOP` | `move` → 도착 / `grip` → inferred | 파지 실패 → GRIP_FAIL 재시도(≤3) → 4회 FORCED → ERROR. **[추가 1]** `final_width_mm` 가 원료 기대 폭 ±margin 밖이면 `WRONG_TOOL` → QA | `grip(close, scoop)` → `scoop(material, attempt=1)` | `deviation` |
-| `SCOOP` | `scoop` → contact_detected | false → SCOOP_EMPTY 재시도(≤3) → 4회째 REFILL → PAUSED | `pour(scale, fraction)` | `deviation` |
-| `POUR` | `pour` | — | `weigh(scale, tare)` | — |
-| `WEIGH` | `weigh` → net, valid | `decide(target, net, tol, attempts, valid, invalid, cfg)` → DONE / SCOOP(fraction) / DEVIATION(kind) | DONE→`move(scoop_rack)` · SCOOP→`scoop(attempt+1, fraction)` · INVALID→`weigh` 재 · DEVIATION→`wait_qa` | `weight` 항상 · `dispense_result` (DONE·DEVIATION 시) · `deviation` |
-| `RETURN_SCOOP` | `move` / `grip(open)` | idx+1. 남았으면 다음 원료, 없으면 FINISH | `move(scoop_rack)` → `grip(open)` → `move(scoop_rack)`(다음) 또는 `carry(scale→output_tray)` | `state` |
+| `PICK_SCOOP` | `move` → 도착 / `grip` → inferred | 파지 실패 → GRIP_FAIL 재시도(≤3) → 4회 FORCED → ERROR. **[추가 1]** `final_width_mm` 가 원료 기대 폭 ±margin 밖이면 `WRONG_TOOL` → QA | `grip(close, scoop)` → `weigh_scoop(tare 0)` | `deviation` |
+| `SCOOP_TARE` | `weigh_scoop` → gross, valid | `scoop_tare_g = gross` (빈 스쿱, 원료마다 1회). 무효 ≤2 재계량 → 3회 WEIGH_INVALID | `scoop(material, attempt=1)` | `weight` |
+| `SCOOP` | `scoop` → contact_detected | false → SCOOP_EMPTY 재시도(≤3) → 4회째 REFILL → PAUSED | `weigh_scoop(tare=scoop_tare)` | `deviation` |
+| `WEIGH_SCOOP` | `weigh_scoop` → gross, valid | `scooped = gross − scoop_tare`. 부족량 `need = target − actual`. **붓기 비율 = 1 (scooped ≤ need) 또는 need/scooped** — 초과 예방 (1차 폐루프). 무효 ≤2 재계량 | `pour(scale, fraction)` | `weight` |
+| `POUR` | `pour` | — | `weigh_scoop(tare=scoop_tare)` | — |
+| `WEIGH_RESIDUAL` | `weigh_scoop` → gross, valid | `residual = gross − scoop_tare`, **`actual += scooped − residual`** (실제 투입량 누적). `decide(target, actual, tol, attempts, True, invalid, cfg)` → DONE / SCOOP(fraction 힌트) / DEVIATION(kind). 무효 ≤2 재계량 | DONE→`move(scoop_rack)` · SCOOP→`scoop(attempt+1)` · DEVIATION→`wait_qa` | `weight` · `dispense_result` (DONE·DEVIATION 시) · `deviation` |
+| `RETURN_SCOOP` | `move` / `grip(open)` | idx+1. 남았으면 다음 원료, 없으면 VERIFY | `move(scoop_rack)` → `grip(open)` → `move(scoop_rack)`(다음) 또는 `weigh(scale, tare)` | `state` |
+| `VERIFY` | `weigh` → net, valid | **용기를 들어** 순량 계량 (그리퍼 비어 있음). `|net − Σresults.actual| > min_resolvable_g` → VERIFY_MISMATCH → QA. 무효 ≤2 재계량 | `carry(scale→output_tray)` | `weight` · `deviation` |
 | `FINISH` | `carry` → grip_inferred | 실패 → GRIP_FAIL 재시도 | 없음 (None = 끝) | `event BATCH_END`, `state DONE` |
-| `DEVIATION` | `wait_qa` → decision | APPROVED → 결과에 남기고 RETURN_SCOOP. DISCARDED → 용기째 폐기 | `move(scoop_rack)` / `carry(scale→reject_bin)` | `deviation` 재발행(decision·operator_id 채움) |
+| `DEVIATION` | `wait_qa` → decision | APPROVED → (원료 일탈) 결과에 남기고 RETURN_SCOOP / (VERIFY) FINISH. DISCARDED → 스쿱 든 채면 먼저 반납 → 용기째 폐기 | `move(scoop_rack)` / `carry(scale→output_tray)` / `carry(scale→reject_bin)` | `deviation` 재발행(decision·operator_id 채움) |
 | `PAUSED` | `wait_interlock` → {} | `_resume` 요청을 그대로 다시 실행 | `_resume` | `event INTERLOCK_ENTER/EXIT`, `state PAUSED` |
 | `ERROR` | `safe(then=None)` | 종료 | None | `event INTERVENTION_FORCED`, `state ERROR` |
-| `DISCARDED` | `carry` | 종료 | None | `event BATCH_END`, `state DONE`(mode) |
+| `DISCARDED` | `move` / `grip(open)` / `carry` | 스쿱 반납 후 용기 폐기, 종료 | `grip(open)` → `carry(scale→reject_bin)` → None | `event BATCH_END`, `state DONE`(mode) |
 
 ## 5. 일탈 정책표 (`core/deviation.py` — 바꾸려면 여기만)
 
@@ -149,6 +158,7 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 | TIMEOUT | 0 | QA | QA | 보정 3회 후에도 미달 |
 | WEIGH_INVALID | 2 | RETRY | QA | |
 | SAFETY_SWITCH · FORCE_LIMIT | 1 | RETRY | FORCED | |
+| **VERIFY_MISMATCH** [D-22, v1.2] | 0 | QA | QA | 배치 끝 용기 계량 vs 스쿱 누적 투입량 차이 > `min_resolvable_g` |
 | **WRONG_TOOL** [추가 1, v1.2] | 0 | QA | QA | 스쿱·약통 규격 불일치 = 교차오염 의심 |
 
 action 별 FSM 처리 (`_deviate`): RETRY → `retry` 요청 그대로 · REFILL → `_resume` 저장, PAUSED, `safe(then='wait_interlock')` · QA → DEVIATION, `wait_qa` · FORCED → ERROR, `safe(then=None)`.
@@ -179,7 +189,7 @@ ENTER 가 어려운 이유: 루프가 블로킹 Action 을 기다리는 중일 �
 | # | 일 | 파일·함수 | 확인 방법 | 마감 |
 |---|---|---|---|---|
 | 1 | 스킬 클라이언트 7종 생성 (`ActionClient` 4, 서비스 클라이언트 3), `wait_for_server` | `ProcessNode.__init__` | 가상 브링업에서 서버 발견 로그 | 9/17 |
-| 2 | `_execute` 의 kind 10종 번역 (2절 표) — `carry` 조합 포함 | `_execute`, 보조 `_call_action(client, goal)` (send → result 동기 대기, `Future` + `Event`) | 가상에서 `submit_order` → `state` 가 전이하는지 `ros2 topic echo /cell/state` | 9/18 |
+| 2 | `_execute` 의 kind 11종 번역 (2절 표) — `carry` 조합, `weigh_scoop`(v1.2 전까지 임시) 포함 | `_execute`, 보조 `_call_action(client, goal)` (send → result 동기 대기, `Future` + `Event`) | 가상에서 `submit_order` → `state` 가 전이하는지 `ros2 topic echo /cell/state` | 9/18 |
 | 3 | 발행 5종 채우기 — `weight`(weigh 마다) · `dispense_result`(원료 종료) · `deviation`(`_deviate` 후 + QA 후 재발행) · `event`(BATCH_START/END, STEP, INTERLOCK, INTERVENTION_FORCED, product 포함) | `_run_loop` 안, FSM 의 `results`/`deviations` 길이 변화를 보고 발행 | record_node 의 `cell.db` 에 행이 쌓이는지 | 9/18 |
 | 4 | `_srv_interlock` ENTER — cancel → safe_pose → granted | `_srv_interlock`, `_execute` | HMI 인터락 버튼 → `state PAUSED` → EXIT → 재개 | 9/19 |
 | 5 | SELF_CHECK 실패 → ERROR 전이, `batch_id` 형식 `B-YYYYMMDD-NNN` | `process_fsm.on_result`, `_srv_submit` | 테스트 추가 | 9/18 |
@@ -187,13 +197,17 @@ ENTER 가 어려운 이유: 루프가 블로킹 Action 을 기다리는 중일 �
 | 7 | **[추가 1]** WRONG_TOOL — `grip` 결과 폭 검사 (기대 폭은 파라미터 `gripper.scoop_width_mm` 를 원료별 dict 로) + RULES 추가 + 계약 v1.2 (조장) | `process_fsm`, `deviation.py` | 테스트: 폭 불일치 → DEVIATION | 9/21 |
 | 8 | **[추가 3]** 재기동 이어하기 — 기동 시 D 의 DB API 로 미완료 배치 조회 → FSM 을 `state/idx/tare_g/results` 로 복원 → 용기 재계량 → 재개 | `ProcessNode.__init__`, `ProcessFSM.restore()` | 실행 중 Ctrl-C → 재실행 → 이어서 DONE | 9/22 |
 | 9 | 고의 장애 T6 (a)(b)(c) 가상·실물 재현 | — | `deviation` 3종이 DB 에 남는지 | 9/22 |
+| 10 | **[D-22]** `weigh_scoop` 계약 v1.2 — A 와 `WeighHeld` Action(또는 `WeighContainer.mode`) 합의, `Deviation.kind` 에 `VERIFY_MISMATCH` 추가 (I-007) | `gmp_interfaces`, `docs/interfaces.md` | 가상에서 SCOOP_TARE → WEIGH_SCOOP → WEIGH_RESIDUAL 이 값이 다르게 돌아오는지 | 9/17 |
+| 11 | **[D-22]** `_pour_fraction` 을 `gmp_dosing/core/dosing.py` 로 이관 (B 와) — 도징 정책은 B 의 라이브러리 | `process_fsm.py`, `dosing.py` | 테스트 `test_prepour_check_prevents_overfill` 그대로 통과 | 9/18 |
 
 가상 모드 기동: `source ~/auto-pharmacist/tools/env.sh && ros2 launch gmp_bringup cell.launch.py mode:=virtual` (Flask 미설치면 `hmi:=false`). 주문은 HMI 없이도 `ros2 service call /cell/submit_order gmp_interfaces/srv/SubmitOrder "{recipe: {product: DEMO, items: [{material_id: A, target_g: 200, tol_pct: 5}]}}"` 로 넣을 수 있다.
 
 ## 8. 함정
 
 - `on_result` 는 전이표 밖이면 `RuntimeError('전이 없음')` 를 **일부러** 던진다. 조용히 넘기지 말 것 — 새 kind·상태를 넣으면 전이도 같이.
-- `weigh` 결과의 `valid=false` 는 값이 아니라 **재계량 신호**다. `decide()` 가 `SCOOP(fraction=0)` 을 돌려주면 붓지 말고 다시 재라는 뜻 (현재 FSM 은 INVALID 를 `weigh` 재요청으로 처리 — 그대로 두면 됨).
+- `weigh`/`weigh_scoop` 결과의 `valid=false` 는 값이 아니라 **재계량 신호**다. FSM 은 `_invalid_or()` 로 같은 요청을 다시 내고(≤2), 3회째 `WEIGH_INVALID` → QA. `decide()` 는 항상 `valid=True` 로 부른다 (무효는 그 앞에서 걸러진다).
+- **투입량은 스쿱 계량의 차이**(붓기 전 − 붓기 후)로 누적한다. 붓기 후 스쿱에 남은 잔량은 투입량이 아니며, 다음 스쿱에 섞여 들어가도 다시 붓기 전 계량에 잡히므로 이중으로 세지 않는다. 용기 계량은 배치 끝 VERIFY 에서 한 번 — 스쿱을 든 채로는 용기를 잡을 수 없다.
+- 스쿱을 든 채 QA 로 간 일탈이 DISCARD 되면 **스쿱을 먼저 반납**(move → grip open)하고 용기를 폐기함으로 옮긴다. `_qa_step` 이 이 분기를 가른다.
 - `attempts` 는 SCOOP 진입마다 +1, `invalid` 는 계량 무효마다 +1 — 둘 다 `ItemRun` 에 있고 `DispenseResult.attempts` 로 나간다.
 - `deviation` 은 TRANSIENT_LOCAL 이라 HMI 가 늦게 붙어도 최근 10건을 받는다. QA 판정 후 **같은 `deviation_id` 로 재발행**해야 record_node 가 upsert 한다.
 - `state` 는 0.5 s 타이머가 계속 쏘므로, 전이 직후 한 번 더 쏘는 `_pub_state()` 는 지연을 줄이는 용도다. 빼도 동작은 한다.
