@@ -79,7 +79,7 @@
 |---|---|---|
 | `common.yaml` | `robot.*`(id·모델·툴·TCP·속도), `gripper.*`(백엔드·폭·힘·마진), `scale.*`(표본·정착·환산·영점), `dosing.*`(시도 상한·털어내기 비율), `safety.*`(힘 상한·충돌 감도), `interlock.*`, 타임아웃 | 조장 (값은 담당이 제안) |
 | `stations.yaml` | 스테이션 ID → `posx`(mm·deg) 접근점/작업점, 계량 자세. **데이터 yaml** — 런치가 경로만 넘기고 `skill_node` 가 직접 읽는다 | A (티칭) |
-| `recipes/*.yaml` | 배치 레시피. HMI 가 읽어 `SubmitOrder` 로 보낸다 | C |
+| `recipes/*.yaml` | 배치 레시피. **스키마·검증은 `gmp_process/core/recipe.py` 가 단일 출처** — D 의 HMI 는 `recipe.load()` 로 읽어 `SubmitOrder` 로 보낸다 (인라인 파싱 금지). 값은 G1 결과로 조장이 확정 (D-08) | **C** (스키마·검증) |
 
 ## 5. QoS
 
