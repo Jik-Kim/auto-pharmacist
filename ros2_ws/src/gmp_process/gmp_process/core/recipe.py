@@ -1,16 +1,12 @@
 """레시피 yaml → 검증된 dict. ROS 비의존. Recipe 메시지 변환은 nodes 가 한다."""
 from dataclasses import dataclass, field
 
-GRADES = {'EXCIPIENT': 0, 'ACTIVE': 1}
-
 
 @dataclass
 class Item:
     material_id: str
     target_g: float
     tol_pct: float
-    grade: int = 0
-    scoop_id: str = ''
 
 
 @dataclass
@@ -33,10 +29,7 @@ def parse(data: dict) -> RecipeSpec:
         seen.add(it['material_id'])
         if float(it['target_g']) <= 0 or float(it['tol_pct']) <= 0:
             raise ValueError(f'items[{i}] target_g/tol_pct 는 양수')
-        grade = it.get('grade', 'EXCIPIENT')
-        items.append(Item(it['material_id'], float(it['target_g']), float(it['tol_pct']),
-                          GRADES[grade] if isinstance(grade, str) else int(grade),
-                          it.get('scoop_id') or it['material_id']))
+        items.append(Item(it['material_id'], float(it['target_g']), float(it['tol_pct'])))
     return RecipeSpec(str(data.get('product', '')), items)
 
 

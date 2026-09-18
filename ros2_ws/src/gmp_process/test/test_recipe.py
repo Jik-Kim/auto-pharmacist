@@ -20,10 +20,10 @@ A = {'material_id': 'A', 'target_g': 200.0, 'tol_pct': 5.0}
 
 # ── 정상 ──────────────────────────────────────────────────────────
 def test_정상_파싱():
-    spec = parse(_items(A, {'material_id': 'B', 'target_g': 100.0, 'tol_pct': 1.0, 'grade': 'ACTIVE'}))
+    spec = parse(_items(A, {'material_id': 'B', 'target_g': 100.0, 'tol_pct': 1.0}))
     assert isinstance(spec, RecipeSpec) and spec.product == 'T-01'
     assert [i.material_id for i in spec.items] == ['A', 'B']
-    assert spec.items[0] == Item('A', 200.0, 5.0, 0, 'A')
+    assert spec.items[0] == Item('A', 200.0, 5.0)
     assert spec.items[1].target_g == 100.0 and spec.items[1].tol_pct == 1.0
 
 
@@ -43,25 +43,12 @@ def test_숫자를_문자열로_줘도_float_로_변환된다():
     assert spec.items[0].target_g == 200.0 and isinstance(spec.items[0].target_g, float)
 
 
-# ── 등급 ──────────────────────────────────────────────────────────
-def test_grade_기본값은_EXCIPIENT():
-    assert parse(_items(A)).items[0].grade == 0
-
-
-@pytest.mark.parametrize('given,expected', [('EXCIPIENT', 0), ('ACTIVE', 1), (0, 0), (1, 1)])
-def test_grade_는_문자열도_정수도_받는다(given, expected):
-    spec = parse(_items(dict(A, grade=given)))
-    assert spec.items[0].grade == expected
-
-
-# ── 전용 스쿱 ─────────────────────────────────────────────────────
-def test_scoop_id_생략하면_material_id_로_채운다():
-    """전용 스쿱 = 교차오염 방지 (GMP). 비어 있으면 같은 이름의 스쿱을 쓴다."""
-    assert parse(_items(A)).items[0].scoop_id == 'A'
-
-
-def test_scoop_id_를_주면_그대로_쓴다():
-    assert parse(_items(dict(A, scoop_id='SCOOP_X'))).items[0].scoop_id == 'SCOOP_X'
+# ── 계약에 없는 키는 조용히 무시한다 ──────────────────────────────
+def test_모르는_키는_무시한다():
+    """v1.2 에서 grade·scoop_id 가 계약에서 빠졌다. 옛 레시피 yaml 이 들어와도 깨지지 않아야 한다.
+    전용 스쿱은 이제 stations.yaml 의 material_N.scoop_slot 이 정한다."""
+    spec = parse(_items(dict(A, grade='ACTIVE', scoop_id='SCOOP_X')))
+    assert spec.items[0] == Item('A', 200.0, 5.0)
 
 
 # ── 검증 (이게 안 돌면 잘못된 배치가 그대로 실행된다) ────────────────
@@ -128,4 +115,4 @@ def test_demo_batch_yaml_이_파싱된다():
     spec = load(p)
     assert len(spec.items) == 3
     assert [i.material_id for i in spec.items] == ['A', 'B', 'C']
-    assert all(i.scoop_id for i in spec.items)        # 전용 스쿱이 비어 있으면 안 된다
+    assert all(i.target_g > 0 and i.tol_pct > 0 for i in spec.items)
