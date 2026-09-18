@@ -22,7 +22,7 @@ from rclpy.executors import MultiThreadedExecutor            # noqa: E402
 from rclpy.node import Node                                  # noqa: E402
 from rclpy.parameter import Parameter                        # noqa: E402
 
-from gmp_interfaces.msg import (CellState, Deviation, DispenseResult, ScoopCycle,  # noqa: E402
+from gmp_interfaces.msg import (CellEvent, CellState, Deviation, DispenseResult, ScoopCycle,  # noqa: E402
                                 Recipe, RecipeItem, WeightReading)
 from gmp_interfaces.srv import SubmitOrder                    # noqa: E402
 
@@ -38,12 +38,14 @@ class Collector(Node):
         from rclpy.qos import DurabilityPolicy, QoSProfile
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.states, self.weights, self.cycles, self.results, self.devs = [], [], [], [], []
+        self.events = []
         self.create_subscription(CellState, 'state', self.states.append, latched)
         self.create_subscription(WeightReading, 'weight', self.weights.append, 20)
         self.create_subscription(ScoopCycle, 'scoop_cycle', self.cycles.append, 50)
         self.create_subscription(DispenseResult, 'dispense_result', self.results.append, 50)
         self.create_subscription(Deviation, 'deviation',  self.devs.append,
                                  QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self.create_subscription(CellEvent, 'event', self.events.append, 100)
 
 
 @pytest.fixture
@@ -215,6 +217,14 @@ def _wait_mode(proc, mode, timeout=20.0):
     return False
 
 
+def _why(proc):
+    """실패 메시지에 붙일 현재 상태 — 타이밍 문제는 이것 없이는 못 쫓는다."""
+    f = proc.fsm
+    return (f'mode={f and f.mode} state={f and f.state} pause={proc._pause} '
+            f'nudge={proc._nudge_paused} exit_set={proc._interlock_exit.is_set()} '
+            f'pending={proc._pending_dev() and proc._pending_dev().deviation_id} note={proc.note!r}')
+
+
 def test_qa_rejects_wrong_deviation_id_then_approves(cell):
     """QA 판정은 **대기 중인 그 일탈**에만 붙는다. 승인하면 같은 deviation_id 로 재발행한다."""
     proc, fake, col = cell
@@ -332,7 +342,7 @@ def test_enter_during_qa_wait_keeps_qa_open(cell):
     assert _lock(col, InterlockRequest.Request.ENTER).message.startswith('이미')   # 두 번 눌러도 멱등
 
     assert _qa(col, dev.deviation_id, Deviation.APPROVED).accepted
-    assert _wait_mode(proc, 'PAUSED'), '판정 뒤에는 사람이 나올 때까지(EXIT) 멈춘다'
+    assert _wait_mode(proc, 'PAUSED'), f'판정 뒤에는 사람이 나올 때까지(EXIT) 멈춘다 — {_why(proc)}'
     assert _lock(col, InterlockRequest.Request.EXIT).granted
 
     # 과투입 승인 → VERIFY 규격 이탈도 승인 → 완주
@@ -421,3 +431,126 @@ def test_scoop_cycle_attempt_numbers_are_unique_per_material(cell):
     assert a == list(range(1, len(a) + 1)) and a[:2] == [1, 2], a
     assert b == list(range(1, len(b) + 1)), b
     assert [c.outcome for c in col.cycles if c.material_id == 'A'][:2] == [ScoopCycle.SCOOP_EMPTY] * 2
+
+
+# ── NUDGE 게이트 (추가 기능 7 · D-21) ────────────────────────────────────
+def _wait_until(fn, timeout=20.0):
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        if fn():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def test_nudge_pauses_and_second_nudge_resumes(cell):
+    """건드리면 정지, 다시 건드리면 재개 (D-21). FSM 은 이 정지를 모른다."""
+    proc, fake, col = cell
+    fake.delay['move'] = 0.15                     # 요청 사이에 끼어들 틈을 만든다
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: proc.fsm and proc.fsm.mode == 'RUNNING')
+
+    fake.nudge()
+    assert _wait_mode(proc, 'PAUSED'), proc.fsm.mode
+    assert 'NUDGE' in proc.note, proc.note
+    step_at_pause = proc.fsm.state
+
+    time.sleep(0.4)
+    assert proc.fsm.state == step_at_pause, '정지 중에는 다음 요청으로 넘어가지 않는다'
+    assert proc.fsm.mode == 'PAUSED'
+
+    fake.delay.clear()
+    fake.nudge()
+    assert _wait_done(proc) == 'DONE', f'{proc.fsm.state} / {proc.note}'
+    assert not proc.fsm.deviations, 'NUDGE 정지는 일탈이 아니다'
+
+
+def test_nudge_does_not_cut_a_skill_in_flight(cell):
+    """스킬 중간에는 끊지 않는다 — 블로킹 movel 은 취소가 안 되고(I-004) 그 구간에선 감지도 안 된다."""
+    proc, fake, col = cell
+    fake.delay['scoop'] = 0.6
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: any(c.startswith('scoop:') for c in fake.calls))
+
+    fake.nudge()                                  # 퍼올리는 중에 건드린다
+    assert _wait_mode(proc, 'PAUSED')
+    # 스쿱은 중간에 끊기지 않고 끝났다 — 그래서 다음 계량까지 가 있다
+    assert any(c.startswith('scoop:') for c in fake.calls)
+    assert not any(c.startswith('safe:') for c in fake.calls), 'NUDGE 는 안전 자세로 보내지 않는다'
+
+    fake.delay.clear()
+    fake.nudge()
+    assert _wait_done(proc) == 'DONE', proc.note
+
+
+def test_two_nudges_inside_one_skill_cancel_out(cell):
+    """스킬 도는 동안 정지·재개가 다 지나가면 아예 멈추지 않는다.
+
+    게이트를 Event 로 기다렸다면 두 번째 NUDGE 가 세운 신호가 남아 **다음** 정지를 즉시 풀어 버린다.
+    그래서 불린을 폴링한다 — 남는 신호가 없다.
+    """
+    proc, fake, col = cell
+    fake.delay['scoop'] = 0.5
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: any(c.startswith('scoop:') for c in fake.calls))
+
+    fake.nudge(); fake.nudge()                    # 정지했다 바로 재개
+    assert _wait_done(proc) == 'DONE', proc.note
+    assert not proc._nudge_paused
+    assert not [e for e in col.events if e.code == 'PAUSE'], '스킬이 끝났을 때는 이미 풀려 있어야 한다'
+
+
+def test_nudge_while_qa_pending_keeps_qa_open(cell):
+    """판정 대기 중에는 mode 를 덮지 않는다 — 덮으면 _srv_qa 가 영영 거부한다 (인터락과 같은 함정)."""
+    proc, fake, col = cell
+    fake.transfer = 2.0
+    _submit(col, [('A', 10.0, 5.0)])
+    assert _wait_mode(proc, 'DEVIATION')
+    dev = proc._pending_dev()
+
+    fake.nudge()
+    time.sleep(0.3)
+    assert proc.fsm.mode == 'DEVIATION', 'NUDGE 가 QA 대기 상태를 덮으면 안 된다'
+    assert _qa(col, dev.deviation_id, Deviation.APPROVED).accepted
+
+    assert _wait_mode(proc, 'PAUSED'), f'판정 뒤에는 NUDGE 정지가 드러난다 — {_why(proc)}'
+    fake.nudge()
+    assert _wait_mode(proc, 'DEVIATION')          # VERIFY 규격 이탈
+    assert _qa(col, proc._pending_dev().deviation_id, Deviation.APPROVED).accepted
+    assert _wait_done(proc) == 'DONE', proc.note
+
+
+def test_nudge_and_interlock_both_must_clear(cell):
+    """NUDGE 로 멈춘 뒤 사람이 인터락으로 들어왔다 — 둘 다 풀려야 움직인다."""
+    from gmp_interfaces.srv import InterlockRequest
+    proc, fake, col = cell
+    fake.delay['move'] = 0.15
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: proc.fsm and proc.fsm.mode == 'RUNNING')
+
+    fake.nudge()
+    assert _wait_mode(proc, 'PAUSED')
+    # NUDGE 정지는 그 자리에 선 것뿐 — 안전 자세가 아니므로 ENTER 는 멱등 처리로 빠지면 안 된다
+    r = _lock(col, InterlockRequest.Request.ENTER)
+    assert r.granted and not r.message.startswith('이미'), r.message
+    assert any(c.startswith('safe:') for c in fake.calls), 'ENTER 는 안전 자세로 보내야 한다'
+
+    fake.nudge()                                   # NUDGE 만 풀었다
+    time.sleep(0.3)
+    assert proc.fsm.mode == 'PAUSED', '인터락이 남아 있으면 계속 멈춰 있어야 한다'
+
+    fake.delay.clear()
+    assert _lock(col, InterlockRequest.Request.EXIT).granted
+    assert _wait_done(proc) == 'DONE', f'{proc.fsm.state} / {proc.note}'
+
+
+def test_nudge_disabled_is_ignored(cell):
+    """safety.nudge_enabled=false 면 무시한다 — skill_node 와 같은 스위치."""
+    proc, fake, col = cell
+    proc.set_parameters([Parameter('safety.nudge_enabled', value=False)])
+    fake.delay['move'] = 0.1
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: proc.fsm and proc.fsm.mode == 'RUNNING')
+    fake.nudge()
+    assert _wait_done(proc) == 'DONE', proc.note
+    assert not proc._nudge_paused
