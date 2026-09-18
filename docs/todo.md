@@ -5,14 +5,14 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 12/69 완료** (███░░░░░░░░░░░░░░░░░)  ·  기준 09/18
+**전체 13/69 완료** (████░░░░░░░░░░░░░░░░)  ·  기준 09/18
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
 | gmp_interfaces [조장] | 2/6 | `███░░░░░░░` | **2** |
 | gmp_skills [A 스킬] | 0/16 | `░░░░░░░░░░` | **6** |
 | gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **4** |
-| gmp_process [C 공정] | 4/16 | `██░░░░░░░░` | — |
+| gmp_process [C 공정] | 5/16 | `███░░░░░░░` | — |
 | gmp_hmi [D HMI·기록] | 3/15 | `██░░░░░░░░` | **1** |
 | gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **2** |
 
@@ -34,7 +34,7 @@
 - `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
 - `9/17` gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
 
-**오늘 마감 22건**
+**오늘 마감 21건**
 
 - gmp_interfaces — 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02)
 - gmp_interfaces — [D-22] 계약 v1.2 에 Deviation.kind BATCH_OUT_OF_SPEC 추가 — VERIFY 를 계측 신뢰성(…
@@ -51,7 +51,6 @@
 - gmp_process — nodes/process_node.py: 레시피 grade/scoop_id 제거, Pour·WeighContainer stati…
 - gmp_process — [추가 7] NUDGE 전이: RUNNING→PAUSED(NUDGE), 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 …
 - gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
-- gmp_process — [버그] 일탈 QA 대기가 무한 블로킹 — process_node.py:110 self._qa.wait() 에 타임아웃 인자가 …
 - gmp_hmi — v1.2 적용: 주문 메시지의 grade/scoop_id, QaDecision.Request의 batch_id 제거(웹 표시는 …
 - gmp_hmi — 다른 기기(폰·노트북)에서 http://<로봇PC>:5000 접속 확인 — 시연 T6(c) 장면
 - gmp_hmi — process_node 가 BATCH_START 이벤트에 product 를 싣게 C 와 합의 (batches.product 채우…
@@ -113,8 +112,8 @@
 - [ ] **[추가 3] 재기동 이어하기**: 기동 시 DB 의 미완료 배치 조회 → 상태·원료 인덱스·tare 복원 → 용기 재계량 후 재개. 시연: 실행 중 Ctrl-C → 재실행 · 마감 9/22 (D 와)
 - [ ] **[9/18 확정]** 배치 변경 반영 — 스쿱 원료별 분산은 반영 완료(`scoop_N`, `process_fsm` 의 `scoop_rack` 참조 제거). **남은 것: `scale`(판 중앙)·원료 선반(판 바깥)·사용 불가 영역의 실제 좌표** — 시연 공간 세팅 후 조장이 `stations.yaml` 에 채운다. SOT D-24 로 등록 필요 · 마감 9/21
 - [ ] **[9/18 확정]** 회수·넛지 운영 — **운영 방식은 SOT D-23 으로 확정**. 남은 미정 3건: (a) 가득참 판단은 **카운트**(비전 없음) → `output_tray.capacity`·`reject_bin.capacity` (b) QA 가 비운 것을 아는 방법 — HMI 확인 버튼 유력 (c) **"한 세트"의 정의**(배치 1건 / 레시피 1건 / 용기 N통) · 마감 9/18
-- [ ] **[버그] 일탈 QA 대기가 무한 블로킹** — `process_node.py:110` `self._qa.wait()` 에 타임아웃 인자가 없어 QA 가 응답 안 하면 워커 스레드가 영원히 멈춘다. `wait_interlock`(113) 도 동일. 타임아웃 시 동작(보류 이송 + 미결 기록?) 결정 후 구현 — **판정 자동화는 하지 않는다** · 마감 9/18
-- [ ] **[버그] `RunBatch` cancel 콜백 없음** — 지금 배치를 중단할 방법이 노드를 죽이는 것뿐. 대기 이벤트를 깨워 `ABORTED` 로. D 의 중단 버튼과 짝 · 마감 9/21
+- [x] ~~[버그] 일탈 QA 대기가 무한 블로킹~~ — **문제 없음으로 결론 (9/18)**. D-23 반자동 운전이라 사람이 붙어 있는 것이 설계이고(세트 경계 대기도 마찬가지), 워커가 `daemon=True` 스레드라 Ctrl+C 로 정상 종료된다. 일탈 대기에만 타임아웃을 걸면 세트 경계 대기와 일관성이 깨진다 · 마감 9/18
+- [ ] **Ctrl+C 종료 시 로봇 상태 확인** — 순응/힘제어가 켜진 채 남는지, 그리퍼가 스쿱을 쥔 채 멈추는지. `release_force`·`release_compliance_ctrl` 이 `dsr_arm.py` 짝 함수 안에만 있고 종료 경로에는 없다 → 재기동 시 `2.3501`(15Nm 외부 토크)·`2.1903` 가능. 남으면 **종료 훅에 `release_force` + `release_compliance_ctrl` 추가** (cancel 콜백보다 작고 Ctrl+C·cancel 둘 다 커버). `RunBatch` cancel 이 이것으로 대체 가능한지 같이 판단 · 마감 9/21
 
 ## gmp_hmi [D HMI·기록]
 - [x] `config/schema.sql` · `core/db.py`: 6 테이블, 쓰기·조회·KPI·JSON 내보내기, 단위 테스트 · 마감 9/16
