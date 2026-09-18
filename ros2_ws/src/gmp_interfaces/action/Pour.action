@@ -1,4 +1,4 @@
-# 고정 칭량 위치의 용기에 붓기. 목적지는 skill 설정의 scale 스테이션이다
+# 고정 칭량 위치의 용기에 붓기. 목적지는 skill 설정의 workbench 스테이션이다
 float32 fraction        # 1.0 전량 / 0.0~1.0 일부 (기울임 각으로 근사)
 ---
 bool success

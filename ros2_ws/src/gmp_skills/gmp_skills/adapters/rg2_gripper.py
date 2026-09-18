@@ -30,44 +30,81 @@ def width_mm_to_joint(width_mm: float) -> float:
 
 class Rg2Gripper:
     def __init__(self, backend: str, send_command, arm=None, grip_margin_mm=2.0, slip_mm=1.5,
-                 open_width_mm=100.0, dio_pins=(1, 2), din_pins=(), logger=None):
+                 open_width_mm=100.0, dio_pins=(1, 2), din_pins=(), logger=None, now_fn=None,
+                 state_timeout_s=0.5, dio_settle_s=0.3):
         self.backend = backend            # modbus | dio | virtual
         self._send = send_command         # callable(str) -> bool (skill_node 가 서비스 클라이언트로 만든다)
         self.arm = arm                    # dio 백엔드용 DsrArm
         self.grip_margin_mm, self.slip_mm, self.open_width_mm = grip_margin_mm, slip_mm, open_width_mm
         self.dio_pins, self.din_pins = dio_pins, din_pins
         self.log = logger
+        self._now = now_fn or time.monotonic
+        self.state_timeout_s = float(state_timeout_s)
+        self.dio_settle_s = float(dio_settle_s)
         self.force_cmd_n = RG2_MAX_FORCE_N   # 드라이버 기동값 400(1/10 N)
         self._width_mm, self._width_at = None, 0.0
+        self._moving_until_s = 0.0
+        self._grip_ref_mm = None
+        self._grip_inferred = False
+        self._slip_latched = False
         self._lock = threading.Lock()
 
     # skill_node 의 JointState 콜백이 부른다
     def on_joint_state(self, finger_joint_rad: float, stamp_s: float):
+        width_mm = joint_to_width_mm(finger_joint_rad)
         with self._lock:
-            self._width_mm, self._width_at = joint_to_width_mm(finger_joint_rad), stamp_s
+            if self._width_mm is not None and abs(width_mm - self._width_mm) > 0.3:
+                self._moving_until_s = stamp_s + 0.15
+            self._width_mm, self._width_at = width_mm, stamp_s
+            if self._grip_ref_mm is not None and abs(width_mm - self._grip_ref_mm) > self.slip_mm:
+                self._slip_latched = True
+                self._grip_inferred = False
 
     def width_mm(self):
         with self._lock:
             return self._width_mm
 
-    def busy(self, window_s=0.15) -> bool:
-        """폭이 아직 변하는 중이면 busy 로 본다 (드라이버가 busy 를 토픽으로 안 내므로 폭 변화로 추론)."""
-        w0 = self.width_mm()
-        time.sleep(window_s)
-        w1 = self.width_mm()
-        return w0 is None or w1 is None or abs(w1 - w0) > 0.3
+    def busy(self, now_s: float | None = None) -> bool:
+        """최근 0.15초 안에 폭이 변했으면 busy로 본다."""
+        now_s = self._now() if now_s is None else now_s
+        with self._lock:
+            stale = self._width_mm is None or now_s - self._width_at > self.state_timeout_s
+            return stale or now_s < self._moving_until_s
+
+    def state(self, now_s: float | None = None):
+        now_s = self._now() if now_s is None else now_s
+        with self._lock:
+            stale = self._width_mm is None or now_s - self._width_at > self.state_timeout_s
+            return {
+                'width_mm': self._width_mm,
+                'busy': stale or now_s < self._moving_until_s,
+                'grip_inferred': self._grip_inferred and not stale,
+                'slip': self._slip_latched,
+            }
+
+    def consume_slip(self) -> bool:
+        with self._lock:
+            slip, self._slip_latched = self._slip_latched, False
+            return slip
 
     def set_force(self, force_n: float):
         """modbus 만. 2.5 N 스텝으로 i/d 를 반복한다 (D-06)."""
         if self.backend != 'modbus':
-            return
+            return True
         target = max(3.0, min(RG2_MAX_FORCE_N, force_n))
         steps = round((target - self.force_cmd_n) / FORCE_STEP_N)
         for _ in range(abs(steps)):
-            self._send('i' if steps > 0 else 'd')
-        self.force_cmd_n += steps * FORCE_STEP_N
+            if not self._send('i' if steps > 0 else 'd'):
+                return False
+            self.force_cmd_n += FORCE_STEP_N if steps > 0 else -FORCE_STEP_N
+        return True
 
     def move(self, width_mm: float, timeout_s: float = 3.0) -> bool:
+        command_at_s = self._now()
+        with self._lock:
+            self._grip_ref_mm = None
+            self._grip_inferred = False
+            self._slip_latched = False
         if self.backend == 'modbus':
             ok = self._send(str(int(round(max(0.0, min(RG2_MAX_WIDTH_MM, width_mm)) * 10))))
         elif self.backend == 'virtual':
@@ -77,21 +114,35 @@ class Rg2Gripper:
             self.arm.dout(self.dio_pins[0], close)
             self.arm.dout(self.dio_pins[1], not close)
             ok = True
-        t0 = time.time()
-        while time.time() - t0 < timeout_s and self.busy():
-            pass
-        return ok
+        if self.backend == 'dio':
+            time.sleep(self.dio_settle_s)
+            return ok
+        while self._now() - command_at_s < timeout_s:
+            with self._lock:
+                saw_new_state = self._width_at > command_at_s
+            if saw_new_state and not self.busy():
+                return ok
+            time.sleep(0.02)
+        return False
 
     def grip(self, width_mm: float, force_n: float, timeout_s: float = 3.0):
         """닫기. 반환 (success, final_width_mm, grip_inferred)."""
-        self.set_force(force_n)
+        if not self.set_force(force_n):
+            return False, -1.0, False
         ok = self.move(width_mm, timeout_s)
         w = self.width_mm()
-        if self.backend == 'dio' or w is None:
+        if self.backend == 'dio':
             # 폭 피드백이 없으면 추론 불가 — DI 핀이 있으면 그것으로 (Q-03)
-            grip = self.arm.din(self.din_pins[0]) if (self.backend == 'dio' and self.din_pins) else True
+            has_din = bool(self.din_pins) and self.din_pins[0] > 0
+            grip = self.arm.din(self.din_pins[0]) if has_din else False
             return ok, -1.0, grip
-        return ok, w, (w > width_mm + self.grip_margin_mm)
+        if w is None or not ok:
+            return False, -1.0 if w is None else w, False
+        grip = w > width_mm + self.grip_margin_mm
+        with self._lock:
+            self._grip_inferred = grip
+            self._grip_ref_mm = w if grip else None
+        return ok, w, grip
 
     def release(self, timeout_s: float = 3.0):
         return self.move(self.open_width_mm, timeout_s)

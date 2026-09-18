@@ -4,7 +4,7 @@ yaml 형식 (gmp_bringup/params/stations.yaml):
   frame: base | user            # D-15 판 좌표계를 쓰면 user
   approach_mm: 60.0             # 작업점 위 접근 높이 (z+)
   stations:
-    scale: {posx: [x, y, z, a, b, c], note: "계량 자세 — 영점도 여기서"}
+    workbench: {posx: [x, y, z, a, b, c], note: "작업·계량 구역 — 계량 자세. 영점도 여기서"}
 """
 from dataclasses import dataclass, field
 
@@ -24,7 +24,7 @@ class Station:
 
 
 class StationTable:
-    REQUIRED = ('safe', 'scale')
+    REQUIRED = ('safe', 'workbench')
 
     def __init__(self, data: dict):
         self.frame = data.get('frame', 'base')
@@ -34,6 +34,8 @@ class StationTable:
             posx = body.get('posx')
             if posx is None or len(posx) != 6:
                 raise ValueError(f'stations.yaml: {sid} 의 posx 는 6개여야 한다')
+            if 'posj' in body and len(body['posj']) != 6:
+                raise ValueError(f'stations.yaml: {sid} 의 posj 는 6개여야 한다')
             self.stations[sid] = Station(sid, [float(v) for v in posx], body.get('note', ''),
                                          {k: v for k, v in body.items() if k not in ('posx', 'note')})
         missing = [s for s in self.REQUIRED if s not in self.stations]
@@ -44,6 +46,12 @@ class StationTable:
         if station_id not in self.stations:
             raise KeyError(f'모르는 스테이션 {station_id!r}. 있는 것: {sorted(self.stations)}')
         return self.stations[station_id]
+
+    def for_material(self, material_id: str) -> Station:
+        matches = [s for s in self.stations.values() if s.extra.get('material_id') == material_id]
+        if len(matches) != 1:
+            raise KeyError(f'material_id {material_id!r} 스테이션은 1개여야 한다: {len(matches)}개')
+        return matches[0]
 
     @classmethod
     def from_yaml(cls, path: str) -> 'StationTable':

@@ -1,4 +1,4 @@
-# 복합 스킬: 고정 scale의 용기 파지 → 계량 자세 → MeasureForce → 내려놓기. 결과는 WeightReading
+# 복합 스킬: 고정 workbench 의 용기 파지 → 계량 자세 → MeasureForce → 내려놓기. 결과는 WeightReading
 float32 tare_g              # process 가 아는 풍량. 0 이면 gross 만 채운다
 ---
 WeightReading reading
