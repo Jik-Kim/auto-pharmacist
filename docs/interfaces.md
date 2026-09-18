@@ -1,6 +1,7 @@
 # Interfaces — 계약 v1.2 초안 (2026-09-18)
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
+> **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
 > 현재 조장 1차 승인 상태다. **팀 채널 공유와 영향 담당 최소 2명 승인 전에는 확정 계약이 아니다.**
 
 정의 원본은 `ros2_ws/src/gmp_interfaces`. 이 문서는 의도·규칙·확정 값을 설명한다.
@@ -20,7 +21,7 @@
 | `msg/WeightReading` | 1회 계량 결과 (총량·풍량·순량·표준편차·표본 수·유효·**대상**) | `valid=false` 면 값을 쓰지 않는다 — 정착 실패·힘 조회 실패. **v1.2 에서 `subject`(`scoop`/`container`) 추가** — 스쿱도 용기도 `workbench` 에서 재므로 `station` 으로는 구분되지 않는다 |
 | `msg/ScoopCycle` | 스쿠핑 1회 시도의 동작·계량·붓기 결과를 묶은 학습 원본 | `process_node`가 성공·실패로 시도가 종료될 때 1건 발행. `Scoop.Feedback`을 학습 기록으로 쓰지 않는다 |
 | `msg/DispenseResult` | 원료 1종 분주 결과 (목표·실측·오차·판정·시도 횟수) | 판정 `OK/UNDER/OVER`. **`OVER` 는 되돌릴 수 없으므로 일탈** |
-| `msg/Deviation` | 일탈 1건 (종류·상세·판정 필요 여부·판정·**판정자**) | 자동 복구된 것도 기록한다 — 지속성 평가의 근거. `operator_id` 는 QA 판정 후 process 가 채운다 (v1.1). **v1.2 에서 `VERIFY_MISMATCH`(계측 신뢰성)·`BATCH_OUT_OF_SPEC`(제품 규격)·`WRONG_TOOL`(폭 지문) 추가** |
+| `msg/Deviation` | 일탈 1건 (종류·상세·판정 필요 여부·판정·**판정자**) | 자동 복구된 것도 기록한다 — 지속성 평가의 근거. `operator_id` 는 QA 판정 후 process 가 채운다 (v1.1). **v1.2 에서 `VERIFY_MISMATCH`(계측 신뢰성)·`BATCH_OUT_OF_SPEC`(제품 규격)·`WRONG_TOOL`(폭 지문) 추가.** `decision` 은 `PENDING`(QA 대기) / `APPROVED` / `DISCARDED` / `AUTO_RECOVERED`(RETRY·REFILL) / **`FORCED`(강제 개입 종료, v1.2.1)** — FORCED 는 자동 복구도 QA 대상도 아니다 |
 | `msg/CellEvent` | 로그 이벤트 (레벨·코드·문장) | 배치 기록의 원천. 모든 노드가 발행 가능 |
 | `msg/GripperState` | 폭·busy·파지 추론·안전 스위치·명령 파지력 | `skill_node` 10 Hz. 파지는 **추론**이다 (SOT D-05) |
 | `srv/SubmitOrder` | HMI → process. 레시피 접수 | 실행 중이면 거부 (`accepted=false`, 사유) |
@@ -163,7 +164,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | 칭량 정확도 | 원료 1종 분주 | 판정 시점 `error_pct` | `dispense_result` (CSV) |
 | 배치 성공률 | 배치 1건 | `RunBatch` 수락 → 결과. 일탈 `DISCARD` 는 실패 | `record` JSON `result` |
 | **MTBI** (강제 개입 사이 시간) | 강제 개입 1건 = 로봇이 못 해서 사람이 셀에 들어간 것 | 무인 운전 구간 합 ÷ 개입 수 | `event` 코드 `INTERVENTION_FORCED` |
-| 자동 복구율 | 일탈 1건 | `decision == AUTO_RECOVERED` / 전체 일탈 | `deviation` |
+| 자동 복구율 | 일탈 1건 | `decision == AUTO_RECOVERED` / 전체 일탈 (FORCED 는 분모에만 든다) | `deviation` |
 | 사이클타임 | 배치 1건 | 수락 → 완료 | `record` JSON |
 
 ## 7. DB 스키마 (배치 기록)

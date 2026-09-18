@@ -25,4 +25,5 @@ uint8 WRONG_TOOL=11        # 폭 지문 불일치 — 스쿱·약통 규격이 �
 uint8 PENDING=0
 uint8 APPROVED=1        # QA 가 계속 진행 승인
 uint8 DISCARDED=2       # QA 가 배치 폐기
-uint8 AUTO_RECOVERED=3  # 사람 없이 복구됨
+uint8 AUTO_RECOVERED=3  # 사람 없이 복구됨 (RETRY·REFILL 로 넘어감)
+uint8 FORCED=4          # 재시도 상한 초과 → 강제 개입으로 종료 (배치 ERROR). 자동 복구 아님, QA 판정 대상 아님 — v1.2.1
