@@ -554,3 +554,70 @@ def test_nudge_disabled_is_ignored(cell):
     fake.nudge()
     assert _wait_done(proc) == 'DONE', proc.note
     assert not proc._nudge_paused
+
+
+def test_exit_during_nudge_pause_is_ignored_and_does_not_leak(cell):
+    """NUDGE 정지 중에 누른 EXIT 는 무시된다 — 신호가 남으면 다음 REFILL 대기가 보충 없이 풀린다 (넛지 리뷰 1번)."""
+    from gmp_interfaces.srv import InterlockRequest
+    proc, fake, col = cell
+    fake.delay['move'] = 0.15
+    fake.empty = 4                                 # 나중에 SCOOP_EMPTY ×4 → REFILL 대기
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: proc.fsm and proc.fsm.mode == 'RUNNING')
+    fake.nudge()
+    assert _wait_mode(proc, 'PAUSED')
+
+    r = _lock(col, InterlockRequest.Request.EXIT, 'REFILL')        # ENTER 없이 EXIT 만 (실수)
+    assert r.granted and r.message.startswith('대기 중이 아니다'), r.message
+    assert not proc._interlock_exit.is_set(), 'EXIT 신호가 남았다'
+
+    fake.nudge()                                   # 재개 → 원료 소진 → 보충 대기
+    assert _wait_until(lambda: proc.fsm and any(d['action'] == 'REFILL' for d in proc.fsm.deviations))
+    time.sleep(0.8)
+    assert proc.fsm.mode == 'PAUSED' and proc._refill_waiting, _why(proc)
+    assert _lock(col, InterlockRequest.Request.EXIT, 'REFILL').message == 'resume'
+    assert _wait_done(proc) == 'DONE', _why(proc)
+
+
+def test_safe_pose_bypasses_the_nudge_gate(cell):
+    """NUDGE 로 멈춘 채 원료가 떨어지면 두 번째 nudge 없이 안전 자세로 물러난다 (넛지 리뷰 2번).
+
+    안전 자세로 가는 이동은 정지보다 우선한다 — 사람이 보충하러 들어와야 하기 때문이다.
+    NUDGE 정지 자체는 살아 있어서, 보충(EXIT) 뒤 다음 로봇 동작 앞에서 다시 잡힌다.
+    """
+    from gmp_interfaces.srv import InterlockRequest
+    proc, fake, col = cell
+    fake.empty = 4
+    fake.delay['scoop'] = 0.5                      # 4번째(마지막) 빈 스쿱 도중에 건드릴 틈
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: sum(c.startswith('scoop:') for c in fake.calls) >= 4)
+    fake.nudge()                                   # 4번째 스쿱이 도는 중 — 곧 MATERIAL_EMPTY → safe
+    assert _wait_until(lambda: any(c.startswith('safe:') for c in fake.calls), 5.0), \
+        f'nudge 정지 중에도 safe 는 나가야 한다 — {_why(proc)}'
+    assert proc._nudge_paused, 'NUDGE 정지는 그대로 살아 있다'
+    assert _wait_until(lambda: proc._refill_waiting, 5.0), _why(proc)
+
+    assert _lock(col, InterlockRequest.Request.EXIT, 'REFILL').message == 'resume'   # 보충 완료
+    time.sleep(0.5)
+    assert proc.fsm.mode == 'PAUSED' and proc._nudge_paused, '보충 뒤에도 NUDGE 정지는 남아 있어야 한다'
+    fake.delay.clear()
+    fake.nudge()
+    assert _wait_done(proc) == 'DONE', _why(proc)
+
+
+def test_refill_wait_with_nudge_and_enter_needs_one_exit(cell):
+    """REFILL 대기 + NUDGE + ENTER 가 겹쳐도 EXIT 는 한 번이면 된다 (넛지 리뷰 3번)."""
+    from gmp_interfaces.srv import InterlockRequest
+    proc, fake, col = cell
+    fake.empty = 4
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: proc._refill_waiting), _why(proc)
+    fake.nudge()                                   # 보충 대기 중에 건드렸다
+    r = _lock(col, InterlockRequest.Request.ENTER, 'REFILL')
+    assert r.granted and not r.message.startswith('이미'), r.message   # NUDGE 정지는 안전 자세가 아니므로 safe_pose
+    assert _lock(col, InterlockRequest.Request.EXIT, 'REFILL').message == 'resume'
+    time.sleep(0.5)
+    assert not proc._pause and not proc._refill_waiting, _why(proc)      # EXIT 한 번으로 둘 다 풀렸다
+    assert proc._nudge_paused and proc.fsm.mode == 'PAUSED'              # NUDGE 만 남았다
+    fake.nudge()
+    assert _wait_done(proc) == 'DONE', _why(proc)

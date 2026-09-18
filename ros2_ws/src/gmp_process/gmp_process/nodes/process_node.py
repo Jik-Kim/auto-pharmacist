@@ -40,6 +40,9 @@ DEV_QOS = QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
 # 사람을 기다리는 요청 — 로봇을 움직이지 않으므로 정지 게이트를 앞에 두지 않는다 (아래 _run_loop 참고)
 HUMAN_WAITS = ('wait_qa', 'wait_interlock')
+# 게이트를 건너뛰는 요청 — 사람 대기 + 안전 자세. `safe` 는 "사람이 곧 들어오니 물러나라" 는 이동이라
+# NUDGE·인터락 정지보다 우선한다 (ENTER 가 NUDGE 정지 중에도 safe_pose 를 부르는 것과 같은 논리)
+GATE_BYPASS = HUMAN_WAITS + ('safe',)
 
 # 일탈 → ScoopCycle.outcome. 시도가 실패로 끝난 것만 여기 있다 (OVERFILL·TIMEOUT 은 시도 자체는 끝났다)
 DEV_TO_OUTCOME = {'SCOOP_EMPTY': 'SCOOP_EMPTY', 'MATERIAL_EMPTY': 'SCOOP_EMPTY',
@@ -114,6 +117,7 @@ class ProcessNode(Node):
         self._pause = False          # 인터락 ENTER 가 세운다. **루프만 내린다** — EXIT 핸들러가 내리면
                                      # 취소된 스킬이 돌아오기 전에 풀려 그 실패가 진짜 실패로 읽힌다
         self._nudge_paused = False   # 사람 접촉으로 멈춤 (D-21). 다음 NUDGE 가 내린다
+        self._refill_waiting = False # 루프가 REFILL 로 EXIT 를 기다리는 중 — EXIT 를 받을지 가른다
         self._nudge_lock = threading.Lock()   # 토글은 읽고-쓰기라 콜백 둘이 겹치면 뒤집히지 않는다
         self._stop = threading.Event()   # 종료 요청 — 무한 대기(QA·인터락)를 깨운다
         self._thread = None
@@ -245,6 +249,7 @@ class ProcessNode(Node):
         self._qa.clear(); self._qa_decision = None; self._qa_operator = ''
         self._interlock_exit.clear(); self._pause = False   # 지난 배치의 EXIT 가 새 배치로 새지 않게
         self._nudge_paused = False
+        self._refill_waiting = False
 
     def _pending_dev(self) -> Deviation | None:
         for m in reversed(self._dev_msgs):
@@ -310,8 +315,9 @@ class ProcessNode(Node):
             self._pub_state()
             self.event('WARN', 'INTERLOCK_ENTER', req.reason)
             return res
-        if not (self._pause or (self.fsm and self.fsm.mode == 'PAUSED')):
-            # 아무도 안 기다리는데 set 하면 다음 REFILL 대기가 즉시 풀린다 — 보충 없이 재개되는 셈
+        if not (self._pause or self._refill_waiting):
+            # 아무도 안 기다리는데 set 하면 다음 REFILL 대기가 즉시 풀린다 — 보충 없이 재개되는 셈.
+            # mode==PAUSED 로 가르면 안 된다 — NUDGE 정지도 PAUSED 라서 그때 눌린 EXIT 가 신호로 남는다
             res.granted, res.message = True, '대기 중이 아니다 (무시)'
             return res
         self._interlock_exit.set()
@@ -372,7 +378,9 @@ class ProcessNode(Node):
         """정지가 걸려 있으면 풀릴 때까지 멈춘다 (게이트 하나로 NUDGE·인터락을 같이 본다).
 
         인터락이 스킬을 끊어 실패했으면 **같은 요청을 처음부터 다시** 부른다 — 부분 실행은 버린다
-        (`carry` 중간이었다면 접근점부터). 취소가 안 걸리고 그냥 끝났으면 다음 요청 전에 멈춘다.
+        (`carry` 중간이었다면 접근점부터). 취소가 안 걸리고 그냥 끝났으면 **결과를 FSM 에 넘긴 뒤** 다음
+        로봇 동작 요청 앞(_run_loop 의 게이트)에서 멈춘다 — 여기서 먼저 멈추면 FSM 이 `safe` 를 내야 하는
+        상황(원료 소진·강제 개입)에서도 결정을 못 하고 서 버린다.
         """
         while True:
             try:
@@ -382,8 +390,7 @@ class ProcessNode(Node):
                     raise                          # 진짜 실패 — 루프가 FORCE_LIMIT 으로 보낸다
                 self._gate(f'스킬 중단: {e}')
                 continue                           # 같은 요청을 다시
-            self._gate()
-            return res
+            return res                             # 정지는 다음 요청 앞의 게이트가 잡는다
 
     def _dispatch(self, req: dict) -> dict:
         k = req['kind']
@@ -395,9 +402,15 @@ class ProcessNode(Node):
             self._qa.clear()
             return {'decision': decision, 'operator_id': self._qa_operator}
         if k == 'wait_interlock':
-            # FSM 이 REFILL 로 세운 대기 (mode 는 이미 PAUSED). ENTER 로 생긴 대기와는 별개다
-            self._await(self._interlock_exit, '인터락 EXIT')
+            # FSM 이 REFILL 로 세운 대기 (mode 는 이미 PAUSED). 그 사이 ENTER 가 또 왔어도(_pause) EXIT 한 번이면
+            # 사람이 나온 것이므로 _pause 도 여기서 같이 내린다 — 안 그러면 뒤의 _gate 가 EXIT 를 한 번 더 요구한다
+            self._refill_waiting = True
+            try:
+                self._await(self._interlock_exit, '인터락 EXIT')
+            finally:
+                self._refill_waiting = False
             self._interlock_exit.clear()
+            self._pause = False
             return {}
         if k == 'measure':
             r = self._call_srv('measure', MeasureForce.Request(samples=int(self.p('scale.samples')),
@@ -467,11 +480,11 @@ class ProcessNode(Node):
             req = fsm.start()
             while req is not None and rclpy.ok() and not self._stop.is_set():
                 step = fsm.state
-                if req['kind'] not in HUMAN_WAITS:
-                    # 다음 **로봇 동작**을 시작하기 전에 멈춘다. 사람을 기다리는 요청 앞에서는 멈추지 않는다 —
-                    # 로봇이 움직이지 않으니 멈출 것이 없고, 여기서 잡으면 QA 판정을 먼저 받지 못한 채
-                    # 서 버린다 (판정 대기 중에는 mode 를 PAUSED 로 못 올리므로 사람은 이유도 못 본다).
-                    # 그 요청들 뒤의 정지는 _execute 가 결과를 받은 직후에 잡는다.
+                if req['kind'] not in GATE_BYPASS:
+                    # 다음 **로봇 동작**을 시작하기 전에 멈춘다 — 정지를 잡는 자리는 여기 하나뿐이다.
+                    # 사람을 기다리는 요청·safe 앞에서는 멈추지 않는다: 로봇이 움직이지 않거나(대기) 물러나는
+                    # 이동(safe)이라 멈출 이유가 없고, QA 대기 앞에서 잡으면 판정을 못 받은 채 서 버린다
+                    # (판정 대기 중에는 mode 를 PAUSED 로 못 올리므로 사람은 이유도 못 본다).
                     self._gate()
                 self._before(step, req)
                 try:
