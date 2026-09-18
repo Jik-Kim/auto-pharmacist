@@ -51,6 +51,6 @@
 ### I-007
 `weigh_scoop` 계약 · 상 · A + C · 등록 9/17
 - **내용**: 로봇이 저울이라 `WeighContainer`(용기 파지 → 들어 올림 → 읽기 → 내려놓기)는 그리퍼가 비어야 한다. 종전 SCOOP→POUR→WEIGH 는 스쿱을 든 채 용기를 잡는 모순. D-22 로 원료마다 스쿱을 든 채 세 번(빈 스쿱·붓기 전·붓기 후) 재고, 용기는 배치 끝 VERIFY 한 번 재는 흐름으로 바꿨다 (`process_fsm.py`, 테스트 9건 통과).
-- **필요한 계약**: (a) 들고 있는 것을 그대로 재는 스킬 — `WeighHeld` Action 신설 또는 `WeighContainer` 에 `mode: held|container` 필드. 입력 `tare_g`, 결과 `WeightReading`. (b) `Deviation.kind` 에 `VERIFY_MISMATCH`. (c) `WeightReading` 을 스쿱 계량에도 쓰므로 `weight` 토픽에 무엇을 잰 것인지 구분 필드(`subject: scoop|container`)가 있으면 HMI 그래프가 편하다 (D 와).
+- **필요한 계약**: (a) 들고 있는 것을 그대로 재는 스킬 — `WeighHeld` Action 신설 또는 `WeighContainer` 에 `mode: held|container` 필드. 입력 `tare_g`, 결과 `WeightReading`. (b) `Deviation.kind` 에 `VERIFY_MISMATCH` **와 `BATCH_OUT_OF_SPEC`** — 9/17 조장 합의로 `VERIFY` 를 **계측 신뢰성**(Σ투입량 대조)과 **제품 판정**(레시피 총량 대조, 허용치 `Σ(target×tol)`) 둘로 나눴다. (c) `WeightReading` 을 스쿱 계량에도 쓰므로 `weight` 토픽에 무엇을 잰 것인지 구분 필드(`subject: scoop|container`)가 있으면 HMI 그래프가 편하다 (D 와).
 - **임시**: 계약 확정 전 process_node 는 `weigh_scoop` 를 `measure_force`(정지 외력) 로 흉내 내거나 `weigh_container` 를 그대로 부른다 (가상에서는 값이 없으므로 `scale.simulated` 로 충분).
 - **조치·남은 것**: A 와 9/17 합의 → `gmp_interfaces` + `docs/interfaces.md` 같은 커밋 (조장). `_pour_fraction` 은 B 의 `dosing.py` 로 이관.

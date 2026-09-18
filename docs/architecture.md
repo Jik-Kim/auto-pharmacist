@@ -49,7 +49,7 @@
 | 10 | `WEIGH_RESIDUAL` | `weigh_scoop`(붓기 후) → `dosing.decide()` | 잔량 = gross − 스쿱 풍량, **투입량 += 퍼낸 양 − 잔량**. 시도 1건을 `ScoopCycle`로 발행. `OK` → 11 / `UNDER` → 7 (보정, ≤3) / `OVER` → `Deviation(OVERFILL, requires_decision)` → `DEVIATION` |
 | 11 | `RETURN_SCOOP` | `MoveToStation(scoop_rack)` → `SetGripper(open)` | 원료별 전용 스쿱 반납 (교차오염 방지) |
 | 12 | 다음 원료 → 5 | | |
-| 13 | `VERIFY` | `WeighContainer(tare_g)` — **용기를 들어** 계량 (그리퍼 비어 있음) | 순량 vs Σ투입량 차이 > `min_resolvable_g` → `Deviation(VERIFY_MISMATCH)` → QA (2차 검증) |
+| 13 | `VERIFY` | `WeighContainer(tare_g)` — **용기를 들어** 계량 (그리퍼 비어 있음) | **두 가지를 본다** (9/17 조장 합의). ① **제품 판정** `\|net − Σtarget\| > Σ(target×tol)` → `Deviation(BATCH_OUT_OF_SPEC)` → QA (폐기 권고) ② **계측 신뢰성** `\|net − Σ투입량\| > min_resolvable_g` → `Deviation(VERIFY_MISMATCH)` → QA. **①이 규격 판정이다** — 원료가 전부 같은 방향으로 치우치면 net 과 Σ투입량이 함께 낮아 ②로는 안 잡힌다 |
 | 14 | `FINISH` | **carry**: `scale` → `output_tray(slot)` … `SafePose` | 완료품을 용기째 트레이로. `DONE` 발행, 기록 종료 |
 | E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료(VERIFY 였으면 FINISH) / DISCARD → 스쿱 반납 → **carry** `scale` → `reject_bin` → `DISCARDED` |
 | E | `PAUSED` | `SafePose` | `InterlockRequest(ENTER)` → 안전 자세 도달 후 granted / `EXIT` → 이전 상태 재개 |
