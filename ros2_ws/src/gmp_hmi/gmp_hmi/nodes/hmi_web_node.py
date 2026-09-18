@@ -107,14 +107,13 @@ class HmiRosNode(Node):
         r = Recipe(product=spec.product or name)
         r.header.stamp = self.get_clock().now().to_msg()
         for it in spec.items:
-            r.items.append(RecipeItem(material_id=it.material_id, target_g=it.target_g, tol_pct=it.tol_pct,
-                                      grade=it.grade, scoop_id=it.scoop_id))
+            r.items.append(RecipeItem(material_id=it.material_id, target_g=it.target_g, tol_pct=it.tol_pct))
         res = self._call(self.cli_order, SubmitOrder.Request(recipe=r))
         self.audit('ORDER', actor, f'{name} → {res.batch_id if res else "no-response"}')
         return res
 
     def qa(self, batch_id, deviation_id, decision, actor):
-        res = self._call(self.cli_qa, QaDecision.Request(batch_id=batch_id, deviation_id=deviation_id, decision=int(decision), operator_id=actor))
+        res = self._call(self.cli_qa, QaDecision.Request(deviation_id=deviation_id, decision=int(decision), operator_id=actor))
         self.audit('QA_APPROVE' if int(decision) == Deviation.APPROVED else 'QA_DISCARD', actor, deviation_id)
         return res
 

@@ -10,8 +10,8 @@
 
 요청은 dict(kind=..., ...) 하나.
 kind: move | grip | carry | scoop | pour | weigh | weigh_scoop | measure | safe | wait_qa | wait_interlock
-  carry       용기 반송(src 슬롯 → dst) 복합 요청. process_node 가 MoveToStation(ABOVE→AT) → Grip(close, cup) → ABOVE →
-              dst(ABOVE→AT) → Grip(open) → ABOVE 로 조합한다. 결과 grip_inferred=false 면 GRIP_FAIL (D-18).
+  carry       용기 반송(src 슬롯 → dst) 복합 요청. process_node 가 MoveToStation(ABOVE→AT) → SetGripper(close, cup) → ABOVE →
+              dst(ABOVE→AT) → SetGripper(open) → ABOVE 로 조합한다. 결과 grip_inferred=false 면 GRIP_FAIL (D-18).
   weigh       용기를 들어 계량 (WeighContainer: 파지 → 계량 자세 → 읽기 → 내려놓기). 그리퍼가 비어 있어야 한다.
   weigh_scoop 지금 들고 있는 스쿱을 계량 자세로 가져가 그대로 잰다 (파지·내려놓기 없음). 결과 gross_g·valid.
               계약 v1.2 항목 — A 와 합의 (docs/issues.md I-007).
@@ -33,7 +33,6 @@ class ItemRun:
     material_id: str
     target_g: float
     tol_pct: float
-    scoop_id: str
     attempts: int = 0
     invalid: int = 0
     scoop_tare_g: float = 0.0    # 빈 스쿱 (SCOOP_TARE)
@@ -68,7 +67,7 @@ class ProcessFSM:
 
     def _item(self) -> ItemRun:
         it = self.spec.items[self.idx]
-        return ItemRun(it.material_id, it.target_g, it.tol_pct, it.scoop_id)
+        return ItemRun(it.material_id, it.target_g, it.tol_pct)
 
     # ── 요청 생성 ─────────────────────────────────────────────────────
     def _weigh_scoop(self) -> dict:
