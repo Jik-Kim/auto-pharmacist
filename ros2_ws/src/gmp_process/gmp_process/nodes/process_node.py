@@ -63,7 +63,7 @@ class ProcessNode(Node):
         if self.fsm and self.fsm.mode in ('RUNNING', 'PAUSED', 'DEVIATION'):
             res.accepted, res.message = False, f'실행 중 ({self.fsm.state})'
             return res
-        items = [Item(i.material_id, i.target_g, i.tol_pct, i.grade, i.scoop_id or i.material_id) for i in req.recipe.items]
+        items = [Item(i.material_id, i.target_g, i.tol_pct) for i in req.recipe.items]   # 전용 스쿱은 stations.yaml 의 scoop_N (material_id 짝)
         self.batch_id = req.recipe.batch_id or self.get_clock().now().to_msg().sec.__str__()
         self.fsm = ProcessFSM(RecipeSpec(req.recipe.product, items), self.dosing_cfg, self.scale)
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
@@ -101,9 +101,9 @@ class ProcessNode(Node):
     def _execute(self, req: dict) -> dict:
         """요청 kind 별 스킬 호출. TODO([C]) 9/18 — 지금은 골격.
 
-        carry (D-18): MoveToStation(src, ABOVE) → (src, AT, slot) → Grip(close, gripper.cup_width_mm) → (src, ABOVE)
-                      → MoveToStation(dst, ABOVE) → (dst, AT, slot) → Grip(open) → (dst, ABOVE).
-                      결과 {'grip_inferred': Grip 결과}. 슬롯 오프셋은 stations.yaml slot_pitch_mm × slot.
+        carry (D-18): MoveToStation(src, ABOVE) → (src, AT, slot) → SetGripper(close, gripper.cup_width_mm) → (src, ABOVE)
+                      → MoveToStation(dst, ABOVE) → (dst, AT, slot) → SetGripper(open) → (dst, ABOVE).
+                      결과 {'grip_inferred': SetGripper 결과}. 슬롯 오프셋은 stations.yaml slot_pitch_mm × slot.
         """
         k = req['kind']
         if k == 'wait_qa':

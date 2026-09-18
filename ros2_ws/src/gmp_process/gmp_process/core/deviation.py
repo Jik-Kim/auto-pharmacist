@@ -14,7 +14,8 @@ RULES = {
     'OVERFILL':        (0, 'QA', 'QA'),
     'TIMEOUT':         (0, 'QA', 'QA'),
     'WEIGH_INVALID':   (2, 'RETRY', 'QA'),
-    'VERIFY_MISMATCH': (0, 'QA', 'QA'),   # 스쿱 누적 투입량 vs 용기 계량 불일치 (D-22 2차 검증) — 계약 v1.2 kind
+    'VERIFY_MISMATCH': (0, 'QA', 'QA'),   # 용기 계량 vs 스쿱 누적 투입량 불일치 — 계측 신뢰성 (D-22 ②)
+    'BATCH_OUT_OF_SPEC': (0, 'QA', 'QA'), # 용기 순량 vs 레시피 총 목표량 불일치 — 제품 규격 판정 (D-22 ①). QA 가 폐기 판단
     'SAFETY_SWITCH':   (1, 'RETRY', 'FORCED'),
     'FORCE_LIMIT':     (1, 'RETRY', 'FORCED'),
 }
