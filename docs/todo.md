@@ -5,18 +5,18 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 11/69 완료** (███░░░░░░░░░░░░░░░░░)  ·  기준 09/18
+**전체 12/69 완료** (███░░░░░░░░░░░░░░░░░)  ·  기준 09/18
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
 | gmp_interfaces [조장] | 2/6 | `███░░░░░░░` | **2** |
 | gmp_skills [A 스킬] | 0/16 | `░░░░░░░░░░` | **6** |
 | gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **4** |
-| gmp_process [C 공정] | 3/16 | `██░░░░░░░░` | **1** |
+| gmp_process [C 공정] | 4/16 | `██░░░░░░░░` | — |
 | gmp_hmi [D HMI·기록] | 3/15 | `██░░░░░░░░` | **1** |
 | gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **2** |
 
-**마감이 지난 항목 16건**
+**마감이 지난 항목 15건**
 
 - `9/17` gmp_interfaces — 계약 v1.2: Deviation.kind 에 WRONG_TOOL·VERIFY_MISMATCH 추가, WeighHeld Acti…
 - `9/17` gmp_interfaces — G1 결과로 도징 단위 확정 → RecipeItem.tol_pct 기본값·레시피 yaml 갱신 (SOT D-08)
@@ -30,7 +30,6 @@
 - `9/16` gmp_dosing — core/dosing.py: decide(target_g, actual_g, tol_pct, attempts, history) …
 - `9/17` gmp_dosing — test/test_dosing.py: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ…
 - `9/17` gmp_dosing — G1 σ 로 scale.min_resolvable_g 갱신, 30 g / 100 g 단위 확정 (조장과)
-- `9/17` gmp_process — 스테이션 물리 배치·테이프 표시 (하드웨어)
 - `9/17` gmp_hmi — sudo apt install python3-flask 후 가상 모드에서 주문 → 상태 → QA 승인 → 이력 조회 한 바퀴
 - `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
 - `9/17` gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
@@ -107,7 +106,7 @@
 - [ ] **[D-22]** `VERIFY` 이중 판정 구현 — 순량 vs Σ투입량(`VERIFY_MISMATCH`, 계측 신뢰성) **+** 순량 vs 레시피 총량(`BATCH_OUT_OF_SPEC`, 제품 판정, 허용치 `Σ(target×tol)`). **개별 원료가 전부 같은 방향으로 치우치면 Σ 대조로는 안 잡힌다.** 조장 합의 완료 (9/17) · 마감 9/18
 - [ ] `nodes/process_node.py`: 레시피 `grade/scoop_id` 제거, `Pour`·`WeighContainer` station 인자 제거, `SetGripper` 클라이언트, `QaDecision.deviation_id` 일치 검증, 시도 종료 시 `scoop_cycle` 발행을 포함한 스킬 Action/Service 연동 — **가상에서 레시피 1건 완주** · 마감 9/18
 - [ ] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) · 마감 9/21
-- [ ] 스테이션 물리 배치·테이프 표시 (하드웨어) · 마감 9/17
+- [x] 스테이션 물리 배치·테이프 표시 (하드웨어) — **9/18 완료**. 좌표 실측(G3)과 SOT D-24 등록이 이제 가능하다 · 마감 9/17
 - [ ] 고의 장애 주입 T6 (a)(b)(c) 재현 · 마감 9/22
 - [ ] **[추가 7] NUDGE 전이**: `RUNNING→PAUSED(NUDGE)`, 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 재사용) + 테스트 · 마감 9/18
 - [ ] **[추가 1] 폭 지문**: `PICK_SCOOP`·`PICK_CONTAINER` 의 `SetGripper` 결과 폭이 원료별 기대 폭(±margin) 과 다르면 `Deviation(WRONG_TOOL)` → QA · 마감 9/21 (A 와)
