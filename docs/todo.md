@@ -5,7 +5,7 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 23/78 완료** (██████░░░░░░░░░░░░░░)  ·  기준 09/18
+**전체 24/78 완료** (██████░░░░░░░░░░░░░░)  ·  기준 09/18
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
@@ -13,7 +13,7 @@
 | gmp_skills [A 스킬] | 0/18 | `░░░░░░░░░░` | **6** |
 | gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **4** |
 | gmp_process [C 공정] | 11/21 | `█████░░░░░` | — |
-| gmp_hmi [D HMI·기록] | 5/16 | `███░░░░░░░` | **1** |
+| gmp_hmi [D HMI·기록] | 6/16 | `████░░░░░░` | **1** |
 | gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **2** |
 
 **마감이 지난 항목 14건**
@@ -33,7 +33,7 @@
 - `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
 - `9/17` gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
 
-**오늘 마감 17건**
+**오늘 마감 16건**
 
 - gmp_interfaces — 계약 v1.2 팀 채널 공지 — 위 항목 중 공지만 남았다 (WeighHeld 신설·Deviation.kind 3종 추가)
 - gmp_interfaces — 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02)
@@ -47,7 +47,6 @@
 - gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
 - gmp_process — [추가 7] NUDGE 전이: RUNNING→PAUSED(NUDGE), 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 …
 - gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
-- gmp_hmi — v1.2 적용: 주문 메시지의 grade/scoop_id, QaDecision.Request의 batch_id 제거(웹 표시는 …
 - gmp_hmi — 다른 기기(폰·노트북)에서 http://<로봇PC>:5000 접속 확인 — 시연 T6(c) 장면
 - gmp_hmi — [9/18 확정] 회수 확인 버튼 — QA 가 패스박스·폐기함 비운 뒤 누르면 카운터 리셋 + HMI_* audit 기록 (누가…
 - gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — passbox_done.capacity·reject_bin.cap…
