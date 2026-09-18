@@ -514,9 +514,14 @@ class ProcessNode(Node):
         m.detail = ' · '.join(x for x in (d['step'], d['action'], f"{d['count']}회", d.get('detail')) if x)
         m.requires_decision = d['action'] == 'QA'
         # RETRY·REFILL 은 로봇이 스스로 넘어가는 것 → AUTO_RECOVERED. FORCED(강제 개입, 배치 ERROR)는 자동 복구가
-        # 아닌데 계약에 그 결말 값이 없다 → PENDING 으로 두고 detail 의 'FORCED' 로 가른다. 자동 복구율 분자에서 빠진다
-        m.decision = (Deviation.PENDING if m.requires_decision or d['action'] == 'FORCED'
-                      else Deviation.AUTO_RECOVERED)
+        # 아니다 → Deviation.FORCED (계약 v1.2.1, PR #19). 그 계약 전 빌드에서는 PENDING 으로 떨어진다 — detail 의
+        # 'FORCED' 로 가를 수 있다. 어느 쪽이든 자동 복구율 분자에서 빠진다
+        if m.requires_decision:
+            m.decision = Deviation.PENDING
+        elif d['action'] == 'FORCED':
+            m.decision = getattr(Deviation, 'FORCED', Deviation.PENDING)
+        else:
+            m.decision = Deviation.AUTO_RECOVERED
         self._dev_msgs.append(m)
         self.pub_dev.publish(m)
         self.event('WARN', 'DEVIATION', f"{m.deviation_id} {d['kind']} @{d['step']}")
