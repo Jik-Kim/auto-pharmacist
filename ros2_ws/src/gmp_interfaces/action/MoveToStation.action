@@ -2,12 +2,12 @@
 string station_id       # 계약 2절의 문자열 ID
 uint8 approach          # 아래 상수
 float32 vel_scale       # 0 이면 robot.vel_scale
+
+uint8 ABOVE=0           # 접근점 (작업점 위 z+approach_mm)
+uint8 AT=1              # 작업점
 ---
 bool success
 string message
 string reached          # 실제 도착한 스테이션 ID
 ---
 string phase            # "PLANNING" | "MOVING" | "SETTLING"
-
-uint8 ABOVE=0           # 접근점 (작업점 위 z+approach_mm)
-uint8 AT=1              # 작업점
