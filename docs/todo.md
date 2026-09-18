@@ -5,14 +5,14 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 12/69 완료** (███░░░░░░░░░░░░░░░░░)  ·  기준 09/18
+**전체 14/69 완료** (████░░░░░░░░░░░░░░░░)  ·  기준 09/18
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
 | gmp_interfaces [조장] | 2/6 | `███░░░░░░░` | **2** |
 | gmp_skills [A 스킬] | 0/16 | `░░░░░░░░░░` | **6** |
 | gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **4** |
-| gmp_process [C 공정] | 4/16 | `██░░░░░░░░` | — |
+| gmp_process [C 공정] | 6/16 | `████░░░░░░` | — |
 | gmp_hmi [D HMI·기록] | 3/15 | `██░░░░░░░░` | **1** |
 | gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **2** |
 
@@ -34,7 +34,7 @@
 - `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
 - `9/17` gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
 
-**오늘 마감 22건**
+**오늘 마감 20건**
 
 - gmp_interfaces — 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02)
 - gmp_interfaces — [D-22] 계약 v1.2 에 Deviation.kind BATCH_OUT_OF_SPEC 추가 — VERIFY 를 계측 신뢰성(…
@@ -46,8 +46,6 @@
 - gmp_skills — [9/18 확정] 새 배치에서 용기를 파지한 채 passbox·reject_bin 도달 확인 (접근 높이 60 mm 포함) — …
 - gmp_skills — [9/18 확정] 원료 선반(판 바깥·높이 다름)에서 Scoop 힘제어 확인 — 뻗은 자세의 특이점 영향 (힘제어는 특이점 영역…
 - gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
-- gmp_process — [D-22] _pour_fraction 을 B 의 dosing.py 로 이관, weigh_scoop 임시 구현(계약 전) → v…
-- gmp_process — [D-22] VERIFY 이중 판정 구현 — 순량 vs Σ투입량(VERIFY_MISMATCH, 계측 신뢰성) + 순량 vs 레시…
 - gmp_process — nodes/process_node.py: 레시피 grade/scoop_id 제거, Pour·WeighContainer stati…
 - gmp_process — [추가 7] NUDGE 전이: RUNNING→PAUSED(NUDGE), 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 …
 - gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
@@ -102,8 +100,8 @@
 - [x] `core/recipe.py`: yaml → `RecipeSpec` 변환, 필수 필드·원료 중복·양수 검증 + `test_recipe.py` 25건 (`Recipe` msg 변환은 계층 원칙상 `nodes/` 가 한다 / **순서는 검증 대상이 아니다** — 계약 1절 "순서 위반은 일탈이 아니라 버그") · 마감 9/16
 - [x] `core/process_fsm.py`: 상태·전이표(`docs/architecture.md`) 순수 구현, 이벤트 입력 → 다음 상태 + 스킬 요청 — **D-22 6단계(스쿱 계량 3회 + VERIFY)** 반영 · 마감 9/17
 - [x] `test/test_process_fsm.py`: 정상 완주(6단계 순서), 붓기 전 계량으로 초과 예방, UNDER 보정 누적, OVER → QA → DISCARD(스쿱 반납 후), VERIFY 불일치 → QA, 계량 무효 재시도, 파지 실패, REFILL 재개 — 9건 · 마감 9/17
-- [ ] **[D-22]** `_pour_fraction` 을 B 의 `dosing.py` 로 이관, `weigh_scoop` 임시 구현(계약 전) → v1.2 후 교체 · 마감 9/18 (A·B 와)
-- [ ] **[D-22]** `VERIFY` 이중 판정 구현 — 순량 vs Σ투입량(`VERIFY_MISMATCH`, 계측 신뢰성) **+** 순량 vs 레시피 총량(`BATCH_OUT_OF_SPEC`, 제품 판정, 허용치 `Σ(target×tol)`). **개별 원료가 전부 같은 방향으로 치우치면 Σ 대조로는 안 잡힌다.** 조장 합의 완료 (9/17) · 마감 9/18
+- [x] **[D-22]** `_pour_fraction` → `gmp_dosing/core/dosing.py` 의 `pour_fraction(need_g, scooped_g, cfg)` 로 이관 완료. `weigh_scoop` 요청은 계약 v1.2 의 `WeighHeld` Action 에 대응한다 (매핑은 `process_node` 구현 시) · 마감 9/18
+- [x] **[D-22]** `VERIFY` 이중 판정 구현 — ① `|net − Σtarget| > Σ(target×tol)` → `BATCH_OUT_OF_SPEC` ② `|net − Σ투입량| > min_resolvable_g` → `VERIFY_MISMATCH`. **임계 제약 발견**: `min_resolvable_g < Σ(target×tol)` 가 아니면 ②는 죽은 검사다 (현재 30 > 22.5) → SOT Q-11 에 기록 · 마감 9/18
 - [ ] `nodes/process_node.py`: 레시피 `grade/scoop_id` 제거, `Pour`·`WeighContainer` station 인자 제거, `SetGripper` 클라이언트, `QaDecision.deviation_id` 일치 검증, 시도 종료 시 `scoop_cycle` 발행을 포함한 스킬 Action/Service 연동 — **가상에서 레시피 1건 완주** · 마감 9/18
 - [ ] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) · 마감 9/21
 - [x] 스테이션 물리 배치·테이프 표시 (하드웨어) — **9/18 완료**. 좌표 실측(G3)과 SOT D-24 등록이 이제 가능하다 · 마감 9/17
