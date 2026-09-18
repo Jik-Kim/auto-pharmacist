@@ -115,6 +115,7 @@ class ProcessNode(Node):
         self._attempt: Attempt | None = None
         self._scoop_tare: Reading | None = None   # 원료마다 1회 (D-22) — 시도마다 다시 쓴다
         self._grip_width = 0.0                    # 마지막 SetGripper 정지 폭 (ScoopCycle 용)
+        self._try_no: dict = {}                   # 원료 → ScoopCycle 시도 번호 (빈 스쿱 재시도도 센다)
         self._item_t0 = 0.0
 
     # ── 공용 ─────────────────────────────────────────────────────────
@@ -171,6 +172,7 @@ class ProcessNode(Node):
         self._dev_msgs = []
         self._published_devs = self._published_results = 0
         self._attempt = self._scoop_tare = None
+        self._try_no = {}
         self._qa.clear(); self._qa_decision = None; self._qa_operator = ''
         self._interlock_exit.clear(); self._pause = False   # 지난 배치의 EXIT 가 새 배치로 새지 않게
 
@@ -454,7 +456,11 @@ class ProcessNode(Node):
                 a = self._attempt
                 self._close_attempt('POUR_FAILED' if (a.pre_pour is not None and a.post_pour is None
                                                       and a.commanded_pour_fraction) else 'ABORTED')
-            self._attempt = Attempt(material_id=req['material_id'], attempt=int(req.get('attempt', 1)),
+            # ScoopCycle.attempt 는 "원료별 1부터 시작하는 시도 번호" — FSM 의 attempt 는 붓기까지 간 횟수만 세서
+            # SCOOP_EMPTY 재시도가 같은 번호로 반복된다. 여기서는 시도가 열릴 때마다 올린다
+            mid = req['material_id']
+            self._try_no[mid] = self._try_no.get(mid, 0) + 1
+            self._attempt = Attempt(material_id=mid, attempt=self._try_no[mid],
                                     target_g=self.fsm.cur.target_g, actual_before_g=self.fsm.cur.actual_g,
                                     t0=self._now(), scoop_tare=self._scoop_tare)
             if not self._item_t0:

@@ -407,3 +407,16 @@ def test_submit_rejects_invalid_numbers_and_duplicates(cell):
         r = _submit(col, items)
         assert not r.accepted and key in r.message, (items, r.message)
     assert proc.fsm is None                       # 아무 배치도 시작되지 않았다
+
+
+def test_scoop_cycle_attempt_numbers_are_unique_per_material(cell):
+    """빈 스쿱 재시도도 시도다 — ScoopCycle.attempt 는 원료별로 1,2,3… 한 번씩만 나온다."""
+    proc, fake, col = cell
+    fake.empty = 2                                 # SCOOP_EMPTY ×2 → 3번째 성공
+    _submit(col, [('A', 100.0, 5.0), ('B', 80.0, 8.0)])
+    assert _wait_done(proc) == 'DONE', proc.note
+    a = [c.attempt for c in col.cycles if c.material_id == 'A']
+    b = [c.attempt for c in col.cycles if c.material_id == 'B']
+    assert a == list(range(1, len(a) + 1)) and a[:2] == [1, 2], a
+    assert b == list(range(1, len(b) + 1)), b
+    assert [c.outcome for c in col.cycles if c.material_id == 'A'][:2] == [ScoopCycle.SCOOP_EMPTY] * 2
