@@ -348,7 +348,8 @@ def test_forced_deviation_is_not_auto_recovered(cell):
     _submit(col, [('A', 100.0, 5.0)])
     assert _wait_done(proc) == 'ERROR'
     decisions = [(d.detail.split(' · ')[1], d.decision) for d in col.devs]
-    assert decisions == [('RETRY', Deviation.AUTO_RECOVERED), ('FORCED', Deviation.PENDING)], decisions
+    forced = getattr(Deviation, 'FORCED', Deviation.PENDING)      # 계약 v1.2.1(PR #19) 전 빌드는 PENDING 폴백
+    assert decisions == [('RETRY', Deviation.AUTO_RECOVERED), ('FORCED', forced)], decisions
 
 
 def test_qa_rejects_invalid_decision_value(cell):
