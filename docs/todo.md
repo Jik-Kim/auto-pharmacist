@@ -121,7 +121,7 @@
 ## gmp_hmi [D HMI·기록]
 - [x] `config/schema.sql` · `core/db.py`: 6 테이블, 쓰기·조회·KPI·JSON 내보내기, 단위 테스트 · 마감 9/16
 - [x] `nodes/record_node.py`: 구독 5종 → SQLite, 배치 종료 시 JSON 내보내기, `HMI_*` → audit · 마감 9/16
-- [ ] v1.2 적용: 주문 메시지의 `grade/scoop_id`, `QaDecision.Request`의 `batch_id` 제거(웹 표시는 유지), `scoop_cycle` 구독·DB 테이블·JSON 내보내기 추가 · 마감 9/18
+- [x] v1.2 적용: 주문 메시지의 `grade/scoop_id`, `QaDecision.Request`의 `batch_id` 제거(웹 표시는 유지), `scoop_cycle` 구독·DB 테이블·JSON 내보내기 추가 · 마감 9/18
 - [x] `nodes/hmi_web_node.py` + `templates/index.html`: Flask 골격 — 주문·상태·계량 그래프·일탈 판정·인터락·이력·KPI·감사 추적 · 마감 9/16
 - [ ] `sudo apt install python3-flask` 후 가상 모드에서 **주문 → 상태 → QA 승인 → 이력 조회 한 바퀴** · 마감 9/17
 - [ ] 다른 기기(폰·노트북)에서 `http://<로봇PC>:5000` 접속 확인 — 시연 T6(c) 장면 · 마감 9/18
