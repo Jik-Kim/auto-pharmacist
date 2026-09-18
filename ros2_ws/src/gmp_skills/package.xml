@@ -8,6 +8,7 @@
   <license>MIT</license>
   <depend>rclpy</depend>
   <depend>gmp_interfaces</depend>
+  <depend>gmp_dosing</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>onrobot_rg_msgs</depend>

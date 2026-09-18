@@ -11,10 +11,10 @@
 
 파라미터는 gmp_bringup/params/common.yaml 이 단일 출처. stations.yaml 경로는 파라미터 `stations_file`.
 
-TODO([A]): Scoop/Pour/WeighContainer 본문 (9/18). 지금은 MoveToStation·SetGripper·MeasureForce·SafePose 골격만.
 TODO([A]): I-004 취소 — 워커가 Job.cancel 플래그를 movel 사이에서만 본다. 긴 movel 은 쪼갠다.
 """
 import queue
+import math
 import threading
 import time
 from dataclasses import dataclass, field
@@ -31,9 +31,11 @@ from onrobot_rg_msgs.srv import SetCommand
 from gmp_interfaces.action import MoveToStation, Scoop, Pour, WeighContainer
 from gmp_interfaces.msg import CellEvent, GripperState, WeightReading
 from gmp_interfaces.srv import MeasureForce, SafePose, SetGripper
+from gmp_dosing.core.scale import ScaleConfig, WeightModel
 
 from gmp_skills.adapters.dsr_arm import DsrArm
 from gmp_skills.adapters.rg2_gripper import Rg2Gripper
+from gmp_skills.core.nudge import NudgeDetector
 from gmp_skills.core.stations import StationTable
 
 
@@ -56,23 +58,36 @@ class SkillNode(Node):
             ('robot.tool_name', 'tool_weight'), ('robot.tcp_name', 'GripperDA_v1'),
             ('robot.vel', 60.0), ('robot.acc', 60.0), ('robot.vel_scale', 0.3),
             ('gripper.backend', 'modbus'), ('gripper.open_width_mm', 100.0), ('gripper.grip_margin_mm', 2.0),
-            ('gripper.slip_mm', 1.5), ('gripper.dio_pins', [1, 2]), ('gripper.din_pins', [0]),
+            ('gripper.slip_mm', 1.5), ('gripper.state_timeout_s', 0.5),
+            ('gripper.dio_pins', [1, 2]), ('gripper.din_pins', [0]),
+            ('gripper.cup_width_mm', 60.0), ('gripper.force_n', 20.0),
             ('scale.method', 'workpiece'), ('scale.samples', 20), ('scale.settle_s', 1.0), ('scale.simulated', False),
-            ('safety.fz_max_n', 15.0), ('stations_file', ''),
+            ('scale.gain', 1.0), ('scale.offset_g', 0.0), ('scale.max_std_g', 10.0),
+            ('scale.min_resolvable_g', 30.0), ('scale.fz_sign', -1.0),
+            ('safety.fz_max_n', 15.0),
+            ('safety.compliance_stx', [3000.0, 3000.0, 500.0, 200.0, 200.0, 200.0]),
+            ('safety.scoop_force_n', -8.0), ('safety.dip_max_mm', 40.0), ('safety.scoop_timeout_s', 5.0),
+            ('safety.nudge_enabled', True), ('safety.nudge_force_n', 8.0),
+            ('safety.nudge_window_s', 0.2), ('safety.nudge_cooldown_s', 1.5),
+            ('pour.tilt_deg', 110.0), ('pour.tilt_axis', 4), ('pour.hold_s', 0.5),
+            ('pour.shake_amp_deg', 4.0), ('pour.shake_period_s', 0.5),
+            ('pour.shake_atime_s', 0.2), ('pour.shake_repeat', 2),
+            ('stations_file', ''),
         ])
         g = lambda k: self.get_parameter(k).value  # noqa: E731
         self.mode = g('mode')
         self.vel_scale = float(g('robot.vel_scale'))
         self.stations = StationTable.from_yaml(g('stations_file'))
         self.arm = DsrArm(g('robot.id'), g('robot.model'), self.mode, float(g('robot.vel')), float(g('robot.acc')),
-                          g('robot.tool_name'), g('robot.tcp_name'), self.get_logger())
+                          g('robot.tool_name'), g('robot.tcp_name'), self.get_logger(), self._now_s)
 
         backend = 'virtual' if self.mode == 'virtual' else g('gripper.backend')
         self._grip_cli = self.create_client(SetCommand, '/onrobot/sendCommand')
         self.gripper = Rg2Gripper(backend, self._send_gripper_command, self.arm,
                                   float(g('gripper.grip_margin_mm')), float(g('gripper.slip_mm')),
                                   float(g('gripper.open_width_mm')), tuple(g('gripper.dio_pins')),
-                                  tuple(g('gripper.din_pins')), self.get_logger())
+                                  tuple(g('gripper.din_pins')), self.get_logger(), self._now_s,
+                                  float(g('gripper.state_timeout_s')))
         js_topic = '/onrobot_joint_states' if backend == 'modbus' else f"/{g('robot.id')}/gripper_joint_states"
         self.create_subscription(JointState, js_topic, self._on_js,
                                  QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
@@ -83,53 +98,98 @@ class SkillNode(Node):
         self.pub_event = self.create_publisher(CellEvent, 'event', 100)
         self.create_timer(0.1, self._pub_gripper_state, callback_group=self.cb)
 
-        ActionServer(self, MoveToStation, 'move_to_station', self._exec_move, callback_group=self.cb,
-                     goal_callback=lambda _: GoalResponse.ACCEPT, cancel_callback=self._on_cancel)
-        ActionServer(self, Scoop, 'scoop', self._exec_scoop, callback_group=self.cb)
-        ActionServer(self, Pour, 'pour', self._exec_pour, callback_group=self.cb)
-        ActionServer(self, WeighContainer, 'weigh_container', self._exec_weigh, callback_group=self.cb)
-        self.create_service(SetGripper, 'set_gripper', self._srv_set_gripper, callback_group=self.cb)
-        self.create_service(MeasureForce, 'measure_force', self._srv_measure, callback_group=self.cb)
-        self.create_service(SafePose, 'safe_pose', self._srv_safe, callback_group=self.cb)
+        self._nudge_enabled = bool(g('safety.nudge_enabled')) and not bool(g('scale.simulated'))
+        self._nudge = NudgeDetector(float(g('safety.nudge_force_n')), float(g('safety.nudge_window_s')),
+                                     float(g('safety.nudge_cooldown_s')))
+        self._nudge_fault_logged = False
 
         self._q: 'queue.Queue[Job]' = queue.Queue()
         self._current: Job | None = None
         threading.Thread(target=self._worker, daemon=True, name='dsr-worker').start()
+        startup = self._submit('startup', expect_tool=g('robot.tool_name'), expect_tcp=g('robot.tcp_name'))
+        if startup.error or not startup.result[0]:
+            raise RuntimeError(f'자가진단 실패 — 기동 거부: {startup.error or startup.result[1]}')
+        self.event('INFO', 'SELF_CHECK', f'OK {startup.result[1]}')
 
-        ok, msg = self.arm.self_check(g('robot.tool_name'), g('robot.tcp_name'))
-        self.event('INFO' if ok else 'ERROR', 'SELF_CHECK', f'{"OK" if ok else "FAIL"} {msg}')
-        if not ok:
-            raise RuntimeError(f'자가진단 실패 — 기동 거부: {msg}')
+        ActionServer(self, MoveToStation, 'move_to_station', self._exec_move, callback_group=self.cb,
+                     goal_callback=lambda _: GoalResponse.ACCEPT, cancel_callback=self._on_cancel)
+        ActionServer(self, Scoop, 'scoop', self._exec_scoop, callback_group=self.cb,
+                     cancel_callback=self._on_cancel)
+        ActionServer(self, Pour, 'pour', self._exec_pour, callback_group=self.cb,
+                     cancel_callback=self._on_cancel)
+        ActionServer(self, WeighContainer, 'weigh_container', self._exec_weigh, callback_group=self.cb,
+                     cancel_callback=self._on_cancel)
+        self.create_service(SetGripper, 'set_gripper', self._srv_set_gripper, callback_group=self.cb)
+        self.create_service(MeasureForce, 'measure_force', self._srv_measure, callback_group=self.cb)
+        self.create_service(SafePose, 'safe_pose', self._srv_safe, callback_group=self.cb)
 
     # ── 공용 ────────────────────────────────────────────────────────────
+    def _now_s(self):
+        return self.get_clock().now().nanoseconds / 1e9
+
     def event(self, level: str, code: str, text: str, batch_id: str = ''):
         m = CellEvent(level=getattr(CellEvent, level), code=code, text=text, batch_id=batch_id)
         m.header.stamp = self.get_clock().now().to_msg()
         self.pub_event.publish(m)
-        (self.get_logger().error if level == 'ERROR' else self.get_logger().info)(f'[{code}] {text}')
+        if level == 'ERROR':
+            self.get_logger().error(f'[{code}] {text}')
+        else:
+            self.get_logger().info(f'[{code}] {text}')
 
     def _send_gripper_command(self, cmd: str) -> bool:
         if not self._grip_cli.wait_for_service(timeout_sec=2.0):
             self.event('ERROR', 'GRIPPER_SVC', '/onrobot/sendCommand 없음')
             return False
         fut = self._grip_cli.call_async(SetCommand.Request(command=cmd))
-        t0 = time.time()
-        while not fut.done() and time.time() - t0 < 3.0:
+        t0 = self._now_s()
+        while not fut.done() and self._now_s() - t0 < 3.0:
             time.sleep(0.01)          # 워커 스레드에서 호출되므로 spin 하지 않는다 — executor 가 돌린다
         return bool(fut.done() and fut.result().success)
 
     def _on_js(self, msg: JointState):
+        source_s = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
+        stamp_s = source_s if source_s > 0.0 else self._now_s()
         for n, pos in zip(msg.name, msg.position):
             if n.endswith('finger_joint'):
-                self.gripper.on_joint_state(pos, time.time())
+                self.gripper.on_joint_state(pos, stamp_s)
                 break
 
     def _pub_gripper_state(self):
-        w = self.gripper.width_mm()
-        m = GripperState(width_mm=-1.0 if w is None else w, busy=False, grip_inferred=False,
+        state = self.gripper.state(self._now_s())
+        w = state['width_mm']
+        m = GripperState(width_mm=-1.0 if w is None else w, busy=state['busy'],
+                         grip_inferred=state['grip_inferred'],
                          safety_triggered=False, force_cmd_n=self.gripper.force_cmd_n, backend=self.gripper.backend)
         m.header.stamp = self.get_clock().now().to_msg()
         self.pub_state.publish(m)
+        if self.gripper.consume_slip():
+            self.event('WARN', 'GRIP_SLIP', f'폭 변화가 slip_mm를 초과함: width={m.width_mm:.2f} mm')
+
+    def _observe_force(self, force6):
+        if self._nudge_enabled and self._nudge.update(force6, self._now_s()):
+            magnitude_n = math.sqrt(sum(float(v) ** 2 for v in force6[:3]))
+            self.event('INFO', 'NUDGE', f'외력 nudge 입력 감지: |F|={magnitude_n:.2f} N')
+
+    def _poll_nudge(self):
+        if not self._nudge_enabled:
+            return
+        try:
+            force = self.arm.tool_force()
+            if force is not None:
+                self._observe_force(force)
+            self._nudge_fault_logged = False
+        except Exception as exc:  # noqa: BLE001 — 유휴 감시 실패가 워커를 죽이면 안 된다
+            if not self._nudge_fault_logged:
+                self.event('WARN', 'NUDGE_UNAVAILABLE', f'외력 감시 실패: {exc}')
+                self._nudge_fault_logged = True
+
+    def _wait_with_nudge(self, duration_s: float, job: Job):
+        end_s = self._now_s() + max(0.0, duration_s)
+        while self._now_s() < end_s:
+            if job.cancel:
+                raise RuntimeError('cancelled')
+            self._poll_nudge()
+            time.sleep(min(0.1, max(0.0, end_s - self._now_s())))
 
     # ── 워커: 로봇 명령은 여기서만 ──────────────────────────────────────
     def _submit(self, kind: str, feedback=None, **args) -> Job:
@@ -140,7 +200,11 @@ class SkillNode(Node):
 
     def _worker(self):
         while rclpy.ok():
-            job = self._q.get()
+            try:
+                job = self._q.get(timeout=0.1)
+            except queue.Empty:
+                self._poll_nudge()
+                continue
             self._current = job
             try:
                 job.result = getattr(self, f'_do_{job.kind}')(job)
@@ -151,9 +215,14 @@ class SkillNode(Node):
                 self._current = None
                 job.done.set()
 
+    def _do_startup(self, job: Job):
+        self.arm.initialize()
+        return self.arm.self_check(job.args['expect_tool'], job.args['expect_tcp'])
+
     def _do_move(self, job: Job):
         st = self.stations.get(job.args['station_id'])
-        target = st.above(self.stations.approach_mm) if job.args['approach'] == MoveToStation.Goal.ABOVE else st.posx
+        # ABOVE/AT 상수가 현재 action 파일의 Feedback 절에 있어 Goal에 생성되지 않는다.
+        target = st.above(self.stations.approach_mm) if job.args['approach'] == 0 else st.posx
         job.feedback and job.feedback('MOVING')
         self.arm.movel(target, job.args.get('vel_scale') or self.vel_scale)
         return st.station_id
@@ -167,7 +236,8 @@ class SkillNode(Node):
     def _do_measure(self, job: Job):
         if self.get_parameter('scale.simulated').value:
             return [0.0] * 6, 0.0, 0.0, False, 'simulated'
-        mean6, fz, std, valid = self.arm.measure_force(job.args['samples'], job.args['settle_s'])
+        mean6, fz, std, valid = self.arm.measure_force(job.args['samples'], job.args['settle_s'],
+                                                       observer=self._observe_force)
         return mean6, fz, std, valid, ''
 
     def _do_safe(self, job: Job):
@@ -179,13 +249,137 @@ class SkillNode(Node):
         return True
 
     def _do_scoop(self, job: Job):
-        raise NotImplementedError('TODO([A]) 9/18: 접근 → compliance_on → force_z → force_over 접촉 → 깊이 상한 → 들어올림 → finally compliance_off')
+        p = self.get_parameter
+        station = self.stations.for_material(job.args['material_id'])
+        above = station.above(self.stations.approach_mm)
+        job.feedback and job.feedback('APPROACH')
+        self.arm.movel(above, self.vel_scale)
+        start = self.arm.current_posx()
+        contact_z = None
+        max_force_n = 0.0
+        insertion_mm = 0.0
+        deadline_s = self._now_s() + float(p('safety.scoop_timeout_s').value)
+        try:
+            self.arm.compliance_on(list(p('safety.compliance_stx').value))
+            try:
+                self.arm.force_z(float(p('safety.scoop_force_n').value))
+                while self._now_s() < deadline_s:
+                    if job.cancel:
+                        raise RuntimeError('cancelled')
+                    force = self.arm.tool_force() or [0.0] * 6
+                    max_force_n = max(max_force_n, abs(float(force[2])))
+                    current = self.arm.current_posx()
+                    if contact_z is None and self.arm.force_over(float(p('safety.fz_max_n').value)):
+                        contact_z = current[2]
+                    insertion_mm = 0.0 if contact_z is None else abs(float(current[2]) - float(contact_z))
+                    job.feedback and job.feedback('DIP', contact_z is not None, abs(float(force[2])), insertion_mm)
+                    depth_limit = float(start[2]) - float(p('safety.dip_max_mm').value)
+                    if self.arm.position_at_or_below(depth_limit):
+                        break
+                    time.sleep(0.05)
+            finally:
+                self.arm.compliance_off()
+        finally:
+            self.arm.movel(above, self.vel_scale)
+        job.feedback and job.feedback('LIFT', contact_z is not None, max_force_n, insertion_mm)
+        return {'contact_detected': contact_z is not None, 'max_contact_force_n': max_force_n,
+                'insertion_depth_mm': insertion_mm}
 
     def _do_pour(self, job: Job):
-        raise NotImplementedError('TODO([A]) 9/18: 접근 → 기울임 movel/movesx → fraction<1 이면 amove_periodic 털어내기 → 복귀')
+        p = self.get_parameter
+        fraction = max(0.0, min(1.0, float(job.args['fraction'])))
+        above = self.stations.get('scale').above(self.stations.approach_mm)
+        job.feedback and job.feedback('APPROACH')
+        self.arm.movel(above, self.vel_scale)
+        origin = self.arm.current_posx()
+        axis = int(p('pour.tilt_axis').value)
+        if axis not in (3, 4, 5):
+            raise ValueError(f'pour.tilt_axis는 3,4,5 중 하나여야 한다: {axis}')
+        target = list(origin)
+        target[axis] += float(p('pour.tilt_deg').value) * fraction
+        middle = list(origin)
+        middle[axis] = (origin[axis] + target[axis]) / 2.0
+        return_needed = False
+        try:
+            job.feedback and job.feedback('TILT')
+            return_needed = True
+            self.arm.movesx([middle, target], self.vel_scale)
+            job.feedback and job.feedback('HOLD')
+            self._wait_with_nudge(float(p('pour.hold_s').value), job)
+            if 0.0 < fraction < 1.0:
+                amp = [0.0] * 6
+                amp[axis] = float(p('pour.shake_amp_deg').value)
+                period = [float(p('pour.shake_period_s').value)] * 6
+                self.arm.amove_periodic(amp, period, float(p('pour.shake_atime_s').value),
+                                        int(p('pour.shake_repeat').value))
+                self.arm.wait_motion()
+            if job.cancel:
+                raise RuntimeError('cancelled')
+        finally:
+            if return_needed:
+                job.feedback and job.feedback('RETURN')
+                self.arm.movesx([middle, origin], self.vel_scale)
+        return True
 
     def _do_weigh(self, job: Job):
-        raise NotImplementedError('TODO([A]) 9/18: grip → 계량 자세 → measure_workpiece/measure_force → place')
+        p = self.get_parameter
+        station = self.stations.get('scale')
+        pick_posx = station.extra.get('pick_posx')
+        if not isinstance(pick_posx, list) or len(pick_posx) != 6:
+            raise ValueError('scale.pick_posx 6개 좌표가 필요하다')
+        measure_posx = station.posx
+        self.arm.movel(measure_posx, self.vel_scale)
+        if not bool(p('scale.simulated').value):
+            self.arm.reset_workpiece()
+        self.arm.movel(pick_posx, self.vel_scale)
+        job.feedback and job.feedback('GRIP')
+        grip_commanded = True
+        reading = WeightReading(tare_g=float(job.args['tare_g']), station='scale')
+        try:
+            ok, _, inferred = self.gripper.grip(float(p('gripper.cup_width_mm').value),
+                                                float(p('gripper.force_n').value), 3.0)
+            if not ok or not inferred:
+                raise RuntimeError('용기 파지 실패')
+            job.feedback and job.feedback('LIFT')
+            self.arm.movel(measure_posx, self.vel_scale)
+            job.feedback and job.feedback('SETTLE')
+            samples = int(p('scale.samples').value)
+            settle_s = float(p('scale.settle_s').value)
+            method = p('scale.method').value
+            if method not in ('workpiece', 'tool_force'):
+                raise ValueError(f'scale.method는 workpiece 또는 tool_force여야 한다: {method}')
+            if bool(p('scale.simulated').value):
+                raw_mean, raw_std, valid_src = 0.0, 0.0, False
+            elif p('scale.method').value == 'workpiece':
+                raw_mean, raw_std, valid_src = self.arm.measure_workpiece(samples, settle_s,
+                                                                          observer=self._observe_force)
+            else:
+                _, raw_mean, raw_std, valid_src = self.arm.measure_force(samples, settle_s,
+                                                                         observer=self._observe_force)
+            model = WeightModel(ScaleConfig(
+                method=method,
+                gain=float(p('scale.gain').value),
+                offset_g=float(p('scale.offset_g').value),
+                min_resolvable_g=float(p('scale.min_resolvable_g').value),
+                max_std_g=float(p('scale.max_std_g').value),
+                fz_sign=float(p('scale.fz_sign').value),
+            ))
+            model.set_tare(reading.tare_g)
+            gross_g, _, net_g, std_g, valid = model.reading(raw_mean, raw_std, valid_src)
+            reading.gross_g = gross_g
+            reading.net_g = net_g
+            reading.std_g = std_g
+            reading.samples = samples
+            reading.valid = valid
+            reading.header.stamp = self.get_clock().now().to_msg()
+            job.feedback and job.feedback('MEASURE')
+        finally:
+            if grip_commanded:
+                job.feedback and job.feedback('PLACE')
+                self.arm.movel(pick_posx, self.vel_scale)
+                self.gripper.release(3.0)
+                self.arm.movel(measure_posx, self.vel_scale)
+        return reading
 
     # ── 콜백: 큐에 넣고 기다린다 ────────────────────────────────────────
     def _on_cancel(self, _goal):
@@ -200,8 +394,10 @@ class SkillNode(Node):
             fb.phase = phase
             gh.publish_feedback(fb)
         job = self._submit('move', feedback, station_id=g.station_id, approach=g.approach, vel_scale=g.vel_scale)
-        res = MoveToStation.Result(success=not job.error, message=job.error, reached=job.result or '')
-        gh.succeed() if res.success else gh.abort()
+        res = MoveToStation.Result(success=not job.error and not job.cancel,
+                                   message=job.error or ('cancelled' if job.cancel else ''),
+                                   reached=job.result or '')
+        gh.succeed() if res.success else (gh.canceled() if job.cancel else gh.abort())
         return res
 
     def _exec_scoop(self, gh):
@@ -217,25 +413,36 @@ class SkillNode(Node):
         job = self._submit('scoop', feedback, material_id=gh.request.material_id, attempt=gh.request.attempt)
         data = job.result if isinstance(job.result, dict) else {}
         res = Scoop.Result(
-            success=not job.error,
+            success=not job.error and not job.cancel,
             contact_detected=bool(data.get('contact_detected', job.result if not data else False)),
             max_contact_force_n=float(data.get('max_contact_force_n', 0.0)),
             insertion_depth_mm=float(data.get('insertion_depth_mm', 0.0)),
-            message=job.error,
+            message=job.error or ('cancelled' if job.cancel else ''),
         )
-        gh.succeed() if res.success else gh.abort()
+        gh.succeed() if res.success else (gh.canceled() if job.cancel else gh.abort())
         return res
 
     def _exec_pour(self, gh):
-        job = self._submit('pour', fraction=gh.request.fraction)
-        res = Pour.Result(success=not job.error, message=job.error)
-        gh.succeed() if res.success else gh.abort()
+        fb = Pour.Feedback()
+        def feedback(phase):
+            fb.phase = phase
+            gh.publish_feedback(fb)
+        job = self._submit('pour', feedback, fraction=gh.request.fraction)
+        res = Pour.Result(success=not job.error and not job.cancel,
+                          message=job.error or ('cancelled' if job.cancel else ''))
+        gh.succeed() if res.success else (gh.canceled() if job.cancel else gh.abort())
         return res
 
     def _exec_weigh(self, gh):
-        job = self._submit('weigh', tare_g=gh.request.tare_g)
-        res = WeighContainer.Result(success=not job.error, message=job.error, reading=job.result or WeightReading())
-        gh.succeed() if res.success else gh.abort()
+        fb = WeighContainer.Feedback()
+        def feedback(phase):
+            fb.phase = phase
+            gh.publish_feedback(fb)
+        job = self._submit('weigh', feedback, tare_g=gh.request.tare_g)
+        res = WeighContainer.Result(success=not job.error and not job.cancel,
+                                    message=job.error or ('cancelled' if job.cancel else ''),
+                                    reading=job.result or WeightReading())
+        gh.succeed() if res.success else (gh.canceled() if job.cancel else gh.abort())
         return res
 
     def _srv_set_gripper(self, req, res):

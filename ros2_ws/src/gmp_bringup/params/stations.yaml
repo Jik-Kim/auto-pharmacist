@@ -7,11 +7,11 @@ frame: base
 approach_mm: 60.0          # 작업점 위 접근 높이
 stations:
   safe:        {posx: [300.0, 0.0, 450.0, 0.0, 180.0, 0.0],   note: "안전 자세 — 인터락·에러·기동. 판 위 모든 물체보다 높게"}
-  scale:       {posx: [350.0, 320.0, 200.0, 0.0, 180.0, 0.0], note: "칭량·조제 위치. 영점·계량 자세 — 이 자세 하나로 고정"}
+  scale:       {posx: [350.0, 320.0, 260.0, 0.0, 180.0, 0.0], pick_posx: [350.0, 320.0, 200.0, 0.0, 180.0, 0.0], note: "칭량·조제 위치. posx는 영점·계량 고정 자세, pick_posx는 용기 파지·복귀 자세 (자리표시자)"}
   scoop_rack:  {posx: [200.0, 100.0, 200.0, 0.0, 180.0, 0.0], note: "전용 스쿱 거치 (원료별 슬롯은 slot 오프셋)", slot_pitch_mm: 40.0}
-  material_1:  {posx: [270.0, 140.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 1", material_id: "A", scoop_slot: 0}
-  material_2:  {posx: [450.0, 120.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 2", material_id: "B", scoop_slot: 1}
-  material_3:  {posx: [270.0, 500.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 3", material_id: "C", scoop_slot: 2}
+  material_1:  {posx: [270.0, 140.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 1", material_id: "A", scoop_slot: 0, expected_scoop_width_mm: 15.5}
+  material_2:  {posx: [450.0, 120.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 2", material_id: "B", scoop_slot: 1, expected_scoop_width_mm: 28.0}
+  material_3:  {posx: [270.0, 500.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 3", material_id: "C", scoop_slot: 2, expected_scoop_width_mm: 38.5}
   material_4:  {posx: [450.0, 530.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 4 (예비)", material_id: "D", scoop_slot: 3}
   magazine:    {posx: [550.0, 320.0, 200.0, 0.0, 180.0, 0.0], note: "빈 약통 매거진 — 낱개 슬롯 (겹쳐 쌓지 않는다, D-18). slot 0 이 posx, 이후 y 방향 pitch", slots: 3, slot_pitch_mm: 80.0}
   output_tray: {posx: [580.0, 520.0, 200.0, 0.0, 180.0, 0.0], note: "완료품 트레이 — 매거진과 같은 슬롯 번호에 내려놓는다", slots: 3, slot_pitch_mm: 80.0}

@@ -45,6 +45,12 @@ class StationTable:
             raise KeyError(f'모르는 스테이션 {station_id!r}. 있는 것: {sorted(self.stations)}')
         return self.stations[station_id]
 
+    def for_material(self, material_id: str) -> Station:
+        matches = [s for s in self.stations.values() if s.extra.get('material_id') == material_id]
+        if len(matches) != 1:
+            raise KeyError(f'material_id {material_id!r} 스테이션은 1개여야 한다: {len(matches)}개')
+        return matches[0]
+
     @classmethod
     def from_yaml(cls, path: str) -> 'StationTable':
         import yaml

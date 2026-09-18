@@ -13,11 +13,14 @@
     gripper:
       backend: modbus               # modbus | dio  (virtual 은 런치가 자동)
       open_width_mm: 100.0
-      scoop_width_mm: 18.0          # [팀 확정 필요] 스쿱 손잡이 실측 (I-006)
+      scoop_width_mm: 18.0          # 레거시 파지 명령값. C의 원료별 명령 전환 전까지 유지
+      scoop_expected_widths_mm: [15.5, 28.0, 38.5]  # A/B/C 폭 지문. A 실측 범위 약 15~16 mm
+      fingerprint_tolerance_mm: 1.0 # [실물 정밀도 확인 후 확정] WRONG_TOOL 식별 허용차
       cup_width_mm: 60.0            # [구매 후 실측] 약통 파지부 외경 (D-18: 입구 근처를 잡는다, 파지점 위 돌출 ≤ 40 mm)
       force_n: 20.0                 # 3~40. modbus 는 2.5 N 스텝 (D-06)
       grip_margin_mm: 2.0           # 폭 추론 마진 (계약 2절)
       slip_mm: 1.5
+      state_timeout_s: 0.5          # 이 시간 동안 폭 표본이 없으면 busy=true, grip_inferred=false
       dio_pins: [1, 2]              # dio 백엔드: DO1 grip / DO2 release (grip_test.py)
       din_pins: [0]                 # [팀 확정 필요] 파지 완료 DI (Q-03). 0 = 없음
     scale:
@@ -28,6 +31,7 @@
       offset_g: 0.0
       min_resolvable_g: 30.0        # [G1 실측 3σ 로 갱신 — I-001]
       max_std_g: 10.0
+      fz_sign: -1.0                   # 아래 방향 하중이 음수라는 가정 — G1에서 확인
       simulated: false              # virtual 은 런치가 true 로
     dosing:
       max_attempts: 3
@@ -38,8 +42,18 @@
       compliance_stx: [3000.0, 3000.0, 500.0, 200.0, 200.0, 200.0]   # Z 만 부드럽게
       scoop_force_n: -8.0           # set_desired_force Z (베이스 기준 아래 방향은 음수 — G4 에서 부호 확인)
       dip_max_mm: 40.0              # 담금 깊이 상한 (check_position_condition)
+      scoop_timeout_s: 5.0          # [G4 실물 조정] 힘제어 담금 시간 상한
+      nudge_enabled: true
       nudge_force_n: 8.0            # 사람 접촉(nudge) 판정 — |F| 가 이 값을 nudge_window_s 이상 넘으면 (D-21)
       nudge_window_s: 0.2
       nudge_cooldown_s: 1.5         # 같은 접촉을 두 번 세지 않게. 두 번째 nudge = 재개
+    pour:
+      tilt_deg: 110.0               # [실물 티칭 후 확정] 스쿱 기울임 각
+      tilt_axis: 4                  # posx 회전축 인덱스(3~5). [실물 티칭 후 확정]
+      hold_s: 0.5
+      shake_amp_deg: 4.0            # 부분 붓기 털어내기 진폭
+      shake_period_s: 0.5
+      shake_atime_s: 0.2
+      shake_repeat: 2
     interlock:
       safe_station: safe
