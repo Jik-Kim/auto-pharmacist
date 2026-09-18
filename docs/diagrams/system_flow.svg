@@ -136,7 +136,7 @@
   <rect class="box" x="50" y="575" width="730" height="120" rx="12"/>
   <text class="ico" x="72" y="618" font-size="26">🦾</text>
   <text class="t" x="108" y="610" font-size="16">skill_node — 로봇 스킬 서버</text>
-  <text class="s2" x="108" y="632"><tspan class="mono">MoveToStation · Grip · Scoop · Pour · WeighContainer · SafePose · MeasureForce</tspan></text>
+  <text class="s2" x="108" y="632"><tspan class="mono">MoveToStation · SetGripper · Scoop · Pour · WeighContainer · SafePose · MeasureForce</tspan></text>
   <text class="s2" x="108" y="654">로봇을 만지는 <tspan font-weight="700">유일한</tspan> 노드 · DSR 워커 스레드 1개 = 명령은 항상 직렬</text>
   <text class="s" x="108" y="676">파지 판정 = 폭 추론 · 계량 = get_workpiece_weight · 접촉 = check_force_condition</text>
   <!-- process ↔ skill -->

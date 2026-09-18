@@ -30,23 +30,23 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 | D-15 | 판 좌표계 | **권장:** 판 위 3점을 티칭해 `set_user_cart_coord` 로 사용자 좌표계를 만들고, `stations.yaml` 의 좌표를 그 좌표계(설계 좌표 820×650, `PROJECT_RULES.md` 3-1)로 적는다. 판이 밀려도 3점만 다시 찍으면 전 스테이션이 따라온다. 9/17 오전 티칭 시간이 부족하면 베이스 좌표 `posx` 로 시작하고 D2 에 전환 |
 | D-16 | **HMI = 웹 (Flask)** | 강사 확인 "웹으로 해도 상관없다" → **웹 채택**. 근거: 「입출력 데이터 이해도」의 기능 요구가 *원격 QA 승인*(R23)이라 다른 기기에서 접속되는 UI 가 요구에 적합하고, 시연에서 "셀 밖에서 승인 누르는 장면"이 생긴다. Kn1 `mro_fleet` 의 Flask+rclpy 스레드 패턴 재사용. PyQt5(R8) 는 **폐기** — rclpy 이벤트 루프 충돌 위험까지 제거 |
 | D-17 | **배치 기록 = SQLite** | GMP 배치 기록 의무·추적성·감사 추적을 파일(JSON)로는 못 채운다. `record_node` 가 **단일 기록자**, HMI 는 읽기만, `events` 는 append-only, `audit` 에 사람의 조작(actor·시각). JSON 은 배치 종료 시 내보내는 **사본**. 계약 7절 |
-| D-18 | **용기 반송** (9/16 팀 합의) | 사람은 빈 **약통**을 매거진 슬롯에 넣어 두기만 하고(패스박스 반입), 로봇이 `PICK_CONTAINER` 에서 칭량 위치로 가져와 조제한 뒤 `FINISH` 에서 용기째 완료품 트레이(같은 슬롯 번호)로, DISCARD 면 폐기함으로 옮긴다. 배치마다 사람이 용기를 놓으면 무인 연속 운전이 아니다. 매거진은 **낱개 슬롯**(겹쳐 쌓기·디네스팅 금지 — 그리퍼로는 신뢰성이 없다), `stations.yaml` `slots`/`slot_pitch_mm`. 반송은 상태기계 요청 `carry` 하나이고 process_node 가 `MoveToStation`+`Grip` 으로 조합하므로 **계약 변경 없음**. 용기는 컵쌓기 세트가 아니라 **구매 약통** — 조건은 Q-08. 컵쌓기 컵은 최후 폴백 |
+| D-18 | **용기 반송** (9/16 팀 합의) | 사람은 빈 **약통**을 매거진 슬롯에 넣어 두기만 하고(패스박스 반입), 로봇이 `PICK_CONTAINER` 에서 칭량 위치로 가져와 조제한 뒤 `FINISH` 에서 용기째 완료품 트레이(같은 슬롯 번호)로, DISCARD 면 폐기함으로 옮긴다. 배치마다 사람이 용기를 놓으면 무인 연속 운전이 아니다. 매거진은 **낱개 슬롯**(겹쳐 쌓기·디네스팅 금지 — 그리퍼로는 신뢰성이 없다), `stations.yaml` `slots`/`slot_pitch_mm`. 반송은 상태기계 요청 `carry` 하나이고 process_node 가 `MoveToStation`+`SetGripper` 으로 조합한다. 용기는 컵쌓기 세트가 아니라 **구매 약통** — 조건은 Q-08. 컵쌓기 컵은 최후 폴백 |
 | D-19 | **팀·조장** (9/16) | 조장 고희태(A 스킬 겸임) · B 김민준 · C 김병직 · D 서동권. 부담당 짝 A↔C, B↔D |
 | D-20 | **추가 기능** (9/16 강사 선택) | **채택: 1 폭 지문 식별(스쿱·약통 규격을 정지 폭으로 검증, 일탈 `WRONG_TOOL`) · 3 재기동 이어하기(DB 상태로 중단 지점 재개) · 5 원료 잔량 추정(누적 투입량 + 접촉 높이, 예방 보충 권고).** 7 사람 근접 협동은 방식 미정(Q-10). 2·4·6·8 보류. 담당·마감은 `docs/todo.md`. 계약 영향: `Deviation.kind` 에 `WRONG_TOOL` 추가 → **v1.2** (조장) |
 | D-21 | **사람 접촉 반응 = "건드리면 정지, 다시 건드리면 재개"** (9/16, 추가 기능 7) | 강사 제안 `wait_nudge()` 는 DRL 전용이라 파이썬 API 에 없다 → **`get_tool_force` 폴링**으로 동등 구현. `skill_node` 워커가 **유휴 구간과 스킬의 대기 루프(계량 settle·붓기)** 에서 100 ms 마다 외력을 읽어 `safety.nudge_force_n`(8 N) 을 `nudge_window_s`(0.2 s) 넘으면 `CellEvent(NUDGE)`. process 는 `RUNNING→PAUSED(NUDGE)`, 다음 NUDGE 로 이전 상태 재개. **블로킹 `movel` 중에는 감지하지 않는다** (I-004 — 그동안은 두산 충돌 감지가 담당) → 시연은 인터락 중이거나 계량 대기 중에 건드린다. DSR 호출은 워커 스레드 한 곳 원칙(D-02) 유지 — 별도 감시 스레드를 만들지 않는다 |
-| D-22 | **원료 1종 = 6단계, 스쿱을 든 채 계량** (9/17 C 제안·팀 합의) | 로봇이 저울이라(`get_workpiece_weight` 는 잡고 들어야 값이 나온다) **용기 계량은 그리퍼가 비어야** 한다 — 종전 SCOOP→POUR→WEIGH 는 스쿱을 든 채 용기를 잡는 모순이 있었다. 확정 흐름: `PICK_SCOOP → SCOOP_TARE(빈 스쿱) → SCOOP → WEIGH_SCOOP(붓기 전, 퍼낸 양 → 붓기 비율 = min(1, 부족량/퍼낸 양) — 1차 폐루프·초과 예방) → POUR → WEIGH_RESIDUAL(붓기 후, 잔량 → 투입량 += 퍼낸 양 − 잔량 → decide) → RETURN_SCOOP`. **스쿱에 남은 원료는 투입량이 아니다.** 용기 계량은 원료가 다 끝난 뒤 `VERIFY` 한 번 — `|용기 순량 − Σ투입량| > min_resolvable_g` 면 `VERIFY_MISMATCH` → QA (2차 검증). 계약 영향: `weigh_scoop`(들고 있는 것 그대로 재기) Action 과 `Deviation.kind VERIFY_MISMATCH` → **v1.2** (I-007). 분해능(Q-01)이 스쿱 1회량(≈40 g) 을 못 가르면 스쿱 계량은 초과 예방용 대략치가 되고 판정 근거는 VERIFY 로 옮긴다 (Q-11) |
+| D-22 | **원료 1종 = 6단계, 스쿱을 든 채 계량** (9/17 C 제안·팀 합의) | 로봇이 저울이라(`get_workpiece_weight` 는 잡고 들어야 값이 나온다) **용기 계량은 그리퍼가 비어야** 한다 — 종전 SCOOP→POUR→WEIGH 는 스쿱을 든 채 용기를 잡는 모순이 있었다. 확정 흐름: `PICK_SCOOP → SCOOP_TARE(빈 스쿱) → SCOOP → WEIGH_SCOOP(붓기 전, 퍼낸 양 → 붓기 비율 = min(1, 부족량/퍼낸 양) — 1차 폐루프·초과 예방) → POUR → WEIGH_RESIDUAL(붓기 후, 잔량 → 투입량 += 퍼낸 양 − 잔량 → decide) → RETURN_SCOOP`. **스쿱에 남은 원료는 투입량이 아니다.** 정상 시도는 `WEIGH_RESIDUAL` 뒤 세 계량값·Scoop 결과·Pour 명령·6축 wrench를 `ScoopCycle` 1건으로 묶고, 중간 실패 시도도 실패 확정 시점에 미수집 값을 무효로 표시해 남긴다. 용기 계량은 원료가 다 끝난 뒤 `VERIFY` 한 번 — `|용기 순량 − Σ투입량| > min_resolvable_g` 면 `VERIFY_MISMATCH` → QA (2차 검증). 계약 영향: `weigh_scoop`(들고 있는 것 그대로 재기) Action 과 `Deviation.kind VERIFY_MISMATCH`는 후속 합의가 필요하다 (I-007). 분해능(Q-01)이 스쿱 1회량(≈40 g) 을 못 가르면 스쿱 계량은 초과 예방용 대략치가 되고 판정 근거는 VERIFY 로 옮긴다 (Q-11) |
 | D-14 | 일정 | 실물 5일 9/17·18·21·22·23. **9/23 이 실물 마지노선.** 9/24~28 휴강(영상·PPT·문서), 9/29 시연, 9/30 발표 (R11) |
 
 ## 확정 노드·토픽
 
-**`docs/interfaces.md` 계약 v1.0 (9/16)** 이 기준. 실제 정의는 `ros2_ws/src/gmp_interfaces`.
-9/17 병렬 구현의 전제이므로, 바꿔야 하면 **팀 채널에 먼저 알리고 `gmp_interfaces` 와 문서를 같은 커밋에서** 고친다. 리뷰는 영향받는 담당 전원 (AGENTS 교차검수 표).
+**`docs/interfaces.md` 계약 v1.2 초안 (9/18)** 과 `ros2_ws/src/gmp_interfaces`가 변경 원본이다. `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id` 삭제, `SetGripper`, `ScoopCycle`은 1차 승인 상태이며 최소 2명 승인 전에는 확정하지 않는다.
+계약을 바꿀 때는 **팀 채널에 먼저 알리고 `gmp_interfaces` 와 문서를 같은 커밋에서** 고친다. 리뷰는 영향받는 담당 전원 (AGENTS 교차검수 표).
 
 | 노드 | 패키지 | 책임 |
 |---|---|---|
-| `skill_node` | `gmp_skills` | 로봇 스킬 서버 — `MoveToStation`·`Scoop`·`Pour`·`WeighContainer` Action, `Grip`·`MeasureForce`·`SafePose` Service, `gripper_state` 발행. DSR 워커 스레드 소유 |
-| `process_node` | `gmp_process` | 레시피 실행 상태기계. `RunBatch` Action 서버, `SubmitOrder`·`QaDecision`·`InterlockRequest` Service 서버, `state`·`dispense_result`·`deviation` 발행 |
-| `record_node` | `gmp_hmi` | **단일 기록자.** `state`·`weight`·`dispense_result`·`deviation`·`event` → SQLite (계약 7절). 배치 종료 시 JSON 내보내기 |
+| `skill_node` | `gmp_skills` | 로봇 스킬 서버 — `MoveToStation`·`Scoop`·`Pour`·`WeighContainer` Action, `SetGripper`·`MeasureForce`·`SafePose` Service, `gripper_state` 발행. DSR 워커 스레드 소유 |
+| `process_node` | `gmp_process` | 레시피 실행 상태기계. `RunBatch` Action 서버, `SubmitOrder`·`QaDecision`·`InterlockRequest` Service 서버, `state`·`weight`·`scoop_cycle`·`dispense_result`·`deviation` 발행 |
+| `record_node` | `gmp_hmi` | **단일 기록자.** `state`·`weight`·`scoop_cycle`·`dispense_result`·`deviation`·`event` → SQLite (계약 7절, `scoop_cycle`은 v1.2 적용 필요). 배치 종료 시 JSON 내보내기 |
 | `hmi_web_node` | `gmp_hmi` | Flask 웹 HMI (:5000). 주문 제출, 상태·계량 그래프, **QA 승인/폐기(원격)**, 인터락, 이력·KPI·감사 추적 조회(DB 읽기) |
 
 ## 미결

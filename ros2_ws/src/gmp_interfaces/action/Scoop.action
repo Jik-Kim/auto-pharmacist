@@ -4,6 +4,11 @@ uint8 attempt           # 재시도 번호 (담그는 깊이·각도를 attempt 
 ---
 bool success
 bool contact_detected   # 원료면 접촉을 봤나 — false 면 SCOOP_EMPTY 의심
+float32 max_contact_force_n  # 동작 중 검출한 최대 접촉력 [N]
+float32 insertion_depth_mm   # 최초 접촉점 이후 최종 삽입 깊이 [mm]
 string message
 ---
 string phase            # "APPROACH" | "DIP" | "LIFT" | "LEVEL"
+bool contact_detected   # 최초 접촉 뒤 true. 최종 판단은 Result 를 사용한다
+float32 contact_force_n # 현재 접촉력 [N]
+float32 insertion_depth_mm  # 최초 접촉점 이후 현재 삽입 깊이 [mm]

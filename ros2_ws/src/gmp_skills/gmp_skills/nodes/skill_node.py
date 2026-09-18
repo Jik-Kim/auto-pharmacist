@@ -5,13 +5,13 @@
   Worker : 큐에서 Job 을 꺼내 DsrArm/Rg2Gripper 를 블로킹 호출. **로봇 명령은 항상 직렬**
   DR_init 노드(ns dsr01) : DsrArm 이 소유, executor 에 넣지 않는다
 
-입력  Action move_to_station·scoop·pour·weigh_container / Service grip·measure_force·safe_pose
+입력  Action move_to_station·scoop·pour·weigh_container / Service set_gripper·measure_force·safe_pose
       /onrobot_joint_states (real) 또는 gripper_joint_states (virtual)
 출력  gripper_state (10 Hz, BEST_EFFORT) · event
 
 파라미터는 gmp_bringup/params/common.yaml 이 단일 출처. stations.yaml 경로는 파라미터 `stations_file`.
 
-TODO([A]): Scoop/Pour/WeighContainer 본문 (9/18). 지금은 MoveToStation·Grip·MeasureForce·SafePose 골격만.
+TODO([A]): Scoop/Pour/WeighContainer 본문 (9/18). 지금은 MoveToStation·SetGripper·MeasureForce·SafePose 골격만.
 TODO([A]): I-004 취소 — 워커가 Job.cancel 플래그를 movel 사이에서만 본다. 긴 movel 은 쪼갠다.
 """
 import queue
@@ -30,7 +30,7 @@ from sensor_msgs.msg import JointState
 from onrobot_rg_msgs.srv import SetCommand
 from gmp_interfaces.action import MoveToStation, Scoop, Pour, WeighContainer
 from gmp_interfaces.msg import CellEvent, GripperState, WeightReading
-from gmp_interfaces.srv import Grip, MeasureForce, SafePose
+from gmp_interfaces.srv import MeasureForce, SafePose, SetGripper
 
 from gmp_skills.adapters.dsr_arm import DsrArm
 from gmp_skills.adapters.rg2_gripper import Rg2Gripper
@@ -88,7 +88,7 @@ class SkillNode(Node):
         ActionServer(self, Scoop, 'scoop', self._exec_scoop, callback_group=self.cb)
         ActionServer(self, Pour, 'pour', self._exec_pour, callback_group=self.cb)
         ActionServer(self, WeighContainer, 'weigh_container', self._exec_weigh, callback_group=self.cb)
-        self.create_service(Grip, 'grip', self._srv_grip, callback_group=self.cb)
+        self.create_service(SetGripper, 'set_gripper', self._srv_set_gripper, callback_group=self.cb)
         self.create_service(MeasureForce, 'measure_force', self._srv_measure, callback_group=self.cb)
         self.create_service(SafePose, 'safe_pose', self._srv_safe, callback_group=self.cb)
 
@@ -205,24 +205,40 @@ class SkillNode(Node):
         return res
 
     def _exec_scoop(self, gh):
-        job = self._submit('scoop', material_id=gh.request.material_id, attempt=gh.request.attempt)
-        res = Scoop.Result(success=not job.error, contact_detected=bool(job.result), message=job.error)
+        fb = Scoop.Feedback()
+
+        def feedback(phase, contact_detected=False, contact_force_n=0.0, insertion_depth_mm=0.0):
+            fb.phase = phase
+            fb.contact_detected = bool(contact_detected)
+            fb.contact_force_n = float(contact_force_n)
+            fb.insertion_depth_mm = float(insertion_depth_mm)
+            gh.publish_feedback(fb)
+
+        job = self._submit('scoop', feedback, material_id=gh.request.material_id, attempt=gh.request.attempt)
+        data = job.result if isinstance(job.result, dict) else {}
+        res = Scoop.Result(
+            success=not job.error,
+            contact_detected=bool(data.get('contact_detected', job.result if not data else False)),
+            max_contact_force_n=float(data.get('max_contact_force_n', 0.0)),
+            insertion_depth_mm=float(data.get('insertion_depth_mm', 0.0)),
+            message=job.error,
+        )
         gh.succeed() if res.success else gh.abort()
         return res
 
     def _exec_pour(self, gh):
-        job = self._submit('pour', target_station=gh.request.target_station, fraction=gh.request.fraction)
+        job = self._submit('pour', fraction=gh.request.fraction)
         res = Pour.Result(success=not job.error, message=job.error)
         gh.succeed() if res.success else gh.abort()
         return res
 
     def _exec_weigh(self, gh):
-        job = self._submit('weigh', container_station=gh.request.container_station, tare_g=gh.request.tare_g)
+        job = self._submit('weigh', tare_g=gh.request.tare_g)
         res = WeighContainer.Result(success=not job.error, message=job.error, reading=job.result or WeightReading())
         gh.succeed() if res.success else gh.abort()
         return res
 
-    def _srv_grip(self, req, res):
+    def _srv_set_gripper(self, req, res):
         job = self._submit('grip', close=req.close, width_mm=req.width_mm, force_n=req.force_n, timeout_s=req.timeout_s)
         if job.error:
             res.success, res.message = False, job.error

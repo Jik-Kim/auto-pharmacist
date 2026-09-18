@@ -29,7 +29,7 @@
 - gmp_interfaces — 계약 v1.2: Deviation.kind 에 WRONG_TOOL·VERIFY_MISMATCH 추가, WeighHeld Acti…
 - gmp_interfaces — G1 결과로 도징 단위 확정 → RecipeItem.tol_pct 기본값·레시피 yaml 갱신 (SOT D-08)
 - gmp_skills — adapters/rg2_gripper.py: modbus 백엔드 (/onrobot/sendCommand 폭 정수, /onrobo…
-- gmp_skills — nodes/skill_node.py: 워커 스레드 + 큐, MoveToStation·Grip·MeasureForce·SafePo…
+- gmp_skills — nodes/skill_node.py: 워커 스레드 + 큐, MoveToStation·SetGripper·MeasureForce·SafePo…
 - gmp_skills — G1 외력 분해능 측정 (I-001) — 결과를 SOT D-08 에
 - gmp_skills — G2 그리퍼 modbus 실물 확인 (Q-02) — 안 되면 dio 백엔드 (Q-03 핀)
 - gmp_skills — G3 stations.yaml 9곳 티칭 — 판 좌표계(D-15) 우선, 안 되면 base posx
@@ -53,10 +53,10 @@
 
 ## gmp_skills [A 스킬]
 - [ ] **[추가 7] nudge 감지**: 워커 유휴 루프·계량 settle·붓기 대기에서 `get_tool_force` 100 ms 폴링, 임계 초과 시 `CellEvent(NUDGE)` 발행. G1 때 빈 그리퍼 정지 외력 σ 로 임계 8 N 검증 · 마감 9/18
-- [ ] **[추가 1] 폭 지문**: 스쿱 손잡이 폭 15/18/21 mm 제작(테이프), `stations.yaml`/`common.yaml` 에 원료별 기대 폭, `Grip` 응답 `final_width_mm` 정밀도 실측 · 마감 9/18
+- [ ] **[추가 1] 폭 지문**: 스쿱 손잡이 폭 15/18/21 mm 제작(테이프), `stations.yaml`/`common.yaml` 에 원료별 기대 폭, `SetGripper` 응답 `final_width_mm` 정밀도 실측 · 마감 9/18
 - [ ] `adapters/dsr_arm.py`: `DR_init`·`set_tool/tcp`·`movej/movel`·`get_tool_force`·`reset/get_workpiece_weight`·힘제어 짝 함수 — **가상에서 movej 까지** · 마감 9/16
 - [ ] `adapters/rg2_gripper.py`: `modbus` 백엔드 (`/onrobot/sendCommand` 폭 정수, `/onrobot_joint_states` → 폭 mm), `virtual` 백엔드 (rad 문자열), 폭 추론 · 마감 9/17
-- [ ] `nodes/skill_node.py`: 워커 스레드 + 큐, `MoveToStation`·`Grip`·`MeasureForce`·`SafePose` — 가상 동작 · 마감 9/17
+- [ ] `nodes/skill_node.py`: 워커 스레드 + 큐, `MoveToStation`·`SetGripper`·`MeasureForce`·`SafePose` — 가상 동작. `Scoop`의 접촉력·삽입 깊이 Feedback/Result와 `GripperState` 실값 연결 · 마감 9/17
 - [ ] **G1 외력 분해능 측정 (I-001)** — 결과를 SOT D-08 에 · 마감 9/17
 - [ ] **G2 그리퍼 modbus 실물 확인 (Q-02)** — 안 되면 `dio` 백엔드 (Q-03 핀) · 마감 9/17
 - [ ] **G3 `stations.yaml` 9곳 티칭** — 판 좌표계(D-15) 우선, 안 되면 base posx · 마감 9/17
@@ -84,12 +84,12 @@
 - [x] `test/test_process_fsm.py`: 정상 완주(6단계 순서), 붓기 전 계량으로 초과 예방, UNDER 보정 누적, OVER → QA → DISCARD(스쿱 반납 후), VERIFY 불일치 → QA, 계량 무효 재시도, 파지 실패, REFILL 재개 — 9건 · 마감 9/17
 - [ ] **[D-22]** `_pour_fraction` 을 B 의 `dosing.py` 로 이관, `weigh_scoop` 임시 구현(계약 전) → v1.2 후 교체 · 마감 9/18 (A·B 와)
 - [ ] **[D-22]** `VERIFY` 이중 판정 구현 — 순량 vs Σ투입량(`VERIFY_MISMATCH`, 계측 신뢰성) **+** 순량 vs 레시피 총량(`BATCH_OUT_OF_SPEC`, 제품 판정, 허용치 `Σ(target×tol)`). **개별 원료가 전부 같은 방향으로 치우치면 Σ 대조로는 안 잡힌다.** 조장 합의 완료 (9/17) · 마감 9/18
-- [ ] `nodes/process_node.py`: 스킬 Action/Service 클라이언트, `RunBatch`·`SubmitOrder`·`QaDecision`·`InterlockRequest` 서버, `state`(2 Hz, TRANSIENT_LOCAL)·`weight`·`dispense_result`·`deviation`·`event` 발행 — **가상에서 레시피 1건 완주** · 마감 9/18
+- [ ] `nodes/process_node.py`: 레시피 `grade/scoop_id` 제거, `Pour`·`WeighContainer` station 인자 제거, `SetGripper` 클라이언트, `QaDecision.deviation_id` 일치 검증, 시도 종료 시 `scoop_cycle` 발행을 포함한 스킬 Action/Service 연동 — **가상에서 레시피 1건 완주** · 마감 9/18
 - [ ] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) · 마감 9/21
 - [ ] 스테이션 물리 배치·테이프 표시 (하드웨어) · 마감 9/17
 - [ ] 고의 장애 주입 T6 (a)(b)(c) 재현 · 마감 9/22
 - [ ] **[추가 7] NUDGE 전이**: `RUNNING→PAUSED(NUDGE)`, 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 재사용) + 테스트 · 마감 9/18
-- [ ] **[추가 1] 폭 지문**: `PICK_SCOOP`·`PICK_CONTAINER` 의 `Grip` 결과 폭이 원료별 기대 폭(±margin) 과 다르면 `Deviation(WRONG_TOOL)` → QA · 마감 9/21 (A 와)
+- [ ] **[추가 1] 폭 지문**: `PICK_SCOOP`·`PICK_CONTAINER` 의 `SetGripper` 결과 폭이 원료별 기대 폭(±margin) 과 다르면 `Deviation(WRONG_TOOL)` → QA · 마감 9/21 (A 와)
 - [ ] **[추가 3] 재기동 이어하기**: 기동 시 DB 의 미완료 배치 조회 → 상태·원료 인덱스·tare 복원 → 용기 재계량 후 재개. 시연: 실행 중 Ctrl-C → 재실행 · 마감 9/22 (D 와)
 - [ ] **[9/18 확정]** 배치 변경 반영 — `scale` = 판 중앙 작업 공간, 스쿱 **원료별 분산**, 원료 선반은 판 바깥. `stations.yaml` 확정 후 `process_fsm` 의 `scoop_rack` 단일 참조 제거 (`PICK_SCOOP`/`RETURN_SCOOP` → `material_N` 의 스쿱 좌표) · 마감 9/18
 - [ ] **[9/18 확정]** 회수·넛지 운영 (D-23 후보) — "한 세트" 정의(배치/레시피/용기 N통), 패스박스·폐기함 가득참을 **카운트로** 판단(비전 없음), 세트 완료 후 `NUDGE` 로 다음 세트 진행 · 마감 9/18
@@ -99,6 +99,7 @@
 ## gmp_hmi [D HMI·기록]
 - [x] `config/schema.sql` · `core/db.py`: 6 테이블, 쓰기·조회·KPI·JSON 내보내기, 단위 테스트 · 마감 9/16
 - [x] `nodes/record_node.py`: 구독 5종 → SQLite, 배치 종료 시 JSON 내보내기, `HMI_*` → audit · 마감 9/16
+- [ ] v1.2 적용: 주문 메시지의 `grade/scoop_id`, `QaDecision.Request`의 `batch_id` 제거(웹 표시는 유지), `scoop_cycle` 구독·DB 테이블·JSON 내보내기 추가 · 마감 9/18
 - [x] `nodes/hmi_web_node.py` + `templates/index.html`: Flask 골격 — 주문·상태·계량 그래프·일탈 판정·인터락·이력·KPI·감사 추적 · 마감 9/16
 - [ ] `sudo apt install python3-flask` 후 가상 모드에서 **주문 → 상태 → QA 승인 → 이력 조회 한 바퀴** · 마감 9/17
 - [ ] 다른 기기(폰·노트북)에서 `http://<로봇PC>:5000` 접속 확인 — 시연 T6(c) 장면 · 마감 9/18

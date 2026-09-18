@@ -1,6 +1,5 @@
 # HMI → process_node. 판정 대기 중인 일탈이 없으면 거부. 계약 6절 — 개입으로 세지 않는다
-string batch_id
-string deviation_id
+string deviation_id     # Deviation.deviation_id 로 대상 식별. 배치는 대기 중 Deviation 에서 확인
 uint8 decision          # Deviation.APPROVED(1) | Deviation.DISCARDED(2)
 string operator_id      # 기록용 (QA 이름·ID). 'operator' 는 C++ 예약어라 못 쓴다
 ---

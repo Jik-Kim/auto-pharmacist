@@ -3,7 +3,7 @@
 <package format="3">
   <name>gmp_interfaces</name>
   <version>0.1.0</version>
-  <description>조제 칭량 셀 노드 간 rosidl 메시지·서비스·액션 계약 (알고리즘·노드 코드 없음). 기준: docs/interfaces.md 계약 v1.0</description>
+  <description>조제 칭량 셀 노드 간 rosidl 메시지·서비스·액션 계약 (알고리즘·노드 코드 없음). 기준: docs/interfaces.md</description>
   <maintainer email="jungji0913@khu.ac.kr">Kim Byeongjik</maintainer>
   <license>MIT</license>
   <buildtool_depend>ament_cmake</buildtool_depend>

@@ -2,8 +2,8 @@
 uint16 samples          # 0 이면 scale.samples 파라미터
 float32 settle_s        # 0 이면 scale.settle_s
 ---
-float32[6] force        # get_tool_force(DR_BASE) 평균 [N, Nm]
-float32 fz_mean_n
-float32 fz_std_n
+float32[6] force        # tool 외력 wrench 평균 [Fx,Fy,Fz,Mx,My,Mz], DR_BASE 표현, [N,N,N,N·m,N·m,N·m]
+float32 fz_mean_n       # 위 wrench의 Fz 평균 [N]
+float32 fz_std_n        # 표본별 Fz 표준편차 [N]
 bool valid
 string message
