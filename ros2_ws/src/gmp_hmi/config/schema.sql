@@ -46,3 +46,5 @@ CREATE INDEX IF NOT EXISTS ix_cycles_batch ON scoop_cycles(batch_id);
 CREATE INDEX IF NOT EXISTS ix_events_batch ON events(batch_id);
 CREATE INDEX IF NOT EXISTS ix_batches_time ON batches(started_at);
 CREATE INDEX IF NOT EXISTS ix_events_time ON events(t);
+
+-- Deviation.decision: PENDING | APPROVED | DISCARDED | AUTO_RECOVERED | FORCED (v1.2.1)
