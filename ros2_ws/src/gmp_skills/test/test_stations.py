@@ -22,3 +22,22 @@ def test_missing_required():
 def test_unknown_station():
     with pytest.raises(KeyError):
         _table().get('nope')
+
+
+def test_safe_joint_pose_stays_in_yaml_extra_fields():
+    table = StationTable({'stations': {
+        'safe': {'posx': [300, 0, 450, 0, 180, 0], 'posj': [0, 0, 90, 0, 90, 0]},
+        'scale': {'posx': [0] * 6},
+    }})
+    assert table.get('safe').extra['posj'] == [0, 0, 90, 0, 90, 0]
+
+
+def test_material_width_fingerprint_lookup():
+    table = StationTable({'stations': {
+        'safe': {'posx': [0] * 6},
+        'scale': {'posx': [0] * 6},
+        'material_1': {'posx': [0] * 6, 'material_id': 'A', 'expected_scoop_width_mm': 15.5},
+    }})
+    assert table.for_material('A').extra['expected_scoop_width_mm'] == 15.5
+    with pytest.raises(KeyError):
+        table.for_material('B')
