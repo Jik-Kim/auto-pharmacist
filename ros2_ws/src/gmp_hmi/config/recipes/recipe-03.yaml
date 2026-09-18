@@ -1,0 +1,7 @@
+# 시연용 제형. 원료 배열 순서대로 A → B → C를 투입한다.
+# 1회 평균 40 g / 원료별 최대 3회 기준의 시험안. 실물 계량 별도 검증.
+product: "시연 제형 C — C 중심형"
+items:
+  - {material_id: A, target_g: 40.0, tol_pct: 5.0}
+  - {material_id: B, target_g: 40.0, tol_pct: 5.0}
+  - {material_id: C, target_g: 80.0, tol_pct: 5.0}
