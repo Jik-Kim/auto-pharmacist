@@ -119,7 +119,7 @@ class HmiRosNode(Node):
 
     def interlock(self, request, reason, actor):
         res = self._call(self.cli_lock, InterlockRequest.Request(request=int(request), reason=reason), timeout_s=15.0)
-        self.audit('INTERLOCK_ENTER' if int(request) == InterlockRequest.ENTER else 'INTERLOCK_EXIT', actor, reason)
+        self.audit('INTERLOCK_ENTER' if int(request) == InterlockRequest.Request.ENTER else 'INTERLOCK_EXIT', actor, reason)
         return res
 
 

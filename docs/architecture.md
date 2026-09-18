@@ -1,6 +1,6 @@
 # Architecture
 
-> 아래 v1.2 인터페이스와 `scoop_cycle` 경로는 통합 목표다. 현재 A의 계약·서버 변경은 반영됐고, process·HMI·record 적용은 `docs/interfaces.md` 8절 인계가 남아 있다.
+> v1.2 인터페이스는 9/18 확정이다. A 의 계약·서버 변경과 **C 의 `process_node` 적용(9/18)** 은 반영됐고, HMI·record 적용은 `docs/interfaces.md` 8절 인계가 남아 있다. A 의 `weigh_held` 서버는 아직 없다 (마감 9/21).
 
 ## 배치 (PC 1대 + 로봇 + 그리퍼)
 

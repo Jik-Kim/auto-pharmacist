@@ -18,6 +18,15 @@ def _items(*specs):
 A = {'material_id': 'A', 'target_g': 200.0, 'tol_pct': 5.0}
 
 
+# ── 유한값 ──────────────────────────────────────────────────────
+@pytest.mark.parametrize('bad', [float('nan'), float('inf'), -float('inf')])
+def test_NaN_inf_는_거부(bad):
+    with pytest.raises(ValueError, match='유한'):
+        parse(_items({'material_id': 'A', 'target_g': bad, 'tol_pct': 5.0}))
+    with pytest.raises(ValueError, match='유한'):
+        parse(_items({'material_id': 'A', 'target_g': 100.0, 'tol_pct': bad}))
+
+
 # ── 정상 ──────────────────────────────────────────────────────────
 def test_정상_파싱():
     spec = parse(_items(A, {'material_id': 'B', 'target_g': 100.0, 'tol_pct': 1.0}))
