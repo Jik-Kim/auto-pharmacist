@@ -121,12 +121,31 @@ def test_overfill_goes_to_qa_and_discard_returns_scoop_first():
     assert [k for s, k in trace if s == 'DISCARDED'] == ['move', 'grip', 'carry']
 
 
-def test_verify_mismatch_goes_to_qa_then_finish():
-    cell = Cell(yields=[100, 50], cup_bias=50.0)        # 용기에 50 g 이 더 있다 (스쿱 누적과 불일치)
+def test_verify_규격이탈은_BATCH_OUT_OF_SPEC():
+    """① 제품 판정 — 용기 순량이 레시피 총 목표량에서 벗어나면 규격 이탈이다.
+    레시피 A 100 + B 50 = 150 g, 허용치 Σ(target×tol) = 7.5 g. 용기에 50 g 이 더 있다."""
+    cell = Cell(yields=[100, 50], cup_bias=50.0)
     fsm = _fsm(min_resolvable_g=30.0)
     trace = run(fsm, cell)
-    assert fsm.deviations == [{'kind': 'VERIFY_MISMATCH', 'step': 'VERIFY', 'count': 1, 'action': 'QA', 'material_id': 'B'}]
+    assert fsm.deviations == [{'kind': 'BATCH_OUT_OF_SPEC', 'step': 'VERIFY', 'count': 1, 'action': 'QA', 'material_id': 'B'}]
     assert fsm.state == 'DONE' and trace[-1] == ('FINISH', 'carry')     # QA 승인 → 그대로 완료품
+
+
+def test_verify_계측불일치는_VERIFY_MISMATCH():
+    """② 계측 신뢰성 — 제품은 규격 안인데 스쿱 누적과 용기 계량이 어긋난다.
+    ②가 ① 없이 울리려면 min_resolvable_g < Σ(target×tol) 여야 한다 (여기선 3 < 7.5).
+    실제 설정(30 vs 22.5)에서는 ①이 먼저 걸리므로 G1 결과로 임계를 맞춰야 한다 — Q-11."""
+    cell = Cell(yields=[100, 50], cup_bias=5.0)         # 규격(±7.5) 안, 분해능(3) 밖
+    fsm = _fsm(min_resolvable_g=3.0)
+    run(fsm, cell)
+    assert [d['kind'] for d in fsm.deviations] == ['VERIFY_MISMATCH']
+
+
+def test_verify_둘_다_통과하면_그대로_완료():
+    cell = Cell(yields=[100, 50])                       # 편향 없음
+    fsm = _fsm(min_resolvable_g=3.0)
+    run(fsm, cell)
+    assert fsm.deviations == [] and fsm.state == 'DONE'
 
 
 def test_invalid_scoop_weigh_retries():

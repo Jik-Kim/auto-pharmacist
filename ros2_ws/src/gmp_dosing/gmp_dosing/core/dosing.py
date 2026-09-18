@@ -33,6 +33,17 @@ def verdict_of(target_g: float, actual_g: float, tol_pct: float) -> tuple[str, f
     return ('UNDER', err) if actual_g < target_g else ('OVER', err)
 
 
+def pour_fraction(need_g: float, scooped_g: float, cfg: DosingConfig) -> float:
+    """1차 폐루프 — 퍼낸 양이 부족량보다 많으면 부족량만큼만 붓는다 (D-22 WEIGH_SCOOP).
+
+    초과는 되돌릴 수 없으므로 붓기 전에 막는 것이 유일한 수단이다.
+    min_fraction 아래로는 털어내기로 못 맞추니 그 값에서 자른다.
+    """
+    if scooped_g <= 0.0 or scooped_g <= need_g:
+        return 1.0
+    return max(cfg.min_fraction, min(1.0, need_g / scooped_g))
+
+
 def decide(target_g: float, actual_g: float, tol_pct: float, attempts: int, valid: bool,
            invalid_count: int, cfg: DosingConfig) -> Decision:
     if not valid:
