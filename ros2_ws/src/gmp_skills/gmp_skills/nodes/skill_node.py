@@ -303,7 +303,7 @@ class SkillNode(Node):
     def _do_pour(self, job: Job):
         p = self.get_parameter
         fraction = max(0.0, min(1.0, float(job.args['fraction'])))
-        above = self.stations.get('scale').above(self.stations.approach_mm)
+        above = self.stations.get('workbench').above(self.stations.approach_mm)
         job.feedback and job.feedback('APPROACH')
         self.arm.movel(above, self.vel_scale)
         origin = self.arm.current_posx()
@@ -338,10 +338,10 @@ class SkillNode(Node):
 
     def _do_weigh(self, job: Job):
         p = self.get_parameter
-        station = self.stations.get('scale')
+        station = self.stations.get('workbench')
         pick_posx = station.extra.get('pick_posx')
         if not isinstance(pick_posx, list) or len(pick_posx) != 6:
-            raise ValueError('scale.pick_posx 6개 좌표가 필요하다')
+            raise ValueError('workbench.pick_posx 6개 좌표가 필요하다')
         measure_posx = station.posx
         self.arm.movel(measure_posx, self.vel_scale)
         if not bool(p('scale.simulated').value):
@@ -349,7 +349,7 @@ class SkillNode(Node):
         self.arm.movel(pick_posx, self.vel_scale)
         job.feedback and job.feedback('GRIP')
         grip_commanded = True
-        reading = WeightReading(tare_g=float(job.args['tare_g']), station='scale')
+        reading = WeightReading(tare_g=float(job.args['tare_g']), station='workbench')
         try:
             ok, _, inferred = self.gripper.grip(float(p('gripper.cup_width_mm').value),
                                                 float(p('gripper.force_n').value), 3.0)

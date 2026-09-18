@@ -53,7 +53,7 @@
 - gmp_hmi — 다른 기기(폰·노트북)에서 http://<로봇PC>:5000 접속 확인 — 시연 T6(c) 장면
 - gmp_hmi — process_node 가 BATCH_START 이벤트에 product 를 싣게 C 와 합의 (batches.product 채우…
 - gmp_hmi — [9/18 확정] 회수 확인 버튼 — QA 가 패스박스·폐기함 비운 뒤 누르면 카운터 리셋 + HMI_* audit 기록 (누가…
-- gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — output_tray.capacity·reject_bin.capa…
+- gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — passbox_done.capacity·reject_bin.cap…
 - gmp_bringup — common.yaml 에 qa.decision_timeout_s·interlock.timeout_s 추가 — docs/inter…
 
 > 이 표는 `python3 tools/todo_stats.py` 가 체크박스를 세어 다시 쓴다. 손으로 고치지 않는다.
@@ -113,7 +113,7 @@
 - [x] **[9/18 확정]** 배치 변경 반영 → **SOT D-24 로 등록 완료**. 판 450×450, 기준 원점 [X:0, Y:45], 로봇 좌측 28 cm, 중앙 300×300 배치 불가, 넛지 대기 위치 신설, 원료·스쿱은 판 바깥 아래. **스테이션 매핑 3건은 Q-12 로 분리** · 마감 9/21
 - [x] **[Q-12]** Pass Box 가 `magazine`·`output_tray` 를 대체 — **확정 (9/18)**. `passbox_empty`(빈통) · `passbox_done`(완성품) 으로 이름과 FSM `carry` 목적지를 바꿨다 · 마감 9/21
 - [x] **[D-24]** `nudge_wait` 스테이션 추가 — 세트 완료 후 이동해 NUDGE 대기. `safe` 와 별개 (판 우상단). **FSM 전이는 「추가 7 NUDGE 전이」 항목에서 같이** · 마감 9/21
-- [ ] **[9/18 확정]** 회수·넛지 운영 — **운영 방식은 SOT D-23 으로 확정**. 남은 미정 3건: (a) 가득참 판단은 **카운트**(비전 없음) → `output_tray.capacity`·`reject_bin.capacity` (b) QA 가 비운 것을 아는 방법 — HMI 확인 버튼 유력 (c) **"한 세트"의 정의**(배치 1건 / 레시피 1건 / 용기 N통) · 마감 9/18
+- [ ] **[9/18 확정]** 회수·넛지 운영 — **운영 방식은 SOT D-23 으로 확정**. 남은 미정 3건: (a) 가득참 판단은 **카운트**(비전 없음) → `passbox_done.capacity`·`reject_bin.capacity` (b) QA 가 비운 것을 아는 방법 — HMI 확인 버튼 유력 (c) **"한 세트"의 정의**(배치 1건 / 레시피 1건 / 용기 N통) · 마감 9/18
 - [x] ~~[버그] 일탈 QA 대기가 무한 블로킹~~ — **문제 없음으로 결론 (9/18)**. D-23 반자동 운전이라 사람이 붙어 있는 것이 설계이고(세트 경계 대기도 마찬가지), 워커가 `daemon=True` 스레드라 Ctrl+C 로 정상 종료된다. 일탈 대기에만 타임아웃을 걸면 세트 경계 대기와 일관성이 깨진다 · 마감 9/18
 - [ ] **Ctrl+C 종료 시 로봇 상태 확인** — 순응/힘제어가 켜진 채 남는지, 그리퍼가 스쿱을 쥔 채 멈추는지. `release_force`·`release_compliance_ctrl` 이 `dsr_arm.py` 짝 함수 안에만 있고 종료 경로에는 없다 → 재기동 시 `2.3501`(15Nm 외부 토크)·`2.1903` 가능. 남으면 **종료 훅에 `release_force` + `release_compliance_ctrl` 추가** (cancel 콜백보다 작고 Ctrl+C·cancel 둘 다 커버). `RunBatch` cancel 이 이것으로 대체 가능한지 같이 판단 · 마감 9/21
 
@@ -141,6 +141,6 @@
 - [ ] 가상 모드에서 4노드 기동 확인, `ros2 node list`/`rqt_graph` 캡처 · 마감 9/17
 - [ ] `docs/demo_run_procedure.md` T1~T7 실물 검증 · 마감 9/23
 - [x] **[9/18 확정]** `stations.yaml` 구조 개편 — `scoop_rack` 폐지, `scoop_1`~`scoop_4` 신설 (원료통 아래, `material_id` 짝). FSM 은 `material_id` 만 넘기고 `process_node` 가 짝을 찾는다. **좌표값은 실측 후 조장이 채운다** · 마감 9/18
-- [ ] **[9/18 확정]** `common.yaml` 에 회수 용량 추가 — `output_tray.capacity`·`reject_bin.capacity`, 도달 시 인터락 요청 · 마감 9/18
+- [ ] **[9/18 확정]** `common.yaml` 에 회수 용량 추가 — `passbox_done.capacity`·`reject_bin.capacity`, 도달 시 인터락 요청 · 마감 9/18
 - [ ] `common.yaml` 에 `qa.decision_timeout_s`·`interlock.timeout_s` 추가 — `docs/interfaces.md` §4 는 common.yaml 이 "타임아웃" 을 담는다고 적혀 있으나 **실제 키가 하나도 없다** · 마감 9/18
 - [ ] BRD v1.0 · SDD v1.0 (`docs/spec/`) · 마감 9/28

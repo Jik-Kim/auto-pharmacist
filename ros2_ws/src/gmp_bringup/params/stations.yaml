@@ -7,7 +7,7 @@ frame: base
 approach_mm: 60.0          # 작업점 위 접근 높이
 stations:
   safe:        {posx: [300.0, 0.0, 450.0, 0.0, 180.0, 0.0], posj: [0.0, 0.0, 90.0, 0.0, 90.0, 0.0], note: "안전 자세 — 초기 특이점에서 movej로 진입. 판 위 모든 물체보다 높게"}
-  scale:       {posx: [350.0, 320.0, 260.0, 0.0, 180.0, 0.0], pick_posx: [350.0, 320.0, 200.0, 0.0, 180.0, 0.0], note: "칭량·조제 위치. posx는 영점·계량 고정 자세, pick_posx는 용기 파지·복귀 자세 (자리표시자)"}
+  workbench:   {posx: [350.0, 320.0, 260.0, 0.0, 180.0, 0.0], pick_posx: [350.0, 320.0, 200.0, 0.0, 180.0, 0.0], note: "작업·계량 구역(구 scale). posx는 영점·계량 고정 자세, pick_posx는 용기 파지·복귀 자세 (자리표시자)"}
   material_1:  {posx: [270.0, 140.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 1", material_id: "A", expected_scoop_width_mm: 15.5}
   material_2:  {posx: [450.0, 120.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 2", material_id: "B", expected_scoop_width_mm: 28.0}
   material_3:  {posx: [270.0, 500.0, 200.0, 0.0, 180.0, 0.0], note: "원료통 3", material_id: "C", expected_scoop_width_mm: 38.5}
