@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS weights ( -- 계량 1회 (WeightReading) — 그래�
   batch_id  TEXT,
   t         REAL NOT NULL,
   station   TEXT,
+  subject   TEXT,   -- "scoop" | "container" (v1.2). 배치 1건에 스쿱 9회·용기 2회라 섞으면 그래프가 못 읽힌다
   gross_g   REAL, tare_g REAL, net_g REAL, std_g REAL,
   valid     INTEGER NOT NULL
 );

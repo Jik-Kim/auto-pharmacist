@@ -49,7 +49,8 @@ class RecordNode(Node):
             self.active = False
 
     def _on_weight(self, m):
-        self.db.weight(self.batch_id or None, self._t(m.header), m.station, m.gross_g, m.tare_g, m.net_g, m.std_g, m.valid)
+        self.db.weight(self.batch_id or None, self._t(m.header), m.station, m.gross_g, m.tare_g, m.net_g, m.std_g, m.valid,
+                       getattr(m, 'subject', ''))   # v1.2 — 스쿱/용기 구분 (없는 빌드와도 섞여 돌 수 있게 getattr)
 
     def _on_result(self, m):
         self.db.item(m.batch_id or self.batch_id, m.material_id, m.target_g, m.actual_g, m.error_pct, m.verdict, m.attempts, self._t(m.header))

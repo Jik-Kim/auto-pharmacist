@@ -6,4 +6,5 @@ float32 net_g           # gross - tare [g]
 float32 std_g           # 표본 표준편차 [g] — 분해능 근거
 uint16 samples
 bool valid              # false 면 값을 쓰지 않는다 (정착 실패·힘 조회 실패·로봇 이동 중)
-string station          # 계량한 자세 (보통 "scale")
+string station          # 계량한 자세 (보통 "scale") — 스쿱도 용기도 같은 자세라 이것으로는 구분되지 않는다
+string subject          # 무엇을 쟀는가: "scoop"(WeighHeld) | "container"(WeighContainer). 빈 문자열이면 미상 (v1.2)

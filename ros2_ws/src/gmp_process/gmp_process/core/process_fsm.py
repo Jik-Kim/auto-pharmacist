@@ -16,6 +16,9 @@ kind: move | grip | carry | scoop | pour | weigh | weigh_scoop | measure | safe 
   weigh_scoop 지금 들고 있는 스쿱을 계량 자세로 가져가 그대로 잰다 (파지·내려놓기 없음). 결과 gross_g·valid.
               계약 v1.2 항목 — A 와 합의 (docs/issues.md I-007).
 
+스쿱은 원료통 아래에 원료별로 둔다 (9/18 확정 — scoop_rack 폐지). FSM 은 station='scoop' + material_id 만 넘기고,
+실제 스테이션(stations.yaml 의 scoop_N)은 process_node 가 material_id 로 찾는다.
+
 원료 1종의 흐름 (SOT D-22, 9/17 팀 합의 — 로봇이 저울이므로 스쿱을 든 채 재는 것이 가장 싸다):
   PICK_SCOOP → SCOOP_TARE(빈 스쿱 무게) → SCOOP → WEIGH_SCOOP(붓기 전: 퍼낸 양 → 붓기 비율 = 1차 폐루프)
   → POUR → WEIGH_RESIDUAL(붓기 후: 스쿱 잔량 → 실제 투입량 누적 → decide) → RETURN_SCOOP
@@ -123,7 +126,7 @@ class ProcessFSM:
             self.scale.set_tare(self.tare_g)
             self.cur = self._item()
             self.state = 'PICK_SCOOP'
-            return {'kind': 'move', 'station': 'scoop_rack', 'approach': 'AT'}
+            return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}
         if k == 'move' and st == 'PICK_SCOOP':
             return {'kind': 'grip', 'close': True, 'target': 'scoop'}
         if k == 'grip' and st == 'PICK_SCOOP':
@@ -166,7 +169,7 @@ class ProcessFSM:
             if d.action == 'DONE':
                 self.results.append(self.cur)
                 self.state = 'RETURN_SCOOP'
-                return {'kind': 'move', 'station': 'scoop_rack', 'approach': 'AT'}
+                return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}
             if d.action == 'SCOOP':
                 self.state = 'SCOOP'
                 return self._scoop(d.fraction)
@@ -177,7 +180,7 @@ class ProcessFSM:
             self.idx += 1
             if self.idx < len(self.spec.items):
                 self.cur, self.state = self._item(), 'PICK_SCOOP'
-                return {'kind': 'move', 'station': 'scoop_rack', 'approach': 'AT'}
+                return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}
             self.state = 'VERIFY'
             return self._weigh_cup(self.tare_g)        # 2차 검증 — 용기를 들어 잰다 (그리퍼 비어 있음)
         if k == 'weigh' and st == 'VERIFY':
@@ -242,8 +245,8 @@ class ProcessFSM:
                 return self._carry('scale', 'output_tray')
             self.results.append(self.cur)              # 원료 단위 일탈 승인 → 결과에 남기고 스쿱 반납
             self.state, self.mode = 'RETURN_SCOOP', 'RUNNING'
-            return {'kind': 'move', 'station': 'scoop_rack', 'approach': 'AT'}
+            return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}
         self.state, self.mode = 'DISCARDED', 'DONE'
         if holding_scoop:                              # 스쿱부터 반납해야 용기를 잡을 수 있다
-            return {'kind': 'move', 'station': 'scoop_rack', 'approach': 'AT'}
+            return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}
         return self._carry('scale', 'reject_bin')      # 용기째 폐기 — 결과는 on_result 의 DISCARDED 분기

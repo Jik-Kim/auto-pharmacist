@@ -119,7 +119,7 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
                                      └─ ② |net − Σ투입량| > min_resolvable_g ─▶ DEVIATION(VERIFY_MISMATCH) ──APPROVED──▶ FINISH
 
  DEVIATION ──wait_qa──▶ APPROVED ──▶ RETURN_SCOOP (원료는 결과 목록에 남김) · VERIFY 에서 왔으면 FINISH
-                      └▶ DISCARDED ─▶ (스쿱 든 채면 move(scoop_rack)·grip(open) 먼저) ─▶ carry(scale→reject_bin) ──▶ DISCARDED(종료)
+                      └▶ DISCARDED ─▶ (스쿱 든 채면 move(scoop_N)·grip(open) 먼저) ─▶ carry(scale→reject_bin) ──▶ DISCARDED(종료)
 ```
 
 **PAUSED 는 두 경로**: (a) MATERIAL_EMPTY → `safe` → `wait_interlock` → EXIT 로 `_resume` 요청 재실행 (b) 사람 접촉 NUDGE → 노드 게이트가 다음 요청 전에 멈춤 → 두 번째 NUDGE 로 재개 (D-21, FSM 은 모름).
@@ -131,17 +131,17 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 |---|---|---|---|---|
 | `SELF_CHECK` | `measure` → valid, fz_std | valid 아니면 ERROR (TODO). 툴·TCP·감도 확인은 skill_node 가 기동 시 함 | `carry(magazine→scale, slot)` | `event BATCH_START`, `state` |
 | `PICK_CONTAINER` | `carry` → grip_inferred | false → `_deviate(GRIP_FAIL)` (같은 carry 재시도) | `weigh(scale, tare 0)` | `deviation` (실패 시) |
-| `TARE` | `weigh` → gross | `tare_g = gross`, `scale.set_tare()`. cur = 원료 0 | `move(scoop_rack, AT)` | `weight` |
+| `TARE` | `weigh` → gross | `tare_g = gross`, `scale.set_tare()`. cur = 원료 0 | `move(scoop_N, AT)` | `weight` |
 | `PICK_SCOOP` | `move` → 도착 / `grip` → inferred | 파지 실패 → GRIP_FAIL 재시도(≤3) → 4회 FORCED → ERROR. **[추가 1]** `final_width_mm` 가 원료 기대 폭 ±margin 밖이면 `WRONG_TOOL` → QA | `grip(close, scoop)` → `weigh_scoop(tare 0)` | `deviation` |
 | `SCOOP_TARE` | `weigh_scoop` → gross, valid | `scoop_tare_g = gross` (빈 스쿱, 원료마다 1회). 무효 ≤2 재계량 → 3회 WEIGH_INVALID | `scoop(material, attempt=1)` | `weight` |
 | `SCOOP` | `scoop` → contact_detected | false → SCOOP_EMPTY 재시도(≤3) → 4회째 REFILL → PAUSED | `weigh_scoop(tare=scoop_tare)` | `deviation` |
 | `WEIGH_SCOOP` | `weigh_scoop` → gross, valid | `scooped = gross − scoop_tare`. 부족량 `need = target − actual`. **붓기 비율 = 1 (scooped ≤ need) 또는 need/scooped** — 초과 예방 (1차 폐루프). 무효 ≤2 재계량 | `pour(fraction)` | `weight` |
 | `POUR` | `pour` | — | `weigh_scoop(tare=scoop_tare)` | — |
-| `WEIGH_RESIDUAL` | `weigh_scoop` → gross, valid | `residual = gross − scoop_tare`, **`actual += scooped − residual`** (실제 투입량 누적). `decide(target, actual, tol, attempts, True, invalid, cfg)` → DONE / SCOOP(fraction 힌트) / DEVIATION(kind). 무효 ≤2 재계량 | DONE→`move(scoop_rack)` · SCOOP→`scoop(attempt+1)` · DEVIATION→`wait_qa` | `weight` · **`scoop_cycle`** · `dispense_result` (DONE·DEVIATION 시) · `deviation` |
-| `RETURN_SCOOP` | `move` / `grip(open)` | idx+1. 남았으면 다음 원료, 없으면 VERIFY | `move(scoop_rack)` → `grip(open)` → `move(scoop_rack)`(다음) 또는 `weigh(scale, tare)` | `state` |
+| `WEIGH_RESIDUAL` | `weigh_scoop` → gross, valid | `residual = gross − scoop_tare`, **`actual += scooped − residual`** (실제 투입량 누적). `decide(target, actual, tol, attempts, True, invalid, cfg)` → DONE / SCOOP(fraction 힌트) / DEVIATION(kind). 무효 ≤2 재계량 | DONE→`move(scoop_N)` · SCOOP→`scoop(attempt+1)` · DEVIATION→`wait_qa` | `weight` · **`scoop_cycle`** · `dispense_result` (DONE·DEVIATION 시) · `deviation` |
+| `RETURN_SCOOP` | `move` / `grip(open)` | idx+1. 남았으면 다음 원료, 없으면 VERIFY | `move(scoop_N)` → `grip(open)` → `move(scoop_N)`(다음) 또는 `weigh(scale, tare)` | `state` |
 | `VERIFY` | `weigh` → net, valid | **용기를 들어** 순량 계량 (그리퍼 비어 있음). ① `\|net − Σspec.target\| > Σ(target×tol)` → BATCH_OUT_OF_SPEC → QA(폐기 권고) ② `\|net − Σresults.actual\| > min_resolvable_g` → VERIFY_MISMATCH → QA. 무효 ≤2 재계량 | `carry(scale→output_tray)` | `weight` · `deviation` |
 | `FINISH` | `carry` → grip_inferred | 실패 → GRIP_FAIL 재시도 | 없음 (None = 끝) | `event BATCH_END`, `state DONE` |
-| `DEVIATION` | `wait_qa` → decision | APPROVED → (원료 일탈) 결과에 남기고 RETURN_SCOOP / (VERIFY) FINISH. DISCARDED → 스쿱 든 채면 먼저 반납 → 용기째 폐기 | `move(scoop_rack)` / `carry(scale→output_tray)` / `carry(scale→reject_bin)` | `deviation` 재발행(decision·operator_id 채움) |
+| `DEVIATION` | `wait_qa` → decision | APPROVED → (원료 일탈) 결과에 남기고 RETURN_SCOOP / (VERIFY) FINISH. DISCARDED → 스쿱 든 채면 먼저 반납 → 용기째 폐기 | `move(scoop_N)` / `carry(scale→output_tray)` / `carry(scale→reject_bin)` | `deviation` 재발행(decision·operator_id 채움) |
 | `PAUSED` | `wait_interlock` → {} | `_resume` 요청을 그대로 다시 실행 | `_resume` | `event INTERLOCK_ENTER/EXIT`, `state PAUSED` |
 | `ERROR` | `safe(then=None)` | 종료 | None | `event INTERVENTION_FORCED`, `state ERROR` |
 | `DISCARDED` | `move` / `grip(open)` / `carry` | 스쿱 반납 후 용기 폐기, 종료 | `grip(open)` → `carry(scale→reject_bin)` → None | `event BATCH_END`, `state DONE`(mode) |

@@ -63,7 +63,7 @@ class ProcessNode(Node):
         if self.fsm and self.fsm.mode in ('RUNNING', 'PAUSED', 'DEVIATION'):
             res.accepted, res.message = False, f'실행 중 ({self.fsm.state})'
             return res
-        items = [Item(i.material_id, i.target_g, i.tol_pct) for i in req.recipe.items]   # 전용 스쿱은 stations.yaml material_N.scoop_slot
+        items = [Item(i.material_id, i.target_g, i.tol_pct) for i in req.recipe.items]   # 전용 스쿱은 stations.yaml 의 scoop_N (material_id 짝)
         self.batch_id = req.recipe.batch_id or self.get_clock().now().to_msg().sec.__str__()
         self.fsm = ProcessFSM(RecipeSpec(req.recipe.product, items), self.dosing_cfg, self.scale)
         self._thread = threading.Thread(target=self._run_loop, daemon=True)

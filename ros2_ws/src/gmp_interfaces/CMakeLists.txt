@@ -26,6 +26,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/Scoop.action"
   "action/Pour.action"
   "action/WeighContainer.action"
+  "action/WeighHeld.action"
   "action/RunBatch.action"
   DEPENDENCIES std_msgs action_msgs
 )

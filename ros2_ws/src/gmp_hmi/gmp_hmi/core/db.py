@@ -44,10 +44,11 @@ class CellDB:
                              'VALUES (?,?,?,?,?,?,?,?)',
                              (batch_id, material_id, target_g, actual_g, error_pct, VERDICTS.get(verdict, str(verdict)), attempts, t))
 
-    def weight(self, batch_id, t, station, gross_g, tare_g, net_g, std_g, valid):
+    def weight(self, batch_id, t, station, gross_g, tare_g, net_g, std_g, valid, subject=''):
         with self._lock, self.con:
-            self.con.execute('INSERT INTO weights (batch_id, t, station, gross_g, tare_g, net_g, std_g, valid) '
-                             'VALUES (?,?,?,?,?,?,?,?)', (batch_id, t, station, gross_g, tare_g, net_g, std_g, int(valid)))
+            self.con.execute('INSERT INTO weights (batch_id, t, station, subject, gross_g, tare_g, net_g, std_g, valid) '
+                             'VALUES (?,?,?,?,?,?,?,?,?)',
+                             (batch_id, t, station, subject or None, gross_g, tare_g, net_g, std_g, int(valid)))
 
     def deviation(self, deviation_id, batch_id, material_id, kind, detail, requires_decision, decision, operator_id, t):
         """같은 deviation_id 가 다시 오면 판정만 갱신한다 (PENDING → APPROVED 등)."""

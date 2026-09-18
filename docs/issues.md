@@ -13,7 +13,7 @@
 | [I-004](#i-004) | 중 | 열림 | A | 블로킹 `movel` 은 중간 취소가 안 된다 — 인터락 `ENTER` 응답이 현재 이동이 끝날 때까지 늦어진다 |
 | [I-005](#i-005) | 중 | 열림 | A | 가상 모드에서 `get_tool_force`/`get_workpiece_weight` 가 값을 주는지 미확인 (Q-07) |
 | [I-006](#i-006) | 하 | 열림 | C | 스쿱 손잡이 실물 치수 미확정 — `gripper.scoop_width_mm` 가정값 18 |
-| [I-007](#i-007) | **상** | **열림** | A + C | **계약 v1.2 — `weigh_scoop`(들고 있는 스쿱 계량) Action 과 `Deviation.kind VERIFY_MISMATCH`** — D-22 6단계 흐름이 이 계약에 걸려 있다 |
+| [I-007](#i-007) | **상** | ~~해소~~ (9/18 v1.2) | A + C | **계약 v1.2 — `weigh_scoop`(들고 있는 스쿱 계량) Action 과 `Deviation.kind VERIFY_MISMATCH`** — D-22 6단계 흐름이 이 계약에 걸려 있다 |
 
 ## 해결된 이슈
 
@@ -53,4 +53,5 @@
 - **내용**: 로봇이 저울이라 `WeighContainer`(용기 파지 → 들어 올림 → 읽기 → 내려놓기)는 그리퍼가 비어야 한다. 종전 SCOOP→POUR→WEIGH 는 스쿱을 든 채 용기를 잡는 모순. D-22 로 원료마다 스쿱을 든 채 세 번(빈 스쿱·붓기 전·붓기 후) 재고, 용기는 배치 끝 VERIFY 한 번 재는 흐름으로 바꿨다 (`process_fsm.py`, 테스트 9건 통과).
 - **필요한 계약**: (a) 들고 있는 것을 그대로 재는 스킬 — `WeighHeld` Action 신설 또는 `WeighContainer` 에 `mode: held|container` 필드. 입력 `tare_g`, 결과 `WeightReading`. (b) `Deviation.kind` 에 `VERIFY_MISMATCH` **와 `BATCH_OUT_OF_SPEC`** — 9/17 조장 합의로 `VERIFY` 를 **계측 신뢰성**(Σ투입량 대조)과 **제품 판정**(레시피 총량 대조, 허용치 `Σ(target×tol)`) 둘로 나눴다. (c) `WeightReading` 을 스쿱 계량에도 쓰므로 `weight` 토픽에 무엇을 잰 것인지 구분 필드(`subject: scoop|container`)가 있으면 HMI 그래프가 편하다 (D 와).
 - **임시**: 계약 확정 전 process_node 는 `weigh_scoop` 를 `measure_force`(정지 외력) 로 흉내 내거나 `weigh_container` 를 그대로 부른다 (가상에서는 값이 없으므로 `scale.simulated` 로 충분).
-- **조치·남은 것**: A 와 9/17 합의 → `gmp_interfaces` + `docs/interfaces.md` 같은 커밋 (조장). `_pour_fraction` 은 B 의 `dosing.py` 로 이관.
+- **조치·남은 것**: `_pour_fraction` 은 B 의 `dosing.py` 로 이관 (별건).
+- ✅ **해소 (9/18)**: `action/WeighHeld.action` 신설 — 계량 후 **계량 자세에 머물고**, 빈 그리퍼면 `success=false`. phase 는 `LIFT`/`SETTLE`/`MEASURE` 라 `WeighContainer` 와 `GRIP`·`PLACE` 가 달라 `mode` 로 합치지 않았다. `Deviation.kind` 에 `VERIFY_MISMATCH`(9)·`BATCH_OUT_OF_SPEC`(10)·`WRONG_TOOL`(11) 추가. (c) `WeightReading` 에 **`subject`(`scoop`/`container`) 추가**. 처음에는 요청 종류로 갈린다고 봤으나, 액션 종류는 `process_node` 안에서만 알고 `weight` 토픽으로 나가는 순간 사라진다 — D 의 `record_node`·HMI 는 구분할 방법이 없었다. 배치 1건에 스쿱 9회(3원료×3)·용기 2회(TARE·VERIFY)라 섞이면 그래프가 못 읽힌다. `station` 은 둘 다 `scale` 이라 쓸 수 없다. `schema.sql` `weights.subject`·`record_node` 도 같이 반영.

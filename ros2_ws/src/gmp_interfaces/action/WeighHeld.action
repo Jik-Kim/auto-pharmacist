@@ -1,0 +1,13 @@
+# 지금 그리퍼가 들고 있는 것(스쿱)을 그대로 계량 자세로 가져가 잰다. 파지·내려놓기 없음 (D-22, I-007)
+# SCOOP_TARE(빈 스쿱) · WEIGH_SCOOP(붓기 전) · WEIGH_RESIDUAL(붓기 후) 세 단계가 이 요청 하나를 쓴다.
+# 차이는 process 가 결과를 어디에 담느냐뿐이다.
+#
+# 계량 후 계량 자세에 머문다 (원위치 복귀 없음, 9/18 확정) — WEIGH_SCOOP 다음은 scale 에서 붓기,
+# WEIGH_RESIDUAL 다음은 스쿱 반납이라 되돌아갈 이유가 없다. 원료 1종당 3회 × 3종 = 9회 왕복을 줄인다.
+float32 tare_g              # process 가 아는 풍량(빈 스쿱 무게). 0 이면 gross 만 채운다
+---
+WeightReading reading
+bool success                # 그리퍼가 비어 있으면 false — 파지 상태를 전제한다 (FSM 상 일어나면 안 되는 일)
+string message
+---
+string phase                # "LIFT" | "SETTLE" | "MEASURE" — WeighContainer 와 달리 GRIP·PLACE 가 없다
