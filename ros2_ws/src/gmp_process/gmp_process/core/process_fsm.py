@@ -231,11 +231,20 @@ class ProcessFSM:
         return sum(r.actual_g for r in self.results)
 
     # ── 일탈 ─────────────────────────────────────────────────────────
-    def _deviate(self, kind: str, step: str, retry: dict | None = None):
+    def skill_failed(self, req: dict, detail: str = ''):
+        """스킬이 실패로 돌아왔다(또는 부를 수 없었다) → FORCE_LIMIT 일탈.
+
+        RULES 상 1회 RETRY 후 FORCED(ERROR) 라 무한 재시도가 되지 않는다. 카운터는
+        (원료, 스텝, kind) 별이므로 다른 스텝에서 또 실패하면 거기서 다시 1회 준다.
+        """
+        return self._deviate('FORCE_LIMIT', self.state, retry=req, detail=detail)
+
+    def _deviate(self, kind: str, step: str, retry: dict | None = None, detail: str = ''):
         key = (self.idx, step, kind)
         self._counts[key] = self._counts.get(key, 0) + 1
         action, needs_qa = policy(kind, self._counts[key])
         self.deviations.append({'kind': kind, 'step': step, 'count': self._counts[key], 'action': action,
+                                'detail': detail,
                                 'material_id': getattr(self, 'cur', None) and self.cur.material_id})
         if action == 'RETRY' and retry:
             return retry

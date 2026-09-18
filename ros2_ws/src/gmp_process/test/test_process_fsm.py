@@ -127,7 +127,8 @@ def test_verify_규격이탈은_BATCH_OUT_OF_SPEC():
     cell = Cell(yields=[100, 50], cup_bias=50.0)
     fsm = _fsm(min_resolvable_g=30.0)
     trace = run(fsm, cell)
-    assert fsm.deviations == [{'kind': 'BATCH_OUT_OF_SPEC', 'step': 'VERIFY', 'count': 1, 'action': 'QA', 'material_id': 'B'}]
+    assert fsm.deviations == [{'kind': 'BATCH_OUT_OF_SPEC', 'step': 'VERIFY', 'count': 1, 'action': 'QA',
+                               'detail': '', 'material_id': 'B'}]
     assert fsm.state == 'DONE' and trace[-1] == ('FINISH', 'carry')     # QA 승인 → 그대로 완료품
 
 
@@ -168,7 +169,7 @@ def test_container_grip_fail_retries_at_pick_container():
     fsm = _fsm()
     trace = run(fsm, cell)
     assert fsm.deviations == [{'kind': 'GRIP_FAIL', 'step': 'PICK_CONTAINER', 'count': 1, 'action': 'RETRY',
-                               'material_id': None}]
+                               'detail': '', 'material_id': None}]
     assert trace[:3] == [('SELF_CHECK', 'measure'), ('PICK_CONTAINER', 'carry'), ('PICK_CONTAINER', 'carry')]
     assert fsm.tare_g == CUP_TARE and fsm.state == 'DONE' and len(fsm.results) == 2
 
