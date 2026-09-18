@@ -1,0 +1,29 @@
+# 무게 측정 실험에서 사용하는 고정 기준 무게.
+# 값은 내용물을 제외하고 실제 저울로 측정한 물체 자체의 무게이며 단위는 g이다.
+reference_weights:
+  empty_scoop_g: 32.0
+  empty_container_g: 78.0
+
+# 133 g 스쿱 조건의 6개 세트(세트당 30회)를 비교한 1차 제안값이다.
+# 단일 실제 무게만 사용했으므로 gain과 offset은 다중 무게 검증 전까지 임시값이다.
+tool_force_calibration:
+  fz_sign: -1.0
+  gain: 1.0
+  offset_g: 259.765
+  min_resolvable_g: 17.0
+  max_std_g: 5.0
+  status: provisional_single_weight
+  basis:
+    object: scoop
+    actual_g: 133.0
+    sets: 6
+    trials_per_set: 30
+    repeat_sigma_g: 5.5076
+    three_sigma_g: 16.5228
+    within_trial_sigma_mean_g: 1.8149
+    within_trial_sigma_p95_g: 4.1433
+  sampling:
+    previous_samples_per_trial: 20
+    proposed_samples_per_trial_min: 5
+    proposed_samples_per_trial_max: 10
+    reason: 20개 표본에서 동일한 센서값이 반복되는 경우가 빈번해 5~10개로 줄일 예정

@@ -13,9 +13,9 @@ G0 = 9.80665
 class ScaleConfig:
     method: str = 'workpiece'        # workpiece | tool_force
     gain: float = 1.0                # 실제 저울 대비 선형 보정 (9/21 5점 비교)
-    offset_g: float = 0.0
-    min_resolvable_g: float = 30.0   # G1 실측 3σ. 이보다 작은 목표량은 이 저울로 못 잰다
-    max_std_g: float = 10.0          # 표본 σ 가 이보다 크면 valid=false (정착 실패)
+    offset_g: float = 259.765          # 133 g 단일 조건 기준 1차 임시 보정값
+    min_resolvable_g: float = 17.0   # G1 실측 3σ. 이보다 작은 목표량은 이 저울로 못 잰다
+    max_std_g: float = 5.0           # 표본 σ 가 이보다 크면 valid=false (정착 실패)
     fz_sign: float = -1.0            # Fz 부호 (G1 확인)
 
 
@@ -46,4 +46,5 @@ class WeightModel:
 
     def resolvable(self, target_g: float, tol_pct: float) -> bool:
         """허용 오차 폭이 분해능보다 좁으면 이 저울로는 그 목표를 판정할 수 없다."""
-        return target_g * tol_pct / 100.0 >= self.cfg.min_resolvable_g / 3.0
+        # 목표량의 허용 편차[g]가 실측 3σ 분해능 이상인지 직접 비교한다.
+        return target_g * tol_pct / 100.0 >= self.cfg.min_resolvable_g
