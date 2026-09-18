@@ -193,6 +193,8 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 ## 8. v1.2 적용 인계
 
 - **A/조장:** `SetGripper` 서버와 계약 정의 완료. `Scoop` 본문에서 Feedback/Result 관측값을 실제 채우고, `GripperState`의 `busy/grip_inferred/safety_triggered`를 어댑터 실값에 연결하며 G1에서 `MeasureForce`의 tool/TCP 기준을 확인한다.
-- **C:** 레시피 파서·변환에서 `grade/scoop_id` 제거하고 `stations.yaml` 의 `scoop_N`(`material_id` 짝) 사용, `Pour`·`WeighContainer` 클라이언트의 station 인자 제거, `SetGripper` 적용, `QaDecision.deviation_id` 일치 확인, 정상은 `WEIGH_RESIDUAL` 뒤·실패는 실패 확정 시 `/cell/scoop_cycle` 발행. `CellState.station/note`도 실제 전이값으로 채운다.
+- **C:** ✅ **9/18 완료** — `process_node` 가 스킬 8종을 계약대로 부른다. `grade/scoop_id` 없음, 원료 → `scoop_N` 은 `core/station_map.py` 가 `stations.yaml` 에서 풀고, `Pour`·`WeighContainer` 는 station 인자 없이 부르며, `SetGripper` 사용, `QaDecision.deviation_id` 불일치는 거부하고 판정 후 **같은 ID 로 재발행**한다. `scoop_cycle` 은 정상이면 `WEIGH_RESIDUAL` 뒤, 실패면 확정 단계에서 나간다. `CellState.station/note` 도 채운다. 확인: `test/test_process_node.py`(가짜 skill_node 로 레시피 1건 완주). **남은 것** — 6축 wrench 는 채울 경로가 없어 `*_wrench_valid=false` (I-008).
 - **D:** 주문 생성에서 `grade/scoop_id`, `QaDecision.Request`에서 `batch_id` 제거(웹 화면의 배치 표시는 유지), `scoop_cycle` 구독·DB 테이블·JSON 내보내기 추가.
 - **승인:** 팀 채널 공유 후 영향 담당 최소 1명의 추가 승인이 있어야 v1.2를 확정한다.
+
+**계약 파일 쓸 때** — `.action`/`.srv` 의 상수는 `---` 로 갈린 **그 상수가 설명하는 절**에 적는다. 뒤쪽 절에 적으면 `Feedback`·`Response` 에만 생성되어 정작 쓸 곳에서 `AttributeError` 가 난다 (I-009 에서 실제로 났다). 참조는 `MoveToStation.Goal.ABOVE` 처럼 **절 이름을 붙여** 쓴다.
