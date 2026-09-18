@@ -271,15 +271,15 @@ class HmiRosNode(Node):
                 self._pending_entry = None
             elif self._pending_entry:
                 # 서비스 응답이 PAUSED 토픽보다 먼저 도착한 경우만 짧게 기다린다.
-                # 현재 응답 + 동일 배치 + 신선한 PAUSED가 모두 있어야 허가로 표시한다.
+                # 현재 허가 응답 + 동일 배치 + 신선한 PAUSED/DEVIATION에서 허가로 표시한다.
                 if now > self._pending_entry['expires_at']:
                     self._pending_entry = None
-                elif m.mode == CellState.PAUSED:
+                elif m.mode in (CellState.PAUSED, CellState.DEVIATION):
                     self.entry_granted = True
                     self._pending_entry = None
                 elif m.mode != CellState.RUNNING:
                     self._pending_entry = None
-            elif m.mode != CellState.PAUSED:
+            elif m.mode not in (CellState.PAUSED, CellState.DEVIATION):
                 self.entry_granted = None
             self._received('state')
             self.snap['state'] = {'mode': MODES.get(m.mode, '?'), 'step': m.step, 'batch_id': m.batch_id,
@@ -367,8 +367,7 @@ class HmiRosNode(Node):
     def _recipe_paths(self):
         directory = self.get_parameter('recipes_dir').value
         if not directory:
-            installed = os.path.join(get_package_share_directory('gmp_hmi'), 'config', 'recipes')
-            directory = os.path.dirname(os.path.realpath(os.path.join(installed, 'recipe-01.yaml')))
+            directory = os.path.join(get_package_share_directory('gmp_bringup'), 'params', 'recipes')
         directory = os.path.realpath(os.path.expanduser(directory))
         paths = {}
         for path in sorted(glob.glob(os.path.join(directory, '*.yaml'))):
@@ -436,10 +435,10 @@ class HmiRosNode(Node):
             data['inventory']['scope'] = 'local_hmi_only'
             data['inventory']['enforced'] = False
             data['inventory']['refill_supported'] = False
-            data['inventory'].update(order_allowed=False,
-                                     order_block_reason='재고·높이·보충 C 연동 미완료: 새 주문을 차단했습니다',
+            data['inventory'].update(order_allowed=True,
+                                     order_block_reason='',
                                      blocked_materials=[], can_refill=False, fresh=False)
-            data['inventory']['note'] += ' · 재고·높이·보충 C 연동 미완료: 새 주문을 차단했습니다'
+            data['inventory']['note'] += ' · 참고용 잔량: 주문 수락 여부는 C 공정이 판단합니다'
             for item in data['inventory']['items']:
                 item.update(height_pct=None, height_low_latched=False, refill_ready=False)
         data['diagnostics'] = {
@@ -461,12 +460,9 @@ class HmiRosNode(Node):
         self._guard_command(self.cli_order)
         with self.lock:
             state = self.snap['state']
-            if state.get('mode') == 'DONE' and state.get('step') != 'DONE':
-                raise CommandUnavailable('물리적 완료 확인 대기: 공정의 최종 DONE/DONE 수신 후 주문하세요')
+            if state.get('mode') == 'DONE' and state.get('step') not in ('DONE', 'DISCARDED'):
+                raise CommandUnavailable('물리적 완료 확인 대기: 공정의 최종 DONE 또는 DISCARDED 수신 후 주문하세요')
         spec, detail = self._recipe(name)
-        if not self.test_inventory_enabled:
-            self.audit('ORDER_REJECTED', actor, '재고·높이·보충 C 연동 미완료', batch_id='')
-            raise CommandUnavailable('재고·높이·보충 C 연동 미완료: 새 주문을 차단했습니다')
         if self.test_inventory_enabled:
             with self.lock:
                 inv = self._test_stock_locked()
@@ -531,7 +527,7 @@ class HmiRosNode(Node):
                 if (self.snap['state'].get('batch_id', '') == request_batch and
                         received is not None and now - received <= threshold):
                     self.entry_batch_id = request_batch
-                    if self.snap['state'].get('mode') == 'PAUSED':
+                    if self.snap['state'].get('mode') in ('PAUSED', 'DEVIATION'):
                         self.entry_granted = True
                     else:
                         self._pending_entry = {'expires_at': now + threshold}

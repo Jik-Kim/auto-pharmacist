@@ -415,18 +415,28 @@ def test_interlock_reply_before_paused_has_bounded_pending_ack(node):
     assert node.snapshot()['interlock']['entry_granted'] is None
 
 
-def test_order_rejects_legacy_early_done_until_physical_completion(app_db, node):
+def test_order_rejects_unknown_done_step_but_accepts_discarded(app_db, node):
     enable_test_inventory(node)
     app, _ = app_db
     client = app.test_client(); token = login(client)
     early = state(mode=5)
-    early.step = 'DISCARDED'
+    early.step = 'CARRY'
     node._on_state(early)
     response = post(client, token, '/order', {'recipe': 'demo_batch'})
     assert response.status_code == 503
     assert '물리적 완료 확인 대기' in response.json['message']
     assert node.cli_order.calls == []
     # 같은 mode 값이어도 실제 이송 종료 step 확인 후 주문 가능.
-    early.step = 'DONE'
+    early.step = 'DISCARDED'
     node._on_state(early)
     assert post(client, token, '/order', {'recipe': 'demo_batch'}).json['ok']
+
+
+def test_qa_enter_grant_survives_deviation_heartbeat_until_exit(node):
+    node._on_state(state(mode=3))
+    assert node.interlock(1, 'QA', 'qa').granted
+    assert node.snapshot()['interlock']['entry_granted'] is True
+    node._on_state(state(mode=3))
+    assert node.snapshot()['interlock']['entry_granted'] is True
+    node.interlock(2, 'QA', 'qa')
+    assert node.snapshot()['interlock']['entry_granted'] is None

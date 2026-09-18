@@ -157,13 +157,13 @@ def test_snapshot_must_preserve_height_latch_and_block_list():
     assert validate_trial_snapshot(data) is data
 
 
-def test_production_submit_fails_closed_with_clear_integration_reason(node,backend):
+def test_production_submit_delegates_to_process_without_trial_inventory(node,backend):
     node._on_state(state('',0))
-    with pytest.raises(backend.CommandUnavailable,match='재고·높이·보충 C 연동 미완료'):
-        node.submit('demo_batch','operator')
-    assert node.cli_order.calls==[]
+    assert node.submit('demo_batch','operator').accepted
+    assert len(node.cli_order.calls)==1
     inv=node.snapshot()['inventory']
-    assert inv['order_allowed'] is False and 'C 연동 미완료' in inv['order_block_reason']
+    assert inv['order_allowed'] is True and inv['enforced'] is False
+    assert inv['refill_supported'] is False
 
 
 def test_hmi_height_blocks_even_unused_material(node,tmp_path):

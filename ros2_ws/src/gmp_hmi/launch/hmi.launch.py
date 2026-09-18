@@ -16,8 +16,7 @@ def generate_launch_description():
         DeclareLaunchArgument('db_path', default_value='~/auto-pharmacist/records/cell.db'),
         DeclareLaunchArgument('export_dir', default_value='~/auto-pharmacist/records'),
         DeclareLaunchArgument('admin_store_path', default_value='~/.config/gmp_hmi/admin.json'),
-        # gmp_bringup은 downstream 패키지여서 HMI만 빌드하면 share가 없을 수 있다.
-        DeclareLaunchArgument('recipes_dir', default_value='~/auto-pharmacist/ros2_ws/src/gmp_hmi/config/recipes'),
+        DeclareLaunchArgument('recipes_dir', default_value=''),
         Node(package='gmp_hmi', executable='record_node',
              namespace=LaunchConfiguration('namespace'), output='screen',
              parameters=[{'db_path': LaunchConfiguration('db_path'),

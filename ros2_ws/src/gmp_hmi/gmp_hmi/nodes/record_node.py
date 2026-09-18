@@ -1,9 +1,7 @@
 """공정 6종 토픽의 단일 기록자. SQLite 원본과 배치 종료 JSON 사본을 관리한다.
 
-QA 폐기 선택은 완료가 아니다. mode=DONE, step=DONE 일 때만 완료 처리한다.
-현재 C 골격의 DONE/DISCARDED 는 실제 이송 전에도 발생하므로 기록을 보류한다.
-C 는 폐기 이송 성공 뒤 DONE/DONE 을 발행해야 한다. 최종 일탈 판정으로 정상/폐기를
-구분하고, 뒤늦게 도착한 일탈/결과/스쿱 기록도 종료 JSON 에 반영한다.
+QA 판정 자체는 종료가 아니다. C가 mode=DONE과 step=DONE/DISCARDED를
+발행하면 종료 처리한다. 뒤늦게 수신한 결과도 종료 JSON에 반영한다.
 """
 import json
 import os
@@ -68,9 +66,9 @@ class RecordNode(Node):
         self.active = row['finished_at'] is None
         if not self.active:
             return  # 재접속 때 재수신한 DONE/RUNNING 이 완료 배치를 다시 열지 않는다.
-        if m.mode == CellState.DONE and m.step != 'DONE':
+        if m.mode == CellState.DONE and m.step not in ('DONE', 'DISCARDED'):
             if m.batch_id not in self._held_completion:
-                note = '물리적 완료 확인 대기: C가 이송 완료 후 mode=DONE, step=DONE 발행 필요'
+                note = '물리적 완료 확인 대기: C가 이송 완료 후 mode=DONE, step=DONE/DISCARDED 발행 필요'
                 self.db.note_batch(m.batch_id, note)
                 self.get_logger().warning(f'{m.batch_id}: {note} (수신 step={m.step})')
                 self._held_completion.add(m.batch_id)
@@ -79,7 +77,7 @@ class RecordNode(Node):
             if m.mode == CellState.ERROR:
                 result = 'ERROR'
             else:
-                result = 'DISCARDED' if self.db.has_discard_decision(m.batch_id) else 'DONE'
+                result = 'DISCARDED' if m.step == 'DISCARDED' or self.db.has_discard_decision(m.batch_id) else 'DONE'
             self.db.finish_batch(m.batch_id, t, result, m.note)
             # 보류 사유는 완료가 확인되면 해제한다.
             if m.batch_id in self._held_completion:

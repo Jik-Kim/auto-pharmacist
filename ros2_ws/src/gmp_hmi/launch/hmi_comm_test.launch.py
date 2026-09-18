@@ -30,7 +30,7 @@ def _start(context):
         raise ValueError('item_duration_s는 2초 이상의 유한한 숫자여야 합니다')
     # 수량 범위는 공정 장부가 다시 검증한다. 시험 초기량만 조정하며 만충 용량은 1000 g이다.
     namespace = 'hmi_test'
-    recipes_dir = os.path.join(get_package_share_directory('gmp_hmi'), 'config', 'recipes')
+    recipes_dir = os.path.join(get_package_share_directory('gmp_hmi'), 'config', 'test_recipes', 'v4')
     recipes_dir = os.path.dirname(os.path.realpath(os.path.join(recipes_dir, 'recipe-01.yaml')))
     return [
         LogInfo(msg='[ROS 통신 시험] 실제 로봇 연결 없음 · http://127.0.0.1:5002 · DB: ' + db_path),

@@ -36,9 +36,9 @@ class HttpSource {
  batchUrl(id){return '/batch/'+encodeURIComponent(id)+'/download'}
 }
 const RECIPES=[
- {name:'recipe-01',product:'시연 제형 A — 기본형',items:[['A',40],['B',40],['C',40]]},
- {name:'recipe-02',product:'시연 제형 B — A 중심형',items:[['A',80],['B',40]]},
- {name:'recipe-03',product:'시연 제형 C — C 중심형',items:[['A',40],['B',40],['C',80]]},
+ {name:'recipe-01',product:'시험 제형 A — 기본형',items:[['A',40],['B',40],['C',40]]},
+ {name:'recipe-02',product:'시험 제형 B — A 중심형',items:[['A',80],['B',40]]},
+ {name:'recipe-03',product:'시험 제형 C — C 중심형',items:[['A',40],['B',40],['C',80]]},
 ].map(r=>({...r,total_g:r.items.reduce((sum,item)=>sum+item[1],0),items:r.items.map(([material_id,target_g])=>({material_id,target_g,tol_pct:5}))}));
 const RECIPE=RECIPES[0];
 class DemoSource {

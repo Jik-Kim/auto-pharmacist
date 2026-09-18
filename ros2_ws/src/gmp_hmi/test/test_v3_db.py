@@ -169,11 +169,12 @@ def state(node, batch, mode, step, t):
 def test_record_waits_physical_done_and_refreshes_late_data(tmp_path, monkeypatch):
     node = node_at(tmp_path, monkeypatch)
     state(node, 'B', 1, 'SCOOP', 1)
-    state(node, 'B', 5, 'DISCARDED', 2)  # 현재 C 의 조기 DONE
+    state(node, 'B', 5, 'CARRY', 2)  # 알 수 없는 종료 단계는 보류
     assert node.db.batch_status('B')['finished_at'] is None
     assert not (tmp_path / 'out/B.json').exists()
     assert '물리적' in node.db.batch_status('B')['note']
-    state(node, 'B', 5, 'DONE', 4)
+    state(node, 'B', 5, 'DISCARDED', 4)
+    assert node.db.batch_status('B')['result'] == 'DISCARDED'
     assert node.db.batch_status('B')['finished_at'] == 4
     node._on_dev(types.SimpleNamespace(header=stamp(3), batch_id='B', material_id='A',
                  deviation_id='D', kind=10, detail='bad batch', requires_decision=True, decision=2, operator_id='qa1'))
