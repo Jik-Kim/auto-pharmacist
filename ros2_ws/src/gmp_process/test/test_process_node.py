@@ -299,3 +299,111 @@ def test_exit_without_pause_is_ignored(cell):
         time.sleep(0.02)
     assert fut.result().granted
     assert not proc._interlock_exit.is_set()
+
+
+def _lock(col, request, reason='REFILL'):
+    from gmp_interfaces.srv import InterlockRequest
+    cli = col.create_client(InterlockRequest, 'interlock')
+    assert cli.wait_for_service(timeout_sec=5.0)
+    fut = cli.call_async(InterlockRequest.Request(request=request, reason=reason))
+    t0 = time.time()
+    while not fut.done() and time.time() - t0 < 20.0:
+        time.sleep(0.02)
+    assert fut.done()
+    return fut.result()
+
+
+def test_enter_during_qa_wait_keeps_qa_open(cell):
+    """QA 대기 중 ENTER 가 와도 QA 를 계속 받는다. 판정 뒤에는 EXIT 까지 멈췄다가 완주한다.
+
+    ENTER 가 mode 를 PAUSED 로 덮으면 _srv_qa(mode==DEVIATION 만 허용)가 영영 거부하고 루프는 QA 만
+    기다리는 교착이 된다 — PR #18 리뷰 1번.
+    """
+    from gmp_interfaces.srv import InterlockRequest
+    proc, fake, col = cell
+    fake.transfer = 2.0
+    _submit(col, [('A', 10.0, 5.0)])
+    assert _wait_mode(proc, 'DEVIATION')
+    dev = proc._pending_dev()
+
+    assert _lock(col, InterlockRequest.Request.ENTER).granted
+    assert proc.fsm.mode == 'DEVIATION', '인터락이 QA 대기 상태를 덮으면 안 된다'
+    assert 'QA' in proc.note
+    assert _lock(col, InterlockRequest.Request.ENTER).message.startswith('이미')   # 두 번 눌러도 멱등
+
+    assert _qa(col, dev.deviation_id, Deviation.APPROVED).accepted
+    assert _wait_mode(proc, 'PAUSED'), '판정 뒤에는 사람이 나올 때까지(EXIT) 멈춘다'
+    assert _lock(col, InterlockRequest.Request.EXIT).granted
+
+    # 과투입 승인 → VERIFY 규격 이탈도 승인 → 완주
+    assert _wait_mode(proc, 'DEVIATION')
+    assert _qa(col, proc._pending_dev().deviation_id, Deviation.APPROVED).accepted
+    assert _wait_done(proc) == 'DONE', f'{proc.fsm.state} / {proc.note}'
+
+
+def test_forced_deviation_is_not_auto_recovered(cell):
+    """FORCED(강제 개입)로 끝난 일탈은 AUTO_RECOVERED 가 아니다 — 자동 복구율이 부풀지 않게 (리뷰 2번)."""
+    proc, fake, col = cell
+    fake.fail['pour'] = 99
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_done(proc) == 'ERROR'
+    decisions = [(d.detail.split(' · ')[1], d.decision) for d in col.devs]
+    assert decisions == [('RETRY', Deviation.AUTO_RECOVERED), ('FORCED', Deviation.PENDING)], decisions
+
+
+def test_qa_rejects_invalid_decision_value(cell):
+    """승인(1)·폐기(2) 외의 판정값은 거부한다 — 0 을 보냈다고 폐기로 흘러가면 안 된다 (리뷰 3번)."""
+    proc, fake, col = cell
+    fake.transfer = 2.0
+    _submit(col, [('A', 10.0, 5.0)])
+    assert _wait_mode(proc, 'DEVIATION')
+    dev = proc._pending_dev()
+
+    for bad in (Deviation.PENDING, Deviation.AUTO_RECOVERED, 7):
+        r = _qa(col, dev.deviation_id, bad)
+        assert not r.accepted and str(bad) in r.message, (bad, r.message)
+    assert proc.fsm.mode == 'DEVIATION' and dev.decision == Deviation.PENDING   # 아무것도 안 바뀌었다
+    assert _qa(col, dev.deviation_id, Deviation.DISCARDED).accepted
+    assert _wait_done(proc) == 'DONE' and proc.fsm.state == 'DISCARDED'
+
+
+def test_refill_wait_then_enter_resumes_with_one_exit(cell):
+    """원료 소진 → REFILL 대기(PAUSED) 중 사람이 ENTER 를 또 누르고 EXIT 한 번 → 재개·완주 (리뷰 P2)."""
+    from gmp_interfaces.srv import InterlockRequest
+    proc, fake, col = cell
+    fake.empty = 4                                # SCOOP_EMPTY ×3 재시도 → 4회째 MATERIAL_EMPTY → REFILL
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_mode(proc, 'PAUSED'), proc.fsm.state
+    kinds = [d['kind'] for d in proc.fsm.deviations]
+    assert kinds == ['SCOOP_EMPTY'] * 4 and proc.fsm.deviations[-1]['action'] == 'REFILL'
+
+    r = _lock(col, InterlockRequest.Request.ENTER)
+    assert r.granted and r.message.startswith('이미'), r.message      # 이미 안전 자세 — safe_pose 재호출 없음
+    assert _lock(col, InterlockRequest.Request.EXIT).granted
+    assert _wait_done(proc) == 'DONE', f'{proc.fsm.state} / {proc.note} / _pause={proc._pause}'
+    # 빈 스쿱 시도 4건은 SCOOP_EMPTY 로, 성공 1건은 COMPLETE 로 남는다 — 하나도 안 잃는다
+    outcomes = [c.outcome for c in col.cycles]
+    assert outcomes.count(ScoopCycle.SCOOP_EMPTY) == 4 and outcomes.count(ScoopCycle.COMPLETE) >= 1, outcomes
+
+
+def test_scoop_skill_failure_does_not_lose_scoop_cycle(cell):
+    """스쿱 스킬이 실패(FORCE_LIMIT)해 같은 요청을 다시 부를 때 앞 시도 기록이 덮여 사라지면 안 된다 (리뷰 P2)."""
+    proc, fake, col = cell
+    fake.fail['scoop'] = 1                        # 첫 담그기만 실패 → RETRY → 성공
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_done(proc) == 'DONE', proc.note
+    assert [d['kind'] for d in proc.fsm.deviations] == ['FORCE_LIMIT']
+    outcomes = [c.outcome for c in col.cycles]
+    assert outcomes[0] == ScoopCycle.ABORTED and ScoopCycle.COMPLETE in outcomes, outcomes
+    assert len(col.cycles) == 1 + sum(r.attempts for r in proc.fsm.results)
+
+
+def test_submit_rejects_invalid_numbers_and_duplicates(cell):
+    """주문 검증은 core/recipe.parse 단일 출처 — 0·음수·NaN·중복 원료는 주문에서 거부한다 (리뷰 P2)."""
+    proc, fake, col = cell
+    for items, key in (([('A', 0.0, 5.0)], '양수'), ([('A', -10.0, 5.0)], '양수'), ([('A', 100.0, 0.0)], '양수'),
+                       ([('A', float('nan'), 5.0)], '유한'), ([('A', 100.0, float('inf'))], '유한'),
+                       ([('A', 100.0, 5.0), ('A', 50.0, 5.0)], '중복'), ([], 'items')):
+        r = _submit(col, items)
+        assert not r.accepted and key in r.message, (items, r.message)
+    assert proc.fsm is None                       # 아무 배치도 시작되지 않았다

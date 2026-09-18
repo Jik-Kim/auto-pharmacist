@@ -32,7 +32,7 @@ from gmp_dosing.core.dosing import DosingConfig
 from gmp_dosing.core.scale import ScaleConfig, WeightModel
 from gmp_process.core.attempt import Attempt, Reading
 from gmp_process.core.process_fsm import ProcessFSM
-from gmp_process.core.recipe import Item, RecipeSpec
+from gmp_process.core.recipe import parse as parse_recipe
 from gmp_process.core.station_map import StationMap
 
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -147,19 +147,20 @@ class ProcessNode(Node):
         if self.fsm and self.fsm.mode in ('RUNNING', 'PAUSED', 'DEVIATION'):
             res.accepted, res.message = False, f'실행 중 ({self.fsm.state})'
             return res
-        items = [Item(i.material_id, i.target_g, i.tol_pct) for i in req.recipe.items]
-        if not items:
-            res.accepted, res.message = False, '레시피에 items 가 없다'
-            return res
+        # 검증은 core/recipe.parse 단일 출처 — 필수 필드·중복 원료·양수·유한값. HMI 가 yaml 을 읽을 때와 같은 규칙이다.
+        # target_g=0 이 통과하면 verdict_of 의 나눗셈에서 죽고, tol 이 NaN 이면 판정이 늘 실패한다
         try:
-            self.smap.check([i.material_id for i in items])   # 배치 중간에 서는 것보다 주문 거부가 낫다
-        except KeyError as e:
-            res.accepted, res.message = False, str(e)
+            spec = parse_recipe({'product': req.recipe.product,
+                                 'items': [{'material_id': i.material_id, 'target_g': i.target_g, 'tol_pct': i.tol_pct}
+                                           for i in req.recipe.items]})
+            self.smap.check([i.material_id for i in spec.items])   # 배치 중간에 서는 것보다 주문 거부가 낫다
+        except (ValueError, KeyError) as e:
+            res.accepted, res.message = False, str(e).strip("'")
             return res
         self._seq += 1
         self.batch_id = req.recipe.batch_id or f'B-{datetime.now():%Y%m%d}-{self._seq:03d}'
         self._reset_batch()
-        self.fsm = ProcessFSM(RecipeSpec(req.recipe.product, items), self.dosing_cfg, self.scale)
+        self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale)
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name='process-run')
         self._thread.start()
         res.accepted, res.batch_id, res.message = True, self.batch_id, 'accepted'
@@ -190,6 +191,10 @@ class ProcessNode(Node):
         if req.deviation_id and req.deviation_id != pend.deviation_id:
             res.accepted, res.message = False, f'대기 중인 일탈은 {pend.deviation_id} 이다'
             return res
+        if req.decision not in (Deviation.APPROVED, Deviation.DISCARDED):
+            # 폐기는 되돌릴 수 없다 — 승인·폐기 외의 값(0 PENDING, 3 AUTO_RECOVERED, 오타)은 아무것도 하지 않는다
+            res.accepted, res.message = False, f'판정값 {req.decision} 은 APPROVED(1)·DISCARDED(2) 가 아니다'
+            return res
         self._qa_decision = 'APPROVED' if req.decision == Deviation.APPROVED else 'DISCARDED'
         pend.decision = req.decision
         pend.operator_id = req.operator_id
@@ -201,6 +206,11 @@ class ProcessNode(Node):
 
     def _srv_interlock(self, req, res):
         if req.request == InterlockRequest.Request.ENTER:
+            if self._pause or (self.fsm and self.fsm.mode == 'PAUSED'):
+                # 이미 안전 자세에서 기다리는 중 (REFILL 대기 또는 앞선 ENTER). safe_pose 를 다시 부르거나
+                # _interlock_exit 를 다시 지우면 EXIT 를 두 번 눌러야 풀린다 — 멱등하게 받는다
+                res.granted, res.message = True, '이미 대기 중 (안전 자세)'
+                return res
             # 진행 중인 스킬을 취소하는 것은 skill_node 다 (SafePose 계약: 대기 Job 은 버리고 진행 Job 에 cancel).
             # 그래서 그 스킬은 success=false 로 돌아오고, 루프가 _pause 를 보고 실패가 아니라 취소로 읽는다.
             self._pause = True
@@ -217,9 +227,13 @@ class ProcessNode(Node):
                 self._pause = False
                 return res
             # 여기서 바로 PAUSED 로 올린다 — 루프가 취소된 스킬을 받아 PAUSED 를 세우기까지의 틈에
-            # EXIT 가 들어오면 아래 게이트에 걸려 무시되고, 그러면 영영 안 깨어난다
-            if self.fsm:
+            # EXIT 가 들어오면 아래 게이트에 걸려 무시되고, 그러면 영영 안 깨어난다.
+            # 단, QA 대기(DEVIATION) 중이면 덮지 않는다 — _srv_qa 가 mode==DEVIATION 만 받으므로 덮으면
+            # QA 가 영영 거부되고 루프는 QA 만 기다리는 교착이 된다. 사람은 note 로 알리고, QA 판정이
+            # 오면 _execute 가 _pause 를 보고 EXIT 까지 멈춘다.
+            if self.fsm and self.fsm.mode == 'RUNNING':
                 self.fsm.mode = 'PAUSED'
+            self.note = f'인터락 ENTER ({req.reason or "-"})' + (' — QA 판정 대기 중' if self.fsm and self.fsm.mode == 'DEVIATION' else '')
             self._pub_state()
             self.event('WARN', 'INTERLOCK_ENTER', req.reason)
             return res
@@ -434,6 +448,12 @@ class ProcessNode(Node):
     # ── 관측·발행 ─────────────────────────────────────────────────────
     def _before(self, step: str, req: dict):
         if step == 'SCOOP' and req['kind'] == 'scoop':
+            if self._attempt is not None:
+                # 앞 시도가 닫히지 않은 채 새 시도가 시작됐다 — 스킬 실패(FORCE_LIMIT) 재시도가 여기로 온다.
+                # 덮어쓰면 ScoopCycle 1건이 사라지므로 먼저 닫는다. 붓기까지 갔다가 실패했으면 POUR_FAILED
+                a = self._attempt
+                self._close_attempt('POUR_FAILED' if (a.pre_pour is not None and a.post_pour is None
+                                                      and a.commanded_pour_fraction) else 'ABORTED')
             self._attempt = Attempt(material_id=req['material_id'], attempt=int(req.get('attempt', 1)),
                                     target_g=self.fsm.cur.target_g, actual_before_g=self.fsm.cur.actual_g,
                                     t0=self._now(), scoop_tare=self._scoop_tare)
@@ -487,7 +507,10 @@ class ProcessNode(Node):
         m.kind = getattr(Deviation, d['kind'], Deviation.TIMEOUT)
         m.detail = ' · '.join(x for x in (d['step'], d['action'], f"{d['count']}회", d.get('detail')) if x)
         m.requires_decision = d['action'] == 'QA'
-        m.decision = Deviation.PENDING if m.requires_decision else Deviation.AUTO_RECOVERED
+        # RETRY·REFILL 은 로봇이 스스로 넘어가는 것 → AUTO_RECOVERED. FORCED(강제 개입, 배치 ERROR)는 자동 복구가
+        # 아닌데 계약에 그 결말 값이 없다 → PENDING 으로 두고 detail 의 'FORCED' 로 가른다. 자동 복구율 분자에서 빠진다
+        m.decision = (Deviation.PENDING if m.requires_decision or d['action'] == 'FORCED'
+                      else Deviation.AUTO_RECOVERED)
         self._dev_msgs.append(m)
         self.pub_dev.publish(m)
         self.event('WARN', 'DEVIATION', f"{m.deviation_id} {d['kind']} @{d['step']}")

@@ -37,6 +37,7 @@ class FakeSkillNode(Node):
         self.in_cup = 0.0
         self.calls = []                         # 부른 순서 — 테스트가 본다
         self.fail = {}                          # 스킬 이름 → 앞으로 실패시킬 횟수 (실패 경로 시험용)
+        self.empty = 0                          # 앞으로 몇 번 contact_detected=false 로 답할지 (원료 소진 시험용)
         self.delay = {}                         # 스킬 이름 → 응답 전 대기 [s] (인터락 끼어들기 시험용)
         self.transfer = TRANSFER                # 붓기 전달률. 1 을 넘기면 과투입을 만들 수 있다
         self.cancelled = False                  # safe_pose 가 세운다 — 진행 중 스킬 1건이 실패로 끝난다
@@ -94,6 +95,13 @@ class FakeSkillNode(Node):
     def _scoop(self, gh):
         with self.lock:
             self.calls.append(f'scoop:{gh.request.material_id}:{gh.request.attempt}')
+            if self._fails('scoop'):
+                gh.abort()
+                return Scoop.Result(success=False, message='담그기 중 힘 상한')
+            if self.empty > 0:
+                self.empty -= 1
+                gh.succeed()
+                return Scoop.Result(success=True, contact_detected=False)
             if self.held:
                 self.content[self.held] = self.content.get(self.held, 0.0) + NOMINAL_SCOOP_G
         gh.succeed()
