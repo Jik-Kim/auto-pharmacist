@@ -17,7 +17,7 @@
 | `msg/RecipeItem` | 원료 1종의 ID·목표량·허용 오차 | `grade`, `scoop_id`는 제거. 허용 오차는 레시피가 직접 주고, 전용 스쿱은 셀 설정의 `material_id` 매핑으로 정한다 |
 | `msg/Recipe` | 배치 1건 = 원료 목록. **배열 순서가 투입 순서** | 순서 위반은 일탈이 아니라 **버그**다 — 상태기계가 순서를 바꾸지 않는다 |
 | `msg/CellState` | 공정 상태 (모드·배치·스텝·현재 스테이션) | `process_node` 단독 발행, 2 Hz + 변화 시 |
-| `msg/WeightReading` | 1회 계량 결과 (총량·풍량·순량·표준편차·표본 수·유효) | `valid=false` 면 값을 쓰지 않는다 — 정착 실패·힘 조회 실패 |
+| `msg/WeightReading` | 1회 계량 결과 (총량·풍량·순량·표준편차·표본 수·유효·**대상**) | `valid=false` 면 값을 쓰지 않는다 — 정착 실패·힘 조회 실패. **v1.2 에서 `subject`(`scoop`/`container`) 추가** — 스쿱도 용기도 `scale` 에서 재므로 `station` 으로는 구분되지 않는다 |
 | `msg/ScoopCycle` | 스쿠핑 1회 시도의 동작·계량·붓기 결과를 묶은 학습 원본 | `process_node`가 성공·실패로 시도가 종료될 때 1건 발행. `Scoop.Feedback`을 학습 기록으로 쓰지 않는다 |
 | `msg/DispenseResult` | 원료 1종 분주 결과 (목표·실측·오차·판정·시도 횟수) | 판정 `OK/UNDER/OVER`. **`OVER` 는 되돌릴 수 없으므로 일탈** |
 | `msg/Deviation` | 일탈 1건 (종류·상세·판정 필요 여부·판정·**판정자**) | 자동 복구된 것도 기록한다 — 지속성 평가의 근거. `operator_id` 는 QA 판정 후 process 가 채운다 (v1.1). **v1.2 에서 `VERIFY_MISMATCH`(계측 신뢰성)·`BATCH_OUT_OF_SPEC`(제품 규격)·`WRONG_TOOL`(폭 지문) 추가** |
