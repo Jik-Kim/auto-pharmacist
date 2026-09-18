@@ -1,8 +1,8 @@
-# 시연 레시피. 단위 g. tol_pct 는 등급별 — ACTIVE 1.0 / EXCIPIENT 5.0 이 목표지만
-# **G1 분해능 결과 전까지는 EXCIPIENT 5.0 으로 통일** (SOT D-08).
+# 시연 레시피. 단위 g. 허용 오차는 grade 없이 각 원료의 tol_pct로 직접 정한다.
+# **G1 분해능 결과 전까지는 5.0 %로 통일** (SOT D-08).
 # 9/16 강사 언급 "매뉴얼 50 g 보다 실제 오차가 클 수 있다"(R28, Q-09) → 목표를 100 g 대로 올려 둔다. G1 이 30 g 을 가르면 낮춘다.
 product: DEMO-01
 items:
-  - {material_id: A, target_g: 200.0, tol_pct: 5.0, grade: EXCIPIENT}
-  - {material_id: B, target_g: 150.0, tol_pct: 5.0, grade: EXCIPIENT}
-  - {material_id: C, target_g: 100.0, tol_pct: 5.0, grade: ACTIVE}
+  - {material_id: A, target_g: 200.0, tol_pct: 5.0}
+  - {material_id: B, target_g: 150.0, tol_pct: 5.0}
+  - {material_id: C, target_g: 100.0, tol_pct: 5.0}
