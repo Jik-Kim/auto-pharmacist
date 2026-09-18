@@ -5,14 +5,14 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 14/69 완료** (████░░░░░░░░░░░░░░░░)  ·  기준 09/18
+**전체 14/70 완료** (████░░░░░░░░░░░░░░░░)  ·  기준 09/18
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
 | gmp_interfaces [조장] | 2/6 | `███░░░░░░░` | **2** |
 | gmp_skills [A 스킬] | 0/16 | `░░░░░░░░░░` | **6** |
 | gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **4** |
-| gmp_process [C 공정] | 6/16 | `████░░░░░░` | — |
+| gmp_process [C 공정] | 6/17 | `████░░░░░░` | — |
 | gmp_hmi [D HMI·기록] | 3/15 | `██░░░░░░░░` | **1** |
 | gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **2** |
 
@@ -102,6 +102,7 @@
 - [x] `test/test_process_fsm.py`: 정상 완주(6단계 순서), 붓기 전 계량으로 초과 예방, UNDER 보정 누적, OVER → QA → DISCARD(스쿱 반납 후), VERIFY 불일치 → QA, 계량 무효 재시도, 파지 실패, REFILL 재개 — 9건 · 마감 9/17
 - [x] **[D-22]** `_pour_fraction` → `gmp_dosing/core/dosing.py` 의 `pour_fraction(need_g, scooped_g, cfg)` 로 이관 완료. `weigh_scoop` 요청은 계약 v1.2 의 `WeighHeld` Action 에 대응한다 (매핑은 `process_node` 구현 시) · 마감 9/18
 - [x] **[D-22]** `VERIFY` 이중 판정 구현 — ① `|net − Σtarget| > Σ(target×tol)` → `BATCH_OUT_OF_SPEC` ② `|net − Σ투입량| > min_resolvable_g` → `VERIFY_MISMATCH`. **임계 제약 발견**: `min_resolvable_g < Σ(target×tol)` 가 아니면 ②는 죽은 검사다 (현재 30 > 22.5) → SOT Q-11 에 기록 · 마감 9/18
+- [ ] **[D-22]** G1 결과로 **VERIFY ② 유효성 판단** — `min_resolvable_g < Σ(target×tol)` 이면 ②를 유지하고, 아니면 **②(`VERIFY_MISMATCH`)를 제거**한다. 현재 값(30 vs 22.5)이면 ②는 한 번도 안 울린다. 있으나 마나 한 검사를 남기면 나중에 "왜 안 울리지" 로 또 헤맨다. **G1(A) · `min_resolvable_g` 갱신(B) 이후** · 마감 9/21
 - [ ] `nodes/process_node.py`: 레시피 `grade/scoop_id` 제거, `Pour`·`WeighContainer` station 인자 제거, `SetGripper` 클라이언트, `QaDecision.deviation_id` 일치 검증, 시도 종료 시 `scoop_cycle` 발행을 포함한 스킬 Action/Service 연동 — **가상에서 레시피 1건 완주** · 마감 9/18
 - [ ] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) · 마감 9/21
 - [x] 스테이션 물리 배치·테이프 표시 (하드웨어) — **9/18 완료**. 좌표 실측(G3)과 SOT D-24 등록이 이제 가능하다 · 마감 9/17
