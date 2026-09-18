@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS deviations ( -- 일탈 (Deviation). 판정자·시각
   kind              TEXT NOT NULL,
   detail            TEXT,
   requires_decision INTEGER NOT NULL,
-  decision          TEXT NOT NULL,     -- PENDING | APPROVED | DISCARDED | AUTO_RECOVERED
+  decision          TEXT NOT NULL,     -- PENDING | APPROVED | DISCARDED | AUTO_RECOVERED | FORCED(강제 개입 종료, v1.2.1)
   operator_id       TEXT,
   raised_at         REAL NOT NULL,
   decided_at        REAL
