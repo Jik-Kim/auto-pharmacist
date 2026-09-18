@@ -5,12 +5,12 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 18/72 완료** (█████░░░░░░░░░░░░░░░)  ·  기준 09/18
+**전체 18/73 완료** (█████░░░░░░░░░░░░░░░)  ·  기준 09/18
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
 | gmp_interfaces [조장] | 2/6 | `███░░░░░░░` | **2** |
-| gmp_skills [A 스킬] | 0/16 | `░░░░░░░░░░` | **6** |
+| gmp_skills [A 스킬] | 0/17 | `░░░░░░░░░░` | **6** |
 | gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **4** |
 | gmp_process [C 공정] | 10/19 | `█████░░░░░` | — |
 | gmp_hmi [D HMI·기록] | 3/15 | `██░░░░░░░░` | **1** |
@@ -80,6 +80,7 @@
 - [ ] `Scoop`: 컴플라이언스 진입 → Z 힘제어 하강 → `check_force_condition` 접촉 → 깊이 상한 → 들어올림 → 해제 짝 (**G4**) · 마감 9/18
 - [ ] `Pour`: 기울임 `movel`/`movesx` + `fraction<1` 시 `amove_periodic` 털어내기 · 마감 9/18
 - [ ] `WeighContainer`: 파지 → 계량 자세 → `samples` 회 읽기 → 내려놓기 · 마감 9/18
+- [ ] **`WeighHeld`**: 들고 있는 스쿱을 계량 자세로 → `samples` 회 읽기. **파지·내려놓기 없음**. 계량 후 그 자세에 머물고(복귀 없음), 빈 그리퍼면 `success=false`. phase 는 `LIFT`/`SETTLE`/`MEASURE`. **D-22 의 `SCOOP_TARE`·`WEIGH_SCOOP`·`WEIGH_RESIDUAL` 세 단계가 이 하나를 쓴다 — 없으면 원료 1종 흐름이 안 돈다** (계약 v1.2, I-007) · 마감 9/21
 - [ ] 기동 자가진단: `get_current_tool/tcp/collision_sensitivity` 가 파라미터와 다르면 기동 거부 · 마감 9/21
 - [ ] I-004 이동 취소 수단 결정·구현 · 마감 9/21
 - [ ] `gripper_state` 10 Hz 발행, 미끄러짐 감지(`slip_mm`) · 마감 9/21
