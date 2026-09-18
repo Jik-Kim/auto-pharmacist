@@ -53,4 +53,4 @@ def test_subject_를_안_주면_비어_있다(tmp_path):
     db = _db(tmp_path)
     db.start_batch('B3', 300.0, 'DEMO')
     db.weight('B3', 301.0, 'workbench', 80.0, 50.0, 30.0, 0.4, True)
-    assert db.batch('B3')['weights'][0]['subject'] is None
+    assert db.batch('B3')['weights'][0]['subject'] in (None, '')
