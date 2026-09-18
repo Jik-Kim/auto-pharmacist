@@ -34,7 +34,11 @@ class DsrArm:
         setattr(DR_init, '__dsr__node', self.node)
         import DSR_ROBOT2 as R   # DR_init 이후에 import (두산 튜토리얼 Caution)
         from DR_common2 import posx, posj
+        from dsr_msgs2.srv import MoveStop
         self.R, self.posx, self.posj = R, posx, posj
+        self._MoveStop = MoveStop
+        self._move_stop_cli = self.node.create_client(
+            MoveStop, 'dsr_controller2/motion/move_stop')
         self.tool_name, self.tcp_name = tool_name, tcp_name
         self._now = now_fn or time.monotonic
         self._sleep = sleep_fn or time.sleep
@@ -45,48 +49,122 @@ class DsrArm:
         if self.mode == 'real':
             # 컨트롤러 등록명. 가상은 에뮬레이터에 미등록이라 건너뛴다 (SOT D-10)
             if self.tool_name:
-                R.set_tool(self.tool_name)
+                self._require_ok('set_tool', R.set_tool(self.tool_name))
             if self.tcp_name:
-                R.set_tcp(self.tcp_name)
-        R.set_velx(self.vel, self.vel)   # 병진 mm/s, 회전 deg/s
-        R.set_accx(self.acc, self.acc)
+                self._require_ok('set_tcp', R.set_tcp(self.tcp_name))
+        self._require_ok('set_velj', R.set_velj(self.vel))
+        self._require_ok('set_accj', R.set_accj(self.acc))
+        self._require_ok('set_velx', R.set_velx(self.vel, self.vel))
+        self._require_ok('set_accx', R.set_accx(self.acc, self.acc))
+        self._require_ok('set_singular_handling', R.set_singular_handling(R.DR_AVOID))
         # 래퍼 기본값은 이미 DR_BASE다. 에뮬레이터의 set_ref_coord 서비스는 응답이
         # 와도 Python 래퍼 future가 끝나지 않는 버전이 있어 실물에서만 명시한다.
         if self.mode == 'real':
-            R.set_ref_coord(R.DR_BASE)
+            self._require_ok('set_ref_coord', R.set_ref_coord(R.DR_BASE))
 
     # ── 이동 ────────────────────────────────────────────────────────────
+    @staticmethod
+    def _require_ok(command: str, result):
+        """DSR_ROBOT2 명령은 성공 시 0, 서비스/컨트롤러 거부 시 -1을 반환한다."""
+        if result != 0:
+            raise RuntimeError(f'{command} failed: return={result!r}')
+        return result
+
     def movej(self, j6, vel_scale=1.0):
-        return self.R.movej(self.posj(*j6), vel=self.vel * vel_scale, acc=self.acc * vel_scale)
+        return self._require_ok(
+            'movej', self.R.movej(self.posj(*j6), vel=self.vel * vel_scale,
+                                  acc=self.acc * vel_scale))
 
     def movel(self, x6, vel_scale=1.0):
-        return self.R.movel(self.posx(*x6), vel=self.vel * vel_scale, acc=self.acc * vel_scale)
+        return self._require_ok(
+            'movel', self.R.movel(self.posx(*x6), vel=self.vel * vel_scale,
+                                  acc=self.acc * vel_scale, ref=self.R.DR_BASE,
+                                  mod=self.R.DR_MV_MOD_ABS))
+
+    def amovej(self, j6, vel_scale=1.0):
+        return self._require_ok(
+            'amovej', self.R.amovej(self.posj(*j6), vel=self.vel * vel_scale,
+                                    acc=self.acc * vel_scale))
 
     def amovel(self, x6, vel_scale=1.0):
-        return self.R.amovel(self.posx(*x6), vel=self.vel * vel_scale, acc=self.acc * vel_scale)
+        return self._require_ok(
+            'amovel', self.R.amovel(self.posx(*x6), vel=self.vel * vel_scale,
+                                    acc=self.acc * vel_scale, ref=self.R.DR_BASE,
+                                    mod=self.R.DR_MV_MOD_ABS))
 
     def movesx(self, poses, vel_scale=1.0):
-        return self.R.movesx([self.posx(*p) for p in poses], vel=self.vel * vel_scale,
-                             acc=self.acc * vel_scale)
+        return self._require_ok(
+            'movesx', self.R.movesx([self.posx(*p) for p in poses], vel=self.vel * vel_scale,
+                                    acc=self.acc * vel_scale))
 
     def amove_periodic(self, amp, period, atime, repeat, ref_tool=True):
-        return self.R.amove_periodic(amp, period, atime=atime, repeat=repeat,
-                                    ref=self.R.DR_TOOL if ref_tool else self.R.DR_BASE)
+        return self._require_ok(
+            'amove_periodic',
+            self.R.amove_periodic(amp, period, atime=atime, repeat=repeat,
+                                  ref=self.R.DR_TOOL if ref_tool else self.R.DR_BASE))
 
     def motion_state(self):
         return self.R.check_motion()
 
     def wait_motion(self):
-        return self.R.mwait()
+        return self._require_ok('mwait', self.R.mwait())
+
+    def stop_motion(self, timeout_s: float = 2.0):
+        """첨부 예제와 같은 MoveStop(DR_SSTOP) 감속 정지."""
+        if not self._move_stop_cli.wait_for_service(timeout_sec=1.0):
+            raise RuntimeError('motion/move_stop service is unavailable')
+        req = self._MoveStop.Request()
+        req.stop_mode = self.R.DR_SSTOP
+        future = self._move_stop_cli.call_async(req)
+        rclpy.spin_until_future_complete(self.node, future, timeout_sec=timeout_s)
+        if not future.done():
+            raise TimeoutError('motion stop request timed out')
+        response = future.result()
+        if response is None or not response.success:
+            raise RuntimeError('motion stop request failed')
+
+    def wait_motion_cancellable(self, cancel_requested, timeout_s: float):
+        """비동기 모션을 워커에서 감시하고 취소·시간초과 시 감속 정지한다."""
+        deadline = self._now() + timeout_s
+        while self.motion_state() != self.R.DR_STATE_IDLE:
+            if cancel_requested():
+                self.stop_motion()
+                raise RuntimeError('cancelled')
+            if self._now() >= deadline:
+                self.stop_motion()
+                raise TimeoutError(f'motion timed out after {timeout_s:.1f}s')
+            self._sleep(0.02)
+
+    def movej_cancellable(self, j6, vel_scale, cancel_requested, timeout_s):
+        self.amovej(j6, vel_scale)
+        self.wait_motion_cancellable(cancel_requested, timeout_s)
+        actual = self.current_posj()
+        if len(actual) != 6 or max(abs(float(a) - float(b)) for a, b in zip(actual, j6)) > 1.0:
+            raise RuntimeError(f'movej target not reached: target={list(j6)} actual={actual}')
+
+    def movel_cancellable(self, x6, vel_scale, cancel_requested, timeout_s):
+        self.amovel(x6, vel_scale)
+        self.wait_motion_cancellable(cancel_requested, timeout_s)
+        actual = self.current_posx()
+        xyz_error = (max(abs(float(a) - float(b)) for a, b in zip(actual[:3], x6[:3]))
+                     if len(actual) == 6 else float('inf'))
+        if xyz_error > 2.0:
+            raise RuntimeError(f'movel target not reached: target={list(x6)} actual={actual}')
 
     def movel_rel_tool(self, dxyz, vel_scale=1.0):
         """툴 좌표계 상대 이동 (담그기·들어올리기)."""
         R = self.R
-        return R.movel(self.posx(dxyz[0], dxyz[1], dxyz[2], 0, 0, 0), vel=self.vel * vel_scale,
-                       acc=self.acc * vel_scale, ref=R.DR_TOOL, mod=R.DR_MV_MOD_REL)
+        return self._require_ok(
+            'movel_rel_tool',
+            R.movel(self.posx(dxyz[0], dxyz[1], dxyz[2], 0, 0, 0),
+                    vel=self.vel * vel_scale, acc=self.acc * vel_scale,
+                    ref=R.DR_TOOL, mod=R.DR_MV_MOD_REL))
 
     def current_posx(self):
         return list(self.R.get_current_posx()[0])
+
+    def current_posj(self):
+        return list(self.R.get_current_posj())
 
     # ── 관측 ────────────────────────────────────────────────────────────
     def tool_force(self):

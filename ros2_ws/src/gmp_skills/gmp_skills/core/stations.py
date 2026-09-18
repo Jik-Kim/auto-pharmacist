@@ -34,6 +34,8 @@ class StationTable:
             posx = body.get('posx')
             if posx is None or len(posx) != 6:
                 raise ValueError(f'stations.yaml: {sid} 의 posx 는 6개여야 한다')
+            if 'posj' in body and len(body['posj']) != 6:
+                raise ValueError(f'stations.yaml: {sid} 의 posj 는 6개여야 한다')
             self.stations[sid] = Station(sid, [float(v) for v in posx], body.get('note', ''),
                                          {k: v for k, v in body.items() if k not in ('posx', 'note')})
         missing = [s for s in self.REQUIRED if s not in self.stations]

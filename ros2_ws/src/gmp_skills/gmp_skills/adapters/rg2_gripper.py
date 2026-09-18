@@ -31,7 +31,7 @@ def width_mm_to_joint(width_mm: float) -> float:
 class Rg2Gripper:
     def __init__(self, backend: str, send_command, arm=None, grip_margin_mm=2.0, slip_mm=1.5,
                  open_width_mm=100.0, dio_pins=(1, 2), din_pins=(), logger=None, now_fn=None,
-                 state_timeout_s=0.5):
+                 state_timeout_s=0.5, dio_settle_s=0.3):
         self.backend = backend            # modbus | dio | virtual
         self._send = send_command         # callable(str) -> bool (skill_node 가 서비스 클라이언트로 만든다)
         self.arm = arm                    # dio 백엔드용 DsrArm
@@ -40,6 +40,7 @@ class Rg2Gripper:
         self.log = logger
         self._now = now_fn or time.monotonic
         self.state_timeout_s = float(state_timeout_s)
+        self.dio_settle_s = float(dio_settle_s)
         self.force_cmd_n = RG2_MAX_FORCE_N   # 드라이버 기동값 400(1/10 N)
         self._width_mm, self._width_at = None, 0.0
         self._moving_until_s = 0.0
@@ -114,6 +115,7 @@ class Rg2Gripper:
             self.arm.dout(self.dio_pins[1], not close)
             ok = True
         if self.backend == 'dio':
+            time.sleep(self.dio_settle_s)
             return ok
         while self._now() - command_at_s < timeout_s:
             with self._lock:

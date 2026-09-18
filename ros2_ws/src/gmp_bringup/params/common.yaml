@@ -10,6 +10,7 @@
       vel: 60.0                     # set_velx 병진 mm/s · 회전 deg/s 상한
       acc: 60.0
       vel_scale: 0.3                # 런치가 덮어쓴다. 실물 첫 기동 0.2
+      motion_timeout_s: 30.0        # 비동기 이동 제한. 초과·취소 시 MoveStop(DR_SSTOP)
     gripper:
       backend: modbus               # modbus | dio  (virtual 은 런치가 자동)
       open_width_mm: 100.0
@@ -23,6 +24,7 @@
       state_timeout_s: 0.5          # 이 시간 동안 폭 표본이 없으면 busy=true, grip_inferred=false
       dio_pins: [1, 2]              # dio 백엔드: DO1 grip / DO2 release (grip_test.py)
       din_pins: [0]                 # [팀 확정 필요] 파지 완료 DI (Q-03). 0 = 없음
+      dio_settle_s: 0.3             # DO1/DO2 전환 뒤 기구 동작 대기
     scale:
       method: workpiece             # workpiece | tool_force  (D-07)
       samples: 20

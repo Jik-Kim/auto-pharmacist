@@ -57,8 +57,10 @@ class SkillNode(Node):
             ('mode', 'virtual'), ('robot.id', 'dsr01'), ('robot.model', 'm0609'),
             ('robot.tool_name', 'tool_weight'), ('robot.tcp_name', 'GripperDA_v1'),
             ('robot.vel', 60.0), ('robot.acc', 60.0), ('robot.vel_scale', 0.3),
+            ('robot.motion_timeout_s', 30.0),
             ('gripper.backend', 'modbus'), ('gripper.open_width_mm', 100.0), ('gripper.grip_margin_mm', 2.0),
             ('gripper.slip_mm', 1.5), ('gripper.state_timeout_s', 0.5),
+            ('gripper.dio_settle_s', 0.3),
             ('gripper.dio_pins', [1, 2]), ('gripper.din_pins', [0]),
             ('gripper.cup_width_mm', 60.0), ('gripper.force_n', 20.0),
             ('scale.method', 'workpiece'), ('scale.samples', 20), ('scale.settle_s', 1.0), ('scale.simulated', False),
@@ -77,6 +79,7 @@ class SkillNode(Node):
         g = lambda k: self.get_parameter(k).value  # noqa: E731
         self.mode = g('mode')
         self.vel_scale = float(g('robot.vel_scale'))
+        self.motion_timeout_s = float(g('robot.motion_timeout_s'))
         self.stations = StationTable.from_yaml(g('stations_file'))
         self.arm = DsrArm(g('robot.id'), g('robot.model'), self.mode, float(g('robot.vel')), float(g('robot.acc')),
                           g('robot.tool_name'), g('robot.tcp_name'), self.get_logger(), self._now_s)
@@ -87,7 +90,8 @@ class SkillNode(Node):
                                   float(g('gripper.grip_margin_mm')), float(g('gripper.slip_mm')),
                                   float(g('gripper.open_width_mm')), tuple(g('gripper.dio_pins')),
                                   tuple(g('gripper.din_pins')), self.get_logger(), self._now_s,
-                                  float(g('gripper.state_timeout_s')))
+                                  float(g('gripper.state_timeout_s')),
+                                  float(g('gripper.dio_settle_s')))
         js_topic = '/onrobot_joint_states' if backend == 'modbus' else f"/{g('robot.id')}/gripper_joint_states"
         self.create_subscription(JointState, js_topic, self._on_js,
                                  QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
@@ -224,7 +228,14 @@ class SkillNode(Node):
         # ABOVE/AT 상수가 현재 action 파일의 Feedback 절에 있어 Goal에 생성되지 않는다.
         target = st.above(self.stations.approach_mm) if job.args['approach'] == 0 else st.posx
         job.feedback and job.feedback('MOVING')
-        self.arm.movel(target, job.args.get('vel_scale') or self.vel_scale)
+        vel_scale = job.args.get('vel_scale') or self.vel_scale
+        safe_posj = st.extra.get('posj') if job.args['approach'] != 0 else None
+        if safe_posj is not None:
+            self.arm.movej_cancellable(safe_posj, vel_scale, lambda: job.cancel,
+                                       self.motion_timeout_s)
+        else:
+            self.arm.movel_cancellable(target, vel_scale, lambda: job.cancel,
+                                       self.motion_timeout_s)
         return st.station_id
 
     def _do_grip(self, job: Job):
@@ -245,7 +256,11 @@ class SkillNode(Node):
             self.arm.compliance_off()
         except Exception:  # noqa: BLE001 — 힘제어 중이 아니었으면 무시
             pass
-        self.arm.movel(self.stations.get('safe').posx, 0.3)
+        safe = self.stations.get('safe')
+        posj = safe.extra.get('posj')
+        if posj is None:
+            raise ValueError('safe station에 posj 6개가 필요하다')
+        self.arm.movej_cancellable(posj, 0.3, lambda: job.cancel, self.motion_timeout_s)
         return True
 
     def _do_scoop(self, job: Job):

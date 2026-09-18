@@ -31,7 +31,7 @@ def generate_launch_description():
     vendor = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(
             get_package_share_directory('m0609_rg2_bringup'), 'launch', 'new_bringup.launch.py')),
-        launch_arguments={'mode': mode, 'host': LaunchConfiguration('host'), 'model': 'm0609',
+        launch_arguments={'mode': mode, 'host': LaunchConfiguration('host'), 'port': '12345', 'model': 'm0609',
                           'name': 'dsr01', 'gui': LaunchConfiguration('gui')}.items())
 
     def n(pkg, exe, extra=None, cond=None):
@@ -45,7 +45,7 @@ def generate_launch_description():
         n('gmp_process', 'process_node'),
         n('gmp_hmi', 'record_node', {'db_path': db_path, 'export_dir': os.path.dirname(db_path)}),
         n('gmp_hmi', 'hmi_web_node', {'db_path': db_path, 'recipes_dir': os.path.join(params, 'recipes'),
-                                      'port': LaunchConfiguration('port')}, cond=IfCondition(LaunchConfiguration('hmi'))),
+                                      'port': LaunchConfiguration('hmi_port')}, cond=IfCondition(LaunchConfiguration('hmi'))),
     ]
 
     return LaunchDescription([
@@ -54,7 +54,7 @@ def generate_launch_description():
         DeclareLaunchArgument('vel_scale', default_value='0.3', description='속도 스케일 0~1. 실물 첫 기동 0.2'),
         DeclareLaunchArgument('gui', default_value='false', description='RViz'),
         DeclareLaunchArgument('hmi', default_value='true', description='웹 HMI 기동'),
-        DeclareLaunchArgument('port', default_value='5000', description='HMI 포트 — 셀 밖 QA 는 http://<로봇PC>:5000'),
+        DeclareLaunchArgument('hmi_port', default_value='5000', description='HMI 포트 — 셀 밖 QA 는 http://<로봇PC>:5000'),
         vendor,
         # 벤더 스택(에뮬레이터·컨트롤러 스포너)이 뜬 뒤 우리 노드. DSR 서비스가 없으면 DsrArm 생성이 wait_for_service 에서 선다
         TimerAction(period=8.0, actions=ours),
