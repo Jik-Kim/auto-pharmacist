@@ -111,7 +111,7 @@ class ProcessFSM:
                 return {'kind': 'wait_interlock'}
         if k == 'measure' and st == 'SELF_CHECK':
             self.state = 'PICK_CONTAINER'
-            return self._carry('magazine', 'scale')
+            return self._carry('passbox_empty', 'scale')
         if k == 'carry' and st == 'PICK_CONTAINER':
             if not res.get('grip_inferred', False):
                 return self._deviate('GRIP_FAIL', 'PICK_CONTAINER', retry=req)
@@ -194,7 +194,7 @@ class ProcessFSM:
             if abs(self.verify_net_g - self.dosed_total()) > self.scale.cfg.min_resolvable_g:
                 return self._deviate('VERIFY_MISMATCH', 'VERIFY')
             self.state = 'FINISH'
-            return self._carry('scale', 'output_tray')
+            return self._carry('scale', 'passbox_done')
         if k == 'carry' and st == 'FINISH':
             if not res.get('grip_inferred', False):
                 return self._deviate('GRIP_FAIL', 'FINISH', retry=req)
@@ -256,7 +256,7 @@ class ProcessFSM:
         if decision == 'APPROVED':
             if not holding_scoop:                      # 대조 불일치를 QA 가 승인 → 그대로 완료품으로
                 self.state, self.mode = 'FINISH', 'RUNNING'
-                return self._carry('scale', 'output_tray')
+                return self._carry('scale', 'passbox_done')
             self.results.append(self.cur)              # 원료 단위 일탈 승인 → 결과에 남기고 스쿱 반납
             self.state, self.mode = 'RETURN_SCOOP', 'RUNNING'
             return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}

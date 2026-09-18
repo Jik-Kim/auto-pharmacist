@@ -111,7 +111,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | **파지 추론** | 정지 폭 > `목표 폭 + grip_margin_mm(2.0)` → 잡음. 폭 변화가 `slip_mm(1.5)` 넘으면 미끄러짐 | RG2 백래시 0.3 + 반복 0.2 mm 의 3배 |
 | **시각** | 모든 기록은 ROS 시각 | 배치 기록·CSV 를 나중에 합친다 |
 | **시간 상수** | 초 단위, 파라미터 | 주기를 바꿔도 의미가 안 변한다 |
-| **스테이션 ID** | 문자열. `magazine`, `scale`, `material_1`~`material_4`, **`scoop_1`~`scoop_4`**, `output_tray`, `passbox`, `reject_bin`, `safe`. 스쿱은 원료통 아래 (9/18 확정, `scoop_rack` 폐지) — FSM 은 `material_id` 만 넘기고 **`process_node` 가 `stations.yaml` 에서 짝(`material_id` 일치)을 찾아** `MoveToStation(scoop_N)` 을 부른다 | 열거형 메시지 상수를 쓰지 않는다 — 티칭 중 스테이션이 늘어도 재빌드 없이 yaml 만 고친다 |
+| **스테이션 ID** | 문자열. `scale`, `material_1`~`material_4`, `scoop_1`~`scoop_4`, **`passbox_empty`·`passbox_done`**(Pass Box 두 칸, D-24), **`nudge_wait`**, `reject_bin`, `safe`. 스쿱은 원료통 아래 (9/18 확정, `scoop_rack` 폐지) — FSM 은 `material_id` 만 넘기고 **`process_node` 가 `stations.yaml` 에서 짝(`material_id` 일치)을 찾아** `MoveToStation(scoop_N)` 을 부른다 | 열거형 메시지 상수를 쓰지 않는다 — 티칭 중 스테이션이 늘어도 재빌드 없이 yaml 만 고친다 |
 
 ## 3. 노드·토픽 계약
 

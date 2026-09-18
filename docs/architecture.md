@@ -39,7 +39,7 @@
 |---|---|---|---|
 | 1 | `ACCEPTED` | — | `SubmitOrder` 수락, batch_id 발급 |
 | 2 | `SELF_CHECK` | `MeasureForce`(빈 그리퍼) · 툴/TCP 확인 | 실패 → `ERROR` |
-| 3 | `PICK_CONTAINER` | **carry**: `MoveToStation(magazine, slot)` → `SetGripper(close, cup)` → `MoveToStation(scale)` → `SetGripper(open)` | 사람이 매거진에 넣어 둔 빈 약통을 로봇이 칭량 위치로 가져온다 (D-18). `grip_inferred=false` → `GRIP_FAIL` 재시도 ≤ 3 |
+| 3 | `PICK_CONTAINER` | **carry**: `MoveToStation(passbox_empty, slot)` → `SetGripper(close, cup)` → `MoveToStation(scale)` → `SetGripper(open)` | 사람이 매거진에 넣어 둔 빈 약통을 로봇이 칭량 위치로 가져온다 (D-18). `grip_inferred=false` → `GRIP_FAIL` 재시도 ≤ 3 |
 | 4 | `TARE` | `WeighContainer(tare_g=0)` | 빈 용기 풍량 기록 |
 | 5 | `PICK_SCOOP` | `MoveToStation(scoop_N)` → `SetGripper(close, scoop_width)` | `grip_inferred=false` → `Deviation(GRIP_FAIL)` 재시도 ≤ 3 |
 | 6 | `SCOOP_TARE` | **`weigh_scoop`**(빈 스쿱, 든 채로) | 스쿱 풍량 — 원료마다 1회 (D-22) |
@@ -50,7 +50,7 @@
 | 11 | `RETURN_SCOOP` | `MoveToStation(scoop_N)` → `SetGripper(open)` | 원료별 전용 스쿱 반납 — **스쿱은 그 원료통 아래에 둔다** (9/18 확정, `scoop_rack` 폐지). 교차오염 경로를 끊고 이동 거리도 줄인다 |
 | 12 | 다음 원료 → 5 | | |
 | 13 | `VERIFY` | `WeighContainer(tare_g)` — **용기를 들어** 계량 (그리퍼 비어 있음) | **두 가지를 본다** (9/17 조장 합의). ① **제품 판정** `\|net − Σtarget\| > Σ(target×tol)` → `Deviation(BATCH_OUT_OF_SPEC)` → QA (폐기 권고) ② **계측 신뢰성** `\|net − Σ투입량\| > min_resolvable_g` → `Deviation(VERIFY_MISMATCH)` → QA. **①이 규격 판정이다** — 원료가 전부 같은 방향으로 치우치면 net 과 Σ투입량이 함께 낮아 ②로는 안 잡힌다 |
-| 14 | `FINISH` | **carry**: `scale` → `output_tray(slot)` … `SafePose` | 완료품을 용기째 트레이로. `DONE` 발행, 기록 종료 |
+| 14 | `FINISH` | **carry**: `scale` → `passbox_done(slot)` … `SafePose` | 완료품을 용기째 Pass Box 「완성품」 칸으로 (D-24) — QA 가 회수한다 (D-23). `DONE` 발행, 기록 종료 |
 | E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료(VERIFY 였으면 FINISH) / DISCARD → 스쿱 반납 → **carry** `scale` → `reject_bin` → `DISCARDED` |
 | E | `PAUSED` | `SafePose` | `InterlockRequest(ENTER)` → 안전 자세 도달 후 granted / `EXIT` → 이전 상태 재개 |
 

@@ -20,7 +20,9 @@ stations:
   scoop_2:     {posx: [450.0, 120.0, 140.0, 0.0, 180.0, 0.0], note: "원료 B 전용 스쿱 (material_2 아래)", material_id: "B"}
   scoop_3:     {posx: [270.0, 500.0, 140.0, 0.0, 180.0, 0.0], note: "원료 C 전용 스쿱 (material_3 아래)", material_id: "C"}
   scoop_4:     {posx: [450.0, 530.0, 140.0, 0.0, 180.0, 0.0], note: "원료 D 전용 스쿱 (material_4 아래)", material_id: "D"}
-  magazine:    {posx: [550.0, 320.0, 200.0, 0.0, 180.0, 0.0], note: "빈 약통 매거진 — 낱개 슬롯 (겹쳐 쌓지 않는다, D-18). slot 0 이 posx, 이후 y 방향 pitch", slots: 3, slot_pitch_mm: 80.0}
-  output_tray: {posx: [580.0, 520.0, 200.0, 0.0, 180.0, 0.0], note: "완료품 트레이 — 매거진과 같은 슬롯 번호에 내려놓는다", slots: 3, slot_pitch_mm: 80.0}
-  passbox:     {posx: [640.0, 320.0, 200.0, 0.0, 180.0, 0.0], note: "패스박스 — 로봇 도달 한계, 사람은 x>700 에서"}
+  # Pass Box 두 칸 (D-24, 9/18) — 무균실이라 사람은 Pass Box 로만 주고받는다 (D-23).
+  # 판 위에 별도 매거진·트레이는 없다. 로봇이 빈통 칸에서 꺼내 쓰고 완성품 칸에 넣는다.
+  passbox_empty: {posx: [550.0, 320.0, 200.0, 0.0, 180.0, 0.0], note: "Pass Box 「빈통」 칸 — 빈 약통을 여기서 꺼낸다 (구 magazine)", slots: 1}
+  passbox_done:  {posx: [580.0, 520.0, 200.0, 0.0, 180.0, 0.0], note: "Pass Box 「완성품」 칸 — 완료품을 여기 넣는다 (구 output_tray). QA 가 회수", slots: 1}
+  nudge_wait:    {posx: [620.0, 120.0, 250.0, 0.0, 180.0, 0.0], note: "넛지 대기 위치 (D-24) — 세트 완료 후 여기서 사람이 건드리기를 기다린다. safe 와 별개"}
   reject_bin:  {posx: [200.0, 560.0, 200.0, 0.0, 180.0, 0.0], note: "폐기함"}
