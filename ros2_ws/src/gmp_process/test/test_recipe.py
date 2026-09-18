@@ -46,7 +46,7 @@ def test_숫자를_문자열로_줘도_float_로_변환된다():
 # ── 계약에 없는 키는 조용히 무시한다 ──────────────────────────────
 def test_모르는_키는_무시한다():
     """v1.2 에서 grade·scoop_id 가 계약에서 빠졌다. 옛 레시피 yaml 이 들어와도 깨지지 않아야 한다.
-    전용 스쿱은 이제 stations.yaml 의 material_N.scoop_slot 이 정한다."""
+    전용 스쿱은 이제 stations.yaml 의 scoop_N (material_id 짝) 이 정한다."""
     spec = parse(_items(dict(A, grade='ACTIVE', scoop_id='SCOOP_X')))
     assert spec.items[0] == Item('A', 200.0, 5.0)
 

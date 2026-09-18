@@ -1,6 +1,6 @@
 # Interfaces — 계약 v1.2 초안 (2026-09-18)
 
-> **v1.2 초안:** 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
+> **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > 현재 조장 1차 승인 상태다. **팀 채널 공유와 영향 담당 최소 2명 승인 전에는 확정 계약이 아니다.**
 
 정의 원본은 `ros2_ws/src/gmp_interfaces`. 이 문서는 의도·규칙·확정 값을 설명한다.
@@ -20,7 +20,7 @@
 | `msg/WeightReading` | 1회 계량 결과 (총량·풍량·순량·표준편차·표본 수·유효) | `valid=false` 면 값을 쓰지 않는다 — 정착 실패·힘 조회 실패 |
 | `msg/ScoopCycle` | 스쿠핑 1회 시도의 동작·계량·붓기 결과를 묶은 학습 원본 | `process_node`가 성공·실패로 시도가 종료될 때 1건 발행. `Scoop.Feedback`을 학습 기록으로 쓰지 않는다 |
 | `msg/DispenseResult` | 원료 1종 분주 결과 (목표·실측·오차·판정·시도 횟수) | 판정 `OK/UNDER/OVER`. **`OVER` 는 되돌릴 수 없으므로 일탈** |
-| `msg/Deviation` | 일탈 1건 (종류·상세·판정 필요 여부·판정·**판정자**) | 자동 복구된 것도 기록한다 — 지속성 평가의 근거. `operator_id` 는 QA 판정 후 process 가 채운다 (v1.1) |
+| `msg/Deviation` | 일탈 1건 (종류·상세·판정 필요 여부·판정·**판정자**) | 자동 복구된 것도 기록한다 — 지속성 평가의 근거. `operator_id` 는 QA 판정 후 process 가 채운다 (v1.1). **v1.2 에서 `VERIFY_MISMATCH`(계측 신뢰성)·`BATCH_OUT_OF_SPEC`(제품 규격)·`WRONG_TOOL`(폭 지문) 추가** |
 | `msg/CellEvent` | 로그 이벤트 (레벨·코드·문장) | 배치 기록의 원천. 모든 노드가 발행 가능 |
 | `msg/GripperState` | 폭·busy·파지 추론·안전 스위치·명령 파지력 | `skill_node` 10 Hz. 파지는 **추론**이다 (SOT D-05) |
 | `srv/SubmitOrder` | HMI → process. 레시피 접수 | 실행 중이면 거부 (`accepted=false`, 사유) |
@@ -33,7 +33,7 @@
 | `action/Scoop` | 원료통에서 퍼올리기 | Feedback은 단계·접촉력·삽입 깊이, Result는 최종 접촉 여부·최대 힘·깊이 |
 | `action/Pour` | 고정 칭량 위치의 용기에 붓기 (`fraction<1` 이면 털어내기) | 목적지는 skill 설정의 `scale`; `target_station`은 제거 |
 | `action/WeighContainer` | 고정 `scale`의 용기를 들어 계량하고 내려놓기 (복합 스킬) | `container_station`은 제거. 결과는 `WeightReading`. **그리퍼가 비어 있어야 한다** — TARE 와 배치 끝 VERIFY 에서만 (D-22) |
-| **`action/WeighHeld`** (후속 계약 예정, 미합의) | **들고 있는 것(스쿱)을 그대로** 계량 자세로 가져가 재기 — 파지·내려놓기 없음 | D-22 의 `weigh_scoop`. `WeighContainer` 에 `mode` 필드로 넣는 안도 가능 — I-007에서 별도 합의 |
+| **`action/WeighHeld`** (v1.2) | **들고 있는 것(스쿱)을 그대로** 계량 자세로 가져가 재기 — 파지·내려놓기 없음 | D-22 의 `SCOOP_TARE`·`WEIGH_SCOOP`·`WEIGH_RESIDUAL` 세 단계가 **이 요청 하나**를 쓴다 (차이는 process 가 결과를 어디에 담느냐뿐). **계량 후 계량 자세에 머문다**(복귀 없음) · **빈 그리퍼면 `success=false`**. phase 는 `LIFT`/`SETTLE`/`MEASURE` — `WeighContainer` 와 달리 `GRIP`·`PLACE` 가 없어 `mode` 필드로 합치지 않았다 (9/18 확정, I-007) |
 | `action/RunBatch` | HMI/CLI → process. 배치 실행 | 피드백 `CellState` + 마지막 `DispenseResult` |
 
 ### 1.1 `Scoop`과 `ScoopCycle`의 책임 경계
@@ -42,7 +42,7 @@
 - `Scoop.Result`는 퍼올리기 동작이 끝난 시점의 기계적 결과다. 아직 붓기와 잔량 계량 전이므로 실제 투입량을 담지 않는다.
 - `ScoopCycle`은 `process_node`가 `Scoop.Result`, 빈 스쿱·붓기 전·붓기 후 계량, `Pour` 명령을 합쳐 만드는 **시도 1회의 완결 기록**이다. 실패한 시도는 확정 즉시 발행하고 수집하지 못한 계량을 `valid=false`로 둔다.
 - 원료 1종의 모든 재시도가 끝난 최종 판정은 기존 `DispenseResult`가 담당한다.
-- `scoop_id`는 따로 보내지 않고 `stations.yaml`의 `material_id → scoop_slot` 매핑으로 전용 스쿱을 단일 관리한다.
+- `scoop_id`는 따로 보내지 않는다. 전용 스쿱은 **원료통 아래에 원료별로** 두고(9/18 확정, `scoop_rack` 폐지) `stations.yaml` 의 `scoop_1`~`scoop_4` 가 `material_id` 로 짝을 이룬다.
 
 | `ScoopCycle` 필드 | 의미 |
 |---|---|
@@ -69,7 +69,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 
 | 메시지 | 방향 | 필드 의미 |
 |---|---|---|
-| `RecipeItem` | HMI → process (`Recipe.items`) | `material_id`: 원료 ID, `target_g`: 목표 순량, `tol_pct`: 허용 오차율. 전용 스쿱은 메시지가 아니라 `stations.yaml`의 원료별 `scoop_slot`로 찾는다 |
+| `RecipeItem` | HMI → process (`Recipe.items`) | `material_id`: 원료 ID, `target_g`: 목표 순량, `tol_pct`: 허용 오차율. 전용 스쿱은 메시지가 아니라 `stations.yaml` 의 `scoop_N`(`material_id` 일치)으로 찾는다 |
 | `Recipe` | HMI → process (`SubmitOrder`/`RunBatch`) | `header`: 생성 시각, `batch_id`: 빈 값이면 process가 발급, `product`: 표시명, `items`: 투입 순서 그대로의 원료 배열 |
 | `CellState` | process → HMI·record | `mode`: 셀 운전 모드, `batch_id`: 현재 배치, `step`: FSM 상태, `item_index`: 0 기반 원료 순번, `station`: 마지막 도착 위치, `note`: 화면용 보충 설명 |
 | `WeightReading` | skill → process (`WeighContainer.Result`), process → HMI·record (`weight`) | `gross_g`: 기준 차감 전 값, `tare_g`: 동일 자세·파지의 빈 용기/스쿱 기준, `net_g`: 차감값, `std_g`·`samples`: 분산과 표본 수, `valid`: 사용 가능 여부, `station`: 계량 자세 ID |
@@ -111,7 +111,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | **파지 추론** | 정지 폭 > `목표 폭 + grip_margin_mm(2.0)` → 잡음. 폭 변화가 `slip_mm(1.5)` 넘으면 미끄러짐 | RG2 백래시 0.3 + 반복 0.2 mm 의 3배 |
 | **시각** | 모든 기록은 ROS 시각 | 배치 기록·CSV 를 나중에 합친다 |
 | **시간 상수** | 초 단위, 파라미터 | 주기를 바꿔도 의미가 안 변한다 |
-| **스테이션 ID** | 문자열. `magazine`, `scale`, `material_1`~`material_4`, `scoop_rack`, `output_tray`, `passbox`, `reject_bin`, `safe` | 열거형 메시지 상수를 쓰지 않는다 — 티칭 중 스테이션이 늘어도 재빌드 없이 yaml 만 고친다 |
+| **스테이션 ID** | 문자열. `magazine`, `scale`, `material_1`~`material_4`, **`scoop_1`~`scoop_4`**, `output_tray`, `passbox`, `reject_bin`, `safe`. 스쿱은 원료통 아래 (9/18 확정, `scoop_rack` 폐지) — FSM 은 `material_id` 만 넘기고 **`process_node` 가 `stations.yaml` 에서 짝(`material_id` 일치)을 찾아** `MoveToStation(scoop_N)` 을 부른다 | 열거형 메시지 상수를 쓰지 않는다 — 티칭 중 스테이션이 늘어도 재빌드 없이 yaml 만 고친다 |
 
 ## 3. 노드·토픽 계약
 
@@ -146,7 +146,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | 파일 | 담는 것 | 담당 |
 |---|---|---|
 | `common.yaml` | `robot.*`(id·모델·툴·TCP·속도), `gripper.*`(백엔드·폭·힘·마진), `scale.*`(표본·정착·환산·영점), `dosing.*`(시도 상한·털어내기 비율), `safety.*`(힘 상한·충돌 감도), `interlock.*`, 타임아웃 | 조장 (값은 담당이 제안) |
-| `stations.yaml` | 스테이션 ID → `posx`(mm·deg) 접근점/작업점, 계량 자세, 원료별 `material_id`·`scoop_slot`. **데이터 yaml** — 런치가 경로만 넘기고 `skill_node` 가 직접 읽는다 | A (티칭) |
+| `stations.yaml` | 스테이션 ID → `posx`(mm·deg) 접근점/작업점, 계량 자세, 원료통·전용 스쿱의 `material_id` 짝. **데이터 yaml** — 런치가 경로만 넘기고 `skill_node` 가 직접 읽는다 | A (티칭) |
 | `recipes/*.yaml` | 배치 레시피. **스키마·검증은 `gmp_process/core/recipe.py` 가 단일 출처** — D 의 HMI 는 `recipe.load()` 로 읽어 `SubmitOrder` 로 보낸다 (인라인 파싱 금지). 값은 G1 결과로 조장이 확정 (D-08) | **C** (스키마·검증) |
 
 ## 5. QoS
@@ -193,6 +193,6 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 ## 8. v1.2 적용 인계
 
 - **A/조장:** `SetGripper` 서버와 계약 정의 완료. `Scoop` 본문에서 Feedback/Result 관측값을 실제 채우고, `GripperState`의 `busy/grip_inferred/safety_triggered`를 어댑터 실값에 연결하며 G1에서 `MeasureForce`의 tool/TCP 기준을 확인한다.
-- **C:** 레시피 파서·변환에서 `grade/scoop_id` 제거하고 `material_id → scoop_slot` 설정 사용, `Pour`·`WeighContainer` 클라이언트의 station 인자 제거, `SetGripper` 적용, `QaDecision.deviation_id` 일치 확인, 정상은 `WEIGH_RESIDUAL` 뒤·실패는 실패 확정 시 `/cell/scoop_cycle` 발행. `CellState.station/note`도 실제 전이값으로 채운다.
+- **C:** 레시피 파서·변환에서 `grade/scoop_id` 제거하고 `stations.yaml` 의 `scoop_N`(`material_id` 짝) 사용, `Pour`·`WeighContainer` 클라이언트의 station 인자 제거, `SetGripper` 적용, `QaDecision.deviation_id` 일치 확인, 정상은 `WEIGH_RESIDUAL` 뒤·실패는 실패 확정 시 `/cell/scoop_cycle` 발행. `CellState.station/note`도 실제 전이값으로 채운다.
 - **D:** 주문 생성에서 `grade/scoop_id`, `QaDecision.Request`에서 `batch_id` 제거(웹 화면의 배치 표시는 유지), `scoop_cycle` 구독·DB 테이블·JSON 내보내기 추가.
 - **승인:** 팀 채널 공유 후 영향 담당 최소 1명의 추가 승인이 있어야 v1.2를 확정한다.

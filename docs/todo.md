@@ -5,7 +5,7 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 10/68 완료** (███░░░░░░░░░░░░░░░░░)  ·  기준 09/18
+**전체 11/69 완료** (███░░░░░░░░░░░░░░░░░)  ·  기준 09/18
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
@@ -13,8 +13,8 @@
 | gmp_skills [A 스킬] | 0/16 | `░░░░░░░░░░` | **6** |
 | gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **4** |
 | gmp_process [C 공정] | 3/16 | `██░░░░░░░░` | **1** |
-| gmp_hmi [D HMI·기록] | 3/14 | `██░░░░░░░░` | **1** |
-| gmp_bringup [조장] | 2/9 | `██░░░░░░░░` | **2** |
+| gmp_hmi [D HMI·기록] | 3/15 | `██░░░░░░░░` | **1** |
+| gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **2** |
 
 **마감이 지난 항목 16건**
 
@@ -22,7 +22,7 @@
 - `9/17` gmp_interfaces — G1 결과로 도징 단위 확정 → RecipeItem.tol_pct 기본값·레시피 yaml 갱신 (SOT D-08)
 - `9/16` gmp_skills — adapters/dsr_arm.py: DR_init·set_tool/tcp·movej/movel·get_tool_force·re…
 - `9/17` gmp_skills — adapters/rg2_gripper.py: modbus 백엔드 (/onrobot/sendCommand 폭 정수, /onrobo…
-- `9/17` gmp_skills — nodes/skill_node.py: 워커 스레드 + 큐, MoveToStation·Grip·MeasureForce·SafePo…
+- `9/17` gmp_skills — nodes/skill_node.py: 워커 스레드 + 큐, MoveToStation·SetGripper·MeasureForce·…
 - `9/17` gmp_skills — G1 외력 분해능 측정 (I-001) — 결과를 SOT D-08 에
 - `9/17` gmp_skills — G2 그리퍼 modbus 실물 확인 (Q-02) — 안 되면 dio 백엔드 (Q-03 핀)
 - `9/17` gmp_skills — G3 stations.yaml 9곳 티칭 — 판 좌표계(D-15) 우선, 안 되면 base posx
@@ -35,20 +35,8 @@
 - `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
 - `9/17` gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
 
-**오늘 마감 23건**
+**오늘 마감 22건**
 
-- gmp_interfaces — 계약 v1.2: Deviation.kind 에 WRONG_TOOL·VERIFY_MISMATCH 추가, WeighHeld Acti…
-- gmp_interfaces — G1 결과로 도징 단위 확정 → RecipeItem.tol_pct 기본값·레시피 yaml 갱신 (SOT D-08)
-- gmp_skills — adapters/rg2_gripper.py: modbus 백엔드 (/onrobot/sendCommand 폭 정수, /onrobo…
-- gmp_skills — nodes/skill_node.py: 워커 스레드 + 큐, MoveToStation·SetGripper·MeasureForce·SafePo…
-- gmp_skills — G1 외력 분해능 측정 (I-001) — 결과를 SOT D-08 에
-- gmp_skills — G2 그리퍼 modbus 실물 확인 (Q-02) — 안 되면 dio 백엔드 (Q-03 핀)
-- gmp_skills — G3 stations.yaml 9곳 티칭 — 판 좌표계(D-15) 우선, 안 되면 base posx
-- gmp_dosing — test/test_dosing.py: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ…
-- gmp_dosing — G1 σ 로 scale.min_resolvable_g 갱신, 30 g / 100 g 단위 확정 (조장과)
-- gmp_process — 스테이션 물리 배치·테이프 표시 (하드웨어)
-- gmp_hmi — sudo apt install python3-flask 후 가상 모드에서 주문 → 상태 → QA 승인 → 이력 조회 한 바퀴
-- gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
 - gmp_interfaces — 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02)
 - gmp_interfaces — [D-22] 계약 v1.2 에 Deviation.kind BATCH_OUT_OF_SPEC 추가 — VERIFY 를 계측 신뢰성(…
 - gmp_skills — [추가 7] nudge 감지: 워커 유휴 루프·계량 settle·붓기 대기에서 get_tool_force 100 ms 폴링, 임…
@@ -61,15 +49,14 @@
 - gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
 - gmp_process — [D-22] _pour_fraction 을 B 의 dosing.py 로 이관, weigh_scoop 임시 구현(계약 전) → v…
 - gmp_process — [D-22] VERIFY 이중 판정 구현 — 순량 vs Σ투입량(VERIFY_MISMATCH, 계측 신뢰성) + 순량 vs 레시…
-- gmp_process — nodes/process_node.py: 스킬 Action/Service 클라이언트, RunBatch·SubmitOrder·Qa…
+- gmp_process — nodes/process_node.py: 레시피 grade/scoop_id 제거, Pour·WeighContainer stati…
 - gmp_process — [추가 7] NUDGE 전이: RUNNING→PAUSED(NUDGE), 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 …
-- gmp_process — [9/18 확정] 배치 변경 반영 — scale = 판 중앙 작업 공간, 스쿱 원료별 분산, 원료 선반은 판 바깥. statio…
-- gmp_process — [9/18 확정] 회수·넛지 운영 (D-23 후보) — "한 세트" 정의(배치/레시피/용기 N통), 패스박스·폐기함 가득참을 카…
+- gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
 - gmp_process — [버그] 일탈 QA 대기가 무한 블로킹 — process_node.py:110 self._qa.wait() 에 타임아웃 인자가 …
+- gmp_hmi — v1.2 적용: 주문 메시지의 grade/scoop_id, QaDecision.Request의 batch_id 제거(웹 표시는 …
 - gmp_hmi — 다른 기기(폰·노트북)에서 http://<로봇PC>:5000 접속 확인 — 시연 T6(c) 장면
 - gmp_hmi — process_node 가 BATCH_START 이벤트에 product 를 싣게 C 와 합의 (batches.product 채우…
 - gmp_hmi — [9/18 확정] 회수 확인 버튼 — QA 가 패스박스·폐기함 비운 뒤 누르면 카운터 리셋 + HMI_* audit 기록 (누가…
-- gmp_bringup — [9/18 확정] stations.yaml 구조 개편 — scoop_rack 제거하고 material_N 에 스쿱 좌표 편입, …
 - gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — output_tray.capacity·reject_bin.capa…
 - gmp_bringup — common.yaml 에 qa.decision_timeout_s·interlock.timeout_s 추가 — docs/inter…
 
@@ -125,8 +112,8 @@
 - [ ] **[추가 7] NUDGE 전이**: `RUNNING→PAUSED(NUDGE)`, 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 재사용) + 테스트 · 마감 9/18
 - [ ] **[추가 1] 폭 지문**: `PICK_SCOOP`·`PICK_CONTAINER` 의 `SetGripper` 결과 폭이 원료별 기대 폭(±margin) 과 다르면 `Deviation(WRONG_TOOL)` → QA · 마감 9/21 (A 와)
 - [ ] **[추가 3] 재기동 이어하기**: 기동 시 DB 의 미완료 배치 조회 → 상태·원료 인덱스·tare 복원 → 용기 재계량 후 재개. 시연: 실행 중 Ctrl-C → 재실행 · 마감 9/22 (D 와)
-- [ ] **[9/18 확정]** 배치 변경 반영 — `scale` = 판 중앙 작업 공간, 스쿱 **원료별 분산**, 원료 선반은 판 바깥. `stations.yaml` 확정 후 `process_fsm` 의 `scoop_rack` 단일 참조 제거 (`PICK_SCOOP`/`RETURN_SCOOP` → `material_N` 의 스쿱 좌표) · 마감 9/18
-- [ ] **[9/18 확정]** 회수·넛지 운영 (D-23 후보) — "한 세트" 정의(배치/레시피/용기 N통), 패스박스·폐기함 가득참을 **카운트로** 판단(비전 없음), 세트 완료 후 `NUDGE` 로 다음 세트 진행 · 마감 9/18
+- [ ] **[9/18 확정]** 배치 변경 반영 — 스쿱 원료별 분산은 반영 완료(`scoop_N`, `process_fsm` 의 `scoop_rack` 참조 제거). **남은 것: `scale`(판 중앙)·원료 선반(판 바깥)·사용 불가 영역의 실제 좌표** — 시연 공간 세팅 후 조장이 `stations.yaml` 에 채운다. SOT D-24 로 등록 필요 · 마감 9/21
+- [ ] **[9/18 확정]** 회수·넛지 운영 — **운영 방식은 SOT D-23 으로 확정**. 남은 미정 3건: (a) 가득참 판단은 **카운트**(비전 없음) → `output_tray.capacity`·`reject_bin.capacity` (b) QA 가 비운 것을 아는 방법 — HMI 확인 버튼 유력 (c) **"한 세트"의 정의**(배치 1건 / 레시피 1건 / 용기 N통) · 마감 9/18
 - [ ] **[버그] 일탈 QA 대기가 무한 블로킹** — `process_node.py:110` `self._qa.wait()` 에 타임아웃 인자가 없어 QA 가 응답 안 하면 워커 스레드가 영원히 멈춘다. `wait_interlock`(113) 도 동일. 타임아웃 시 동작(보류 이송 + 미결 기록?) 결정 후 구현 — **판정 자동화는 하지 않는다** · 마감 9/18
 - [ ] **[버그] `RunBatch` cancel 콜백 없음** — 지금 배치를 중단할 방법이 노드를 죽이는 것뿐. 대기 이벤트를 깨워 `ABORTED` 로. D 의 중단 버튼과 짝 · 마감 9/21
 
@@ -153,7 +140,7 @@
 - [ ] `tools/env.sh` 세 워크스페이스 source · 마감 9/16
 - [ ] 가상 모드에서 4노드 기동 확인, `ros2 node list`/`rqt_graph` 캡처 · 마감 9/17
 - [ ] `docs/demo_run_procedure.md` T1~T7 실물 검증 · 마감 9/23
-- [ ] **[9/18 확정]** `stations.yaml` 구조 개편 — `scoop_rack` 제거하고 `material_N` 에 스쿱 좌표 편입, 판/원료선반 좌표계 분리 여부(D-15) 결정. **G3 티칭 전에** 정해야 좌표를 두 번 안 잡는다 · 마감 9/18
+- [x] **[9/18 확정]** `stations.yaml` 구조 개편 — `scoop_rack` 폐지, `scoop_1`~`scoop_4` 신설 (원료통 아래, `material_id` 짝). FSM 은 `material_id` 만 넘기고 `process_node` 가 짝을 찾는다. **좌표값은 실측 후 조장이 채운다** · 마감 9/18
 - [ ] **[9/18 확정]** `common.yaml` 에 회수 용량 추가 — `output_tray.capacity`·`reject_bin.capacity`, 도달 시 인터락 요청 · 마감 9/18
 - [ ] `common.yaml` 에 `qa.decision_timeout_s`·`interlock.timeout_s` 추가 — `docs/interfaces.md` §4 는 common.yaml 이 "타임아웃" 을 담는다고 적혀 있으나 **실제 키가 하나도 없다** · 마감 9/18
 - [ ] BRD v1.0 · SDD v1.0 (`docs/spec/`) · 마감 9/28
