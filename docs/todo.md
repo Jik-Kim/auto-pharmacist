@@ -5,50 +5,50 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 26/78 완료** (███████░░░░░░░░░░░░░)  ·  기준 09/18
+**전체 28/81 완료** (███████░░░░░░░░░░░░░)  ·  기준 09/19
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
-| gmp_interfaces [조장] | 4/7 | `██████░░░░` | **1** |
-| gmp_skills [A 스킬] | 0/18 | `░░░░░░░░░░` | **6** |
-| gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **4** |
-| gmp_process [C 공정] | 11/21 | `█████░░░░░` | — |
+| gmp_interfaces [조장] | 4/7 | `██████░░░░` | **3** |
+| gmp_skills [A 스킬] | 0/18 | `░░░░░░░░░░` | **13** |
+| gmp_dosing [B 도징] | 2/10 | `██░░░░░░░░` | **4** |
+| gmp_process [C 공정] | 11/21 | `█████░░░░░` | **2** |
 | gmp_hmi [D HMI·기록] | 8/16 | `█████░░░░░` | **1** |
-| gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **2** |
+| gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **4** |
 
-**마감이 지난 항목 14건**
+**마감이 지난 항목 27건**
 
+- `9/18` gmp_interfaces — 계약 v1.2 팀 채널 공지 — 위 항목 중 공지만 남았다 (WeighHeld 신설·Deviation.kind 3종 추가)
 - `9/17` gmp_interfaces — G1 결과로 도징 단위 확정 → RecipeItem.tol_pct 기본값·레시피 yaml 갱신 (SOT D-08)
+- `9/18` gmp_interfaces — 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02)
+- `9/18` gmp_skills — [추가 7] nudge 감지: 워커 유휴 루프·계량 settle·붓기 대기에서 get_tool_force 100 ms 폴링, 임…
+- `9/18` gmp_skills — [추가 1] 폭 지문: 스쿱 손잡이 폭 15/18/21 mm 제작(테이프), stations.yaml/common.yaml 에 …
 - `9/16` gmp_skills — adapters/dsr_arm.py: DR_init·set_tool/tcp·movej/movel·get_tool_force·re…
 - `9/17` gmp_skills — adapters/rg2_gripper.py: modbus 백엔드 (/onrobot/sendCommand 폭 정수, /onrobo…
 - `9/17` gmp_skills — nodes/skill_node.py: 워커 스레드 + 큐, MoveToStation·SetGripper·MeasureForce·…
 - `9/17` gmp_skills — G1 외력 분해능 측정 (I-001) — 결과를 SOT D-08 에
 - `9/17` gmp_skills — G2 그리퍼 modbus 실물 확인 (Q-02) — 안 되면 dio 백엔드 (Q-03 핀)
 - `9/17` gmp_skills — G3 stations.yaml 9곳 티칭 — 판 좌표계(D-15) 우선, 안 되면 base posx
+- `9/18` gmp_skills — Scoop: 컴플라이언스 진입 → Z 힘제어 하강 → check_force_condition 접촉 → 깊이 상한 → 들어올림 →…
+- `9/18` gmp_skills — Pour: 기울임 movel/movesx + fraction<1 시 amove_periodic 털어내기
+- `9/18` gmp_skills — WeighContainer: 파지 → 계량 자세 → samples 회 읽기 → 내려놓기
+- `9/18` gmp_skills — [9/18 확정] 새 배치에서 용기를 파지한 채 passbox·reject_bin 도달 확인 (접근 높이 60 mm 포함) — …
+- `9/18` gmp_skills — [9/18 확정] 원료 선반(판 바깥·높이 다름)에서 Scoop 힘제어 확인 — 뻗은 자세의 특이점 영향 (힘제어는 특이점 영역…
 - `9/16` gmp_dosing — core/scale.py: WeightModel — 힘/작업물무게 → g, 영점(tare) 저장·적용, σ 계산, valid 판정
 - `9/16` gmp_dosing — core/dosing.py: decide(target_g, actual_g, tol_pct, attempts, history) …
 - `9/17` gmp_dosing — test/test_dosing.py: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ…
-- `9/17` gmp_dosing — G1 σ 로 scale.min_resolvable_g 갱신, 30 g / 100 g 단위 확정 (조장과)
+- `9/18` gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
+- `9/18` gmp_process — [추가 7] NUDGE 전이: RUNNING→PAUSED(NUDGE), 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 …
+- `9/18` gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
 - `9/17` gmp_hmi — [연동 대기 — 9/18 확인] 가상 모드에서 주문 → 상태 → QA 승인 → 이력 조회 한 바퀴 — HMI 시험 공정 검증은 …
 - `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
 - `9/17` gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
+- `9/18` gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — passbox_done.capacity·reject_bin.cap…
+- `9/18` gmp_bringup — common.yaml 에 qa.decision_timeout_s·interlock.timeout_s 추가 — docs/inter…
 
-**오늘 마감 14건**
+**오늘 마감 1건**
 
-- gmp_interfaces — 계약 v1.2 팀 채널 공지 — 위 항목 중 공지만 남았다 (WeighHeld 신설·Deviation.kind 3종 추가)
-- gmp_interfaces — 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02)
-- gmp_skills — [추가 7] nudge 감지: 워커 유휴 루프·계량 settle·붓기 대기에서 get_tool_force 100 ms 폴링, 임…
-- gmp_skills — [추가 1] 폭 지문: 스쿱 손잡이 폭 15/18/21 mm 제작(테이프), stations.yaml/common.yaml 에 …
-- gmp_skills — Scoop: 컴플라이언스 진입 → Z 힘제어 하강 → check_force_condition 접촉 → 깊이 상한 → 들어올림 →…
-- gmp_skills — Pour: 기울임 movel/movesx + fraction<1 시 amove_periodic 털어내기
-- gmp_skills — WeighContainer: 파지 → 계량 자세 → samples 회 읽기 → 내려놓기
-- gmp_skills — [9/18 확정] 새 배치에서 용기를 파지한 채 passbox·reject_bin 도달 확인 (접근 높이 60 mm 포함) — …
-- gmp_skills — [9/18 확정] 원료 선반(판 바깥·높이 다름)에서 Scoop 힘제어 확인 — 뻗은 자세의 특이점 영향 (힘제어는 특이점 영역…
-- gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
-- gmp_process — [추가 7] NUDGE 전이: RUNNING→PAUSED(NUDGE), 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 …
-- gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
-- gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — passbox_done.capacity·reject_bin.cap…
-- gmp_bringup — common.yaml 에 qa.decision_timeout_s·interlock.timeout_s 추가 — docs/inter…
+- gmp_hmi — [추가 7] HMI: PAUSED 사유(NUDGE/REFILL) 표시, 이벤트 타임라인에 NUDGE
 
 > 이 표는 `python3 tools/todo_stats.py` 가 체크박스를 세어 다시 쓴다. 손으로 고치지 않는다.
 
@@ -88,9 +88,12 @@
 - [ ] `core/scale.py`: `WeightModel` — 힘/작업물무게 → g, 영점(tare) 저장·적용, σ 계산, `valid` 판정 · 마감 9/16
 - [ ] `core/dosing.py`: `decide(target_g, actual_g, tol_pct, attempts, history) → Decision(action, fraction)` — `OK/UNDER/OVER/TIMEOUT`, 보정 투입 시 `fraction` 축소 규칙 · 마감 9/16
 - [ ] `test/test_dosing.py`: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ 가 tol 보다 클 때 `valid=false` · 마감 9/17
-- [ ] G1 σ 로 `scale.min_resolvable_g` 갱신, 30 g / 100 g 단위 확정 (조장과) · 마감 9/17
+- [x] G1 σ 로 `scale.min_resolvable_g` 갱신 — **9/18 3σ = 18.0 g → 19**, `max_std_g 5`, tool_force `offset_g 260.2`. CSV·`core/calib.py`·`config/scale_reference.yaml` 로 재현 가능 (PR #22, C 가 이어서) · 마감 9/17
+- [ ] **[G1 후속]** 판정 근거 확정 (Q-11) — 원료별 ±5 g 는 3σ 18 g 로 못 가른다. 제안: 합격 판정은 VERIFY ①, 스쿱 계량은 붓기 비율용. 조장 확인 후 레시피 `tol_pct`·FSM 판정 위치 반영 · 마감 9/21
+- [ ] **[G1 후속]** skill_node `measure_force` 표본 간격 — 9/19 확인: 0.82 s 간격이면 중복 0 %·3σ 12.6, 0.05 s 면 43 % 중복·3σ 18. `period_s`(현재 0.05 고정) 를 `scale.period_s` 파라미터로 빼고 ≥ 0.5 s 로 (A 와). 그 뒤 `min_resolvable_g` 19 → 14 · 마감 9/21
+- [x] **[G1 후속]** `get_workpiece_weight` 경로 측정 — 9/19 두 경로 동시 측정. **tool_force 확정, workpiece 탈락** (reset 이 안 먹어 잔류 오차가 값을 지배). `common.yaml` method/gain/offset/max_std_g 반영, SOT D-07 · 마감 9/19
 - [ ] 스쿱 1회 퍼올림량 실측 → `dosing.scoop_nominal_g` (보정 투입 fraction 계산 근거) · 마감 9/18
-- [ ] 보정 계수: 실제 저울 vs 로봇 측정 5점 비교 → `scale.gain`/`scale.offset` · 마감 9/21
+- [ ] 보정 계수: 실제 저울 vs 로봇 측정 다중 무게 → `scale.gain`/`scale.offset` — **9/19 두 점(32·132 g) 으로 gain 0.886·offset 247.1 반영**. 3점째(≈86 g)로 직선 확인만 남음 · 마감 9/21
 
 ## gmp_process [C 공정]
 - [x] `core/recipe.py`: yaml → `RecipeSpec` 변환, 필수 필드·원료 중복·양수 검증 + `test_recipe.py` 25건 (`Recipe` msg 변환은 계층 원칙상 `nodes/` 가 한다 / **순서는 검증 대상이 아니다** — 계약 1절 "순서 위반은 일탈이 아니라 버그") · 마감 9/16
