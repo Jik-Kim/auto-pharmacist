@@ -183,7 +183,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 
 **규칙**
 - 배치 종료 시 `records/<batch_id>.json` 으로 내보낸다 — **DB 가 원본, JSON 은 사본**(제출·인쇄용).
-- 사람 접촉(D-21): `skill_node` 가 `CellEvent(code='NUDGE', text='<|F| N>')` 발행 → process `RUNNING→PAUSED(NUDGE)`, 다음 `NUDGE` 로 재개 (`PAUSED→이전 상태`). 일탈이 아니라 이벤트다 — MTBI 분모에 들지 않는다.
+- 사람 접촉(D-21): `skill_node` 가 `CellEvent(code='NUDGE', text='<|F| N>')` 발행 → process `RUNNING→PAUSED(NUDGE)`, 다음 `NUDGE` 로 재개 (`PAUSED→이전 상태`). 일탈이 아니라 이벤트다 — MTBI 분모에 들지 않는다. process 는 정지에 들어갈 때 `CellEvent(code='PAUSE', level=WARN, text='<이유> 정지 — …')`, 풀릴 때 `CellEvent(code='RESUME', text='<이유> 해제')` 를 낸다 (이유 `NUDGE` | `INTERLOCK`). HMI 타임라인·PAUSED 사유 표시용. **세트 경계(D-23)** 는 정지가 아니라 별도 코드다: 반송 뒤 `nudge_wait` 에서 기다리기 시작할 때 `CellEvent(code='SET_DONE', text='NUDGE_WAIT — 세트 완료, 건드리면 다음 세트')`, 사람이 건드려 배치가 끝날 때 `CellEvent(code='SET_NEXT')`. 그동안 `state.mode=PAUSED`, `step=NUDGE_WAIT`, 주문은 거부된다.
 - HMI 조작은 `CellEvent(code='HMI_ORDER'|'HMI_QA_APPROVE'|'HMI_QA_DISCARD'|'HMI_INTERLOCK_ENTER'|'HMI_INTERLOCK_EXIT', text='<actor> <detail>')` 로 발행한다. actor 가 비면 `unknown` — 시연에서는 반드시 ID 를 넣는다.
 - 지표(6절)는 `tools/report.py` 가 이 DB 에서만 읽는다. CSV 를 따로 두지 않는다 — 두 기록이 갈라지면 둘 다 못 믿는다.
 

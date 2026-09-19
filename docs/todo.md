@@ -5,18 +5,18 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 28/81 완료** (███████░░░░░░░░░░░░░)  ·  기준 09/19
+**전체 29/82 완료** (███████░░░░░░░░░░░░░)  ·  기준 09/19
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
 | gmp_interfaces [조장] | 4/7 | `██████░░░░` | **3** |
 | gmp_skills [A 스킬] | 0/18 | `░░░░░░░░░░` | **13** |
 | gmp_dosing [B 도징] | 2/10 | `██░░░░░░░░` | **4** |
-| gmp_process [C 공정] | 11/21 | `█████░░░░░` | **2** |
+| gmp_process [C 공정] | 12/22 | `█████░░░░░` | **1** |
 | gmp_hmi [D HMI·기록] | 8/16 | `█████░░░░░` | **1** |
 | gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **4** |
 
-**마감이 지난 항목 27건**
+**마감이 지난 항목 26건**
 
 - `9/18` gmp_interfaces — 계약 v1.2 팀 채널 공지 — 위 항목 중 공지만 남았다 (WeighHeld 신설·Deviation.kind 3종 추가)
 - `9/17` gmp_interfaces — G1 결과로 도징 단위 확정 → RecipeItem.tol_pct 기본값·레시피 yaml 갱신 (SOT D-08)
@@ -38,7 +38,6 @@
 - `9/16` gmp_dosing — core/dosing.py: decide(target_g, actual_g, tol_pct, attempts, history) …
 - `9/17` gmp_dosing — test/test_dosing.py: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ…
 - `9/18` gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
-- `9/18` gmp_process — [추가 7] NUDGE 전이: RUNNING→PAUSED(NUDGE), 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 …
 - `9/18` gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
 - `9/17` gmp_hmi — [연동 대기 — 9/18 확인] 가상 모드에서 주문 → 상태 → QA 승인 → 이력 조회 한 바퀴 — HMI 시험 공정 검증은 …
 - `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
@@ -108,7 +107,8 @@
 - [ ] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) · 마감 9/21
 - [x] 스테이션 물리 배치·테이프 표시 (하드웨어) — **9/18 완료**. 좌표 실측(G3)과 SOT D-24 등록이 이제 가능하다 · 마감 9/17
 - [ ] 고의 장애 주입 T6 (a)(b)(c) 재현 · 마감 9/22
-- [ ] **[추가 7] NUDGE 전이**: `RUNNING→PAUSED(NUDGE)`, 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 재사용) + 테스트 · 마감 9/18
+- [x] **[추가 7] NUDGE 전이**: `event` 구독 → 토글 → 루프 게이트. 인터락과 **게이트 하나**로 합쳤다 — 둘 다 걸리면 둘 다 풀려야 간다. 정지는 **그 자리에 서는 것**(안전 자세 아님)이고, 로봇 동작 요청 **앞**에서만 잡는다(`wait_qa`·`wait_interlock` 앞에서는 안 잡는다 — 판정을 못 받고 서 버린다). 테스트 6건. **9/19 리뷰 반영**: 세트 끝 `NUDGE_WAIT` — 반송(passbox_done·reject_bin) 뒤 `nudge_wait` 로 이동해 NUDGE 대기, 그 뒤 DONE/DISCARDED. 대기 중 주문 거부, 이벤트 `SET_DONE`/`SET_NEXT`. 테스트 +4 · 마감 9/18
+- [ ] **[추가 7] NUDGE 실물 확인** — 가상은 `scale.simulated` 라 `skill_node` 가 `CellEvent(NUDGE)` 를 내지 않는다 (`safety.nudge_enabled and not scale.simulated`). 임계 8 N 검증과 함께 **G1 때** 한다 · 마감 9/21 (A 와)
 - [ ] **[추가 1] 폭 지문**: `PICK_SCOOP`·`PICK_CONTAINER` 의 `SetGripper` 결과 폭이 원료별 기대 폭(±margin) 과 다르면 `Deviation(WRONG_TOOL)` → QA · 마감 9/21 (A 와)
 - [ ] **[추가 3] 재기동 이어하기**: 기동 시 DB 의 미완료 배치 조회 → 상태·원료 인덱스·tare 복원 → 용기 재계량 후 재개. 시연: 실행 중 Ctrl-C → 재실행 · 마감 9/22 (D 와)
 - [x] **[9/18 확정]** 배치 변경 반영 → **SOT D-24 로 등록 완료**. 판 450×450, 기준 원점 [X:0, Y:45], 로봇 좌측 28 cm, 중앙 300×300 배치 불가, 넛지 대기 위치 신설, 원료·스쿱은 판 바깥 아래. **스테이션 매핑 3건은 Q-12 로 분리** · 마감 9/21

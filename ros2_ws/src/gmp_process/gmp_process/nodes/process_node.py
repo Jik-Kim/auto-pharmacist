@@ -1,12 +1,12 @@
 """공정 노드 — ProcessFSM 의 요청을 스킬 Action/Service 로 실행하고 결과를 돌려준다.
 
-입력  submit_order · qa_decision · interlock (Service 서버)
+입력  submit_order · qa_decision · interlock (Service 서버) · event 구독 (skill_node 의 NUDGE, D-21)
       스킬 Action 클라이언트 move_to_station·scoop·pour·weigh_container·weigh_held
       스킬 Service 클라이언트 set_gripper·measure_force·safe_pose
 출력  state (0.5 s + 전이, TRANSIENT_LOCAL) · weight · scoop_cycle · dispense_result · deviation (TRANSIENT_LOCAL) · event
 
 구조 (docs/process_flow.md 0절): rclpy 콜백은 값만 저장한다. 배치 실행 루프는 별도 스레드(_run_loop)에서
-돌며 스킬을 **한 번에 하나** 부른다. QA 판정·인터락은 콜백이 Event 를 세우고 루프가 기다린다.
+돌며 스킬을 **한 번에 하나** 부른다. QA 판정·인터락·NUDGE 는 콜백이 값만 세우고 루프가 기다린다.
 
 FSM 은 로봇도 ROS 도 모른다 — dict 요청을 주고 dict 결과를 받는다. 이 파일이 그 dict 를 계약 메시지로
 옮기는 유일한 지점이다. 발행은 전이 뒤 `_drain()` 한 곳에서 FSM 상태 변화를 보고 판단한다.
@@ -38,6 +38,12 @@ from gmp_process.core.station_map import StationMap
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 DEV_QOS = QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
+# 사람을 기다리는 요청 — 로봇을 움직이지 않으므로 정지 게이트를 앞에 두지 않는다 (아래 _run_loop 참고)
+HUMAN_WAITS = ('wait_qa', 'wait_interlock', 'wait_nudge')
+# 게이트를 건너뛰는 요청 — 사람 대기 + 안전 자세. `safe` 는 "사람이 곧 들어오니 물러나라" 는 이동이라
+# NUDGE·인터락 정지보다 우선한다 (ENTER 가 NUDGE 정지 중에도 safe_pose 를 부르는 것과 같은 논리)
+GATE_BYPASS = HUMAN_WAITS + ('safe',)
+
 # 일탈 → ScoopCycle.outcome. 시도가 실패로 끝난 것만 여기 있다 (OVERFILL·TIMEOUT 은 시도 자체는 끝났다)
 DEV_TO_OUTCOME = {'SCOOP_EMPTY': 'SCOOP_EMPTY', 'MATERIAL_EMPTY': 'SCOOP_EMPTY',
                   'WEIGH_INVALID': 'WEIGH_INVALID'}
@@ -62,6 +68,7 @@ class ProcessNode(Node):
             ('gripper.scoop_width_mm', 18.0), ('gripper.cup_width_mm', 60.0),
             ('gripper.open_width_mm', 100.0), ('gripper.force_n', 20.0),
             ('skill_timeout_s', 90.0), ('server_wait_s', 20.0), ('grip_timeout_s', 5.0),
+            ('safety.nudge_enabled', True),   # skill_node 와 같은 스위치 — 끄면 NUDGE 를 무시한다
         ])
         p = lambda k: self.get_parameter(k).value  # noqa: E731
         self.p = p
@@ -84,6 +91,8 @@ class ProcessNode(Node):
         self.create_service(QaDecision, 'qa_decision', self._srv_qa, callback_group=self.cb)
         self.create_service(InterlockRequest, 'interlock', self._srv_interlock, callback_group=self.cb)
         self.create_timer(0.5, self._pub_state, callback_group=self.cb)
+        # skill_node 가 사람 접촉을 여기로 알린다 (D-21). 우리가 내는 event 도 같이 들어오므로 code 로 거른다
+        self.create_subscription(CellEvent, 'event', self._on_event, 100, callback_group=self.cb)
 
         self.act = {
             'move': ActionClient(self, MoveToStation, 'move_to_station', callback_group=self.cb),
@@ -107,6 +116,11 @@ class ProcessNode(Node):
         self._interlock_exit = threading.Event()
         self._pause = False          # 인터락 ENTER 가 세운다. **루프만 내린다** — EXIT 핸들러가 내리면
                                      # 취소된 스킬이 돌아오기 전에 풀려 그 실패가 진짜 실패로 읽힌다
+        self._nudge_paused = False   # 사람 접촉으로 멈춤 (D-21). 다음 NUDGE 가 내린다
+        self._nudge_waiting = False  # 세트 끝 — nudge_wait 에서 NUDGE 를 기다리는 중 (D-23). 그때의 NUDGE 는 정지가 아니라 '다음 세트'
+        self._nudge_go = threading.Event()
+        self._refill_waiting = False # 루프가 REFILL 로 EXIT 를 기다리는 중 — EXIT 를 받을지 가른다
+        self._nudge_lock = threading.Lock()   # 토글은 읽고-쓰기라 콜백 둘이 겹치면 뒤집히지 않는다
         self._stop = threading.Event()   # 종료 요청 — 무한 대기(QA·인터락)를 깨운다
         self._thread = None
         self._dev_msgs: list = []    # 발행한 Deviation — QA 판정 후 같은 deviation_id 로 재발행한다
@@ -128,6 +142,71 @@ class ProcessNode(Node):
         self.pub_event.publish(m)
         self.get_logger().info(f'[{code}] {text}')
 
+    def _on_event(self, msg):
+        """skill_node 의 NUDGE — 건드리면 정지, 다시 건드리면 재개 (D-21).
+
+        토글만 한다. 멈추는 것은 루프의 게이트다 — 콜백에서 멈추면 rclpy 스레드가 잠긴다.
+        같은 접촉을 두 번 세지 않는 것은 skill_node 의 `nudge_cooldown_s` 가 한다.
+        """
+        if msg.code != 'NUDGE' or not self.get_parameter('safety.nudge_enabled').value:
+            return
+        with self._nudge_lock:
+            if self._nudge_waiting:                    # 세트 끝 대기 — 이 접촉은 '다음 세트' 신호다 (D-23)
+                self._nudge_go.set()
+                self.get_logger().info('[NUDGE] 세트 대기 해제')
+                return
+            self._nudge_paused = not self._nudge_paused
+            now = self._nudge_paused
+        self.get_logger().info(f"[NUDGE] {'정지' if now else '재개'}")
+
+    def _pause_reason(self) -> str:
+        """지금 멈춰 있어야 하는 이유. 둘 다면 NUDGE 를 먼저 보여 준다 (사람이 방금 한 행동이므로)."""
+        if self._nudge_paused:
+            return 'NUDGE'
+        if self._pause:
+            return 'INTERLOCK'
+        return ''
+
+    def _gate(self, detail: str = ''):
+        """요청 **사이**에서만 멈춘다 (D-21 · process_flow 6절).
+
+        스킬 중간에는 끊지 않는다 — 블로킹 `movel` 은 취소가 안 되고(I-004), 애초에 그 구간에서는
+        skill_node 가 NUDGE 를 감지하지도 않는다. 감지되는 자리(유휴·계량 settle·붓기 대기)에서
+        울린 NUDGE 는 늦어도 다음 요청 전에 여기서 잡힌다. FSM 은 이 정지를 모른다.
+
+        폴링으로 기다린다 — 깨우는 신호가 둘(두 번째 NUDGE, 인터락 EXIT)이라 Event 하나로는
+        「스킬 도는 동안 정지·재개가 다 지나간」 경우에 신호가 남아 다음 정지를 즉시 풀어 버린다.
+        """
+        reason = self._pause_reason()
+        if not reason:
+            return
+        # **판정 대기 중인 일탈이 있으면 mode 를 건드리지 않는다** — _srv_qa 는 mode==DEVIATION 일 때만
+        # 받으므로 PAUSED 로 덮으면 QA 가 영영 거부되고 루프는 QA 만 기다리는 교착이 된다 (PR #18 리뷰 1번).
+        # 판정이 들어온 뒤(대기 없음)라면 DEVIATION 이어도 PAUSED 로 올린다 — 그래야 사람이 멈춘 걸 본다
+        took_mode = bool(self.fsm and self.fsm.mode != 'PAUSED' and self._pending_dev() is None)
+        if took_mode:
+            self.fsm.mode = 'PAUSED'
+        self.note = f'{reason} 정지 — ' + ('다시 건드리면 재개' if reason == 'NUDGE' else 'EXIT 로 재개')
+        if detail:
+            self.note += f' ({detail})'
+        self._pub_state()
+        self.event('WARN', 'PAUSE', self.note)
+        while self._pause_reason():
+            if self._pause and self._interlock_exit.is_set():
+                # EXIT 를 여기서 소비한다 — _pause 를 내리는 곳은 언제나 루프다 (핸들러가 내리면
+                # 취소된 스킬이 돌아오기 전에 풀려 그 실패가 진짜 실패로 읽힌다)
+                self._interlock_exit.clear()
+                self._pause = False
+                continue
+            if self._stop.is_set() or not rclpy.ok():
+                raise SkillError('정지 대기 중 종료')
+            time.sleep(0.1)
+        if took_mode and self.fsm and self.fsm.mode == 'PAUSED':
+            self.fsm.mode = 'RUNNING'
+        self.note = ''
+        self._pub_state()
+        self.event('INFO', 'RESUME', f'{reason} 해제')
+
     def _await(self, ev: threading.Event, what: str):
         """사람을 기다리는 대기(QA·인터락)는 상한이 없다 (D-23 반자동). 종료 요청만이 깨운다."""
         while not ev.wait(0.2):
@@ -146,7 +225,9 @@ class ProcessNode(Node):
     # ── 서비스 ───────────────────────────────────────────────────────
     def _srv_submit(self, req, res):
         if self.fsm and self.fsm.mode in ('RUNNING', 'PAUSED', 'DEVIATION'):
-            res.accepted, res.message = False, f'실행 중 ({self.fsm.state})'
+            res.accepted = False
+            res.message = ('세트 완료 — 로봇을 건드리면 다음 주문을 받는다 (NUDGE_WAIT)' if self.fsm.state == 'NUDGE_WAIT'
+                           else f'실행 중 ({self.fsm.state})')
             return res
         # 검증은 core/recipe.parse 단일 출처 — 필수 필드·중복 원료·양수·유한값. HMI 가 yaml 을 읽을 때와 같은 규칙이다.
         # target_g=0 이 통과하면 verdict_of 의 나눗셈에서 죽고, tol 이 NaN 이면 판정이 늘 실패한다
@@ -175,6 +256,8 @@ class ProcessNode(Node):
         self._try_no = {}
         self._qa.clear(); self._qa_decision = None; self._qa_operator = ''
         self._interlock_exit.clear(); self._pause = False   # 지난 배치의 EXIT 가 새 배치로 새지 않게
+        self._nudge_paused = False
+        self._refill_waiting = False
 
     def _pending_dev(self) -> Deviation | None:
         for m in reversed(self._dev_msgs):
@@ -208,9 +291,12 @@ class ProcessNode(Node):
 
     def _srv_interlock(self, req, res):
         if req.request == InterlockRequest.Request.ENTER:
-            if self._pause or (self.fsm and self.fsm.mode == 'PAUSED'):
-                # 이미 안전 자세에서 기다리는 중 (REFILL 대기 또는 앞선 ENTER). safe_pose 를 다시 부르거나
-                # _interlock_exit 를 다시 지우면 EXIT 를 두 번 눌러야 풀린다 — 멱등하게 받는다
+            if self._pause or (self.fsm and self.fsm.mode == 'PAUSED' and not self._nudge_paused
+                               and not self._nudge_waiting):
+                # 이미 **안전 자세로 가서** 기다리는 중 (REFILL 대기 또는 앞선 ENTER). safe_pose 를 다시 부르거나
+                # _interlock_exit 를 다시 지우면 EXIT 를 두 번 눌러야 풀린다 — 멱등하게 받는다.
+                # NUDGE 정지는 PAUSED 지만 **그 자리에 선 것**이라 안전 자세가 아니다 → 여기 걸리면 안 된다.
+                # 세트 끝 NUDGE_WAIT 도 같다 — nudge_wait 스테이션이지 안전 자세가 아니다
                 res.granted, res.message = True, '이미 대기 중 (안전 자세)'
                 return res
             # 진행 중인 스킬을 취소하는 것은 skill_node 다 (SafePose 계약: 대기 Job 은 버리고 진행 Job 에 cancel).
@@ -239,8 +325,9 @@ class ProcessNode(Node):
             self._pub_state()
             self.event('WARN', 'INTERLOCK_ENTER', req.reason)
             return res
-        if not (self._pause or (self.fsm and self.fsm.mode == 'PAUSED')):
-            # 아무도 안 기다리는데 set 하면 다음 REFILL 대기가 즉시 풀린다 — 보충 없이 재개되는 셈
+        if not (self._pause or self._refill_waiting):
+            # 아무도 안 기다리는데 set 하면 다음 REFILL 대기가 즉시 풀린다 — 보충 없이 재개되는 셈.
+            # mode==PAUSED 로 가르면 안 된다 — NUDGE 정지도 PAUSED 라서 그때 눌린 EXIT 가 신호로 남는다
             res.granted, res.message = True, '대기 중이 아니다 (무시)'
             return res
         self._interlock_exit.set()
@@ -298,10 +385,12 @@ class ProcessNode(Node):
 
     # ── 요청 실행 ─────────────────────────────────────────────────────
     def _execute(self, req: dict) -> dict:
-        """인터락이 걸려 있으면 EXIT 까지 멈춘다.
+        """정지가 걸려 있으면 풀릴 때까지 멈춘다 (게이트 하나로 NUDGE·인터락을 같이 본다).
 
-        스킬이 취소로 실패했으면 **같은 요청을 처음부터 다시** 부른다 — 부분 실행은 버린다
-        (`carry` 중간이었다면 접근점부터). 취소가 안 걸리고 그냥 끝났으면 다음 요청 전에 멈춘다.
+        인터락이 스킬을 끊어 실패했으면 **같은 요청을 처음부터 다시** 부른다 — 부분 실행은 버린다
+        (`carry` 중간이었다면 접근점부터). 취소가 안 걸리고 그냥 끝났으면 **결과를 FSM 에 넘긴 뒤** 다음
+        로봇 동작 요청 앞(_run_loop 의 게이트)에서 멈춘다 — 여기서 먼저 멈추면 FSM 이 `safe` 를 내야 하는
+        상황(원료 소진·강제 개입)에서도 결정을 못 하고 서 버린다.
         """
         while True:
             try:
@@ -309,24 +398,9 @@ class ProcessNode(Node):
             except SkillError as e:
                 if not self._pause:
                     raise                          # 진짜 실패 — 루프가 FORCE_LIMIT 으로 보낸다
-                self.note = f'인터락으로 중단: {e}'
-                self._pause_until_exit()
+                self._gate(f'스킬 중단: {e}')
                 continue                           # 같은 요청을 다시
-            if self._pause:
-                self._pause_until_exit()
-            return res
-
-    def _pause_until_exit(self):
-        if self.fsm:
-            self.fsm.mode = 'PAUSED'
-        self._pub_state()
-        self._await(self._interlock_exit, '인터락 EXIT')
-        self._interlock_exit.clear()
-        self._pause = False                        # 루프에서만 내린다
-        if self.fsm:
-            self.fsm.mode = 'RUNNING'
-        self.note = ''
-        self._pub_state()
+            return res                             # 정지는 다음 요청 앞의 게이트가 잡는다
 
     def _dispatch(self, req: dict) -> dict:
         k = req['kind']
@@ -338,9 +412,38 @@ class ProcessNode(Node):
             self._qa.clear()
             return {'decision': decision, 'operator_id': self._qa_operator}
         if k == 'wait_interlock':
-            # FSM 이 REFILL 로 세운 대기 (mode 는 이미 PAUSED). ENTER 로 생긴 대기와는 별개다
-            self._await(self._interlock_exit, '인터락 EXIT')
+            # FSM 이 REFILL 로 세운 대기 (mode 는 이미 PAUSED). 그 사이 ENTER 가 또 왔어도(_pause) EXIT 한 번이면
+            # 사람이 나온 것이므로 _pause 도 여기서 같이 내린다 — 안 그러면 뒤의 _gate 가 EXIT 를 한 번 더 요구한다
+            self._refill_waiting = True
+            try:
+                self._await(self._interlock_exit, '인터락 EXIT')
+            finally:
+                self._refill_waiting = False
             self._interlock_exit.clear()
+            self._pause = False
+            return {}
+        if k == 'wait_nudge':
+            # 세트 끝. 로봇은 nudge_wait 에 서 있다 — 여기까지 오는 동안의 접촉으로 남은 '정지'는 뜻이 없다
+            # (이미 서 있다). 지운 뒤 다음 접촉을 '다음 세트' 로 받는다. FSM 이 mode 를 PAUSED 로 올려 두었다.
+            # 정지(PAUSE/RESUME)가 아니라 세트 경계(SET_DONE/SET_NEXT)다 — 반자동 운전의 설계된 대기 (D-23).
+            if not self.get_parameter('safety.nudge_enabled').value:
+                self.event('INFO', 'SET_DONE', '세트 완료 — nudge 비활성이라 대기 없이 종료')
+                return {}
+            with self._nudge_lock:
+                self._nudge_paused = False
+                self._nudge_go.clear()
+                self._nudge_waiting = True
+            self.note = 'NUDGE_WAIT — 세트 완료, 건드리면 다음 세트'
+            self._pub_state()
+            self.event('INFO', 'SET_DONE', self.note)
+            try:
+                self._await(self._nudge_go, 'NUDGE (다음 세트)')
+            finally:
+                with self._nudge_lock:
+                    self._nudge_waiting = False
+                    self._nudge_go.clear()
+            self.note = ''
+            self.event('INFO', 'SET_NEXT', '사람이 건드림 — 세트 종료, 다음 주문을 받는다')
             return {}
         if k == 'measure':
             r = self._call_srv('measure', MeasureForce.Request(samples=int(self.p('scale.samples')),
@@ -410,6 +513,12 @@ class ProcessNode(Node):
             req = fsm.start()
             while req is not None and rclpy.ok() and not self._stop.is_set():
                 step = fsm.state
+                if req['kind'] not in GATE_BYPASS:
+                    # 다음 **로봇 동작**을 시작하기 전에 멈춘다 — 정지를 잡는 자리는 여기 하나뿐이다.
+                    # 사람을 기다리는 요청·safe 앞에서는 멈추지 않는다: 로봇이 움직이지 않거나(대기) 물러나는
+                    # 이동(safe)이라 멈출 이유가 없고, QA 대기 앞에서 잡으면 판정을 못 받은 채 서 버린다
+                    # (판정 대기 중에는 mode 를 PAUSED 로 못 올리므로 사람은 이유도 못 본다).
+                    self._gate()
                 self._before(step, req)
                 try:
                     res = self._execute(req)
