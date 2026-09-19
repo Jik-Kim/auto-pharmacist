@@ -49,7 +49,7 @@ p1 = Page('1 노드 입출력')
 p1.box(40, 20, 1860, 40, 'gmp_process — process_node 입출력 (계약 v1.2 · 9/18 확정 · ns /cell)', fill='#FFFFFF', stroke='none', bold=True, size=18, align='left')
 hmi = p1.box(40, 140, 200, 420, 'hmi_web_node (D)\n\n웹 HMI · Flask :5000\n\n주문 제출\nQA 승인 / 폐기\n인터락 ENTER / EXIT', fill=GRAYS, stroke=GRAY, bold=True)
 proc = p1.box(560, 100, 700, 560, 'process_node (C)', fill='#FFFFFF', stroke=ACC, bold=True, size=14)
-cb = p1.box(590, 150, 300, 200, 'rclpy 콜백 스레드\n\n_srv_submit → FSM 생성, run_loop 시작\n_srv_qa → _qa_decision 저장, _qa.set()\n_srv_interlock → ENTER: cancel→safe_pose→granted\n                        EXIT: _interlock_exit.set()\nevent(NUDGE) 구독 → 게이트 토글\n\n콜백은 값만 저장한다. 로봇을 부르지 않는다', fill=ACCS, align='left', size=11)
+cb = p1.box(590, 150, 300, 200, 'rclpy 콜백 스레드\n\n_srv_submit → FSM 생성, run_loop 시작\n_srv_qa → _qa_decision 저장, _qa.set()\n_srv_interlock → ENTER: cancel→safe_pose→granted\n                        EXIT: _interlock_exit.set()\nevent(NUDGE) 구독 → 게이트 토글\n   (NUDGE_WAIT 중엔 토글이 아니라 다음 세트 신호)\n\n콜백은 값만 저장한다. 로봇을 부르지 않는다', fill=ACCS, align='left', size=11)
 loop = p1.box(930, 150, 300, 200, 'run_loop 스레드 (배치마다 1개)\n\nreq = fsm.start()\nwhile req:\n    res = _execute(req)   ← 스킬 한 번에 하나\n    req = fsm.on_result(req, res)\n    발행(state·weight·scoop_cycle·result·deviation·event)\n\nwait_qa / wait_interlock 는 Event.wait()', fill=ACCS, align='left', size=11)
 fsm = p1.box(590, 390, 640, 240, 'core/process_fsm.py — ProcessFSM (ROS 비의존, pytest)\n\nstate · mode · idx(원료) · tare_g · verify_net_g · cur(ItemRun: attempts·invalid·scoop_tare·scooped·residual·actual·verdict) · results · deviations · _counts · _resume · _qa_step · slot\n\nstart() → 첫 요청     on_result(req, res) → 다음 요청 dict 또는 None(끝)\n_deviate(kind, step) → deviation.py policy(kind, count) → RETRY / REFILL / QA / FORCED\n_carry(src, dst) → {"kind":"carry", src, dst, slot}\n\n의존: gmp_dosing.core.dosing.decide(target, net, tol, attempts, valid, invalid, cfg) → DONE / SCOOP(fraction) / DEVIATION(kind)\n        core/recipe.py parse() → RecipeSpec(product, items[Item(material_id, target_g, tol_pct)])', fill=OKS, stroke=OK, align='left', size=11)
 p1.edge(cb, loop, 'Event / 플래그', color=GRAY, dashed=True)
@@ -84,7 +84,7 @@ p1.note(1580, 900, 320, 110, '미합의 1건 (A 와)\n용기 반송 슬롯 번�
 p2 = Page('2 상태 전이도')
 p2.box(40, 20, 1860, 40, 'ProcessFSM 상태 전이도 — core/process_fsm.py (상태 이름 = CellState.step)', fill='#FFFFFF', stroke='none', bold=True, size=18, align='left')
 W, H = 190, 72
-X = [40, 320, 600, 880, 1160, 1440]          # 열
+X = [40, 320, 600, 880, 1160, 1440, 1700]    # 열 (7열 = DONE — 세트 끝 대기가 한 칸 차지한다)
 Y = [120, 400, 680, 960]                      # 행
 def S(c, r, name, sub='', kind='n'):
     fill, stroke = {'n': (ACCS, ACC), 'p': (WARMS, WARM), 'e': (REDS, RED), 'd': (OKS, OK), 'i': (GRAYS, GRAY)}[kind]
@@ -103,7 +103,8 @@ wres = S(5, 1, 'WEIGH_RESIDUAL', 'req: weigh_scoop — 붓기 후 스쿱 잔량\
 ret = S(1, 2, 'RETURN_SCOOP', 'req: move(scoop_N) → grip(open)\n전용 스쿱 = 교차오염 방지')
 verify = S(3, 2, 'VERIFY', 'req: weigh — 용기 들어 총량 − 풍량\n배치 끝 1회. ① 레시피 총량 ② Σ투입량')
 finish = S(4, 2, 'FINISH', 'req: carry workbench→passbox_done')
-done = S(5, 2, 'DONE', 'event BATCH_END', 'd')
+nudgew = S(5, 2, 'NUDGE_WAIT', 'req: move(nudge_wait) → wait_nudge\n세트 끝 — 건드릴 때까지 PAUSED · 주문 거부 (D-23)', 'p')
+done = S(6, 2, 'DONE', 'event BATCH_END', 'd')
 err = S(0, 3, 'ERROR', 'req: safe(then None)\nevent INTERVENTION_FORCED', 'e')
 paused = S(2, 3, 'PAUSED', 'req: safe → wait_interlock', 'p')
 dev = S(4, 3, 'DEVIATION', 'req: wait_qa (QA 원격 판정)', 'p')
@@ -125,7 +126,9 @@ p2.edge(ret, picks, 'grip(open) · idx+1 · 다음 원료 있음', color=ACC,
         exit=(0.5, 0), entry=(0.5, 1), points=((cx(1), Y[2] - 40), (cx(0), Y[2] - 40)), lpos=(0, -14))
 p2.edge(ret, verify, '마지막 원료였음 (그리퍼 비어 있음)', color=ACC, exit=(1, 0.3), entry=(0, 0.3), lpos=(0, -14))
 p2.edge(verify, finish, '|net − Σactual| ≤ min_resolvable_g', color=OK, lpos=(0, -14))
-p2.edge(finish, done, 'carry ok', color=OK, lpos=(0, -14))
+p2.edge(finish, nudgew, 'carry ok', color=OK, lpos=(0, -14))
+p2.edge(nudgew, done, 'NUDGE (사람이 건드림)\n→ DONE · 폐기면 DISCARDED', color=OK, lpos=(0, -22))
+p2.edge(disc, nudgew, 'carry ok — 폐기도 세트의 끝\n같은 자리에서 기다린다', color=RED, exit=(0.5, 0), entry=(0.5, 1), lpos=(0.2, 0))
 # ── 보정·재계량 (주황·회색) — 1행 위 복도 (y 340)
 p2.edge(wres, scoop, 'UNDER, attempts<3 → scoop(attempt+1, fraction 힌트)', color=WARM,
         exit=(0.3, 0), entry=(0.75, 0), points=((cx(5, 0.3), 340), (cx(2, 0.75), 340)), lpos=(0, -14))
@@ -138,7 +141,7 @@ p2.edge(verify, verify, 'INVALID ≤2 → 재계량', color=GRAY, exit=(0.3, 0),
         points=((cx(3, 0.3), Y[2] - 30), (cx(3, 0.7), Y[2] - 30)), lpos=(0, -12))
 # ── 일탈 → DEVIATION (주황) — 오른쪽 복도 x=1690, 2·3행 사이 복도 y=840
 p2.edge(wres, dev, 'OVER → OVERFILL\nUNDER 4회째 → TIMEOUT', color=WARM,
-        exit=(1, 0.6), entry=(0.7, 0), points=((X[5] + W + 60, Y[1] + 38), (X[5] + W + 60, 840), (cx(4, 0.7), 840)), lpos=(-0.5, -60))
+        exit=(1, 0.6), entry=(0.7, 0), points=((X[5] + W + 35, Y[1] + 38), (X[5] + W + 35, 840), (cx(4, 0.7), 840)), lpos=(-0.5, -60))
 p2.edge(verify, dev, '① 규격 이탈 → BATCH_OUT_OF_SPEC\n② 계측 불일치 → VERIFY_MISMATCH', color=WARM,
         exit=(0.7, 1), entry=(0.5, 0), points=((cx(3, 0.7), 870), (cx(4, 0.5), 870)), lpos=(0, 14))
 # ── 재시도 자기 루프 (주황) — 상자 위 y-35
@@ -166,7 +169,7 @@ p2.edge(picks, err, 'GRIP_FAIL 4회 (FORCED)', color=RED,
         exit=(0.15, 1), entry=(0.15, 0), points=((cx(0, 0.15), Y[3] - 60),), lpos=(0.3, -40))
 p2.edge(selfc, err, 'measure invalid (TODO)', color=RED,
         exit=(0, 0.7), entry=(0.7, 0), points=((cx(0, 0.7), Y[0] + 45),), lpos=(0.5, -14))
-p2.note(1440, 120, 380, 150, '루프 게이트 (FSM 밖, D-21 추가 7)\n\nskill_node 가 event NUDGE 를 쏘면 run_loop 가 다음 요청 전에 멈추고\nstate.mode = PAUSED(note="NUDGE") 발행, 두 번째 NUDGE 로 재개.\n인터락 중·계량 대기 중에만 감지된다 (블로킹 movel 중은 두산 충돌 감지 담당)')
+p2.note(1440, 120, 380, 150, '루프 게이트 (FSM 밖, D-21 추가 7)\n\nskill_node 가 event NUDGE 를 쏘면 run_loop 가 다음 요청 전에 멈추고\nstate.mode = PAUSED(note="NUDGE") 발행, 두 번째 NUDGE 로 재개.\n인터락 중·계량 대기 중에만 감지된다 (블로킹 movel 중은 두산 충돌 감지 담당)\n\n세트 끝 NUDGE_WAIT (D-23, 9/19): 그때의 NUDGE 는 정지가 아니라\n「다음 세트」 신호 — _nudge_go 를 세워 wait_nudge 를 푼다. 이벤트 SET_DONE / SET_NEXT')
 p2.note(1660, 880, 240, 270, '일탈 정책 (deviation.py)\n\nGRIP_FAIL  3회 RETRY → FORCED\nSCOOP_EMPTY  3회 RETRY → REFILL\nMATERIAL_EMPTY  즉시 REFILL\nOVERFILL / TIMEOUT  즉시 QA\nWEIGH_INVALID  2회 RETRY → QA\nVERIFY_MISMATCH [v1.2]  즉시 QA (계측)\nBATCH_OUT_OF_SPEC [v1.2]  즉시 QA (규격)\nSLIP 2 · SAFETY_SWITCH 1 · FORCE_LIMIT 1 → FORCED\nWRONG_TOOL [v1.2]  즉시 QA\n\ncount = 같은 배치·같은 스텝·같은 kind')
 p2.note(40, 1180, 1860, 90, 'D-22 원료 1종 = 6단계: 빈 스쿱 계량 → 퍼올림 → 붓기 전 계량(퍼낸 양 → 붓기 비율, 초과 예방) → 붓기 → 붓기 후 계량(잔량 → 투입량 누적 → 판정) → 반납. 로봇이 저울이라 스쿱을 든 채 재는 것이 가장 싸고, 용기 계량(들어 올림)은 그리퍼가 비어야 해서 배치 끝 VERIFY 한 번.\n범례   파랑 = 정상 경로   주황 = 일탈·재시도   청록 = 복구·완료   빨강 = 강제 개입·폐기(종료)   회색 = 대기·재계량\n전이표 밖 조합은 on_result 가 RuntimeError("전이 없음") 를 던진다 — 새 상태·kind 를 넣으면 전이와 테스트(test_process_fsm.py)를 같이 넣는다')
 
@@ -185,6 +188,7 @@ kinds = [
  ('safe', 'reason · then', 'safe_pose(reason)   전이는 then 이 정한다', '{}'),
  ('wait_qa', 'deviation', '스킬 없음 — _qa.clear(); _qa.wait()', "{'decision': APPROVED|DISCARDED}"),
  ('wait_interlock', '—', '스킬 없음 — _interlock_exit.clear(); wait()', '{}'),
+ ('wait_nudge', '—', '스킬 없음 — 세트 끝, nudge_wait 에 선 채 _nudge_go.wait()\n그동안의 NUDGE 는 정지 토글이 아니라 다음 세트 신호 · nudge_enabled=false 면 대기 없이 통과', '{}'),
 ]
 y = 90
 p3.box(40, y, 160, 30, 'kind', fill=INK, stroke=INK, font='#FFFFFF', bold=True, shape='rounded=0;')
@@ -201,7 +205,7 @@ for k, f, s, r in kinds:
     p3.box(1220, y, 380, h, r, fill=fill, stroke=GRAY, shape='rounded=0;', align='left', size=11)
     y += h
 p3.note(40, y + 30, 760, 130, '_call_action(client, goal) 보조 함수 하나로 통일\n  1) client.wait_for_server(5 s)   2) send_goal_async → goal_handle   3) get_result_async → Future\n  4) Event 로 동기 대기 (run_loop 는 executor 스레드가 아니므로 spin 하지 말 것 — MultiThreadedExecutor 가 콜백을 돌린다)\n  5) 인터락 ENTER 가 오면 goal_handle.cancel_goal_async()  → 취소 결과 후 safe_pose\n\n실패(success=false)는 표에 없다 → FORCE_LIMIT 일탈로 _deviate(RETRY 1회 → FORCED) 권장')
-p3.note(820, y + 30, 780, 145, '발행 시점\n  weight            weigh 결과마다 (TARE 포함)\n  scoop_cycle       정상은 WEIGH_RESIDUAL 후, 실패는 실패 확정 시\n  dispense_result   원료가 끝날 때 — WEIGH_RESIDUAL 에서 DONE 또는 DEVIATION 으로 갈 때\n  deviation         _deviate() 마다 + QA 판정 후 decision·operator_id 채워 같은 deviation_id 로 재발행\n  event             BATCH_START(product) · STEP(전이) · INTERLOCK_ENTER/EXIT · INTERVENTION_FORCED(ERROR) · BATCH_END\n  state             0.5 s 타이머 + 전이 직후 1회')
+p3.note(820, y + 30, 780, 145, '발행 시점\n  weight            weigh 결과마다 (TARE 포함)\n  scoop_cycle       정상은 WEIGH_RESIDUAL 후, 실패는 실패 확정 시\n  dispense_result   원료가 끝날 때 — WEIGH_RESIDUAL 에서 DONE 또는 DEVIATION 으로 갈 때\n  deviation         _deviate() 마다 + QA 판정 후 decision·operator_id 채워 같은 deviation_id 로 재발행\n  event             BATCH_START(product) · STEP(전이) · INTERLOCK_ENTER/EXIT · PAUSE/RESUME(NUDGE|INTERLOCK) · SET_DONE/SET_NEXT(세트 끝) · INTERVENTION_FORCED(ERROR) · BATCH_END\n  state             0.5 s 타이머 + 전이 직후 1회')
 
 
 # ───────────────────────── 페이지 4: 상태별 노드·토픽 흐름 (A·B·D) ─────────────────────────
@@ -237,13 +241,14 @@ ROWS = [
   'weight(잔량) · scoop_cycle(시도 1건) · state\ndispense_result (DONE·DEVIATION 시)\ndeviation(OVERFILL · TIMEOUT · WEIGH_INVALID)', False),
  ('RETURN_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT — 원료통 아래)\nSetGripper srv (open)', None, 'state', False),
  ('VERIFY', 'n', None, 'WeighContainer act (고정 workbench 용기 들어, 배치 1회)\ntare_g → reading(net, subject=container)', '① Σ(target×tol) — 레시피 총량 대조\n② min_resolvable_g — Σ투입량 대조', 'weight(net) · state\ndeviation(VERIFY_MISMATCH[v1.2])', False),
- ('FINISH', 'n', None, 'carry workbench → passbox_done(slot)\nSafePose srv', None, 'state DONE · event BATCH_END\n(record_node 가 JSON 내보내기)', False),
- ('DONE', 'd', None, None, None, '(발행 없음 — HMI 는 DB 를 읽어\n이력·KPI 표시)', False),
+ ('FINISH', 'n', None, 'carry workbench → passbox_done(slot)', None, 'state', False),
+ ('NUDGE_WAIT', 'p', None, 'MoveToStation act (nudge_wait, AT)\nevent NUDGE ← skill_node (D-21) — 여기서는\n정지가 아니라 「다음 세트」 신호 (D-23)', None, 'event SET_DONE (대기 진입) · SET_NEXT (건드림)\nstate PAUSED(note NUDGE_WAIT) — 주문 거부', True),
+ ('DONE', 'd', None, None, None, 'state DONE · event BATCH_END\n(record_node 가 JSON 내보내기 — HMI 는 DB 를 읽어 이력·KPI 표시)', False),
  ('DEVIATION', 'p', 'QaDecision srv\nAPPROVE / DISCARD, operator_id\nevent HMI_QA_APPROVE/DISCARD → audit', '(로봇 대기 — 호출 없음)', None, 'deviation 재발행\n(decision, operator_id, 같은 id) · state', False),
  ('PAUSED (REFILL)', 'p', 'InterlockRequest srv\nENTER(reason) → granted / EXIT\nevent HMI_INTERLOCK_ENTER/EXIT → audit', 'SafePose srv (ENTER 시)\n진행 중 Action 은 cancel_goal 먼저 (I-004)', None, 'event INTERLOCK_ENTER/EXIT\nstate PAUSED', False),
  ('PAUSED (NUDGE)', 'p', None, 'event NUDGE ← skill_node 발행\n(get_tool_force 폴링, D-21)\nprocess 는 구독 → 루프 게이트 토글', None, 'state PAUSED(note NUDGE)\nevent NUDGE (skill 이 낸 것을 record 가 저장)', True),
  ('ERROR', 'e', None, 'SafePose srv (then None)', None, 'event INTERVENTION_FORCED\nstate ERROR', False),
- ('DISCARDED', 'e', None, 'MoveToStation + SetGripper(open) (스쿱 반납)\ncarry workbench → reject_bin', None, 'state DONE(DISCARDED)\nevent BATCH_END', False),
+ ('DISCARDED', 'e', None, 'MoveToStation + SetGripper(open) (스쿱 반납)\ncarry workbench → reject_bin → NUDGE_WAIT 로', None, 'state DISCARDED(mode DONE)\nevent BATCH_END', False),
 ]
 def lane_box(k, y, text, h, fill, stroke):
     x, w = LX[k]
@@ -285,7 +290,7 @@ p4.note(40, Y0 + 19 * PITCH + 20, 1820, 90,
         'WeighHeld · VERIFY_MISMATCH · BATCH_OUT_OF_SPEC · WRONG_TOOL 은 계약 v1.2 (9/18 확정, I-007 해소). state 는 전 상태에서 2 Hz + 전이 직후 발행. 모든 발행은 /cell/ 아래, QoS 는 docs/interfaces.md 3절.\n'
         '이 페이지의 상자 문구는 docs/process_flow.md 1·2·4절과 같은 내용이다 — 바뀌면 tools/make_process_drawio.py 를 고쳐 다시 생성한다')
 
-doc = '<mxfile host="app.diagrams.net" pages="4">' + p1.xml() + p2.xml() + p3.xml() + p4.xml(h=3300) + '</mxfile>'
+doc = '<mxfile host="app.diagrams.net" pages="4">' + p1.xml() + p2.xml() + p3.xml() + p4.xml(h=Y0 + len(ROWS) * PITCH + 200) + '</mxfile>'
 import xml.etree.ElementTree as ET
 root = ET.fromstring(doc)                                  # well-formed 검사
 ET.indent(root, space='  ')
