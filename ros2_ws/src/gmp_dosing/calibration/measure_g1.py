@@ -98,6 +98,22 @@ def setup_tool(arm, tool: str, tcp: str, need_motion: bool):
                 raise RuntimeError(f'{name} 실패 return={r} — Auto 모드·서보 ON 확인')
 
 
+def baseline(arm, n: int, period: float):
+    """빈 그리퍼 기준값 — workpiece 가 여기서 0 근처가 아니면 컨트롤러 추정에 편향이 있다 (등록 툴 질량·CoG 확인)."""
+    fz, kg = [], []
+    for _ in range(n):
+        f = arm.tool_force(); w = arm.R.get_workpiece_weight()
+        if f:
+            fz.append(f[2])
+        if isinstance(w, (int, float)) and w >= 0:
+            kg.append(float(w))
+        time.sleep(period)
+    fz_g = -sum(fz) / len(fz) / 9.80665 * 1000 if fz else float('nan')
+    wp_g = sum(kg) / len(kg) * 1000 if kg else float('nan')
+    print(f'    빈 그리퍼 기준값 ({n}표본): Fz→ {fz_g:.1f} g (offset 전)   workpiece {wp_g:.1f} g'
+          + ('   ⚠ 빈 상태인데 0 이 아니다 — 등록 툴 무게와 실제가 다르거나 영점 미적용' if kg and abs(wp_g) > 50 else ''))
+
+
 class Gripper:
     """/onrobot/sendCommand 만 쓴다 — 'o' 열기, 'c' 닫기, '<정수>' 폭 1/10 mm. 폭 피드백은 안 본다 (사람이 눈으로)."""
     def __init__(self, rclpy):
@@ -161,8 +177,10 @@ def main(argv=None):
         if grip:
             grip.send('o')
         input('\n[1] 빈 그리퍼(열림)로 계량 자세에서 정지 → Enter (reset_workpiece_weight) ')
-        arm.reset_workpiece()
-        print('    영점 완료')
+        r = arm.reset_workpiece()
+        print(f'    reset_workpiece_weight return={r!r}' + ('  OK' if r == 0 else '  ⚠ 실패 — workpiece 영점이 안 잡혔다'))
+        time.sleep(a.settle)
+        baseline(arm, 10, a.period)
     t0 = time.monotonic()
     try:
         for s in range(1, a.sets + 1):
