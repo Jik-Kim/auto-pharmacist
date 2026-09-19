@@ -66,6 +66,38 @@ def workbench_posx():
     return [float(v) for v in wb['posx']]
 
 
+STATES = {0: 'INITIALIZING', 1: 'STANDBY', 2: 'MOVING', 3: 'SAFE_OFF', 4: 'TEACHING', 5: 'SAFE_STOP',
+          6: 'EMERGENCY_STOP', 7: 'HOMMING', 8: 'RECOVERY', 9: 'SAFE_STOP2', 10: 'SAFE_OFF2'}
+
+
+def setup_tool(arm, tool: str, tcp: str, need_motion: bool):
+    """initialize() 대신 — 상태를 먼저 보여 주고, 이미 선택된 툴·TCP 면 set 을 건너뛴다.
+    workpiece 추정은 컨트롤러에 등록된 툴 무게가 전제라 툴이 맞는지가 핵심이다 (T0: 펜던트에서 tool_weight / GripperDA_v1 선택)."""
+    R = arm.R
+    mode, state = R.get_robot_mode(), R.get_robot_state()
+    tool_now, tcp_now = R.get_tool(), R.get_tcp()
+    print(f"로봇 mode={mode} ({'자동' if mode == 1 else '수동' if mode == 0 else '?'})  "
+          f"state={state} ({STATES.get(state, '?')})  tool={tool_now!r}  tcp={tcp_now!r}")
+    if mode != 1:
+        print('  ⚠ 펜던트가 Auto 모드가 아니다 — set_tool/이동이 거부된다. T0: Auto 모드 + 서보 ON 후 다시')
+    for what, want, now, fn in (('tool', tool, tool_now, R.set_tool), ('tcp', tcp, tcp_now, R.set_tcp)):
+        if not want:
+            continue
+        if now == want:
+            print(f'  {what} {want!r} 이미 선택됨 — set 생략')
+            continue
+        r = fn(want)
+        if r == 0:
+            print(f'  set_{what}({want!r}) OK')
+        else:
+            print(f'  ⚠ set_{what}({want!r}) 실패 return={r}. 펜던트에 그 이름으로 등록돼 있는지, Auto 모드인지 확인.')
+            input(f'    현재 {what}={now!r} 그대로 계속하려면 Enter (workpiece 값이 어긋날 수 있다), 중단은 Ctrl-C ')
+    if need_motion:                         # --goto-workbench 때만 속도 상한을 건다
+        for name, r in (('set_velx', R.set_velx(arm.vel, arm.vel)), ('set_accx', R.set_accx(arm.acc, arm.acc))):
+            if r != 0:
+                raise RuntimeError(f'{name} 실패 return={r} — Auto 모드·서보 ON 확인')
+
+
 class Gripper:
     """/onrobot/sendCommand 만 쓴다 — 'o' 열기, 'c' 닫기, '<정수>' 폭 1/10 mm. 폭 피드백은 안 본다 (사람이 눈으로)."""
     def __init__(self, rclpy):
@@ -108,7 +140,7 @@ def main(argv=None):
     rid, model, vel, acc, tool, tcp = robot_params()
     rclpy.init()
     arm = DsrArm(rid, model, 'real', vel, acc, tool, tcp)
-    arm.initialize()                       # set_tool/set_tcp — workpiece 추정은 등록된 툴 무게가 전제다
+    setup_tool(arm, tool, tcp, a.goto_workbench)
     grip = Gripper(rclpy) if a.gripper else None
     close_cmd = f'{int(round(a.grip_width_mm * 10))}' if a.grip_width_mm else 'c'
     if a.goto_workbench:
