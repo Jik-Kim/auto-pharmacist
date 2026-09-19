@@ -58,10 +58,18 @@ class DsrArm:
                 f'DSR controller not ready after {self.startup_timeout_s:.1f}s')
         if self.mode == 'real':
             # 실물은 티칭 펜던트에 등록된 툴과 TCP를 사용한다 (SOT D-10).
-            if self.tool_name:
-                self._require_ok('set_tool', R.set_tool(self.tool_name))
-            if self.tcp_name:
-                self._require_ok('set_tcp', R.set_tcp(self.tcp_name))
+            # 선택 명령은 수동 모드 전용이므로 초기화 때만 전환하고 반드시 자동으로 복귀한다.
+            self._require_ok(
+                'set_robot_mode(MANUAL)', R.set_robot_mode(R.ROBOT_MODE_MANUAL))
+            try:
+                if self.tool_name:
+                    self._require_ok('set_tool', R.set_tool(self.tool_name))
+                if self.tcp_name:
+                    self._require_ok('set_tcp', R.set_tcp(self.tcp_name))
+            finally:
+                self._require_ok(
+                    'set_robot_mode(AUTONOMOUS)',
+                    R.set_robot_mode(R.ROBOT_MODE_AUTONOMOUS))
         elif self.virtual_tcp_name:
             if len(self.tcp_offset_mm_deg) != 6:
                 raise ValueError('virtual TCP offset must contain 6 values')
@@ -117,10 +125,11 @@ class DsrArm:
                                   acc=self.acc * vel_scale, ref=self.R.DR_BASE,
                                   mod=self.R.DR_MV_MOD_ABS))
 
-    def amovej(self, j6, vel_scale=1.0):
+    def amovej(self, j6, vel_scale=1.0, *, joint_vel=None, joint_acc=None):
         return self._require_ok(
-            'amovej', self.R.amovej(self.posj(*j6), vel=self.vel * vel_scale,
-                                    acc=self.acc * vel_scale))
+            'amovej', self.R.amovej(self.posj(*j6),
+                                    vel=(self.vel if joint_vel is None else joint_vel) * vel_scale,
+                                    acc=(self.acc if joint_acc is None else joint_acc) * vel_scale))
 
     def amovel(self, x6, vel_scale=1.0):
         return self._require_ok(
@@ -178,14 +187,19 @@ class DsrArm:
                 return
             self._sleep(0.02)
 
-    def movej_cancellable(self, j6, vel_scale, cancel_requested, timeout_s):
-        self.amovej(j6, vel_scale)
+    def movej_cancellable(self, j6, vel_scale, cancel_requested, timeout_s,
+                          *, joint_vel=None, joint_acc=None):
+        if cancel_requested():
+            raise RuntimeError('cancelled')
+        self.amovej(j6, vel_scale, joint_vel=joint_vel, joint_acc=joint_acc)
         self.wait_motion_cancellable(cancel_requested, timeout_s)
         actual = self.current_posj()
         if len(actual) != 6 or max(abs(float(a) - float(b)) for a, b in zip(actual, j6)) > 1.0:
             raise RuntimeError(f'movej target not reached: target={list(j6)} actual={actual}')
 
     def movel_cancellable(self, x6, vel_scale, cancel_requested, timeout_s):
+        if cancel_requested():
+            raise RuntimeError('cancelled')
         self.amovel(x6, vel_scale)
         self.wait_motion_cancellable(cancel_requested, timeout_s)
         actual = self.current_posx()

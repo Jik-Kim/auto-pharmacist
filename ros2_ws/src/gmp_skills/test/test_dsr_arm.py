@@ -80,15 +80,40 @@ def _arm(mode='real'):
     return arm
 
 
+def test_transfer_joint_speed_is_separate_from_cartesian_speed():
+    arm = _arm()
+    arm.amovej([0]*6, 0.2, joint_vel=10, joint_acc=20)
+    assert arm.R.calls[-1][2] == {'vel': 2.0, 'acc': 4.0}
+
+
+@pytest.mark.parametrize('method', ['movej_cancellable', 'movel_cancellable'])
+def test_pre_cancelled_motion_never_starts(method):
+    arm = _arm()
+    with pytest.raises(RuntimeError, match='cancelled'):
+        getattr(arm, method)([0]*6, 0.2, lambda: True, 10)
+    assert arm.R.calls == []
+
+
 def test_initialize_and_self_check_use_installed_wrapper_names():
     arm = _arm()
     arm.initialize()
-    assert [name for name, _, _ in arm.R.calls[:8]] == [
-        'set_tool', 'set_tcp', 'set_velj', 'set_accj', 'set_velx', 'set_accx',
-        'set_singular_handling', 'set_ref_coord'
+    assert [name for name, _, _ in arm.R.calls[:10]] == [
+        'set_robot_mode', 'set_tool', 'set_tcp', 'set_robot_mode', 'set_velj',
+        'set_accj', 'set_velx', 'set_accx', 'set_singular_handling', 'set_ref_coord'
     ]
+    assert arm.R.calls[0][1] == (arm.R.ROBOT_MODE_MANUAL,)
+    assert arm.R.calls[3][1] == (arm.R.ROBOT_MODE_AUTONOMOUS,)
     assert arm.self_check('tool_weight', 'GripperDA_v1')[0]
     assert [name for name, _, _ in arm.R.calls[-2:]] == ['get_tool', 'get_tcp']
+
+
+def test_real_tool_failure_still_restores_autonomous_mode():
+    arm = _arm()
+    arm.R.set_tool = lambda *_args: -1
+    with pytest.raises(RuntimeError, match='set_tool failed'):
+        arm.initialize()
+    mode_calls = [args[0] for name, args, _ in arm.R.calls if name == 'set_robot_mode']
+    assert mode_calls == [arm.R.ROBOT_MODE_MANUAL, arm.R.ROBOT_MODE_AUTONOMOUS]
 
 
 def test_virtual_initialize_keeps_wrapper_default_base_reference():

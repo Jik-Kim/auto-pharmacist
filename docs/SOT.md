@@ -23,7 +23,7 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 | D-07 | **무게 측정** | **1순위 `get_workpiece_weight()`** (매뉴얼 5.1.1, 강사 지정 절) — 세션 시작 시 빈 그리퍼·계량 자세에서 `reset_workpiece_weight()` 로 잔류 오차를 지우고, 용기를 들어 계량 자세에서 `samples` 회 읽어 평균·표준편차. M0609 는 M 시리즈(JTS)라 사용 가능(Non-FTS A 모델 불가 주의는 해당 없음). `set_workpiece_weight` 는 **부르지 않는다** — 충돌 감지 무효화가 전제라 안전 원칙에 어긋난다. **폴백 `get_tool_force(DR_BASE)` Fz 평균** — 파라미터 `scale.method: workpiece \| tool_force`. 둘 다 JTS 에서 나오므로 **분해능은 9/17 오전 실측이 확정한다** (Q-01). 그램 환산·영점·보정은 `gmp_dosing/core/scale.py` 단일 출처. 가상 모드는 힘값이 없을 가능성이 커 `scale.simulated` 로 대체 (Q-07) |
 | D-08 | 도징 단위 | **실측 분해능에 따라 결정** — 30 g 을 3σ 로 가를 수 있으면 30 g, 아니면 100 g 으로 올리고 허용 오차 ±5 %. 레시피 yaml 만 바뀌고 코드는 그대로다 |
 | D-09 | 스테이션 좌표 | `gmp_bringup/params/stations.yaml` 단일 출처. 9/17 티칭한 `posx` 를 적는다. 설계 좌표(판 820×650, 베이스 (−50, 320))는 `PROJECT_RULES.md` 3-1. **코드에 좌표를 적지 않는다** |
-| D-10 | 툴·TCP | `set_tool("tool_weight")` · `set_tcp("GripperDA_v1")` — 실물 컨트롤러 등록명, 파라미터 `robot.tool_name`/`robot.tcp_name`. 실측 1.320 kg · CoG (1.960, −32.760, 19.140) 은 컨트롤러에 등록 완료 (R7). 현재 TCP 오프셋은 툴 좌표계 **+Z 208 mm** (`robot.tcp_offset_mm_deg`). 가상 모드도 `GripperDA_v1`을 이 오프셋으로 등록·선택한다. 설정 명령은 수동 모드 전용이므로 초기화 때만 수동으로 전환하고 `finally`에서 자동 모드로 복귀한다. |
+| D-10 | 툴·TCP | `set_tool("tool_weight")` · `set_tcp("GripperDA_v1")` — 실물 컨트롤러 등록명, 파라미터 `robot.tool_name`/`robot.tcp_name`. 실측 1.320 kg · CoG (1.960, −32.760, 19.140) 은 컨트롤러에 등록 완료 (R7). 현재 TCP 오프셋은 툴 좌표계 **+Z 208 mm** (`robot.tcp_offset_mm_deg`). 가상 모드도 `GripperDA_v1`을 이 오프셋으로 등록·선택한다. 실물·가상 모두 툴/TCP 설정 전 수동 모드로 전환하고 `finally`에서 자동 모드로 복귀한다. |
 | D-11 | 워크스페이스 | `~/ws_cobot_pjt/ws_dsr` 언더레이(벤더, read-only) + 이 저장소 `ros2_ws` 오버레이. 벤더 패키지는 고치지 않는다 (I-003 패치도 포크 형태로) |
 | D-12 | 네임스페이스·이름 | 우리 노드는 launch 가 `namespace:=cell` 을 붙인다 → `/cell/…`. 코드는 상대 이름. DSR 클라이언트 노드만 `dsr01`. 그리퍼 서비스 `/onrobot/sendCommand` 는 드라이버가 절대 이름으로 만든다 |
 | D-13 | 협업·안전 | 사람 상주 없음 (R23). 개입은 **HMI 인터락 요청 → 로봇 안전 자세 → 사람 투입 → 재개** 와 **QA 원격 승인** 둘뿐. 물리 접촉은 두산 충돌 감지(PFL)가 막는다 — 임계값은 `safety.collision_sensitivity` |
@@ -37,7 +37,21 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 | D-22 | **원료 1종 = 6단계, 스쿱을 든 채 계량** (9/17 C 제안·팀 합의) | 로봇이 저울이라(`get_workpiece_weight` 는 잡고 들어야 값이 나온다) **용기 계량은 그리퍼가 비어야** 한다 — 종전 SCOOP→POUR→WEIGH 는 스쿱을 든 채 용기를 잡는 모순이 있었다. 확정 흐름: `PICK_SCOOP → SCOOP_TARE(빈 스쿱) → SCOOP → WEIGH_SCOOP(붓기 전, 퍼낸 양 → 붓기 비율 = min(1, 부족량/퍼낸 양) — 1차 폐루프·초과 예방) → POUR → WEIGH_RESIDUAL(붓기 후, 잔량 → 투입량 += 퍼낸 양 − 잔량 → decide) → RETURN_SCOOP`. **스쿱에 남은 원료는 투입량이 아니다.** 정상 시도는 `WEIGH_RESIDUAL` 뒤 세 계량값·Scoop 결과·Pour 명령·6축 wrench를 `ScoopCycle` 1건으로 묶고, 중간 실패 시도도 실패 확정 시점에 미수집 값을 무효로 표시해 남긴다. 용기 계량은 원료가 다 끝난 뒤 `VERIFY` 한 번 — `|용기 순량 − Σ투입량| > min_resolvable_g` 면 `VERIFY_MISMATCH` → QA (2차 검증). 계약 영향: `weigh_scoop`(들고 있는 것 그대로 재기) Action 과 `Deviation.kind VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC` 는 후속 합의가 필요하다 (I-007). **VERIFY 는 두 가지를 본다** (9/17 조장 합의) — ① 제품 판정 `|net − Σtarget| > Σ(target×tol)` → `BATCH_OUT_OF_SPEC` ② 계측 신뢰성 `|net − Σ투입량| > min_resolvable_g` → `VERIFY_MISMATCH`. 원료가 전부 같은 방향으로 치우치면 net 과 Σ투입량이 함께 낮아 ②로는 안 잡히므로 ①이 규격 판정이다. 분해능(Q-01)이 스쿱 1회량(≈40 g) 을 못 가르면 스쿱 계량은 초과 예방용 대략치가 되고 판정 근거는 VERIFY 로 옮긴다 (Q-11) |
 | D-23 | **회수·넛지 운영** (9/17 팀 합의) | 무균실을 가정한다. **패스박스·폐기함이 차서 출구를 막는 것은 QA 가 직접 치운다** — 로봇은 비우지 않는다. 완성품과 폐기물은 **패스박스로 회수**하며, 예상 주기는 1통 채울 때마다다. **한 세트가 끝나면 글러브박스로 로봇을 툭 건드려(NUDGE, D-21) 다음 세트를 이어간다** — 즉 이 셀은 사람이 붙어 있는 **반자동(semi-attended)** 운전이며 세트 경계의 대기는 예외가 아니라 설계다. **미정**: (a) 가득참 판단 — 비전이 없으므로 **카운트**밖에 없다, `passbox_done.capacity`·`reject_bin.capacity` 필요 (b) QA 가 비운 것을 시스템이 아는 방법 — HMI 확인 버튼(감사 추적에 누가 언제 회수했는지 남음)이 유력 (c) "한 세트"의 정의(배치 1건 / 레시피 1건 / 용기 N통). `docs/todo.md` 9/18 확정 항목 |
 | D-24 | **작업공간 배치 확정** (9/18) | 판 **450 × 450 mm**, 볼트 격자 가로 15/15/10/5 · 세로 15/15/15. **기준 원점 = [X:0, Y:45] 고정 홀**(좌하단) — 판 위 물리 치수를 재는 기준점이다. **로봇 좌표는 BASE 기준으로 간다 (9/18 확정)** — D-15 의 판 좌표계(`set_user_cart_coord`)는 쓰지 않는다. `stations.yaml` 의 `frame: base` 를 유지하고 `posx` 를 그대로 티칭한다. 로봇(M0609, 반경 900 mm · 가반 6 kg)은 판 **좌측 28 cm 이격**(중심 기준), 도달 커버리지 작업영역 100 %. **판 중앙 300 × 300 mm 는 「로봇 작업 구역」으로 배치 불가(Keep Clear)** — 관절 회전·조제 간섭 방지. 물건을 두지 않는다. 판 위: 하단 중앙 **작업 계량 구역**(`workbench` — 9/18 `scale` 에서 개명. 로봇이 저울이라(D-22) 그 자리에 저울이란 물건이 없고, `common.yaml` 의 `scale.*`(힘→그램 환산 설정)·코드의 `WeightModel` 과 이름이 겹쳐 셋을 구분하기 어려웠다), 우상단 **넛지 대기 위치**(D-23 세트 경계에서 사람이 건드리는 자리 — `safe` 와 별개), 우측 중앙 **Pass Box**(칸 2개: 완성품 · 빈통), 우하단 **폐기 위치**(`reject_bin`). 판 **바깥 아래**에 원료 A·B·C 구역과 **전용 스쿱**(각 원료통 아래, D-22). **넛지 대기 위치는 새 스테이션**이다 — 세트 완료 후 로봇이 여기로 이동해 사람이 건드리기를 기다린다 (ID `nudge_wait`, 9/18 확정). `material_4`(예비)는 그림에 없으므로 담당자가 `stations.yaml` 에서 제거한다. Pass Box 매핑은 **Q-12 에서 해소** — `passbox_empty`(빈통)·`passbox_done`(완성품) |
+| D-25 | **스쿱 거치대 인출** (9/19) | `PICK_SCOOP` 파지 성공 후 첫 `WeighHeld` 시작에 현재 BASE pose에서 **+Y 150 mm**를 먼저 이동해 스쿱을 거치대에서 뺀다. 거리는 `common.yaml`의 `gripper.scoop_extract_y_mm`가 단일 출처다. `SetGripper`는 파지 서비스 책임만 유지하고 인출 이동은 로봇 스킬 워커가 수행한다. 실물 궤적·간섭 검증 전까지 로봇 구동은 보류한다 |
 | D-14 | 일정 | 실물 5일 9/17·18·21·22·23. **9/23 이 실물 마지노선.** 9/24~28 휴강(영상·PPT·문서), 9/29 시연, 9/30 발표 (R11) |
+
+## 스테이션 간 관절 이송 (9/19 승인, 티칭 대기)
+
+- `workbench → passbox_done`(약통)·`passbox_done → nudge_wait`(빈 그리퍼)는
+  `직선 이탈 → 티칭 posj 기반 amovej → 목적지 ABOVE → 요청이 AT일 때 직선 접근`으로 구성한다.
+- `stations.yaml: transfers`가 출발·도착 조합과 파지 조건, 티칭 관절각의 단일 출처다.
+  두 경로는 아직 **비활성**이며 해당 이동은 거부한다. 기존 직선 이동으로 우회하지 않는다.
+  `common.yaml`의 관절 이송 속도·가속도도 0(미확정)으로 두었다.
+- 출발 AT/ABOVE 관절각·현재 위치 이력·파지 성공 이력과 최신 피드백을 확인한다.
+  취소/실패 시 이력을 무효화한다. 스쿱 인출·계량·붓기는 이 변경으로 관절 이동으로 바꾸지 않는다.
+- 통신 계약 변경은 없다. 다른 출발지에서 보호 대상 목적지로 가는 경로도 따로 티칭·등록해야 한다.
+- 개발 검증은 **단위 테스트까지만** 수행한다. 가상·실물 검증은 사용자가 담당한다.
+  필요한 티칭과 C 담당 인계 목록은 `docs/setup.md`의 「관절 이송 티칭·인계」를 따른다.
 
 ## 확정 노드·토픽
 
@@ -46,7 +60,7 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 
 | 노드 | 패키지 | 책임 |
 |---|---|---|
-| `skill_node` | `gmp_skills` | 로봇 스킬 서버 — `MoveToStation`·`Scoop`·`Pour`·`WeighContainer` Action, `SetGripper`·`MeasureForce`·`SafePose` Service, `gripper_state` 발행. DSR 워커 스레드 소유 |
+| `skill_node` | `gmp_skills` | 로봇 스킬 서버 — `MoveToStation`·`Scoop`·`Pour`·`WeighContainer`·`WeighHeld` Action, `SetGripper`·`MeasureForce`·`SafePose` Service, `gripper_state` 발행. DSR 워커 스레드 소유 |
 | `process_node` | `gmp_process` | 레시피 실행 상태기계. `RunBatch` Action 서버, `SubmitOrder`·`QaDecision`·`InterlockRequest` Service 서버, `state`·`weight`·`scoop_cycle`·`dispense_result`·`deviation` 발행 |
 | `record_node` | `gmp_hmi` | **단일 기록자.** `state`·`weight`·`scoop_cycle`·`dispense_result`·`deviation`·`event` → SQLite (계약 7절, `scoop_cycle`은 v1.2 적용 필요). 배치 종료 시 JSON 내보내기 |
 | `hmi_web_node` | `gmp_hmi` | Flask 웹 HMI (:5000). 주문 제출, 상태·계량 그래프, **QA 승인/폐기(원격)**, 인터락, 이력·KPI·감사 추적 조회(DB 읽기) |

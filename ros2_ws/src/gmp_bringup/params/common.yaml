@@ -30,6 +30,11 @@
       vel_scale: 0.3                # 런치가 덮어쓴다. 실물 첫 기동 0.2
       motion_timeout_s: 30.0        # 비동기 이동 제한. 초과·취소 시 MoveStop(DR_SSTOP)
       startup_timeout_s: 15.0       # dsr_controller2 motion 서비스 준비 대기
+      transfer_joint_vel_deg_s: 0.0   # TODO([A]): 티칭 검증 후 관절 이송 속도 설정. 0은 이송 거부
+      transfer_joint_acc_deg_s2: 0.0  # TODO([A]): 약통 기울기·흘림 검증 후 설정. 직선 acc와 별개
+      pose_xyz_tolerance_mm: 2.0      # 출발 이력·도착 위치 확인 허용오차
+      pose_rotation_tolerance_deg: 2.0 # ZYZ 표현 차이가 아닌 실제 회전각 오차
+      joint_tolerance_deg: 1.0        # 티칭 관절 구성·수동 이동 여부 확인 허용오차
 
     # ── RG2 그리퍼 ───────────────────────────────────────────────────
     gripper:
@@ -37,6 +42,7 @@
       open_width_mm: 100.0           # 운용 열림 폭. 데이터시트의 전체 조절 범위는 0~110 mm
       scoop_width_mm: 18.0          # 레거시 단일 파지 명령값(B 폭). C의 원료별 명령 전환 전까지 유지
       scoop_expected_widths_mm: [15.5, 18.0, 28.0]  # A/B/C 스쿱 폭 지문 (9/19 확정)
+      scoop_extract_y_mm: 150.0     # 스쿱 파지 후 첫 WeighHeld에서 BASE +Y로 빼는 거리
       fingerprint_tolerance_mm: 1.0 # [실물 정밀도 확인 후 확정] WRONG_TOOL 식별 허용차
       cup_width_mm: 60.0            # [구매 후 실측] 약통 파지부 외경 (D-18: 입구 근처를 잡는다, 파지점 위 돌출 ≤ 40 mm)
       force_n: 20.0                 # 데이터시트 조절 범위 3~40 N. modbus 는 2.5 N 스텝 (D-06)
