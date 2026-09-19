@@ -24,7 +24,7 @@
 
 | 게이트 | 방법 | 통과 기준 | 실패 시 |
 |---|---|---|---|
-| G1 외력 분해능 | 빈 그리퍼 정지, `MeasureForce samples:=50` 3회 · `get_workpiece_weight` 20회 | Fz σ, 무게 σ 기록 → **30 g 이 3σ 밖이면 30 g 단위**, 아니면 100 g | 도징 단위·레시피 yaml 만 바꾼다 (SOT D-08) |
+| G1 외력 분해능 | `python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py --actual-g 133 --out records/g1_<날짜>.csv` — 로봇은 안 움직인다. 빈 그리퍼 영점 → 세트마다 물체를 **다시 잡고** 정지 → 6세트×30회×10표본을 tool_force·workpiece **동시에** 기록. 요약은 `python3 -m gmp_dosing.core.calib <csv> --method workpiece` | 계량 한 번(회차 평균)의 3σ 가 `min_resolvable_g` — **9/18 tool_force 결과 18 g**. workpiece 는 미측정 (9/19 진행) | 도징 단위·레시피 yaml 만 바꾼다 (SOT D-08). 표본 43 % 중복이면 `--period` 를 calib 이 알려 주는 갱신 간격보다 길게 |
 | G2 그리퍼 modbus | `SetGripper close width:=20 force:=20` → 폭 피드백 | 폭이 목표 근처에서 멈추고 `busy` 가 풀린다 | `gripper.backend:=dio` 로 전환 (Q-02·Q-03) |
 | G3 스테이션 티칭 | `stations.yaml` 9곳 | `MoveToStation` 9곳 왕복 무충돌 | — |
 | G4 힘제어 접촉 | 비드 통 위에서 `Scoop` | `contact_detected=true`, 담금 깊이 상한 안 | 강성·목표력 파라미터 조정 |

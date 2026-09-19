@@ -7,7 +7,8 @@ CSV 열: 실험명, 물체종류, 측정조건, 실제총무게_g, 반복번호,
 세트를 합쳐서(pooled) σ 를 구한다 — 세트마다 스쿱을 다시 잡고 자세를 다시 잡으므로 세트 간 평균의 흐름도
 운영에서는 매 계량마다 나타나는 오차다. 세트 안 σ 만 평균 내면 그 흐름이 빠져 분해능을 낙관하게 된다.
 
-사용:  python3 -m gmp_dosing.core.calib ros2_ws/src/gmp_dosing/calibration/g1_scoop133g_tool_force.csv
+사용:  python3 -m gmp_dosing.core.calib <csv> [--method tool_force|workpiece]
+측정:  calibration/measure_g1.py 가 두 경로를 같은 표본에서 기록한다
 """
 import csv
 import statistics as st
@@ -24,7 +25,8 @@ class Trial:
     no: int
     actual_g: float
     samples_g: list[float]      # 표본별 환산값 (offset 적용 전)
-    raw: list[float]            # 원시 Fz [N] — 중복 표본 판정용
+    raw: list[float]            # 원시값 (Fz [N] 또는 kgf) — 중복 표본 판정용
+    t_s: list[float] | None = None   # 표본 시각 (measure_g1.py 출력에만 있다)
 
     @property
     def mean_g(self) -> float:
@@ -35,16 +37,44 @@ class Trial:
         return st.pstdev(self.samples_g)
 
 
-def load_trials(path: str, fz_sign: float = -1.0) -> list[Trial]:
-    """tool_force 경로 그대로 환산한다 — 단일 출처는 WeightModel.raw_to_g."""
-    model = WeightModel(ScaleConfig(method='tool_force', gain=1.0, offset_g=0.0, fz_sign=fz_sign))
-    by = defaultdict(list)
+COLUMN = {'tool_force': 'Z축힘_N', 'workpiece': '작업물무게_kgf'}
+
+
+def load_trials(path: str, method: str = 'tool_force', fz_sign: float = -1.0) -> list[Trial]:
+    """노드와 같은 경로로 환산한다 — 단일 출처는 WeightModel.raw_to_g (offset 0, gain 1).
+    tool_force 는 `Z축힘_N`, workpiece 는 `작업물무게_kgf` 열을 읽는다. `시각_s` 열이 있으면 갱신 간격 추정에 쓴다."""
+    col = COLUMN[method]
+    model = WeightModel(ScaleConfig(method=method, gain=1.0, offset_g=0.0, fz_sign=fz_sign))
+    by, ts = defaultdict(list), defaultdict(list)
     with open(path, encoding='utf-8') as f:
-        for r in csv.DictReader(f):
-            if r['반복번호'] == '반복번호':          # 파일을 이어 붙이며 헤더가 반복된 행
+        rd = csv.DictReader(f)
+        if col not in (rd.fieldnames or []):
+            raise ValueError(f'{path}: {method} 열 {col!r} 이 없다 — measure_g1.py 로 다시 재거나 --method 를 바꾼다')
+        for r in rd:
+            if r['반복번호'] == '반복번호' or r[col] in ('', None):   # 헤더 반복 행 · 그 표본에서 값이 안 나온 행
                 continue
-            by[(r['실험명'], int(r['반복번호']), float(r['실제총무게_g']))].append(float(r['Z축힘_N']))
-    return [Trial(s, n, a, [model.raw_to_g(z) for z in zs], zs) for (s, n, a), zs in sorted(by.items())]
+            k = (r['실험명'], int(r['반복번호']), float(r['실제총무게_g']))
+            by[k].append(float(r[col]))
+            if r.get('시각_s'):
+                ts[k].append(float(r['시각_s']))
+    out = [Trial(s, n, a, [model.raw_to_g(z) for z in zs], zs) for (s, n, a), zs in sorted(by.items())]
+    for t in out:
+        t.t_s = ts.get((t.set_name, t.no, t.actual_g)) or None
+    return out
+
+
+def update_interval_s(trials: list[Trial]):
+    """표본값이 바뀌는 시각 간격의 중앙값 — 센서 갱신 주기의 추정. `시각_s` 가 없으면 None."""
+    gaps = []
+    for t in trials:
+        if not t.t_s:
+            continue
+        last_t = t.t_s[0]
+        for v0, v1, t1 in zip(t.raw, t.raw[1:], t.t_s[1:]):
+            if v1 != v0:
+                gaps.append(t1 - last_t)
+                last_t = t1
+    return st.median(gaps) if gaps else None
 
 
 def summarize(trials: list[Trial]) -> dict:
@@ -71,21 +101,26 @@ def summarize(trials: list[Trial]) -> dict:
         'set_means_g': set_means, 'set_drift_g': max(set_means.values()) - min(set_means.values()),
         'within_trial_sigma_mean_g': st.mean(within), 'within_trial_sigma_p95_g': p95,
         'distinct_sample_ratio': distinct,                      # 1.0 이면 표본 중복 없음
+        'update_interval_s': update_interval_s(trials),         # 시각 열이 있을 때만
     }
 
 
 def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
-    if not argv:
-        print(__doc__)
-        return 2
-    s = summarize(load_trials(argv[0]))
-    print(f"실제 {s['actual_g']:.0f} g · {s['n_sets']}세트 × 회차 {s['n_trials'] // s['n_sets']} × 표본 {s['samples_per_trial'][0]}~{s['samples_per_trial'][1]}")
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('csv')
+    ap.add_argument('--method', choices=sorted(COLUMN), default='tool_force')
+    ap.add_argument('--fz-sign', type=float, default=-1.0)
+    a = ap.parse_args(argv)
+    s = summarize(load_trials(a.csv, a.method, a.fz_sign))
+    print(f"[{a.method}] 실제 {s['actual_g']:.0f} g · {s['n_sets']}세트 × 회차 {s['n_trials'] // s['n_sets']} × 표본 {s['samples_per_trial'][0]}~{s['samples_per_trial'][1]}")
     print(f"offset_g            = {s['offset_g']:.3f}   (gain 1.0, 단일 무게 → 임시값)")
     print(f"회차 평균 σ (합산)   = {s['repeat_sigma_g']:.4f}   3σ = {s['three_sigma_g']:.4f}  → min_resolvable_g 는 이 이상")
     print(f"세트 안 σ 평균       = {s['within_set_sigma_mean_g']:.4f}   (세트 간 흐름 {s['set_drift_g']:.1f} g 는 빠진 값)")
     print(f"회차 내부 σ 평균/p95 = {s['within_trial_sigma_mean_g']:.4f} / {s['within_trial_sigma_p95_g']:.4f}  → max_std_g 는 p95 이상")
     print(f"표본 중 서로 다른 값 = {s['distinct_sample_ratio'] * 100:.0f} %   (낮으면 표본 간격이 센서 갱신보다 짧다)")
+    if s['update_interval_s'] is not None:
+        print(f"값이 바뀌는 간격 중앙값 = {s['update_interval_s'] * 1000:.0f} ms   → --period 는 이보다 길게")
     for k, v in s['set_means_g'].items():
         print(f"  {k}: {v:.1f} g")
     return 0

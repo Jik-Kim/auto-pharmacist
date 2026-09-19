@@ -57,3 +57,27 @@ def test_g1_csv_reproduces_reference_and_defaults():
     assert cfg.min_resolvable_g == ref['min_resolvable_g'] >= s['three_sigma_g']
     assert cfg.max_std_g == ref['max_std_g'] >= s['within_trial_sigma_p95_g']
     assert s['distinct_sample_ratio'] < 0.7                     # 표본 중복 — 간격을 고치기 전까지는 사실로 남긴다
+
+
+def test_calib_reads_both_methods_and_estimates_update_interval(tmp_path):
+    """measure_g1.py 형식(두 경로 + 시각) 을 읽고, 값이 바뀌는 간격으로 센서 갱신 주기를 추정한다."""
+    from gmp_dosing.core.calib import load_trials, summarize
+    rows = ['실험명,물체종류,측정조건,실제총무게_g,반복번호,표본번호,시각_s,X축힘_N,Y축힘_N,Z축힘_N,X축모멘트_Nm,Y축모멘트_Nm,Z축모멘트_Nm,작업물무게_kgf']
+    t = 0.0
+    for s_ in ('a', 'b'):
+        for n in range(1, 4):
+            for k in range(1, 5):
+                fz = 1.2 + 0.01 * ((k + 1) // 2)         # 두 표본마다 값이 바뀐다 (갱신 0.2 s)
+                kg = 0.133 + 0.001 * n
+                rows.append(f'set_{s_},scoop,c,133,{n},{k},{t:.3f},0,0,{fz},0,0,0,{kg}')
+                t += 0.1
+    p = tmp_path / 'g1.csv'; p.write_text('\n'.join(rows) + '\n', encoding='utf-8')
+    wp = summarize(load_trials(str(p), 'workpiece'))
+    assert wp['n_sets'] == 2 and wp['n_trials'] == 6 and abs(wp['offset_g'] - (-2.0)) < 1e-6   # 133 − mean(134,135,136)
+    tf = summarize(load_trials(str(p), 'tool_force'))
+    assert tf['offset_g'] > 250 and abs(tf['update_interval_s'] - 0.2) < 1e-6 and tf['distinct_sample_ratio'] == 0.5
+    old = tmp_path / 'old_format.csv'                     # 9/18 형식 — workpiece 열이 없다
+    old.write_text(rows[0].replace(',작업물무게_kgf', '') + '\n' + rows[1].rsplit(',', 1)[0] + '\n', encoding='utf-8')
+    import pytest
+    with pytest.raises(ValueError, match='workpiece'):
+        load_trials(str(old), 'workpiece')
