@@ -61,8 +61,8 @@ class ProcessNode(Node):
             ('stations_file', ''),
             ('robot.tool_name', 'tool_weight'), ('robot.tcp_name', 'GripperDA_v1'),
             ('robot.vel_scale', 0.0),           # 0 이면 skill_node 의 robot.vel_scale
-            ('scale.method', 'workpiece'), ('scale.gain', 1.0), ('scale.offset_g', 0.0),
-            ('scale.min_resolvable_g', 30.0), ('scale.max_std_g', 10.0),
+            ('scale.method', 'tool_force'), ('scale.gain', 0.8859), ('scale.offset_g', 247.091),
+            ('scale.min_resolvable_g', 19.0), ('scale.max_std_g', 10.0),     # G1 9/19 — common.yaml 과 같은 값
             ('scale.samples', 20), ('scale.settle_s', 1.0),
             ('dosing.max_attempts', 3), ('dosing.scoop_nominal_g', 40.0), ('dosing.min_fraction', 0.15),
             ('gripper.scoop_width_mm', 18.0), ('gripper.cup_width_mm', 60.0),

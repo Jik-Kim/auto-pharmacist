@@ -26,14 +26,14 @@
       din_pins: [0]                 # [팀 확정 필요] 파지 완료 DI (Q-03). 0 = 없음
       dio_settle_s: 0.3             # DO1/DO2 전환 뒤 기구 동작 대기
     scale:
-      method: workpiece             # workpiece | tool_force  (D-07)
+      method: tool_force            # tool_force | workpiece — 9/19 G1 로 tool_force 확정 (D-07). workpiece 는 리셋이 안 먹어 탈락
       samples: 20
       settle_s: 1.0
-      gain: 1.0                     # 9/21 실제 저울 5점 비교로 확정
-      offset_g: 0.0
-      min_resolvable_g: 30.0        # [G1 실측 3σ 로 갱신 — I-001]
-      max_std_g: 10.0
-      fz_sign: -1.0                   # 아래 방향 하중이 음수라는 가정 — G1에서 확인
+      gain: 0.8859                  # 9/19 두 점(32 g·132 g) 직선 — 3점째(≈86 g)로 9/21 확인 (gmp_dosing/config/scale_reference.yaml)
+      offset_g: 247.091             # tool_force 전용 (같은 직선). 9/18·9/19 단일점 offset 이 2 g 안에서 같아 날짜에 안정
+      min_resolvable_g: 19.0        # 회차 평균 3σ — 현재 표본(20개 × 0.05 s, 중복 섞임) 조건 18.0 g + 여유. 표본 간격 늘리면 14 (3σ 12.6)
+      max_std_g: 10.0               # 독립 표본의 회차 내부 σ p95 7.8 g 위 (9/19)
+      fz_sign: -1.0                   # G1 확인: 아래 하중이 +Fz 로 읽혀 -1 로 뒤집는다
       simulated: false              # virtual 은 런치가 true 로
     dosing:
       max_attempts: 3
