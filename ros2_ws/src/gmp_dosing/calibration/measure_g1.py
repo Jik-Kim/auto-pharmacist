@@ -13,6 +13,11 @@ core/calib.py 가 `--method tool_force` / `--method workpiece` 로 두 경로를
   source tools/env.sh && python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py --actual-g 133 --object scoop \\
       --goto-workbench --gripper --sets 6 --trials 30 --samples 10 --period 0.1 --out records/g1_both_$(date +%m%d).csv
 
+두 무게를 한 파일에 (9/19 확정 — 빈 스쿱 6세트 → 원료 담고 6세트, gain 의 두 점이 된다):
+  1회차  --actual-g 32  --out records/g1_both_0919.csv                 (빈 스쿱, 영점 포함)
+  2회차  --actual-g <저울값> --out records/g1_both_0919.csv --no-reset   (같은 파일에 이어 쓴다. 영점은 세션 1회)
+  요약   python3 -m gmp_dosing.core.calib records/g1_both_0919.csv --method workpiece   → 무게별 σ + gain·offset 직선
+
 절차 (프롬프트가 안내한다):
   1. 빈 그리퍼로 계량 자세 → Enter → reset_workpiece_weight (세션 1회, 매뉴얼 5.1.2)
   2. 세트마다: 물체를 잡고 계량 자세에서 정지 → Enter → trials × samples 읽기.

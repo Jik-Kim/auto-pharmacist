@@ -105,6 +105,30 @@ def summarize(trials: list[Trial]) -> dict:
     }
 
 
+def summarize_by_weight(trials: list[Trial]) -> dict[float, dict]:
+    """실제 무게별 요약. 한 CSV 에 32 g(빈 스쿱)·133 g(원료 담음) 이 같이 있어도 된다."""
+    by = defaultdict(list)
+    for t in trials:
+        by[t.actual_g].append(t)
+    return {w: summarize(ts) for w, ts in sorted(by.items())}
+
+
+def fit_gain(by_weight: dict[float, dict]) -> dict | None:
+    """무게가 2점 이상이면 actual = gain × raw + offset 최소제곱. raw 는 offset 0·gain 1 로 환산한 회차 평균의 평균.
+    반환: gain, offset_g, residual_g(무게별 잔차), max_residual_g. 1점이면 None (gain 은 1 로 두고 offset 만)."""
+    if len(by_weight) < 2:
+        return None
+    xs = [w - s['offset_g'] for w, s in by_weight.items()]     # raw 평균 = actual − offset(1점 기준)
+    ys = list(by_weight)
+    n, mx, my = len(xs), st.mean(xs), st.mean(ys)
+    sxx = sum((x - mx) ** 2 for x in xs)
+    gain = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sxx
+    offset = my - gain * mx
+    res = {y: y - (gain * x + offset) for x, y in zip(xs, ys)}
+    return {'gain': gain, 'offset_g': offset, 'residual_g': res, 'max_residual_g': max(abs(v) for v in res.values()),
+            'n_weights': n}
+
+
 def main(argv=None):
     import argparse
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -112,8 +136,19 @@ def main(argv=None):
     ap.add_argument('--method', choices=sorted(COLUMN), default='tool_force')
     ap.add_argument('--fz-sign', type=float, default=-1.0)
     a = ap.parse_args(argv)
-    s = summarize(load_trials(a.csv, a.method, a.fz_sign))
-    print(f"[{a.method}] 실제 {s['actual_g']:.0f} g · {s['n_sets']}세트 × 회차 {s['n_trials'] // s['n_sets']} × 표본 {s['samples_per_trial'][0]}~{s['samples_per_trial'][1]}")
+    by_w = summarize_by_weight(load_trials(a.csv, a.method, a.fz_sign))
+    for s in by_w.values():
+        _print_one(a.method, s)
+    fit = fit_gain(by_w)
+    if fit:
+        print(f"\n[{a.method}] 다중 무게 {fit['n_weights']}점 직선: gain = {fit['gain']:.4f}, offset_g = {fit['offset_g']:.3f}, "
+              f"잔차 최대 {fit['max_residual_g']:.2f} g" + ('  ← 3점 이상이어야 잔차가 의미 있다' if fit['n_weights'] < 3 else ''))
+        print("   → common.yaml scale.gain / scale.offset_g 후보. 무게별 offset 이 3σ 안에서 같으면 gain 1 로 두어도 된다")
+    return 0
+
+
+def _print_one(method, s):
+    print(f"[{method}] 실제 {s['actual_g']:.0f} g · {s['n_sets']}세트 × 회차 {s['n_trials'] // s['n_sets']} × 표본 {s['samples_per_trial'][0]}~{s['samples_per_trial'][1]}")
     print(f"offset_g            = {s['offset_g']:.3f}   (gain 1.0, 단일 무게 → 임시값)")
     print(f"회차 평균 σ (합산)   = {s['repeat_sigma_g']:.4f}   3σ = {s['three_sigma_g']:.4f}  → min_resolvable_g 는 이 이상")
     print(f"세트 안 σ 평균       = {s['within_set_sigma_mean_g']:.4f}   (세트 간 흐름 {s['set_drift_g']:.1f} g 는 빠진 값)")
@@ -123,7 +158,6 @@ def main(argv=None):
         print(f"값이 바뀌는 간격 중앙값 = {s['update_interval_s'] * 1000:.0f} ms   → --period 는 이보다 길게")
     for k, v in s['set_means_g'].items():
         print(f"  {k}: {v:.1f} g")
-    return 0
 
 
 if __name__ == '__main__':

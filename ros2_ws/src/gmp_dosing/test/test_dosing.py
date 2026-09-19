@@ -81,3 +81,19 @@ def test_calib_reads_both_methods_and_estimates_update_interval(tmp_path):
     import pytest
     with pytest.raises(ValueError, match='workpiece'):
         load_trials(str(old), 'workpiece')
+
+
+def test_calib_two_weights_give_gain_line(tmp_path):
+    """한 CSV 에 32 g(빈 스쿱)·133 g 이 있으면 무게별 요약과 gain·offset 직선이 나온다. 센서가 실제의 0.9 배로 읽는다고 가정."""
+    from gmp_dosing.core.calib import load_trials, summarize_by_weight, fit_gain
+    rows = ['실험명,물체종류,측정조건,실제총무게_g,반복번호,표본번호,시각_s,X축힘_N,Y축힘_N,Z축힘_N,X축모멘트_Nm,Y축모멘트_Nm,Z축모멘트_Nm,작업물무게_kgf']
+    for w in (32.0, 133.0):
+        for n in range(1, 4):
+            for k in range(1, 4):
+                rows.append(f'set_{w:g},scoop,c,{w:g},{n},{k},0,0,0,0,0,0,0,{0.9 * w / 1000 + 0.010:.6f}')   # 0.9×실제 + 10 g 편향
+    p = tmp_path / 'g1.csv'; p.write_text('\n'.join(rows) + '\n', encoding='utf-8')
+    by_w = summarize_by_weight(load_trials(str(p), 'workpiece'))
+    assert list(by_w) == [32.0, 133.0] and by_w[32.0]['n_trials'] == 3
+    fit = fit_gain(by_w)
+    assert abs(fit['gain'] - 1 / 0.9) < 1e-6 and abs(fit['offset_g'] - (-10 / 0.9)) < 1e-6 and fit['max_residual_g'] < 1e-9
+    assert fit_gain({32.0: by_w[32.0]}) is None

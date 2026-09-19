@@ -95,7 +95,7 @@
 - [ ] **[G1 후속]** 표본 간격을 센서 갱신 주기에 맞춰 재측정 — 표본 43 % 가 앞 값 반복. `scale.samples` 수가 아니라 간격 문제 (skill_node `measure_force` 는 A 와) · 마감 9/21
 - [ ] **[G1 후속]** `get_workpiece_weight` 경로 측정 — `calibration/measure_g1.py` 로 두 경로 동시 기록 → `calib.py --method workpiece` 로 σ 비교 → 경로 확정(D-07)·`common.yaml` method/offset/min_resolvable_g 갱신. 조장 9/19: 오차 작고 연산 적으면 도입 · 마감 9/19
 - [ ] 스쿱 1회 퍼올림량 실측 → `dosing.scoop_nominal_g` (보정 투입 fraction 계산 근거) · 마감 9/18
-- [ ] 보정 계수: 실제 저울 vs 로봇 측정 5점 비교 → `scale.gain`/`scale.offset` · 마감 9/21
+- [ ] 보정 계수: 실제 저울 vs 로봇 측정 다중 무게 → `scale.gain`/`scale.offset` — 9/19 G1 에서 빈 스쿱 32 g·원료 담은 총무게 두 점을 한 CSV 에 쌓으면 `calib.py` 가 직선을 낸다. 3점째(≈86 g)는 9/21 · 마감 9/21
 
 ## gmp_process [C 공정]
 - [x] `core/recipe.py`: yaml → `RecipeSpec` 변환, 필수 필드·원료 중복·양수 검증 + `test_recipe.py` 25건 (`Recipe` msg 변환은 계층 원칙상 `nodes/` 가 한다 / **순서는 검증 대상이 아니다** — 계약 1절 "순서 위반은 일탈이 아니라 버그") · 마감 9/16
