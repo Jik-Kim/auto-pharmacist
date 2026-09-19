@@ -23,7 +23,7 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 | D-07 | **무게 측정** | **1순위 `get_workpiece_weight()`** (매뉴얼 5.1.1, 강사 지정 절) — 세션 시작 시 빈 그리퍼·계량 자세에서 `reset_workpiece_weight()` 로 잔류 오차를 지우고, 용기를 들어 계량 자세에서 `samples` 회 읽어 평균·표준편차. M0609 는 M 시리즈(JTS)라 사용 가능(Non-FTS A 모델 불가 주의는 해당 없음). `set_workpiece_weight` 는 **부르지 않는다** — 충돌 감지 무효화가 전제라 안전 원칙에 어긋난다. **폴백 `get_tool_force(DR_BASE)` Fz 평균** — 파라미터 `scale.method: workpiece \| tool_force`. 둘 다 JTS 에서 나오므로 **분해능은 9/17 오전 실측이 확정한다** (Q-01). 그램 환산·영점·보정은 `gmp_dosing/core/scale.py` 단일 출처. 가상 모드는 힘값이 없을 가능성이 커 `scale.simulated` 로 대체 (Q-07) |
 | D-08 | 도징 단위 | **실측 분해능에 따라 결정** — 30 g 을 3σ 로 가를 수 있으면 30 g, 아니면 100 g 으로 올리고 허용 오차 ±5 %. 레시피 yaml 만 바뀌고 코드는 그대로다 |
 | D-09 | 스테이션 좌표 | `gmp_bringup/params/stations.yaml` 단일 출처. 9/17 티칭한 `posx` 를 적는다. 설계 좌표(판 820×650, 베이스 (−50, 320))는 `PROJECT_RULES.md` 3-1. **코드에 좌표를 적지 않는다** |
-| D-10 | 툴·TCP | `set_tool("tool_weight")` · `set_tcp("GripperDA_v1")` — 컨트롤러 등록명, 파라미터 `robot.tool_name`/`robot.tcp_name`. 실측 1.320 kg · CoG (1.960, −32.760, 19.140) 은 컨트롤러에 등록 완료 (R7). 가상 모드는 에뮬레이터에 미등록이라 **건너뛴다** |
+| D-10 | 툴·TCP | `set_tool("tool_weight")` · `set_tcp("GripperDA_v1")` — 실물 컨트롤러 등록명, 파라미터 `robot.tool_name`/`robot.tcp_name`. 실측 1.320 kg · CoG (1.960, −32.760, 19.140) 은 컨트롤러에 등록 완료 (R7). 현재 TCP 오프셋은 툴 좌표계 **+Z 208 mm** (`robot.tcp_offset_mm_deg`). 가상 모드도 `GripperDA_v1`을 이 오프셋으로 등록·선택한다. 설정 명령은 수동 모드 전용이므로 초기화 때만 수동으로 전환하고 `finally`에서 자동 모드로 복귀한다. |
 | D-11 | 워크스페이스 | `~/ws_cobot_pjt/ws_dsr` 언더레이(벤더, read-only) + 이 저장소 `ros2_ws` 오버레이. 벤더 패키지는 고치지 않는다 (I-003 패치도 포크 형태로) |
 | D-12 | 네임스페이스·이름 | 우리 노드는 launch 가 `namespace:=cell` 을 붙인다 → `/cell/…`. 코드는 상대 이름. DSR 클라이언트 노드만 `dsr01`. 그리퍼 서비스 `/onrobot/sendCommand` 는 드라이버가 절대 이름으로 만든다 |
 | D-13 | 협업·안전 | 사람 상주 없음 (R23). 개입은 **HMI 인터락 요청 → 로봇 안전 자세 → 사람 투입 → 재개** 와 **QA 원격 승인** 둘뿐. 물리 접촉은 두산 충돌 감지(PFL)가 막는다 — 임계값은 `safety.collision_sensitivity` |
@@ -57,7 +57,7 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 | Q-01 | **외력 분해능** — 정지 상태 Fz 표준편차가 몇 N 인가. 30 g(0.3 N) 을 가를 수 있는가 | A + B | **9/17 오전 (게이트)** |
 | Q-02 | 그리퍼 백엔드 — `modbus` 가 실물에서 폭·힘 모두 되는가, 안 되면 `dio` | A | 9/17 |
 | Q-03 | `dio` 백엔드의 DI 핀 — 파지 완료·busy 가 어느 핀으로 오는가 (ws README "디지털 입력 핀 감지") | A | 9/17 |
-| Q-04 | 스쿱 실물 치수 — 손잡이 폭·두께 (파지 폭 `gripper.scoop_width_mm`) | C(하드웨어) | 물건 도착 시 |
+| ~~Q-04~~ | ~~스쿱 실물 치수~~ → **9/19 해소: A/B/C 손잡이 폭 15.5/18/28 mm.** 원료별 값은 `stations.yaml`·`common.yaml`에 두며, `SetGripper.final_width_mm` 정밀도 실측은 별도 TODO로 유지 | C(하드웨어) | 해소 |
 | Q-05 | 판 위 기존 고정물 (케이블·지그) — 스테이션 좌표 충돌 여부 | 팀 | 9/17 |
 | ~~Q-06~~ | ~~주제 사전 승인~~ → **9/16 승인 (R26)** | — | 해소 |
 | Q-07 | 가상 모드에서 `get_tool_force` 가 값을 주는가 (에뮬레이터 힘 미지원 가능성) — 안 주면 가상은 `scale.simulated=true` 로 | A | 9/16 밤 |

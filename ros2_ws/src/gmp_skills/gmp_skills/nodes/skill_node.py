@@ -52,37 +52,20 @@ class Job:
 
 class SkillNode(Node):
     def __init__(self):
-        super().__init__('skill_node')
-        p = self.declare_parameters('', [
-            ('mode', 'virtual'), ('robot.id', 'dsr01'), ('robot.model', 'm0609'),
-            ('robot.tool_name', 'tool_weight'), ('robot.tcp_name', 'GripperDA_v1'),
-            ('robot.vel', 60.0), ('robot.acc', 60.0), ('robot.vel_scale', 0.3),
-            ('robot.motion_timeout_s', 30.0),
-            ('gripper.backend', 'modbus'), ('gripper.open_width_mm', 100.0), ('gripper.grip_margin_mm', 2.0),
-            ('gripper.slip_mm', 1.5), ('gripper.state_timeout_s', 0.5),
-            ('gripper.dio_settle_s', 0.3),
-            ('gripper.dio_pins', [1, 2]), ('gripper.din_pins', [0]),
-            ('gripper.cup_width_mm', 60.0), ('gripper.force_n', 20.0),
-            ('scale.method', 'workpiece'), ('scale.samples', 20), ('scale.settle_s', 1.0), ('scale.simulated', False),
-            ('scale.gain', 1.0), ('scale.offset_g', 0.0), ('scale.max_std_g', 10.0),
-            ('scale.min_resolvable_g', 30.0), ('scale.fz_sign', -1.0),
-            ('safety.fz_max_n', 15.0),
-            ('safety.compliance_stx', [3000.0, 3000.0, 500.0, 200.0, 200.0, 200.0]),
-            ('safety.scoop_force_n', -8.0), ('safety.dip_max_mm', 40.0), ('safety.scoop_timeout_s', 5.0),
-            ('safety.nudge_enabled', True), ('safety.nudge_force_n', 8.0),
-            ('safety.nudge_window_s', 0.2), ('safety.nudge_cooldown_s', 1.5),
-            ('pour.tilt_deg', 110.0), ('pour.tilt_axis', 4), ('pour.hold_s', 0.5),
-            ('pour.shake_amp_deg', 4.0), ('pour.shake_period_s', 0.5),
-            ('pour.shake_atime_s', 0.2), ('pour.shake_repeat', 2),
-            ('stations_file', ''),
-        ])
+        # 기본값과 설명은 gmp_bringup/params/common.yaml 한 곳에서 관리한다.
+        # launch 또는 --params-file로 전달된 값만 자동 선언해 코드와 YAML의 중복을 없앤다.
+        super().__init__('skill_node', automatically_declare_parameters_from_overrides=True)
         g = lambda k: self.get_parameter(k).value  # noqa: E731
         self.mode = g('mode')
         self.vel_scale = float(g('robot.vel_scale'))
         self.motion_timeout_s = float(g('robot.motion_timeout_s'))
         self.stations = StationTable.from_yaml(g('stations_file'))
+        self._cartesian_ready = False
         self.arm = DsrArm(g('robot.id'), g('robot.model'), self.mode, float(g('robot.vel')), float(g('robot.acc')),
-                          g('robot.tool_name'), g('robot.tcp_name'), self.get_logger(), self._now_s)
+                          g('robot.tool_name'), g('robot.tcp_name'), self.get_logger(), self._now_s,
+                          startup_timeout_s=float(g('robot.startup_timeout_s')),
+                          virtual_tcp_name=g('robot.virtual_tcp_name'),
+                          tcp_offset_mm_deg=g('robot.tcp_offset_mm_deg'))
 
         backend = 'virtual' if self.mode == 'virtual' else g('gripper.backend')
         self._grip_cli = self.create_client(SetCommand, '/onrobot/sendCommand')
@@ -115,14 +98,20 @@ class SkillNode(Node):
             raise RuntimeError(f'자가진단 실패 — 기동 거부: {startup.error or startup.result[1]}')
         self.event('INFO', 'SELF_CHECK', f'OK {startup.result[1]}')
 
-        ActionServer(self, MoveToStation, 'move_to_station', self._exec_move, callback_group=self.cb,
-                     goal_callback=lambda _: GoalResponse.ACCEPT, cancel_callback=self._on_cancel)
-        ActionServer(self, Scoop, 'scoop', self._exec_scoop, callback_group=self.cb,
-                     cancel_callback=self._on_cancel)
-        ActionServer(self, Pour, 'pour', self._exec_pour, callback_group=self.cb,
-                     cancel_callback=self._on_cancel)
-        ActionServer(self, WeighContainer, 'weigh_container', self._exec_weigh, callback_group=self.cb,
-                     cancel_callback=self._on_cancel)
+        # 서버 객체를 멤버로 유지해야 가비지 컬렉션 뒤에도 ROS 그래프에 계속 남는다.
+        self._action_servers = [
+            ActionServer(self, MoveToStation, 'move_to_station', self._exec_move,
+                         callback_group=self.cb, goal_callback=lambda _: GoalResponse.ACCEPT,
+                         cancel_callback=self._on_cancel),
+            ActionServer(self, Scoop, 'scoop', self._exec_scoop, callback_group=self.cb,
+                         cancel_callback=self._on_cancel),
+            ActionServer(self, Pour, 'pour', self._exec_pour, callback_group=self.cb,
+                         cancel_callback=self._on_cancel),
+            ActionServer(self, WeighContainer, 'weigh_container', self._exec_weigh,
+                         callback_group=self.cb, cancel_callback=self._on_cancel),
+        ]
+        self.get_logger().info(
+            '[ACTION_SERVERS_READY] move_to_station, scoop, pour, weigh_container')
         self.create_service(SetGripper, 'set_gripper', self._srv_set_gripper, callback_group=self.cb)
         self.create_service(MeasureForce, 'measure_force', self._srv_measure, callback_group=self.cb)
         self.create_service(SafePose, 'safe_pose', self._srv_safe, callback_group=self.cb)
@@ -227,13 +216,24 @@ class SkillNode(Node):
         st = self.stations.get(job.args['station_id'])
         # ABOVE/AT 상수가 현재 action 파일의 Feedback 절에 있어 Goal에 생성되지 않는다.
         target = st.above(self.stations.approach_mm) if job.args['approach'] == 0 else st.posx
-        job.feedback and job.feedback('MOVING')
         vel_scale = job.args.get('vel_scale') or self.vel_scale
         safe_posj = st.extra.get('posj') if job.args['approach'] != 0 else None
         if safe_posj is not None:
+            job.feedback and job.feedback('HOMING')
             self.arm.movej_cancellable(safe_posj, vel_scale, lambda: job.cancel,
                                        self.motion_timeout_s)
+            self._cartesian_ready = True
         else:
+            if not self._cartesian_ready:
+                entry = self.stations.get('safe')
+                entry_posj = entry.extra.get('posj')
+                if not isinstance(entry_posj, list) or len(entry_posj) != 6:
+                    raise ValueError('safe station에 시작 posj 6개가 필요하다')
+                job.feedback and job.feedback('HOMING')
+                self.arm.movej_cancellable(entry_posj, vel_scale, lambda: job.cancel,
+                                           self.motion_timeout_s)
+                self._cartesian_ready = True
+            job.feedback and job.feedback('MOVING')
             self.arm.movel_cancellable(target, vel_scale, lambda: job.cancel,
                                        self.motion_timeout_s)
         return st.station_id
@@ -261,6 +261,7 @@ class SkillNode(Node):
         if posj is None:
             raise ValueError('safe station에 posj 6개가 필요하다')
         self.arm.movej_cancellable(posj, 0.3, lambda: job.cancel, self.motion_timeout_s)
+        self._cartesian_ready = True
         return True
 
     def _do_scoop(self, job: Job):

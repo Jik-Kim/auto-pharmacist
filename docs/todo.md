@@ -5,56 +5,54 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 14/70 완료** (████░░░░░░░░░░░░░░░░)  ·  기준 09/18
+**전체 19/70 완료** (█████░░░░░░░░░░░░░░░)  ·  기준 09/19
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
-| gmp_interfaces [조장] | 2/6 | `███░░░░░░░` | **2** |
-| gmp_skills [A 스킬] | 0/16 | `░░░░░░░░░░` | **6** |
-| gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **4** |
-| gmp_process [C 공정] | 6/17 | `████░░░░░░` | — |
-| gmp_hmi [D HMI·기록] | 3/15 | `██░░░░░░░░` | **1** |
-| gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **2** |
+| gmp_interfaces [조장] | 2/6 | `███░░░░░░░` | **4** |
+| gmp_skills [A 스킬] | 4/16 | `██░░░░░░░░` | **10** |
+| gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **5** |
+| gmp_process [C 공정] | 7/17 | `████░░░░░░` | **3** |
+| gmp_hmi [D HMI·기록] | 3/15 | `██░░░░░░░░` | **5** |
+| gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **4** |
 
-**마감이 지난 항목 15건**
+**마감이 지난 항목 31건**
 
 - `9/17` gmp_interfaces — 계약 v1.2: Deviation.kind 에 WRONG_TOOL·VERIFY_MISMATCH 추가, WeighHeld Acti…
 - `9/17` gmp_interfaces — G1 결과로 도징 단위 확정 → RecipeItem.tol_pct 기본값·레시피 yaml 갱신 (SOT D-08)
+- `9/18` gmp_interfaces — 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02)
+- `9/18` gmp_interfaces — [D-22] 계약 v1.2 에 Deviation.kind BATCH_OUT_OF_SPEC 추가 — VERIFY 를 계측 신뢰성(…
+- `9/18` gmp_skills — [추가 7] nudge 감지: 워커 유휴 루프·계량 settle·붓기 대기에서 get_tool_force 100 ms 폴링, 임…
+- `9/18` gmp_skills — [추가 1] 폭 지문: 스쿱 손잡이 폭 A/B/C = 15.5/18/28 mm로 확정(9/19), stations.yaml/co…
 - `9/16` gmp_skills — adapters/dsr_arm.py: DR_init·set_tool/tcp·movej/movel·get_tool_force·re…
-- `9/17` gmp_skills — adapters/rg2_gripper.py: modbus 백엔드 (/onrobot/sendCommand 폭 정수, /onrobo…
-- `9/17` gmp_skills — nodes/skill_node.py: 워커 스레드 + 큐, MoveToStation·SetGripper·MeasureForce·…
+- `9/17` gmp_skills — nodes/skill_node.py: 워커 스레드 + 큐, MoveToStation·Scoop·Pour·WeighContaine…
 - `9/17` gmp_skills — G1 외력 분해능 측정 (I-001) — 결과를 SOT D-08 에
 - `9/17` gmp_skills — G2 그리퍼 modbus 실물 확인 (Q-02) — 안 되면 dio 백엔드 (Q-03 핀)
 - `9/17` gmp_skills — G3 stations.yaml 9곳 티칭 — 판 좌표계(D-15) 우선, 안 되면 base posx
+- `9/18` gmp_skills — Scoop: 컴플라이언스 진입 → Z 힘제어 하강 → check_force_condition 접촉 → 깊이 상한 → 들어올림 →…
+- `9/18` gmp_skills — [9/18 확정] 새 배치에서 용기를 파지한 채 passbox·reject_bin 도달 확인 (접근 높이 60 mm 포함) — …
+- `9/18` gmp_skills — [9/18 확정] 원료 선반(판 바깥·높이 다름)에서 Scoop 힘제어 확인 — 뻗은 자세의 특이점 영향 (힘제어는 특이점 영역…
 - `9/16` gmp_dosing — core/scale.py: WeightModel — 힘/작업물무게 → g, 영점(tare) 저장·적용, σ 계산, valid 판정
 - `9/16` gmp_dosing — core/dosing.py: decide(target_g, actual_g, tol_pct, attempts, history) …
 - `9/17` gmp_dosing — test/test_dosing.py: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ…
 - `9/17` gmp_dosing — G1 σ 로 scale.min_resolvable_g 갱신, 30 g / 100 g 단위 확정 (조장과)
+- `9/18` gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
+- `9/18` gmp_process — nodes/process_node.py: 레시피 grade/scoop_id 제거, Pour·WeighContainer stati…
+- `9/18` gmp_process — [추가 7] NUDGE 전이: RUNNING→PAUSED(NUDGE), 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 …
+- `9/18` gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
+- `9/18` gmp_hmi — v1.2 적용: 주문 메시지의 grade/scoop_id, QaDecision.Request의 batch_id 제거(웹 표시는 …
 - `9/17` gmp_hmi — sudo apt install python3-flask 후 가상 모드에서 주문 → 상태 → QA 승인 → 이력 조회 한 바퀴
+- `9/18` gmp_hmi — 다른 기기(폰·노트북)에서 http://<로봇PC>:5000 접속 확인 — 시연 T6(c) 장면
+- `9/18` gmp_hmi — process_node 가 BATCH_START 이벤트에 product 를 싣게 C 와 합의 (batches.product 채우…
+- `9/18` gmp_hmi — [9/18 확정] 회수 확인 버튼 — QA 가 패스박스·폐기함 비운 뒤 누르면 카운터 리셋 + HMI_* audit 기록 (누가…
 - `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
 - `9/17` gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
+- `9/18` gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — output_tray.capacity·reject_bin.capa…
+- `9/18` gmp_bringup — common.yaml 에 qa.decision_timeout_s·interlock.timeout_s 추가 — docs/inter…
 
-**오늘 마감 20건**
+**오늘 마감 1건**
 
-- gmp_interfaces — 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02)
-- gmp_interfaces — [D-22] 계약 v1.2 에 Deviation.kind BATCH_OUT_OF_SPEC 추가 — VERIFY 를 계측 신뢰성(…
-- gmp_skills — [추가 7] nudge 감지: 워커 유휴 루프·계량 settle·붓기 대기에서 get_tool_force 100 ms 폴링, 임…
-- gmp_skills — [추가 1] 폭 지문: 스쿱 손잡이 폭 15/18/21 mm 제작(테이프), stations.yaml/common.yaml 에 …
-- gmp_skills — Scoop: 컴플라이언스 진입 → Z 힘제어 하강 → check_force_condition 접촉 → 깊이 상한 → 들어올림 →…
-- gmp_skills — Pour: 기울임 movel/movesx + fraction<1 시 amove_periodic 털어내기
-- gmp_skills — WeighContainer: 파지 → 계량 자세 → samples 회 읽기 → 내려놓기
-- gmp_skills — [9/18 확정] 새 배치에서 용기를 파지한 채 passbox·reject_bin 도달 확인 (접근 높이 60 mm 포함) — …
-- gmp_skills — [9/18 확정] 원료 선반(판 바깥·높이 다름)에서 Scoop 힘제어 확인 — 뻗은 자세의 특이점 영향 (힘제어는 특이점 영역…
-- gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
-- gmp_process — nodes/process_node.py: 레시피 grade/scoop_id 제거, Pour·WeighContainer stati…
-- gmp_process — [추가 7] NUDGE 전이: RUNNING→PAUSED(NUDGE), 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 …
-- gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
-- gmp_hmi — v1.2 적용: 주문 메시지의 grade/scoop_id, QaDecision.Request의 batch_id 제거(웹 표시는 …
-- gmp_hmi — 다른 기기(폰·노트북)에서 http://<로봇PC>:5000 접속 확인 — 시연 T6(c) 장면
-- gmp_hmi — process_node 가 BATCH_START 이벤트에 product 를 싣게 C 와 합의 (batches.product 채우…
-- gmp_hmi — [9/18 확정] 회수 확인 버튼 — QA 가 패스박스·폐기함 비운 뒤 누르면 카운터 리셋 + HMI_* audit 기록 (누가…
-- gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — output_tray.capacity·reject_bin.capa…
-- gmp_bringup — common.yaml 에 qa.decision_timeout_s·interlock.timeout_s 추가 — docs/inter…
+- gmp_hmi — [추가 7] HMI: PAUSED 사유(NUDGE/REFILL) 표시, 이벤트 타임라인에 NUDGE
 
 > 이 표는 `python3 tools/todo_stats.py` 가 체크박스를 세어 다시 쓴다. 손으로 고치지 않는다.
 
@@ -69,20 +67,20 @@
 - [ ] **[D-22]** 계약 v1.2 에 `Deviation.kind BATCH_OUT_OF_SPEC` 추가 — `VERIFY` 를 **계측 신뢰성**(Σ투입량 대조)과 **제품 판정**(레시피 총량 대조)으로 나눈다. **조장 합의 완료 (9/17)**. I-007 과 같이 처리 · 마감 9/18
 
 ## gmp_skills [A 스킬]
-- [ ] **[추가 7] nudge 감지**: 워커 유휴 루프·계량 settle·붓기 대기에서 `get_tool_force` 100 ms 폴링, 임계 초과 시 `CellEvent(NUDGE)` 발행. G1 때 빈 그리퍼 정지 외력 σ 로 임계 8 N 검증 · 마감 9/18
-- [ ] **[추가 1] 폭 지문**: 스쿱 손잡이 폭 15/18/21 mm 제작(테이프), `stations.yaml`/`common.yaml` 에 원료별 기대 폭, `SetGripper` 응답 `final_width_mm` 정밀도 실측 · 마감 9/18
-- [ ] `adapters/dsr_arm.py`: `DR_init`·`set_tool/tcp`·`movej/movel`·`get_tool_force`·`reset/get_workpiece_weight`·힘제어 짝 함수 — **가상에서 movej 까지** · 마감 9/16
-- [ ] `adapters/rg2_gripper.py`: `modbus` 백엔드 (`/onrobot/sendCommand` 폭 정수, `/onrobot_joint_states` → 폭 mm), `virtual` 백엔드 (rad 문자열), 폭 추론 · 마감 9/17
-- [ ] `nodes/skill_node.py`: 워커 스레드 + 큐, `MoveToStation`·`SetGripper`·`MeasureForce`·`SafePose` — 가상 동작. `Scoop`의 접촉력·삽입 깊이 Feedback/Result와 `GripperState` 실값 연결 · 마감 9/17
+- [ ] **[추가 7] nudge 감지**: 워커 유휴 루프·계량 settle·붓기 대기에서 `get_tool_force` 100 ms 폴링, 임계 초과 시 `CellEvent(NUDGE)` 발행. **코드·순수 테스트 완료(9/19), 남은 것은 G1에서 빈 그리퍼 정지 외력 σ로 임계 8 N 실물 검증 — 실물 보류** · 마감 9/18
+- [ ] **[추가 1] 폭 지문**: 스쿱 손잡이 폭 **A/B/C = 15.5/18/28 mm**로 확정(9/19), `stations.yaml`/`common.yaml` 반영 완료. **남은 것은 스쿱 제작 상태 확인, `SetGripper.final_width_mm` 정밀도 실측, C의 WRONG_TOOL 판정 연동 — 실물 보류** · 마감 9/18
+- [ ] `adapters/dsr_arm.py`: `DR_init`·`set_tool/tcp`·`movej/movel`·`get_tool_force`·`reset/get_workpiece_weight`·힘제어 짝 함수 **코드·단위 테스트 완료**. **남은 것은 현재 기동 수정본으로 가상 `movej` 통합 재검증** · 마감 9/16
+- [x] `adapters/rg2_gripper.py`: `modbus` 백엔드 (`/onrobot/sendCommand` 폭 정수, `/onrobot_joint_states` → 폭 mm), `virtual` 백엔드 (rad 문자열), 폭 추론 구현·단위 테스트 완료. **실물 Modbus 검증은 G2에서 별도 보류** · 마감 9/17
+- [ ] `nodes/skill_node.py`: 워커 스레드 + 큐, `MoveToStation`·`Scoop`·`Pour`·`WeighContainer`, `SetGripper`·`MeasureForce`·`SafePose`, 피드백·결과 연결까지 구현. **남은 것은 계약 v1.2 `WeighHeld` 서버와 가상 E2E, Scoop 스테이션 조회 결함 수정** · 마감 9/17
 - [ ] **G1 외력 분해능 측정 (I-001)** — 결과를 SOT D-08 에 · 마감 9/17
 - [ ] **G2 그리퍼 modbus 실물 확인 (Q-02)** — 안 되면 `dio` 백엔드 (Q-03 핀) · 마감 9/17
 - [ ] **G3 `stations.yaml` 9곳 티칭** — 판 좌표계(D-15) 우선, 안 되면 base posx · 마감 9/17
-- [ ] `Scoop`: 컴플라이언스 진입 → Z 힘제어 하강 → `check_force_condition` 접촉 → 깊이 상한 → 들어올림 → 해제 짝 (**G4**) · 마감 9/18
-- [ ] `Pour`: 기울임 `movel`/`movesx` + `fraction<1` 시 `amove_periodic` 털어내기 · 마감 9/18
-- [ ] `WeighContainer`: 파지 → 계량 자세 → `samples` 회 읽기 → 내려놓기 · 마감 9/18
-- [ ] 기동 자가진단: `get_current_tool/tcp/collision_sensitivity` 가 파라미터와 다르면 기동 거부 · 마감 9/21
-- [ ] I-004 이동 취소 수단 결정·구현 · 마감 9/21
-- [ ] `gripper_state` 10 Hz 발행, 미끄러짐 감지(`slip_mm`) · 마감 9/21
+- [ ] `Scoop`: 컴플라이언스 진입 → Z 힘제어 하강 → `check_force_condition` 접촉 → 깊이 상한 → 들어올림 → 해제 짝 **본문 구현 완료**. 현재 `StationTable.for_material()`이 `material_N`·`scoop_N`을 함께 찾아 실패하므로 조회 수정 후 G4 실물 검증 — **실물 보류** · 마감 9/18
+- [x] `Pour`: 기울임 `movesx` + `fraction<1` 시 `amove_periodic` 털어내기 구현 완료. **실물 궤적 검증은 보류** · 마감 9/18
+- [x] `WeighContainer`: 파지 → 계량 자세 → `samples` 회 읽기 → 내려놓기 구현 완료. **실물 계량 검증은 보류** · 마감 9/18
+- [ ] 기동 자가진단: `get_current_tool/tcp` 불일치 기동 거부 구현 완료. **`collision_sensitivity` getter 확인·비교는 미구현** · 마감 9/21
+- [ ] I-004 이동 취소: `MoveToStation`·`SafePose`는 `amovej/amovel` + `check_motion` + `MoveStop` 구현 완료. **Scoop·Pour·Weigh 내부 블로킹 이동 취소는 미구현** · 마감 9/21
+- [x] `gripper_state` 10 Hz 발행, 미끄러짐 감지(`slip_mm`) 구현·단위 테스트 완료 · 마감 9/21
 - [ ] **[9/18 확정]** 새 배치에서 **용기를 파지한 채** `passbox`·`reject_bin` 도달 확인 (접근 높이 60 mm 포함) — 둘 다 사용 불가 영역에 붙어 있어 자세 제약 우려 · 마감 9/18
 - [ ] **[9/18 확정]** 원료 선반(판 바깥·높이 다름)에서 `Scoop` 힘제어 확인 — 뻗은 자세의 특이점 영향 (힘제어는 특이점 영역에서 제한적) · 마감 9/18
 

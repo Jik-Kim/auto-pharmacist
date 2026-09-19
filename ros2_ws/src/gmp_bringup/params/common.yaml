@@ -1,30 +1,53 @@
-# 공통 파라미터 — 값의 단일 출처 (docs/interfaces.md 4절). 코드에 상수를 두지 않는다.
-# 런치 인자(mode·vel_scale·simulated·stations_file)만 이 위에 덮어쓴다.
+# 셀 공통 파라미터 — 실행값의 단일 출처 (docs/interfaces.md 4절)
+#
+# 구조
+#   mode / stations_file : 실행 환경과 위치 파일
+#   robot                : 두산 로봇 연결·이동
+#   gripper              : RG2 백엔드·폭·파지 판정
+#   scale                : 로봇 힘센서 계량
+#   dosing               : 공정 반복 조건
+#   safety               : 힘제어·넛지·이동 제한
+#   pour                 : 붓기와 털어내기
+#   interlock            : 정지 시 복귀 위치
+#
+# cell.launch.py의 mode·vel_scale·simulated·stations_file 인자는 아래 값을 실행 시 덮어쓴다.
 /**:
   ros__parameters:
+    # ── 실행 환경 ────────────────────────────────────────────────────
+    mode: virtual                  # virtual | real
+    stations_file: ""             # launch가 stations.yaml의 절대 경로를 넣는다
+
+    # ── 두산 로봇 ────────────────────────────────────────────────────
     robot:
       id: dsr01
       model: m0609
       tool_name: tool_weight        # 컨트롤러 등록명 (R7: 1.320 kg, CoG 1.96/-32.76/19.14)
-      tcp_name: GripperDA_v1
+      tcp_name: GripperDA_v1        # 실물 컨트롤러에 등록된 TCP
+      virtual_tcp_name: GripperDA_v1 # 가상에서도 실물과 같은 이름으로 아래 오프셋을 등록
+      tcp_offset_mm_deg: [0.0, 0.0, 208.0, 0.0, 0.0, 0.0]  # 툴 좌표계 +Z 208 mm
       vel: 60.0                     # set_velx 병진 mm/s · 회전 deg/s 상한
       acc: 60.0
       vel_scale: 0.3                # 런치가 덮어쓴다. 실물 첫 기동 0.2
       motion_timeout_s: 30.0        # 비동기 이동 제한. 초과·취소 시 MoveStop(DR_SSTOP)
+      startup_timeout_s: 15.0       # dsr_controller2 motion 서비스 준비 대기
+
+    # ── RG2 그리퍼 ───────────────────────────────────────────────────
     gripper:
       backend: modbus               # modbus | dio  (virtual 은 런치가 자동)
-      open_width_mm: 100.0
-      scoop_width_mm: 18.0          # 레거시 파지 명령값. C의 원료별 명령 전환 전까지 유지
-      scoop_expected_widths_mm: [15.5, 28.0, 38.5]  # A/B/C 폭 지문. A 실측 범위 약 15~16 mm
+      open_width_mm: 100.0           # 운용 열림 폭. 데이터시트의 전체 조절 범위는 0~110 mm
+      scoop_width_mm: 18.0          # 레거시 단일 파지 명령값(B 폭). C의 원료별 명령 전환 전까지 유지
+      scoop_expected_widths_mm: [15.5, 18.0, 28.0]  # A/B/C 스쿱 폭 지문 (9/19 확정)
       fingerprint_tolerance_mm: 1.0 # [실물 정밀도 확인 후 확정] WRONG_TOOL 식별 허용차
       cup_width_mm: 60.0            # [구매 후 실측] 약통 파지부 외경 (D-18: 입구 근처를 잡는다, 파지점 위 돌출 ≤ 40 mm)
-      force_n: 20.0                 # 3~40. modbus 는 2.5 N 스텝 (D-06)
-      grip_margin_mm: 2.0           # 폭 추론 마진 (계약 2절)
-      slip_mm: 1.5
+      force_n: 20.0                 # 데이터시트 조절 범위 3~40 N. modbus 는 2.5 N 스텝 (D-06)
+      grip_margin_mm: 2.0           # 분해능 0.1 mm·최대 반복정밀도 0.2 mm보다 크게 잡은 폭 추론 마진
+      slip_mm: 1.5                  # 데이터시트 최대 역방향 백래시 0.3 mm보다 크게 잡은 미끄러짐 임계
       state_timeout_s: 0.5          # 이 시간 동안 폭 표본이 없으면 busy=true, grip_inferred=false
       dio_pins: [1, 2]              # dio 백엔드: DO1 grip / DO2 release (grip_test.py)
       din_pins: [0]                 # [팀 확정 필요] 파지 완료 DI (Q-03). 0 = 없음
       dio_settle_s: 0.3             # DO1/DO2 전환 뒤 기구 동작 대기
+
+    # ── 로봇 센서 계량 ───────────────────────────────────────────────
     scale:
       method: workpiece             # workpiece | tool_force  (D-07)
       samples: 20
@@ -35,10 +58,14 @@
       max_std_g: 10.0
       fz_sign: -1.0                   # 아래 방향 하중이 음수라는 가정 — G1에서 확인
       simulated: false              # virtual 은 런치가 true 로
+
+    # ── 도징 반복 조건 ───────────────────────────────────────────────
     dosing:
       max_attempts: 3
       scoop_nominal_g: 40.0         # [9/18 실측] 스쿱 1회 퍼올림
       min_fraction: 0.15
+
+    # ── 힘제어·사람 접촉·이동 안전 ──────────────────────────────────
     safety:
       fz_max_n: 15.0                # Scoop 담그기 접촉 판정·상한 (check_force_condition)
       compliance_stx: [3000.0, 3000.0, 500.0, 200.0, 200.0, 200.0]   # Z 만 부드럽게
@@ -49,6 +76,8 @@
       nudge_force_n: 8.0            # 사람 접촉(nudge) 판정 — |F| 가 이 값을 nudge_window_s 이상 넘으면 (D-21)
       nudge_window_s: 0.2
       nudge_cooldown_s: 1.5         # 같은 접촉을 두 번 세지 않게. 두 번째 nudge = 재개
+
+    # ── 붓기 궤적 ────────────────────────────────────────────────────
     pour:
       tilt_deg: 110.0               # [실물 티칭 후 확정] 스쿱 기울임 각
       tilt_axis: 4                  # posx 회전축 인덱스(3~5). [실물 티칭 후 확정]
@@ -57,5 +86,7 @@
       shake_period_s: 0.5
       shake_atime_s: 0.2
       shake_repeat: 2
+
+    # ── 인터락 복귀 ──────────────────────────────────────────────────
     interlock:
       safe_station: safe

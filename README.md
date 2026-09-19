@@ -39,7 +39,7 @@ cd ~/auto-pharmacist/ros2_ws && colcon build --symlink-install && source install
 ## 실행
 
 ```bash
-ros2 launch gmp_bringup cell.launch.py mode:=virtual              # 에뮬레이터 (랜선 없이)
+ros2 launch gmp_bringup cell.launch.py mode:=virtual              # 에뮬레이터 + RViz (랜선 없이)
 ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100
 ```
 

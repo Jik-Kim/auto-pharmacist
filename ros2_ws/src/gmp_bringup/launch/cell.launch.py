@@ -12,9 +12,16 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    IncludeLaunchDescription,
+    RegisterEventHandler,
+    TimerAction,
+)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.event_handlers import OnProcessExit
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
@@ -47,15 +54,26 @@ def generate_launch_description():
         n('gmp_hmi', 'hmi_web_node', {'db_path': db_path, 'recipes_dir': os.path.join(params, 'recipes'),
                                       'port': LaunchConfiguration('hmi_port')}, cond=IfCondition(LaunchConfiguration('hmi'))),
     ]
+    stop_daemon = ExecuteProcess(cmd=['ros2', 'daemon', 'stop'], output='screen')
+    start_daemon = ExecuteProcess(cmd=['ros2', 'daemon', 'start'], output='screen')
 
     return LaunchDescription([
         DeclareLaunchArgument('mode', default_value='virtual', description='virtual | real'),
         DeclareLaunchArgument('host', default_value='127.0.0.1', description='로봇 IP (real: 192.168.1.100)'),
         DeclareLaunchArgument('vel_scale', default_value='0.3', description='속도 스케일 0~1. 실물 첫 기동 0.2'),
-        DeclareLaunchArgument('gui', default_value='false', description='RViz'),
+        DeclareLaunchArgument('gui', default_value='true', description='RViz'),
         DeclareLaunchArgument('hmi', default_value='true', description='웹 HMI 기동'),
         DeclareLaunchArgument('hmi_port', default_value='5000', description='HMI 포트 — 셀 밖 QA 는 http://<로봇PC>:5000'),
         vendor,
-        # 벤더 스택(에뮬레이터·컨트롤러 스포너)이 뜬 뒤 우리 노드. DSR 서비스가 없으면 DsrArm 생성이 wait_for_service 에서 선다
-        TimerAction(period=8.0, actions=ours),
+        # 에뮬레이터가 네트워크 인터페이스를 만든 뒤 기존 ros2cli daemon은 파괴된
+        # graph handle을 한 번 반환할 수 있다(ros2/ros2cli#736). 셀 노드 기동 직전에
+        # 오래된 daemon만 종료하면 다음 CLI 조회가 안정된 인터페이스로 새로 생성한다.
+        RegisterEventHandler(OnProcessExit(
+            target_action=stop_daemon,
+            on_exit=[start_daemon],
+        )),
+        TimerAction(period=11.0, actions=[stop_daemon]),
+        # 에뮬레이터 연결과 dsr_controller2 활성화가 끝난 뒤 우리 노드를 시작한다.
+        # 8초는 컨트롤러 활성화와 정확히 겹쳐 ROS graph와 TCP 초기화 경쟁이 발생했다.
+        TimerAction(period=12.0, actions=ours),
     ])

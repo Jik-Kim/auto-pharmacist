@@ -19,7 +19,9 @@ import DR_init
 
 class DsrArm:
     def __init__(self, robot_id: str, robot_model: str, mode: str, vel: float, acc: float,
-                 tool_name: str = '', tcp_name: str = '', logger=None, now_fn=None, sleep_fn=None):
+                 tool_name: str = '', tcp_name: str = '', logger=None, now_fn=None, sleep_fn=None,
+                 startup_timeout_s: float = 15.0, virtual_tcp_name: str = '',
+                 tcp_offset_mm_deg=None):
         self.mode = mode
         self.vel, self.acc = vel, acc
         self.log = logger
@@ -40,18 +42,52 @@ class DsrArm:
         self._move_stop_cli = self.node.create_client(
             MoveStop, 'dsr_controller2/motion/move_stop')
         self.tool_name, self.tcp_name = tool_name, tcp_name
+        self.virtual_tcp_name = virtual_tcp_name
+        self.tcp_offset_mm_deg = list(tcp_offset_mm_deg or [])
+        self.startup_timeout_s = float(startup_timeout_s)
         self._now = now_fn or time.monotonic
         self._sleep = sleep_fn or time.sleep
 
     def initialize(self):
         """DSR 초기 설정. 반드시 skill_node의 DSR 워커에서 호출한다."""
         R = self.R
+        # DSR_ROBOT2의 일부 설정 함수는 서비스 대기 없이 call_async부터 실행한다.
+        # 컨트롤러 활성화 전에 호출하면 future가 끝나지 않으므로 공통 motion 서비스로 준비를 확인한다.
+        if not self._move_stop_cli.wait_for_service(timeout_sec=self.startup_timeout_s):
+            raise TimeoutError(
+                f'DSR controller not ready after {self.startup_timeout_s:.1f}s')
         if self.mode == 'real':
-            # 컨트롤러 등록명. 가상은 에뮬레이터에 미등록이라 건너뛴다 (SOT D-10)
+            # 실물은 티칭 펜던트에 등록된 툴과 TCP를 사용한다 (SOT D-10).
             if self.tool_name:
                 self._require_ok('set_tool', R.set_tool(self.tool_name))
             if self.tcp_name:
                 self._require_ok('set_tcp', R.set_tcp(self.tcp_name))
+        elif self.virtual_tcp_name:
+            if len(self.tcp_offset_mm_deg) != 6:
+                raise ValueError('virtual TCP offset must contain 6 values')
+            # TCP 설정 명령은 수동 모드에서만 허용된다. 가상 컨트롤러에서만 잠시
+            # 수동으로 전환해 등록·선택하고, 성공 여부와 관계없이 자동 모드로 복귀한다.
+            self._require_ok(
+                'set_robot_mode(MANUAL)', R.set_robot_mode(R.ROBOT_MODE_MANUAL))
+            try:
+                # 가상 컨트롤러에는 실물의 등록 TCP가 없으므로 같은 형상을 직접 만든다.
+                # 이미 같은 이름이 남아 있으면 add_tcp는 실패하지만 set_tcp 성공으로 정상 처리한다.
+                deadline = self._now() + self.startup_timeout_s
+                last_add, last_set = None, None
+                while True:
+                    last_add = R.add_tcp(self.virtual_tcp_name, self.tcp_offset_mm_deg)
+                    last_set = R.set_tcp(self.virtual_tcp_name)
+                    if last_set == 0:
+                        break
+                    if self._now() >= deadline:
+                        raise RuntimeError(
+                            f'virtual TCP setup failed: name={self.virtual_tcp_name!r} '
+                            f'add_tcp={last_add!r} set_tcp={last_set!r}')
+                    self._sleep(0.2)
+            finally:
+                self._require_ok(
+                    'set_robot_mode(AUTONOMOUS)',
+                    R.set_robot_mode(R.ROBOT_MODE_AUTONOMOUS))
         self._require_ok('set_velj', R.set_velj(self.vel))
         self._require_ok('set_accj', R.set_accj(self.acc))
         self._require_ok('set_velx', R.set_velx(self.vel, self.vel))
@@ -125,14 +161,21 @@ class DsrArm:
 
     def wait_motion_cancellable(self, cancel_requested, timeout_s: float):
         """비동기 모션을 워커에서 감시하고 취소·시간초과 시 감속 정지한다."""
-        deadline = self._now() + timeout_s
-        while self.motion_state() != self.R.DR_STATE_IDLE:
+        started_at = self._now()
+        deadline = started_at + timeout_s
+        motion_started = False
+        while True:
             if cancel_requested():
                 self.stop_motion()
                 raise RuntimeError('cancelled')
             if self._now() >= deadline:
                 self.stop_motion()
                 raise TimeoutError(f'motion timed out after {timeout_s:.1f}s')
+            state = self.motion_state()
+            if state != self.R.DR_STATE_IDLE:
+                motion_started = True
+            elif motion_started or self._now() - started_at >= 0.2:
+                return
             self._sleep(0.02)
 
     def movej_cancellable(self, j6, vel_scale, cancel_requested, timeout_s):

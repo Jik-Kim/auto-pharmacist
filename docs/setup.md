@@ -29,10 +29,23 @@ source ~/auto-pharmacist/tools/env.sh      # ROS_DOMAIN_ID=70 설정 + /opt/ros 
 
 | 모드 | 명령 | 되는 것 / 안 되는 것 |
 |---|---|---|
-| virtual | `ros2 launch gmp_bringup cell.launch.py mode:=virtual` | 이동·시퀀스·HMI·기록 전부. **힘·무게·파지력은 없다** (`scale.simulated:=true` 자동). HMI: http://localhost:5000 |
+| virtual | `ros2 launch gmp_bringup cell.launch.py mode:=virtual` | 이동·시퀀스·RViz·HMI·기록 전부. **힘·무게·파지력은 없다** (`scale.simulated:=true` 자동). RViz를 끄려면 `gui:=false`. HMI: http://localhost:5000 |
 | real | `ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100` | 전부. **처음 띄울 때는 `vel_scale:=0.2`** |
 
-노드만 따로: `ros2 run gmp_skills skill_node --ros-args -r __ns:=/cell -p mode:=virtual` 처럼 네임스페이스를 **반드시** 붙인다.
+전체 브링업은 벤더 컨트롤러를 먼저 활성화한 뒤 약 12초 후 셀 노드를 시작한다. 터미널에
+`[SELF_CHECK] OK`와 `[ACTION_SERVERS_READY]`가 출력된 뒤 `ros2 action list -t`로 확인한다.
+에뮬레이터 네트워크 생성으로 Jazzy `ros2cli`의 기존 daemon handle이 무효화되는 문제를 막기 위해
+11초 시점에 daemon을 종료한 뒤 바로 다시 시작한다. CLI를 처음 실행할 때 daemon 생성과 DDS discovery를
+기다리지 않도록 브링업 과정에서 미리 준비한다.
+
+노드만 따로 실행할 때도 파라미터와 위치 YAML을 함께 넘긴다.
+
+```bash
+COMMON="$(ros2 pkg prefix gmp_bringup)/share/gmp_bringup/params/common.yaml"
+STATIONS="$(ros2 pkg prefix gmp_bringup)/share/gmp_bringup/params/stations.yaml"
+ros2 run gmp_skills skill_node --ros-args -r __ns:=/cell \
+  --params-file "$COMMON" -p mode:=virtual -p stations_file:="$STATIONS"
+```
 
 ## 단위 테스트 (로봇 없이)
 

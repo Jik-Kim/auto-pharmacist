@@ -41,6 +41,9 @@ class FakeApi:
     DR_AXIS_Z = 2
     DR_AVOID = 0
     DR_STATE_IDLE = 0
+    DR_STATE_BUSY = 2
+    ROBOT_MODE_MANUAL = 0
+    ROBOT_MODE_AUTONOMOUS = 1
 
     def __init__(self):
         self.calls = []
@@ -63,11 +66,17 @@ def _arm(mode='real'):
     arm.mode = mode
     arm.vel, arm.acc = 60.0, 60.0
     arm.tool_name, arm.tcp_name = 'tool_weight', 'GripperDA_v1'
+    arm.virtual_tcp_name = 'GripperDA_v1'
+    arm.tcp_offset_mm_deg = [0.0, 0.0, 208.0, 0.0, 0.0, 0.0]
     arm.R = FakeApi()
     arm.posx = lambda *values: tuple(values)
     arm.posj = lambda *values: tuple(values)
     arm._now = time.monotonic
     arm._sleep = lambda _seconds: None
+    arm.startup_timeout_s = 15.0
+    arm._move_stop_cli = type('Client', (), {
+        'wait_for_service': lambda self, timeout_sec: True,
+    })()
     return arm
 
 
@@ -86,8 +95,33 @@ def test_virtual_initialize_keeps_wrapper_default_base_reference():
     arm = _arm('virtual')
     arm.initialize()
     assert [name for name, _, _ in arm.R.calls] == [
-        'set_velj', 'set_accj', 'set_velx', 'set_accx', 'set_singular_handling'
+        'set_robot_mode', 'add_tcp', 'set_tcp', 'set_robot_mode', 'set_velj',
+        'set_accj', 'set_velx', 'set_accx', 'set_singular_handling'
     ]
+    assert arm.R.calls[0][1] == (arm.R.ROBOT_MODE_MANUAL,)
+    assert arm.R.calls[1][1] == ('GripperDA_v1', [0.0, 0.0, 208.0, 0.0, 0.0, 0.0])
+    assert arm.R.calls[3][1] == (arm.R.ROBOT_MODE_AUTONOMOUS,)
+
+
+def test_virtual_initialize_selects_existing_tcp_without_deleting_it():
+    arm = _arm('virtual')
+    arm.R.add_tcp = lambda *args: arm.R.calls.append(('add_tcp', args, {})) or -1
+    arm.initialize()
+    assert [name for name, _, _ in arm.R.calls[:4]] == [
+        'set_robot_mode', 'add_tcp', 'set_tcp', 'set_robot_mode'
+    ]
+    assert all(name != 'del_tcp' for name, _, _ in arm.R.calls)
+
+
+def test_virtual_tcp_failure_still_restores_autonomous_mode():
+    arm = _arm('virtual')
+    arm.R.set_tcp = lambda *_args: -1
+    times = iter([0.0, 20.0])
+    arm._now = lambda: next(times)
+    with pytest.raises(RuntimeError, match='virtual TCP setup failed'):
+        arm.initialize()
+    mode_calls = [args[0] for name, args, _ in arm.R.calls if name == 'set_robot_mode']
+    assert mode_calls == [arm.R.ROBOT_MODE_MANUAL, arm.R.ROBOT_MODE_AUTONOMOUS]
 
 
 def test_motion_wrappers_preserve_async_wait_contract():
@@ -113,8 +147,17 @@ def test_safe_joint_move_uses_async_motion_and_checks_actual_pose():
     arm = _arm('virtual')
     target = [0, 0, 90, 0, 90, 0]
     arm.R.get_current_posj = lambda: target
+    states = iter([arm.R.DR_STATE_BUSY, arm.R.DR_STATE_IDLE])
+    arm.R.check_motion = lambda: arm.R.calls.append(('check_motion', (), {})) or next(states)
     arm.movej_cancellable(target, 0.3, lambda: False, 5.0)
-    assert [name for name, _, _ in arm.R.calls] == ['amovej', 'check_motion']
+    assert [name for name, _, _ in arm.R.calls] == ['amovej', 'check_motion', 'check_motion']
+
+
+def test_async_motion_does_not_finish_on_initial_idle_sample():
+    arm = _arm('virtual')
+    states = iter([arm.R.DR_STATE_IDLE, arm.R.DR_STATE_BUSY, arm.R.DR_STATE_IDLE])
+    arm.R.check_motion = lambda: next(states)
+    arm.wait_motion_cancellable(lambda: False, 5.0)
 
 
 def test_stop_motion_uses_soft_stop_and_checks_response(monkeypatch):

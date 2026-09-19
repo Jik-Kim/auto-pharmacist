@@ -12,13 +12,13 @@
 | [I-003](#i-003) | 하 | 열림 | A | (선택) 드라이버 포크 — `OnRobotRGInput` 발행 추가·파지력 수치 설정. 벤더 패키지는 안 고친다 |
 | [I-004](#i-004) | 중 | 열림 | A | 블로킹 `movel` 은 중간 취소가 안 된다 — 인터락 `ENTER` 응답이 현재 이동이 끝날 때까지 늦어진다 |
 | [I-005](#i-005) | 중 | 열림 | A | 가상 모드에서 `get_tool_force`/`get_workpiece_weight` 가 값을 주는지 미확인 (Q-07) |
-| [I-006](#i-006) | 하 | 열림 | C | 스쿱 손잡이 실물 치수 미확정 — `gripper.scoop_width_mm` 가정값 18 |
 | [I-007](#i-007) | **상** | ~~해소~~ (9/18 v1.2) | A + C | **계약 v1.2 — `weigh_scoop`(들고 있는 스쿱 계량) Action 과 `Deviation.kind VERIFY_MISMATCH`** — D-22 6단계 흐름이 이 계약에 걸려 있다 |
 
 ## 해결된 이슈
 
 | ID | 담당 | 제목 |
 |---|---|---|
+| [I-006](#i-006) | C | **9/19 해소 — 스쿱 A/B/C 손잡이 폭 15.5/18/28 mm 확정** |
 
 ---
 
@@ -46,7 +46,7 @@
 
 ### I-006
 스쿱 치수 · 하 · C
-- 물건 도착 시 실측해 `common.yaml` `gripper.scoop_width_mm` 갱신.
+- ✅ **해소 (9/19)**: A/B/C 손잡이 폭을 각각 **15.5/18/28 mm**로 확정해 `common.yaml`·`stations.yaml`에 반영했다. `SetGripper.final_width_mm` 정밀도 실측과 WRONG_TOOL 연동은 구현 TODO로 별도 유지한다.
 
 ### I-007
 `weigh_scoop` 계약 · 상 · A + C · 등록 9/17
