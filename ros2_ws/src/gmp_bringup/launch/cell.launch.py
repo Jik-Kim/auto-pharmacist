@@ -49,7 +49,7 @@ def generate_launch_description():
     ours = [
         n('gmp_skills', 'skill_node', {'mode': mode, 'robot.vel_scale': vel_scale,
                                        'scale.simulated': simulated, 'stations_file': stations}),
-        n('gmp_process', 'process_node'),
+        n('gmp_process', 'process_node', {'stations_file': stations}),   # 원료 → scoop_N 이름 해석 (D-24)
         n('gmp_hmi', 'record_node', {'db_path': db_path, 'export_dir': os.path.dirname(db_path)}),
         n('gmp_hmi', 'hmi_web_node', {'db_path': db_path, 'recipes_dir': os.path.join(params, 'recipes'),
                                       'port': LaunchConfiguration('hmi_port')}, cond=IfCondition(LaunchConfiguration('hmi'))),

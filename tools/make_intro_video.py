@@ -16,9 +16,9 @@ INK, MUTED, LINE, ACC, ACCS, WARM, WARMS, OK = '#161B2A', '#5F6980', '#C3CADB', 
 SX, OX, OY = 0.72, 150, 60
 P = lambda x, y: (OX + x * SX, OY + y * SX)
 ST = {  # 이름: (x, y, 라벨)
-    'magazine': (550, 320, '빈 약통'), 'scale': (350, 320, '칭량·조제'), 'scoop_rack': (200, 300, '스쿱'),
+    'passbox_empty': (550, 320, '빈 약통'), 'workbench': (350, 320, '칭량·조제'), 'scoop_rack': (200, 300, '스쿱'),
     'material_1': (270, 140, '원료 A'), 'material_2': (450, 120, '원료 B'), 'material_3': (270, 500, '원료 C'),
-    'output_tray': (580, 520, '완료품'), 'passbox': (640, 320, '패스박스'), 'reject_bin': (200, 560, '폐기함'),
+    'passbox_done': (580, 520, '완료품'), 'passbox': (640, 320, '패스박스'), 'reject_bin': (200, 560, '폐기함'),
 }
 BASE = (-50, 320)
 L1, L2 = 410, 400   # 2링크 팔 (mm)
@@ -43,8 +43,8 @@ def frame(pos, carry, cap, sub, state, weight=None, hold=None, hmi=None):
     # 스테이션
     for k, (x, y, lb) in ST.items():
         c = P(x, y); r = 30
-        fill = ACCS if k == 'scale' else '#FFFFFF'
-        d.rounded_rectangle([c[0]-r-14, c[1]-r, c[0]+r+14, c[1]+r], 8, fill=fill, outline=ACC if k == 'scale' else LINE, width=2)
+        fill = ACCS if k == 'workbench' else '#FFFFFF'
+        d.rounded_rectangle([c[0]-r-14, c[1]-r, c[0]+r+14, c[1]+r], 8, fill=fill, outline=ACC if k == 'workbench' else LINE, width=2)
         d.text((c[0], c[1]), lb, fill=INK, font=f(FB, 14), anchor='mm')
     # 팔
     b = P(*BASE); e = P(*arm(*pos)); t = P(*pos)
@@ -92,23 +92,23 @@ S = lambda k: ST[k][:2]
 safe = (300, 0)
 hold(title('auto-pharmacist', '협동로봇 조제 칭량 셀 — M0609 + RG2', '카메라 없이 · 무인 · 레시피대로 퍼서 재고 스스로 검증'), 3)
 hold(frame(safe, None, '사람은 셀 밖에서만', '빈 약통·원료는 패스박스로 반입 · 이후 사람은 셀에 손대지 않는다', 'IDLE'), 2.5)
-move(safe, S('magazine'), 1.2, None, '1  약통 반송', '매거진 슬롯의 빈 약통을 파지 — 정지 폭으로 파지 성공 판정')
-move(S('magazine'), S('scale'), 1.2, 'cup', '1  약통 반송', '칭량 위치로 가져온다')
-hold(frame(S('scale'), None, '2  풍량 측정 (tare)', '용기를 들어 올려 get_workpiece_weight 로 빈 무게 기록', 'RUNNING', weight=28.4), 1.6)
-move(S('scale'), S('scoop_rack'), 1.0, None, '3  전용 스쿱 픽업', '원료별 전용 스쿱 — 교차오염 방지 (GMP)')
+move(safe, S('passbox_empty'), 1.2, None, '1  약통 반송', '매거진 슬롯의 빈 약통을 파지 — 정지 폭으로 파지 성공 판정')
+move(S('passbox_empty'), S('workbench'), 1.2, 'cup', '1  약통 반송', '칭량 위치로 가져온다')
+hold(frame(S('workbench'), None, '2  풍량 측정 (tare)', '용기를 들어 올려 get_workpiece_weight 로 빈 무게 기록', 'RUNNING', weight=28.4), 1.6)
+move(S('workbench'), S('scoop_rack'), 1.0, None, '3  전용 스쿱 픽업', '원료별 전용 스쿱 — 교차오염 방지 (GMP)')
 move(S('scoop_rack'), S('material_1'), 1.0, 'scoop', '4  원료 퍼올리기', 'Z 힘 제어로 원료면까지 내려가 접촉 감지 → 퍼낸다')
 hold(frame(S('material_1'), 'scoop', '4  원료 퍼올리기', 'task_compliance_ctrl · set_desired_force · check_force_condition', 'RUNNING'), 1.4)
-move(S('material_1'), S('scale'), 1.0, 'scoop', '5  투입', 'movesx 곡선으로 붓고, move_periodic 진동으로 조금씩 털어낸다')
-hold(frame(S('scale'), 'scoop', '6  무게 검증 — 2차 폐루프', '실측 41.2 g < 목표 60 g → UNDER → 보정 투입', 'RUNNING', weight=41.2), 1.6)
-move(S('scale'), S('material_1'), 0.9, 'scoop', '6  UNDER → 보정 투입', '투입 비율을 줄여 다시 퍼온다 (최대 3회)')
-move(S('material_1'), S('scale'), 0.9, 'scoop', '6  UNDER → 보정 투입', '')
-hold(frame(S('scale'), 'scoop', '6  무게 검증 — OK', '59.3 g · 오차 -1.2 % ≤ ±5 % → 다음 원료', 'RUNNING', weight=59.3), 1.6)
-move(S('scale'), S('scoop_rack'), 0.9, 'scoop', '7  스쿱 반납', '원료 B · C 도 3 → 7 반복')
+move(S('material_1'), S('workbench'), 1.0, 'scoop', '5  투입', 'movesx 곡선으로 붓고, move_periodic 진동으로 조금씩 털어낸다')
+hold(frame(S('workbench'), 'scoop', '6  무게 검증 — 2차 폐루프', '실측 41.2 g < 목표 60 g → UNDER → 보정 투입', 'RUNNING', weight=41.2), 1.6)
+move(S('workbench'), S('material_1'), 0.9, 'scoop', '6  UNDER → 보정 투입', '투입 비율을 줄여 다시 퍼온다 (최대 3회)')
+move(S('material_1'), S('workbench'), 0.9, 'scoop', '6  UNDER → 보정 투입', '')
+hold(frame(S('workbench'), 'scoop', '6  무게 검증 — OK', '59.3 g · 오차 -1.2 % ≤ ±5 % → 다음 원료', 'RUNNING', weight=59.3), 1.6)
+move(S('workbench'), S('scoop_rack'), 0.9, 'scoop', '7  스쿱 반납', '원료 B · C 도 3 → 7 반복')
 hold(frame(S('scoop_rack'), None, '일탈 시나리오 — 과다 투입', '원료 C: 34.8 g > 목표 30 g × 1.05 → OVER — 되돌릴 수 없다', 'DEVIATION', weight=34.8), 1.8)
 hold(frame(safe, None, '일탈 → 셀 밖 QA 원격 판정', '로봇은 대기. HMI 에 계량값·편차·이력 표시 → 승인 / 폐기', 'DEVIATION', hmi='OVERFILL  원료 C  +16 %'), 2.4)
-move(safe, S('scale'), 1.0, None, '8  완료품 적재', 'QA 승인 → 용기째 완료품 트레이로 (폐기면 폐기함)', 'RUNNING')
-move(S('scale'), S('output_tray'), 1.2, 'cup', '8  완료품 적재', '배치 기록 종료 — SQLite 에 전 계량값·판정·감사 추적', 'RUNNING')
-move(S('output_tray'), safe, 1.0, None, '무인 연속 배치', '다음 약통이 매거진에 있으면 사람 없이 반복', 'DONE')
+move(safe, S('workbench'), 1.0, None, '8  완료품 적재', 'QA 승인 → 용기째 완료품 트레이로 (폐기면 폐기함)', 'RUNNING')
+move(S('workbench'), S('passbox_done'), 1.2, 'cup', '8  완료품 적재', '배치 기록 종료 — SQLite 에 전 계량값·판정·감사 추적', 'RUNNING')
+move(S('passbox_done'), safe, 1.0, None, '무인 연속 배치', '다음 약통이 매거진에 있으면 사람 없이 반복', 'DONE')
 hold(title('비전 없이 판단하는 로봇', '파지 = 그리퍼 폭 추론 · 무게 = 관절 토크 · 접촉 = 힘 조건', '일탈 6종 자동 복구 · QA 원격 승인 · 배치 기록(SQLite) · 매뉴얼 3·4·5·6 절 전부 사용'), 3.5)
 
 OUT.parent.mkdir(exist_ok=True)

@@ -28,3 +28,25 @@
 | G2 그리퍼 modbus | `SetGripper close width:=20 force:=20` → 폭 피드백 | 폭이 목표 근처에서 멈추고 `busy` 가 풀린다 | `gripper.backend:=dio` 로 전환 (Q-02·Q-03) |
 | G3 스테이션 티칭 | `stations.yaml` 9곳 | `MoveToStation` 9곳 왕복 무충돌 | — |
 | G4 힘제어 접촉 | 비드 통 위에서 `Scoop` | `contact_detected=true`, 담금 깊이 상한 안 | 강성·목표력 파라미터 조정 |
+
+
+## HMI 관리자 및 통신 환경 (V4)
+
+본운영은 `ROS_DOMAIN_ID=70`, 격리 시험은 `ROS_DOMAIN_ID=88`을 사용한다.
+아래 계정 환경은 HMI를 기동할 터미널에서 먼저 설정한다. 비밀번호는 Git에 저장하지 않는다.
+
+```bash
+export ROS_DOMAIN_ID=70
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+export GMP_HMI_ADMIN_USER=admin
+read -rsp '관리자 비밀번호(12자 이상): ' GMP_HMI_ADMIN_PASSWORD
+printf '\n'
+export GMP_HMI_ADMIN_PASSWORD
+```
+
+계정이 없는 상태에서는 조작할 수 없다. 운영은 기존 `cell.launch.py` 절차로 실행한다.
+HMI를 별도 실행할 때도 위 환경을 설정하고 `ros2 launch gmp_hmi hmi.launch.py`를 사용한다.
+이미 브링업에서 HMI가 실행 중이면 중복 기동하지 않는다.
+운영 레시피는 설치된 `gmp_bringup/params/recipes`에서 읽는다.
+`hmi_comm_test.launch.py`는 도메인 88에서 실행하며 40g 단위 레시피는 시험 전용이다.
+실물 허용오차 충족 여부는 G1 측정 결과로 결정한다.

@@ -1,19 +1,18 @@
-"""배치 기록 노드 — 단일 기록자. state·weight·dispense_result·deviation·event 를 받아 SQLite 에 쓴다.
+"""공정 6종 토픽의 단일 기록자. SQLite 원본과 배치 종료 JSON 사본을 관리한다.
 
-DB 에는 record_node 만 쓴다. HMI 는 읽기만. events 는 append-only.
-배치 시작·종료는 CellState.mode 전이로 판정한다 (RUNNING 진입 / DONE·ERROR 진입).
-제품명은 process_node 가 내는 BATCH_START 이벤트의 text 에서 읽는다 (TODO([C]) — 없으면 빈 값).
-
-TODO([D]) 9/18: 가상에서 레시피 1건 돌려 5개 테이블이 채워지는지, export_json 확인.
+QA 판정 자체는 종료가 아니다. C가 mode=DONE과 step=DONE/DISCARDED를
+발행하면 종료 처리한다. 뒤늦게 수신한 결과도 종료 JSON에 반영한다.
 """
+import json
 import os
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from ament_index_python.packages import get_package_share_directory
+from rosidl_runtime_py.convert import message_to_ordereddict
 
-from gmp_interfaces.msg import CellEvent, CellState, Deviation, DispenseResult, WeightReading
+from gmp_interfaces.msg import CellEvent, CellState, Deviation, DispenseResult, ScoopCycle, WeightReading
 from gmp_hmi.core.db import CellDB
 
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -26,11 +25,16 @@ class RecordNode(Node):
         self.declare_parameter('export_dir', '~/auto-pharmacist/records')
         schema = os.path.join(get_package_share_directory('gmp_hmi'), 'config', 'schema.sql')
         self.db = CellDB(self.get_parameter('db_path').value, schema)
+        # 저장된 미완료 배치만으로 현 공정의 배치를 추측하지 않는다. latched state 가 기준이다.
         self.batch_id, self.active = '', False
+        self._state_t = None
+        self._held_completion = set()
         self.create_subscription(CellState, 'state', self._on_state, LATCHED)
         self.create_subscription(WeightReading, 'weight', self._on_weight, 20)
+        self.create_subscription(ScoopCycle, 'scoop_cycle', self._on_cycle, 50)
         self.create_subscription(DispenseResult, 'dispense_result', self._on_result, 50)
-        self.create_subscription(Deviation, 'deviation', self._on_dev, QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self.create_subscription(Deviation, 'deviation', self._on_dev,
+                                 QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.create_subscription(CellEvent, 'event', self._on_event, 100)
         self.get_logger().info(f'기록 DB {os.path.expanduser(self.get_parameter("db_path").value)}')
 
@@ -38,44 +42,113 @@ class RecordNode(Node):
     def _t(header):
         return header.stamp.sec + header.stamp.nanosec * 1e-9
 
+    def _refresh_export(self, batch_id):
+        row = self.db.batch_status(batch_id) if batch_id else None
+        if row and row['finished_at'] is not None:
+            return self.db.export_json(batch_id, os.path.expanduser(self.get_parameter('export_dir').value))
+        return None
+
+    def _ensure_batch(self, batch_id, t):
+        if batch_id:
+            self.db.start_batch(batch_id, t)
+
     def _on_state(self, m: CellState):
-        if m.mode == CellState.RUNNING and m.batch_id and m.batch_id != self.batch_id:
-            self.batch_id, self.active = m.batch_id, True
-            self.db.start_batch(m.batch_id, self._t(m.header))
-        if self.active and m.mode in (CellState.DONE, CellState.ERROR):
-            self.db.finish_batch(self.batch_id, self._t(m.header), m.step or ('DONE' if m.mode == CellState.DONE else 'ERROR'))
-            path = self.db.export_json(self.batch_id, os.path.expanduser(self.get_parameter('export_dir').value))
-            self.get_logger().info(f'배치 종료 {self.batch_id} → {path}')
+        t = self._t(m.header)
+        if m.batch_id == self.batch_id and self._state_t is not None and t < self._state_t:
+            return  # 같은 배치의 오래된 상태로 현재 문맥을 되돌리지 않는다.
+        self._state_t = t
+        if not m.batch_id or m.mode == CellState.IDLE:
+            self.batch_id, self.active = '', False
+            return
+        self.batch_id = m.batch_id
+        self._ensure_batch(m.batch_id, t)
+        row = self.db.batch_status(m.batch_id)
+        self.active = row['finished_at'] is None
+        if not self.active:
+            return  # 재접속 때 재수신한 DONE/RUNNING 이 완료 배치를 다시 열지 않는다.
+        if m.mode == CellState.DONE and m.step not in ('DONE', 'DISCARDED'):
+            if m.batch_id not in self._held_completion:
+                note = '물리적 완료 확인 대기: C가 이송 완료 후 mode=DONE, step=DONE/DISCARDED 발행 필요'
+                self.db.note_batch(m.batch_id, note)
+                self.get_logger().warning(f'{m.batch_id}: {note} (수신 step={m.step})')
+                self._held_completion.add(m.batch_id)
+            return
+        if m.mode in (CellState.DONE, CellState.ERROR):
+            if m.mode == CellState.ERROR:
+                result = 'ERROR'
+            else:
+                result = 'DISCARDED' if m.step == 'DISCARDED' or self.db.has_discard_decision(m.batch_id) else 'DONE'
+            self.db.finish_batch(m.batch_id, t, result, m.note)
+            # 보류 사유는 완료가 확인되면 해제한다.
+            if m.batch_id in self._held_completion:
+                self.db.note_batch(m.batch_id, m.note or '')
+                self._held_completion.discard(m.batch_id)
+            path = self._refresh_export(m.batch_id)
+            self.get_logger().info(f'배치 종료 {m.batch_id} ({result}) → {path}')
             self.active = False
 
     def _on_weight(self, m):
-        self.db.weight(self.batch_id or None, self._t(m.header), m.station, m.gross_g, m.tare_g, m.net_g, m.std_g, m.valid,
-                       getattr(m, 'subject', ''))   # v1.2 — 스쿱/용기 구분 (없는 빌드와도 섞여 돌 수 있게 getattr)
+        # WeightReading 은 배치 ID 가 없는 계약이다. 최근 state 의 배치와 연결한다.
+        # 초기 state 수신 전/IDLE 중 측정은 NULL 로 보존하며 임의의 배치에 붙이지 않는다.
+        batch_id = self.batch_id or None
+        self.db.weight(batch_id, self._t(m.header), m.station, m.gross_g, m.tare_g,
+                       m.net_g, m.std_g, m.valid, subject=m.subject, samples=m.samples)
+        self._refresh_export(batch_id)
 
     def _on_result(self, m):
-        self.db.item(m.batch_id or self.batch_id, m.material_id, m.target_g, m.actual_g, m.error_pct, m.verdict, m.attempts, self._t(m.header))
+        batch_id, t = m.batch_id or self.batch_id, self._t(m.header)
+        self._ensure_batch(batch_id, t)
+        self.db.item(batch_id, m.material_id, m.target_g, m.actual_g, m.error_pct,
+                     m.verdict, m.attempts, t)
+        self._refresh_export(batch_id)
+
+    def _on_cycle(self, m):
+        payload = message_to_ordereddict(m)
+        payload['batch_id'] = m.batch_id or self.batch_id
+        t = self._t(m.header)
+        self._ensure_batch(payload['batch_id'], t)
+        self.db.scoop_cycle(payload, t)
+        self._refresh_export(payload['batch_id'])
 
     def _on_dev(self, m):
-        self.db.deviation(m.deviation_id, m.batch_id or self.batch_id, m.material_id, m.kind, m.detail,
-                          m.requires_decision, m.decision, m.operator_id, self._t(m.header))
+        batch_id, t = m.batch_id or self.batch_id, self._t(m.header)
+        self._ensure_batch(batch_id, t)
+        self.db.deviation(m.deviation_id, batch_id, m.material_id, m.kind, m.detail,
+                          m.requires_decision, m.decision, m.operator_id, t)
+        self.db.reconcile_discard(batch_id)
+        self._refresh_export(batch_id)
 
     def _on_event(self, m):
         t = self._t(m.header)
-        self.db.event(t, m.batch_id or self.batch_id or None, m.level, m.code, m.text)
-        if m.code.startswith('HMI_'):                     # 사람의 조작 → 감사 추적
+        # 배치 ID 없는 로그인/설정 등의 전역 HMI 감사 이벤트는 현재 배치에 붙이지 않는다.
+        batch_id = m.batch_id or None
+        self.db.event(t, batch_id, m.level, m.code, m.text)
+        if m.code == 'BATCH_START' and batch_id:
+            product = m.text
+            try:
+                parsed = json.loads(m.text)
+                if isinstance(parsed, dict):
+                    product = str(parsed.get('product', ''))
+            except (ValueError, TypeError):
+                pass
+            self.db.start_batch(batch_id, t, product)
+        if m.code.startswith('HMI_'):
             actor, _, detail = m.text.partition(' ')
-            self.db.audit(t, actor or 'unknown', m.code[4:], m.batch_id or self.batch_id, detail)
+            self.db.audit(t, actor or 'unknown', m.code[4:], batch_id or '', detail)
+        self._refresh_export(batch_id)
 
 
 def main(args=None):
     rclpy.init(args=args)
-    n = RecordNode()
+    node = RecordNode()
     try:
-        rclpy.spin(n)
+        rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
-        n.db.close(); n.destroy_node(); rclpy.shutdown()
+        node.db.close()
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':

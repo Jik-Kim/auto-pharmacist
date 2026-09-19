@@ -1,6 +1,6 @@
 # Architecture
 
-> 아래 v1.2 인터페이스와 `scoop_cycle` 경로는 통합 목표다. 현재 A의 계약·서버 변경은 반영됐고, process·HMI·record 적용은 `docs/interfaces.md` 8절 인계가 남아 있다.
+> v1.2 인터페이스는 9/18 확정이다. A 의 계약·서버 변경과 **C 의 `process_node` 적용(9/18)** 은 반영됐고, HMI·record 적용은 `docs/interfaces.md` 8절 인계가 남아 있다. A 의 `weigh_held` 서버는 아직 없다 (마감 9/21).
 
 ## 배치 (PC 1대 + 로봇 + 그리퍼)
 
@@ -39,19 +39,19 @@
 |---|---|---|---|
 | 1 | `ACCEPTED` | — | `SubmitOrder` 수락, batch_id 발급 |
 | 2 | `SELF_CHECK` | `MeasureForce`(빈 그리퍼) · 툴/TCP 확인 | 실패 → `ERROR` |
-| 3 | `PICK_CONTAINER` | **carry**: `MoveToStation(magazine, slot)` → `SetGripper(close, cup)` → `MoveToStation(scale)` → `SetGripper(open)` | 사람이 매거진에 넣어 둔 빈 약통을 로봇이 칭량 위치로 가져온다 (D-18). `grip_inferred=false` → `GRIP_FAIL` 재시도 ≤ 3 |
+| 3 | `PICK_CONTAINER` | **carry**: `MoveToStation(passbox_empty, slot)` → `SetGripper(close, cup)` → `MoveToStation(workbench)` → `SetGripper(open)` | 사람이 매거진에 넣어 둔 빈 약통을 로봇이 칭량 위치로 가져온다 (D-18). `grip_inferred=false` → `GRIP_FAIL` 재시도 ≤ 3 |
 | 4 | `TARE` | `WeighContainer(tare_g=0)` | 빈 용기 풍량 기록 |
 | 5 | `PICK_SCOOP` | `MoveToStation(scoop_N)` → `SetGripper(close, scoop_width)` | `grip_inferred=false` → `Deviation(GRIP_FAIL)` 재시도 ≤ 3 |
 | 6 | `SCOOP_TARE` | **`weigh_scoop`**(빈 스쿱, 든 채로) | 스쿱 풍량 — 원료마다 1회 (D-22) |
 | 7 | `SCOOP` | `Scoop(material_id)` | `contact_detected=false` → `SCOOP_EMPTY` → 재시도, 연속 3회 → `MATERIAL_EMPTY` → 인터락 보충 요청 |
 | 8 | `WEIGH_SCOOP` | `weigh_scoop`(붓기 전) | 퍼낸 양 = gross − 스쿱 풍량. **붓기 비율 = min(1, 부족량/퍼낸 양)** — 초과 예방 (1차 폐루프) |
-| 9 | `POUR` | `Pour(fraction)` — 목적지는 고정 `scale` | |
+| 9 | `POUR` | `Pour(fraction)` — 목적지는 고정 `workbench` | |
 | 10 | `WEIGH_RESIDUAL` | `weigh_scoop`(붓기 후) → `dosing.decide()` | 잔량 = gross − 스쿱 풍량, **투입량 += 퍼낸 양 − 잔량**. 시도 1건을 `ScoopCycle`로 발행. `OK` → 11 / `UNDER` → 7 (보정, ≤3) / `OVER` → `Deviation(OVERFILL, requires_decision)` → `DEVIATION` |
 | 11 | `RETURN_SCOOP` | `MoveToStation(scoop_N)` → `SetGripper(open)` | 원료별 전용 스쿱 반납 — **스쿱은 그 원료통 아래에 둔다** (9/18 확정, `scoop_rack` 폐지). 교차오염 경로를 끊고 이동 거리도 줄인다 |
 | 12 | 다음 원료 → 5 | | |
 | 13 | `VERIFY` | `WeighContainer(tare_g)` — **용기를 들어** 계량 (그리퍼 비어 있음) | **두 가지를 본다** (9/17 조장 합의). ① **제품 판정** `\|net − Σtarget\| > Σ(target×tol)` → `Deviation(BATCH_OUT_OF_SPEC)` → QA (폐기 권고) ② **계측 신뢰성** `\|net − Σ투입량\| > min_resolvable_g` → `Deviation(VERIFY_MISMATCH)` → QA. **①이 규격 판정이다** — 원료가 전부 같은 방향으로 치우치면 net 과 Σ투입량이 함께 낮아 ②로는 안 잡힌다 |
-| 14 | `FINISH` | **carry**: `scale` → `output_tray(slot)` … `SafePose` | 완료품을 용기째 트레이로. `DONE` 발행, 기록 종료 |
-| E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료(VERIFY 였으면 FINISH) / DISCARD → 스쿱 반납 → **carry** `scale` → `reject_bin` → `DISCARDED` |
+| 14 | `FINISH` | **carry**: `workbench` → `passbox_done(slot)` … `SafePose` | 완료품을 용기째 Pass Box 「완성품」 칸으로 (D-24) — QA 가 회수한다 (D-23). `DONE` 발행, 기록 종료 |
+| E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료(VERIFY 였으면 FINISH) / DISCARD → 스쿱 반납 → **carry** `workbench` → `reject_bin` → `DISCARDED` |
 | E | `PAUSED` | `SafePose` | `InterlockRequest(ENTER)` → 안전 자세 도달 후 granted / `EXIT` → 이전 상태 재개 |
 
 **도징 결정은 `gmp_dosing/core/dosing.py` 가 한다** (순수 함수: 목표·실측·이력 → 다음 행동). 상태기계는 그 결정을 스킬 호출로 옮길 뿐이다.

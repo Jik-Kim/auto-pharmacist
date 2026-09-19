@@ -4,7 +4,7 @@ yaml 형식 (gmp_bringup/params/stations.yaml):
   frame: base | user            # D-15 판 좌표계를 쓰면 user
   approach_mm: 60.0             # 작업점 위 접근 높이 (z+)
   stations:
-    scale: {posx: [x, y, z, a, b, c], note: "계량 자세 — 영점도 여기서"}
+    workbench: {posx: [x, y, z, a, b, c], note: "작업·계량 구역 — 계량 자세. 영점도 여기서"}
 """
 from dataclasses import dataclass, field
 
@@ -24,7 +24,7 @@ class Station:
 
 
 class StationTable:
-    REQUIRED = ('safe', 'scale')
+    REQUIRED = ('safe', 'workbench')
 
     def __init__(self, data: dict):
         self.frame = data.get('frame', 'base')

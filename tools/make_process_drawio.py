@@ -64,8 +64,8 @@ p1.edge(hmi, proc, 'Action run_batch (RunBatch)\nCLI·시험용, 우선순위 �
 # process → skill
 p1.edge(proc, skill, 'Action move_to_station\nstation_id, approach ABOVE/AT, vel_scale\n→ success, reached', color=WARM, exit=(1, 0.1), entry=(0, 0.1), lpos=(0, -24))
 p1.edge(proc, skill, 'Action scoop\nmaterial_id, attempt\n→ contact, max force, insertion depth', color=WARM, exit=(1, 0.22), entry=(0, 0.22), lpos=(0, -24))
-p1.edge(proc, skill, 'Action pour\nfraction → success (목적지: 고정 scale)', color=WARM, exit=(1, 0.34), entry=(0, 0.34), lpos=(0, -18))
-p1.edge(proc, skill, 'Action WeighContainer (고정 scale 용기 들어, 그리퍼 비어야) · WeighHeld (든 채로, v1.2)\ntare_g → reading: gross / net / std / valid / subject', color=WARM, exit=(1, 0.46), entry=(0, 0.46), lpos=(0, -24))
+p1.edge(proc, skill, 'Action pour\nfraction → success (목적지: 고정 workbench)', color=WARM, exit=(1, 0.34), entry=(0, 0.34), lpos=(0, -18))
+p1.edge(proc, skill, 'Action WeighContainer (고정 workbench 용기 들어, 그리퍼 비어야) · WeighHeld (든 채로, v1.2)\ntare_g → reading: gross / net / std / valid / subject', color=WARM, exit=(1, 0.46), entry=(0, 0.46), lpos=(0, -24))
 p1.edge(proc, skill, 'Service set_gripper\nclose, width_mm, force_n, timeout_s\n→ success, final_width_mm, grip_inferred', color=WARM, exit=(1, 0.58), entry=(0, 0.58), lpos=(0, -24))
 p1.edge(proc, skill, 'Service measure_force\nsamples, settle_s\n→ force[6], fz_mean_n, fz_std_n, valid', color=WARM, exit=(1, 0.7), entry=(0, 0.7), lpos=(0, -24))
 p1.edge(proc, skill, 'Service safe_pose\nreason → success', color=WARM, exit=(1, 0.82), entry=(0, 0.82), lpos=(0, -18))
@@ -78,7 +78,7 @@ p1.edge(proc, rec, 'Topic dispense_result\n원료 종료 시', color=OK, exit=(0
 p1.edge(proc, rec, 'Topic deviation\nTRANSIENT_LOCAL · QA 후 재발행', color=OK, exit=(0.72, 1), entry=(0.72, 0), lpos=(-0.5, 0))
 p1.edge(proc, rec, 'Topic event\nBATCH_START/END · STEP\nINTERLOCK_* · INTERVENTION_FORCED', color=OK, exit=(0.88, 1), entry=(0.88, 0), lpos=(0.1, 0))
 p1.note(40, 600, 440, 230, '읽는 법\n\n파란 실선 = HMI 가 부르는 Service (process 가 서버)\n주황 = process 가 부르는 스킬 (skill_node 가 서버)\n청록 = process 가 발행하는 Topic\n빨강 점선 = skill_node → process 구독\n\n원칙: 스킬은 한 번에 하나 · 콜백은 값만 저장 · FSM 은 로봇을 모른다')
-p1.note(1580, 900, 320, 110, '미합의 1건 (A 와)\n용기 반송 슬롯 번호를 MoveToStation 에 어떻게 넘길지\n— station_id 접미사 "magazine#1"  vs  계약 v1.2 uint8 slot')
+p1.note(1580, 900, 320, 110, '미합의 1건 (A 와)\n용기 반송 슬롯 번호를 MoveToStation 에 어떻게 넘길지\n— station_id 접미사 "passbox_empty#1"  vs  계약 v1.2 uint8 slot')
 
 # ───────────────────────── 페이지 2: 상태 전이도 ─────────────────────────
 p2 = Page('2 상태 전이도')
@@ -92,7 +92,7 @@ def S(c, r, name, sub='', kind='n'):
 cx = lambda c, f=0.5: X[c] + W * f          # 상자 안 x 좌표
 idle = S(0, 0, 'IDLE', 'submit_order 대기', 'i')
 selfc = S(1, 0, 'SELF_CHECK', 'req: measure — 빈 그리퍼 외력\n(영점·센서 확인, 용기 아님)')
-pickc = S(2, 0, 'PICK_CONTAINER', 'req: carry magazine→scale')
+pickc = S(2, 0, 'PICK_CONTAINER', 'req: carry passbox_empty→workbench')
 tare = S(3, 0, 'TARE', 'req: weigh — 빈 용기 들어\n풍량 (배치 1회)')
 picks = S(0, 1, 'PICK_SCOOP', 'req: move(scoop_N) → grip\n스쿱은 원료통 아래 (D-24)')
 stare = S(1, 1, 'SCOOP_TARE', 'req: weigh_scoop — 빈 스쿱\n든 채 (원료마다 1회)')
@@ -102,12 +102,12 @@ pour = S(4, 1, 'POUR', 'req: pour(fraction)')
 wres = S(5, 1, 'WEIGH_RESIDUAL', 'req: weigh_scoop — 붓기 후 스쿱 잔량\n투입량 = 전 − 후 → decide()')
 ret = S(1, 2, 'RETURN_SCOOP', 'req: move(scoop_N) → grip(open)\n전용 스쿱 = 교차오염 방지')
 verify = S(3, 2, 'VERIFY', 'req: weigh — 용기 들어 총량 − 풍량\n배치 끝 1회. ① 레시피 총량 ② Σ투입량')
-finish = S(4, 2, 'FINISH', 'req: carry scale→output_tray')
+finish = S(4, 2, 'FINISH', 'req: carry workbench→passbox_done')
 done = S(5, 2, 'DONE', 'event BATCH_END', 'd')
 err = S(0, 3, 'ERROR', 'req: safe(then None)\nevent INTERVENTION_FORCED', 'e')
 paused = S(2, 3, 'PAUSED', 'req: safe → wait_interlock', 'p')
 dev = S(4, 3, 'DEVIATION', 'req: wait_qa (QA 원격 판정)', 'p')
-disc = S(5, 3, 'DISCARDED', 'req: (스쿱 반납 →) carry scale→reject_bin', 'e')
+disc = S(5, 3, 'DISCARDED', 'req: (스쿱 반납 →) carry workbench→reject_bin', 'e')
 # ── 정상 경로 (파랑) — 가로선 라벨은 선 위(-), 세로·꺾인 선은 lpos 로 위치 지정
 p2.edge(idle, selfc, 'submit_order 수락\nbatch_id 발급 · event BATCH_START', color=ACC, lpos=(0, -22))
 p2.edge(selfc, pickc, 'measure valid', color=ACC, lpos=(0, -14))
@@ -176,7 +176,7 @@ p3.box(40, 20, 1860, 40, 'process_node._execute — FSM 요청 kind → 스킬 �
 kinds = [
  ('measure', '—', 'measure_force(samples 0, settle 0)', "{'valid', 'fz_std_n'}"),
  ('carry', 'src · dst · slot · target=cup', 'move(src,ABOVE) → move(src,AT) → set_gripper(close, cup_width) →\nmove(src,ABOVE) → move(dst,ABOVE) → move(dst,AT) → set_gripper(open) → move(dst,ABOVE)\n파지 실패면 dst 로 가지 않고 즉시 반환', "{'grip_inferred'}"),
- ('weigh', 'station · tare_g', 'WeighContainer act(tare_g) — 고정 scale의 용기를 들어 잰다 (TARE · VERIFY). 그리퍼가 비어 있어야 한다 + weight 토픽 발행', "{'gross_g','net_g','std_g','valid','subject=container'}"),
+ ('weigh', 'station · tare_g', 'WeighContainer act(tare_g) — 고정 workbench의 용기를 들어 잰다 (TARE · VERIFY). 그리퍼가 비어 있어야 한다 + weight 토픽 발행', "{'gross_g','net_g','std_g','valid','subject=container'}"),
   ('weigh_scoop', 'station · tare_g(빈 스쿱)', 'WeighHeld act [v1.2 확정] — 들고 있는 스쿱을 계량 자세로 → 읽기 (SCOOP_TARE · WEIGH_SCOOP · WEIGH_RESIDUAL 이 같은 요청)\n계량 후 계량 자세에 머문다 (복귀 없음) · 빈 그리퍼면 success=false', "{'gross_g','net_g','std_g','valid','subject=scoop'}"),
  ('move', 'station · approach', 'move_to_station(station, ABOVE/AT)', "{'success','reached'} → state.station"),
  ('grip', 'close · target(scoop/cup)', 'set_gripper(close, width = scoop_width | cup_width, force)', "{'grip_inferred','final_width_mm'}"),
@@ -226,24 +226,24 @@ ROWS = [
  ('IDLE', 'i', 'SubmitOrder srv\nrecipe → accepted, batch_id\nevent HMI_ORDER(actor) → audit', None,
   'recipe.parse() / from_msg() 검증\nscale.resolvable(target, tol)', 'state IDLE→ACCEPTED\nevent BATCH_START(product)', False),
  ('SELF_CHECK', 'n', None, 'MeasureForce srv (빈 그리퍼)\nsamples, settle_s → fz_mean, fz_std, valid', None, 'state · event STEP', False),
- ('PICK_CONTAINER', 'n', None, 'carry = MoveToStation act ×4 + SetGripper srv ×2\nmagazine(slot) → scale, cup_width\n→ grip_inferred', None, 'state\ndeviation(GRIP_FAIL 시)', False),
- ('TARE', 'n', None, 'WeighContainer act (고정 scale 용기 들어)\ntare 0 → reading(gross, std, valid)', 'scale.set_tare(gross)', 'weight(gross, valid=…) · state', False),
+ ('PICK_CONTAINER', 'n', None, 'carry = MoveToStation act ×4 + SetGripper srv ×2\npassbox_empty(slot) → workbench, cup_width\n→ grip_inferred', None, 'state\ndeviation(GRIP_FAIL 시)', False),
+ ('TARE', 'n', None, 'WeighContainer act (고정 workbench 용기 들어)\ntare 0 → reading(gross, std, valid)', 'scale.set_tare(gross)', 'weight(gross, valid=…) · state', False),
  ('PICK_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT)\nSetGripper srv (close, scoop_width, force)\n→ grip_inferred, final_width_mm', None, 'state\ndeviation(GRIP_FAIL · WRONG_TOOL[v1.2])', False),
  ('SCOOP_TARE', 'n', None, 'WeighHeld act [v1.2] (빈 스쿱, 든 채)\n→ gross, std, valid', None, 'weight(스쿱 풍량, subject=scoop) · state', False),
  ('SCOOP', 'n', None, 'Scoop act\nmaterial_id, attempt → contact_detected', None, 'state\ndeviation(SCOOP_EMPTY · MATERIAL_EMPTY)', False),
  ('WEIGH_SCOOP', 'n', None, 'WeighHeld act [v1.2] (붓기 전, 든 채)\n→ gross, valid', '_pour_fraction(need, scooped)\n= min(1, 부족량/퍼낸 양)  [B 로 이관 예정]', 'weight(퍼낸 양) · state', False),
- ('POUR', 'n', None, 'Pour act\nfraction → success (고정 scale)', None, 'state', False),
+ ('POUR', 'n', None, 'Pour act\nfraction → success (고정 workbench)', None, 'state', False),
  ('WEIGH_RESIDUAL', 'n', None, 'WeighHeld act [v1.2] (붓기 후, 든 채)\n→ gross, valid', 'decide(target, actual, tol, attempts,\nvalid, invalid, cfg)\n→ DONE / SCOOP(fraction) / DEVIATION(kind)',
   'weight(잔량) · scoop_cycle(시도 1건) · state\ndispense_result (DONE·DEVIATION 시)\ndeviation(OVERFILL · TIMEOUT · WEIGH_INVALID)', False),
  ('RETURN_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT — 원료통 아래)\nSetGripper srv (open)', None, 'state', False),
- ('VERIFY', 'n', None, 'WeighContainer act (고정 scale 용기 들어, 배치 1회)\ntare_g → reading(net, subject=container)', '① Σ(target×tol) — 레시피 총량 대조\n② min_resolvable_g — Σ투입량 대조', 'weight(net) · state\ndeviation(VERIFY_MISMATCH[v1.2])', False),
- ('FINISH', 'n', None, 'carry scale → output_tray(slot)\nSafePose srv', None, 'state DONE · event BATCH_END\n(record_node 가 JSON 내보내기)', False),
+ ('VERIFY', 'n', None, 'WeighContainer act (고정 workbench 용기 들어, 배치 1회)\ntare_g → reading(net, subject=container)', '① Σ(target×tol) — 레시피 총량 대조\n② min_resolvable_g — Σ투입량 대조', 'weight(net) · state\ndeviation(VERIFY_MISMATCH[v1.2])', False),
+ ('FINISH', 'n', None, 'carry workbench → passbox_done(slot)\nSafePose srv', None, 'state DONE · event BATCH_END\n(record_node 가 JSON 내보내기)', False),
  ('DONE', 'd', None, None, None, '(발행 없음 — HMI 는 DB 를 읽어\n이력·KPI 표시)', False),
  ('DEVIATION', 'p', 'QaDecision srv\nAPPROVE / DISCARD, operator_id\nevent HMI_QA_APPROVE/DISCARD → audit', '(로봇 대기 — 호출 없음)', None, 'deviation 재발행\n(decision, operator_id, 같은 id) · state', False),
  ('PAUSED (REFILL)', 'p', 'InterlockRequest srv\nENTER(reason) → granted / EXIT\nevent HMI_INTERLOCK_ENTER/EXIT → audit', 'SafePose srv (ENTER 시)\n진행 중 Action 은 cancel_goal 먼저 (I-004)', None, 'event INTERLOCK_ENTER/EXIT\nstate PAUSED', False),
  ('PAUSED (NUDGE)', 'p', None, 'event NUDGE ← skill_node 발행\n(get_tool_force 폴링, D-21)\nprocess 는 구독 → 루프 게이트 토글', None, 'state PAUSED(note NUDGE)\nevent NUDGE (skill 이 낸 것을 record 가 저장)', True),
  ('ERROR', 'e', None, 'SafePose srv (then None)', None, 'event INTERVENTION_FORCED\nstate ERROR', False),
- ('DISCARDED', 'e', None, 'MoveToStation + SetGripper(open) (스쿱 반납)\ncarry scale → reject_bin', None, 'state DONE(DISCARDED)\nevent BATCH_END', False),
+ ('DISCARDED', 'e', None, 'MoveToStation + SetGripper(open) (스쿱 반납)\ncarry workbench → reject_bin', None, 'state DONE(DISCARDED)\nevent BATCH_END', False),
 ]
 def lane_box(k, y, text, h, fill, stroke):
     x, w = LX[k]

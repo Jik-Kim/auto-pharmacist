@@ -15,7 +15,7 @@ float32 commanded_pour_fraction # Pour 에 전달한 명령 비율 [0~1]
 float32 delivered_g             # max(0, pre_pour.net_g - post_pour.net_g) [g]. 음수 원시차는 두 reading으로 보존
 
 uint8 weigh_method              # 스쿱 계량 방식. 아래 상수
-string weigh_pose_id            # 고정 계량 자세 ID (보통 "scale")
+string weigh_pose_id            # 고정 계량 자세 ID (보통 "workbench")
 string tool_name                # 컨트롤러에 적용한 tool 등록명
 string tcp_name                 # 컨트롤러에 적용한 TCP 등록명
 

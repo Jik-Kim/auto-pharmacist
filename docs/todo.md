@@ -5,20 +5,19 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 19/70 완료** (█████░░░░░░░░░░░░░░░)  ·  기준 09/19
+**전체 25/78 완료** (██████░░░░░░░░░░░░░░)  ·  기준 09/18
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
-| gmp_interfaces [조장] | 2/6 | `███░░░░░░░` | **4** |
-| gmp_skills [A 스킬] | 4/16 | `██░░░░░░░░` | **10** |
-| gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **5** |
-| gmp_process [C 공정] | 7/17 | `████░░░░░░` | **3** |
-| gmp_hmi [D HMI·기록] | 3/15 | `██░░░░░░░░` | **5** |
-| gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **4** |
+| gmp_interfaces [조장] | 4/7 | `██████░░░░` | **1** |
+| gmp_skills [A 스킬] | 0/18 | `░░░░░░░░░░` | **6** |
+| gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **4** |
+| gmp_process [C 공정] | 11/21 | `█████░░░░░` | — |
+| gmp_hmi [D HMI·기록] | 7/16 | `████░░░░░░` | **1** |
+| gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **2** |
 
-**마감이 지난 항목 31건**
+**마감이 지난 항목 14건**
 
-- `9/17` gmp_interfaces — 계약 v1.2: Deviation.kind 에 WRONG_TOOL·VERIFY_MISMATCH 추가, WeighHeld Acti…
 - `9/17` gmp_interfaces — G1 결과로 도징 단위 확정 → RecipeItem.tol_pct 기본값·레시피 yaml 갱신 (SOT D-08)
 - `9/18` gmp_interfaces — 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02)
 - `9/18` gmp_interfaces — [D-22] 계약 v1.2 에 Deviation.kind BATCH_OUT_OF_SPEC 추가 — VERIFY 를 계측 신뢰성(…
@@ -45,26 +44,43 @@
 - `9/18` gmp_hmi — 다른 기기(폰·노트북)에서 http://<로봇PC>:5000 접속 확인 — 시연 T6(c) 장면
 - `9/18` gmp_hmi — process_node 가 BATCH_START 이벤트에 product 를 싣게 C 와 합의 (batches.product 채우…
 - `9/18` gmp_hmi — [9/18 확정] 회수 확인 버튼 — QA 가 패스박스·폐기함 비운 뒤 누르면 카운터 리셋 + HMI_* audit 기록 (누가…
+- `9/17` gmp_hmi — [연동 대기 — 9/18 확인] 가상 모드에서 주문 → 상태 → QA 승인 → 이력 조회 한 바퀴 — HMI 시험 공정 검증은 …
 - `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
 - `9/17` gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
 - `9/18` gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — output_tray.capacity·reject_bin.capa…
 - `9/18` gmp_bringup — common.yaml 에 qa.decision_timeout_s·interlock.timeout_s 추가 — docs/inter…
 
-**오늘 마감 1건**
+**오늘 마감 16건**
 
 - gmp_hmi — [추가 7] HMI: PAUSED 사유(NUDGE/REFILL) 표시, 이벤트 타임라인에 NUDGE
+- gmp_interfaces — 계약 v1.2 팀 채널 공지 — 위 항목 중 공지만 남았다 (WeighHeld 신설·Deviation.kind 3종 추가)
+- gmp_interfaces — 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02)
+- gmp_skills — [추가 7] nudge 감지: 워커 유휴 루프·계량 settle·붓기 대기에서 get_tool_force 100 ms 폴링, 임…
+- gmp_skills — [추가 1] 폭 지문: 스쿱 손잡이 폭 15/18/21 mm 제작(테이프), stations.yaml/common.yaml 에 …
+- gmp_skills — Scoop: 컴플라이언스 진입 → Z 힘제어 하강 → check_force_condition 접촉 → 깊이 상한 → 들어올림 →…
+- gmp_skills — Pour: 기울임 movel/movesx + fraction<1 시 amove_periodic 털어내기
+- gmp_skills — WeighContainer: 파지 → 계량 자세 → samples 회 읽기 → 내려놓기
+- gmp_skills — [9/18 확정] 새 배치에서 용기를 파지한 채 passbox·reject_bin 도달 확인 (접근 높이 60 mm 포함) — …
+- gmp_skills — [9/18 확정] 원료 선반(판 바깥·높이 다름)에서 Scoop 힘제어 확인 — 뻗은 자세의 특이점 영향 (힘제어는 특이점 영역…
+- gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
+- gmp_process — [추가 7] NUDGE 전이: RUNNING→PAUSED(NUDGE), 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 …
+- gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
+- gmp_hmi — [9/18 확정] 회수 확인 버튼 — QA 가 패스박스·폐기함 비운 뒤 누르면 카운터 리셋 + HMI_* audit 기록 (누가…
+- gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — passbox_done.capacity·reject_bin.cap…
+- gmp_bringup — common.yaml 에 qa.decision_timeout_s·interlock.timeout_s 추가 — docs/inter…
 
 > 이 표는 `python3 tools/todo_stats.py` 가 체크박스를 세어 다시 쓴다. 손으로 고치지 않는다.
 
 <!-- STATS:END -->
 
 ## gmp_interfaces [조장]
-- [ ] **계약 v1.2**: `Deviation.kind` 에 `WRONG_TOOL`·`VERIFY_MISMATCH` 추가, **`WeighHeld` Action(들고 있는 스쿱 계량, D-22·I-007)** 신설, `docs/interfaces.md` 동시 갱신, 팀 채널 공지 · 마감 9/17
+- [x] **계약 v1.2**: `Deviation.kind` 에 `WRONG_TOOL`·`VERIFY_MISMATCH` 추가, **`WeighHeld` Action(들고 있는 스쿱 계량, D-22·I-007)** 신설, `docs/interfaces.md` 동시 갱신 — **PR #10 머지 완료 (9/18)** · 마감 9/17
+- [ ] 계약 v1.2 **팀 채널 공지** — 위 항목 중 공지만 남았다 (`WeighHeld` 신설·`Deviation.kind` 3종 추가) · 마감 9/18
 - [x] 계약 v1.0 — msg 8 · srv 6 · action 5 정의, `docs/interfaces.md` · 마감 9/16
 - [ ] G1 결과로 도징 단위 확정 → `RecipeItem.tol_pct` 기본값·레시피 yaml 갱신 (SOT D-08) · 마감 9/17
 - [x] 계약 v1.1 — `Deviation.operator_id`, `record_summary` 폐지, 7절 DB 스키마 · 마감 9/16
 - [ ] 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02) · 마감 9/18
-- [ ] **[D-22]** 계약 v1.2 에 `Deviation.kind BATCH_OUT_OF_SPEC` 추가 — `VERIFY` 를 **계측 신뢰성**(Σ투입량 대조)과 **제품 판정**(레시피 총량 대조)으로 나눈다. **조장 합의 완료 (9/17)**. I-007 과 같이 처리 · 마감 9/18
+- [x] **[D-22]** 계약 v1.2 에 `Deviation.kind BATCH_OUT_OF_SPEC` 추가 — `VERIFY` 를 **계측 신뢰성**(Σ투입량 대조)과 **제품 판정**(레시피 총량 대조)으로 나눈다. **조장 합의 완료 (9/17)**. I-007 과 같이 처리 · 마감 9/18
 
 ## gmp_skills [A 스킬]
 - [ ] **[추가 7] nudge 감지**: 워커 유휴 루프·계량 settle·붓기 대기에서 `get_tool_force` 100 ms 폴링, 임계 초과 시 `CellEvent(NUDGE)` 발행. **코드·순수 테스트 완료(9/19), 남은 것은 G1에서 빈 그리퍼 정지 외력 σ로 임계 8 N 실물 검증 — 실물 보류** · 마감 9/18
@@ -81,6 +97,8 @@
 - [ ] 기동 자가진단: `get_current_tool/tcp` 불일치 기동 거부 구현 완료. **`collision_sensitivity` getter 확인·비교는 미구현** · 마감 9/21
 - [ ] I-004 이동 취소: `MoveToStation`·`SafePose`는 `amovej/amovel` + `check_motion` + `MoveStop` 구현 완료. **Scoop·Pour·Weigh 내부 블로킹 이동 취소는 미구현** · 마감 9/21
 - [x] `gripper_state` 10 Hz 발행, 미끄러짐 감지(`slip_mm`) 구현·단위 테스트 완료 · 마감 9/21
+- [ ] **[I-009]** `skill_node` 의 `approach == 0` 숫자 비교를 `MoveToStation.Goal.ABOVE` 로 — 상수가 이제 Goal 절에 있어 쓸 수 있다 (급하지 않음) · 마감 9/21
+- [ ] **`WeighHeld`**: 들고 있는 스쿱을 계량 자세로 → `samples` 회 읽기. **파지·내려놓기 없음**. 계량 후 그 자세에 머물고(복귀 없음), 빈 그리퍼면 `success=false`. phase 는 `LIFT`/`SETTLE`/`MEASURE`. **D-22 의 `SCOOP_TARE`·`WEIGH_SCOOP`·`WEIGH_RESIDUAL` 세 단계가 이 하나를 쓴다 — 없으면 원료 1종 흐름이 안 돈다** (계약 v1.2, I-007) · 마감 9/21
 - [ ] **[9/18 확정]** 새 배치에서 **용기를 파지한 채** `passbox`·`reject_bin` 도달 확인 (접근 높이 60 mm 포함) — 둘 다 사용 불가 영역에 붙어 있어 자세 제약 우려 · 마감 9/18
 - [ ] **[9/18 확정]** 원료 선반(판 바깥·높이 다름)에서 `Scoop` 힘제어 확인 — 뻗은 자세의 특이점 영향 (힘제어는 특이점 영역에서 제한적) · 마감 9/18
 
@@ -100,26 +118,31 @@
 - [x] **[D-22]** `_pour_fraction` → `gmp_dosing/core/dosing.py` 의 `pour_fraction(need_g, scooped_g, cfg)` 로 이관 완료. `weigh_scoop` 요청은 계약 v1.2 의 `WeighHeld` Action 에 대응한다 (매핑은 `process_node` 구현 시) · 마감 9/18
 - [x] **[D-22]** `VERIFY` 이중 판정 구현 — ① `|net − Σtarget| > Σ(target×tol)` → `BATCH_OUT_OF_SPEC` ② `|net − Σ투입량| > min_resolvable_g` → `VERIFY_MISMATCH`. **임계 제약 발견**: `min_resolvable_g < Σ(target×tol)` 가 아니면 ②는 죽은 검사다 (현재 30 > 22.5) → SOT Q-11 에 기록 · 마감 9/18
 - [ ] **[D-22]** G1 결과로 **VERIFY ② 유효성 판단** — `min_resolvable_g < Σ(target×tol)` 이면 ②를 유지하고, 아니면 **②(`VERIFY_MISMATCH`)를 제거**한다. 현재 값(30 vs 22.5)이면 ②는 한 번도 안 울린다. 있으나 마나 한 검사를 남기면 나중에 "왜 안 울리지" 로 또 헤맨다. **G1(A) · `min_resolvable_g` 갱신(B) 이후** · 마감 9/21
-- [ ] `nodes/process_node.py`: 레시피 `grade/scoop_id` 제거, `Pour`·`WeighContainer` station 인자 제거, `SetGripper` 클라이언트, `QaDecision.deviation_id` 일치 검증, 시도 종료 시 `scoop_cycle` 발행을 포함한 스킬 Action/Service 연동 — **가상에서 레시피 1건 완주** · 마감 9/18
+- [x] `nodes/process_node.py`: 스킬 Action 5 · Service 3 연동, `grade/scoop_id` 없음, `Pour`·`WeighContainer` station 인자 없음, `SetGripper`, `QaDecision.deviation_id` 일치 검증 + 판정 후 같은 ID 재발행, `scoop_cycle` 발행, 원료 → `scoop_N` 해석(`core/station_map.py`), 인터락 ENTER(`safe_pose` → PAUSED → EXIT 후 같은 요청 재시도), 스킬 실패 → `FORCE_LIMIT` 1회 재시도 후 ERROR. **완주 확인은 가짜 skill_node 로 했다** (`test/fake_skill_node.py`, 6건) — 진짜 가상 브링업은 아래 항목 · 마감 9/18
+- [ ] **가상 브링업으로 레시피 1건 완주** — `ros2 launch gmp_bringup cell.launch.py mode:=virtual` 로 진짜 `skill_node` 상대 확인. **A 의 `weigh_held` Action 서버가 올라온 뒤에 가능하다** (지금은 `SCOOP_TARE` 에서 서버 없음 → FORCE_LIMIT → ERROR 로 끝난다) · 마감 9/21
+- [ ] **[I-008]** `ScoopCycle` 6축 wrench 를 채울 경로 결정 — 계량 스킬이 `WeightReading` 만 돌려줘서 지금은 `*_wrench_valid=false` 다. (a) `WeighHeld`/`WeighContainer` 결과에 wrench 6축 추가(제일 쌈) (b) `weights` 로 옮김 (c) 필드 삭제. `DispenseResult.verdict` 에 `INVALID` 가 없는 것도 같이 본다. **G1 으로 wrench 가 쓸모 있는지 본 뒤** — 그 전에 계약을 또 흔들지 않는다 · 마감 9/21 (조장과)
 - [ ] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) · 마감 9/21
 - [x] 스테이션 물리 배치·테이프 표시 (하드웨어) — **9/18 완료**. 좌표 실측(G3)과 SOT D-24 등록이 이제 가능하다 · 마감 9/17
 - [ ] 고의 장애 주입 T6 (a)(b)(c) 재현 · 마감 9/22
 - [ ] **[추가 7] NUDGE 전이**: `RUNNING→PAUSED(NUDGE)`, 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 재사용) + 테스트 · 마감 9/18
 - [ ] **[추가 1] 폭 지문**: `PICK_SCOOP`·`PICK_CONTAINER` 의 `SetGripper` 결과 폭이 원료별 기대 폭(±margin) 과 다르면 `Deviation(WRONG_TOOL)` → QA · 마감 9/21 (A 와)
 - [ ] **[추가 3] 재기동 이어하기**: 기동 시 DB 의 미완료 배치 조회 → 상태·원료 인덱스·tare 복원 → 용기 재계량 후 재개. 시연: 실행 중 Ctrl-C → 재실행 · 마감 9/22 (D 와)
-- [ ] **[9/18 확정]** 배치 변경 반영 — 스쿱 원료별 분산은 반영 완료(`scoop_N`, `process_fsm` 의 `scoop_rack` 참조 제거). **남은 것: `scale`(판 중앙)·원료 선반(판 바깥)·사용 불가 영역의 실제 좌표** — 시연 공간 세팅 후 조장이 `stations.yaml` 에 채운다. SOT D-24 로 등록 필요 · 마감 9/21
-- [ ] **[9/18 확정]** 회수·넛지 운영 — **운영 방식은 SOT D-23 으로 확정**. 남은 미정 3건: (a) 가득참 판단은 **카운트**(비전 없음) → `output_tray.capacity`·`reject_bin.capacity` (b) QA 가 비운 것을 아는 방법 — HMI 확인 버튼 유력 (c) **"한 세트"의 정의**(배치 1건 / 레시피 1건 / 용기 N통) · 마감 9/18
+- [x] **[9/18 확정]** 배치 변경 반영 → **SOT D-24 로 등록 완료**. 판 450×450, 기준 원점 [X:0, Y:45], 로봇 좌측 28 cm, 중앙 300×300 배치 불가, 넛지 대기 위치 신설, 원료·스쿱은 판 바깥 아래. **스테이션 매핑 3건은 Q-12 로 분리** · 마감 9/21
+- [x] **[Q-12]** Pass Box 가 `magazine`·`output_tray` 를 대체 — **확정 (9/18)**. `passbox_empty`(빈통) · `passbox_done`(완성품) 으로 이름과 FSM `carry` 목적지를 바꿨다 · 마감 9/21
+- [x] **[D-24]** `nudge_wait` 스테이션 추가 — 세트 완료 후 이동해 NUDGE 대기. `safe` 와 별개 (판 우상단). **FSM 전이는 「추가 7 NUDGE 전이」 항목에서 같이** · 마감 9/21
+- [ ] **[9/18 확정]** 회수·넛지 운영 — **운영 방식은 SOT D-23 으로 확정**. 남은 미정 3건: (a) 가득참 판단은 **카운트**(비전 없음) → `passbox_done.capacity`·`reject_bin.capacity` (b) QA 가 비운 것을 아는 방법 — HMI 확인 버튼 유력 (c) **"한 세트"의 정의**(배치 1건 / 레시피 1건 / 용기 N통) · 마감 9/18
 - [x] ~~[버그] 일탈 QA 대기가 무한 블로킹~~ — **문제 없음으로 결론 (9/18)**. D-23 반자동 운전이라 사람이 붙어 있는 것이 설계이고(세트 경계 대기도 마찬가지), 워커가 `daemon=True` 스레드라 Ctrl+C 로 정상 종료된다. 일탈 대기에만 타임아웃을 걸면 세트 경계 대기와 일관성이 깨진다 · 마감 9/18
 - [ ] **Ctrl+C 종료 시 로봇 상태 확인** — 순응/힘제어가 켜진 채 남는지, 그리퍼가 스쿱을 쥔 채 멈추는지. `release_force`·`release_compliance_ctrl` 이 `dsr_arm.py` 짝 함수 안에만 있고 종료 경로에는 없다 → 재기동 시 `2.3501`(15Nm 외부 토크)·`2.1903` 가능. 남으면 **종료 훅에 `release_force` + `release_compliance_ctrl` 추가** (cancel 콜백보다 작고 Ctrl+C·cancel 둘 다 커버). `RunBatch` cancel 이 이것으로 대체 가능한지 같이 판단 · 마감 9/21
 
 ## gmp_hmi [D HMI·기록]
 - [x] `config/schema.sql` · `core/db.py`: 6 테이블, 쓰기·조회·KPI·JSON 내보내기, 단위 테스트 · 마감 9/16
 - [x] `nodes/record_node.py`: 구독 5종 → SQLite, 배치 종료 시 JSON 내보내기, `HMI_*` → audit · 마감 9/16
-- [ ] v1.2 적용: 주문 메시지의 `grade/scoop_id`, `QaDecision.Request`의 `batch_id` 제거(웹 표시는 유지), `scoop_cycle` 구독·DB 테이블·JSON 내보내기 추가 · 마감 9/18
+- [x] v1.2 적용: 주문 메시지의 `grade/scoop_id`, `QaDecision.Request`의 `batch_id` 제거(웹 표시는 유지), `scoop_cycle` 구독·DB 테이블·JSON 내보내기 추가 · 마감 9/18
 - [x] `nodes/hmi_web_node.py` + `templates/index.html`: Flask 골격 — 주문·상태·계량 그래프·일탈 판정·인터락·이력·KPI·감사 추적 · 마감 9/16
-- [ ] `sudo apt install python3-flask` 후 가상 모드에서 **주문 → 상태 → QA 승인 → 이력 조회 한 바퀴** · 마감 9/17
-- [ ] 다른 기기(폰·노트북)에서 `http://<로봇PC>:5000` 접속 확인 — 시연 T6(c) 장면 · 마감 9/18
-- [ ] process_node 가 `BATCH_START` 이벤트에 product 를 싣게 C 와 합의 (batches.product 채우기) · 마감 9/18
+- [ ] **[연동 대기 — 9/18 확인]** 가상 모드에서 **주문 → 상태 → QA 승인 → 이력 조회 한 바퀴** — HMI 시험 공정 검증은 통과. 현재 로컬 `gmp_skills`에 `WeighHeld` 구현이 없어 실제 C 가상 브링업 완주 대기. A 구현 반영 후 재검증 · 마감 9/17
+- [x] 다른 기기(폰·노트북)에서 HMI 접속 확인 — 9/18 휴대폰에서 `http://172.24.0.3:5002` 접속 성공 (ROS 통신 시험 서버) · 마감 9/18
+- [x] process_node 가 `BATCH_START` 이벤트에 product 를 싣게 C 와 합의 — **C 측 구현 완료 (9/18)**. `CellEvent(code='BATCH_START', text=product, batch_id=...)` 로 나간다 · 마감 9/18
+- [x] **[I-009]** `hmi_web_node.py` 의 `InterlockRequest.ENTER` 참조가 `AttributeError` 였다 — 계약 상수가 응답 절에 있었다. 상수를 요청 절로 옮기고 `InterlockRequest.Request.ENTER` 로 고쳤다 (9/18, C 가 처리) · 마감 9/18
 - [ ] **[9/18 확정]** 회수 확인 버튼 — QA 가 패스박스·폐기함 비운 뒤 누르면 카운터 리셋 + `HMI_*` audit 기록 (누가 언제 회수했는지) · 마감 9/18
 - [ ] 배치 중단 버튼 — `RunBatch` cancel 호출 + `HMI_*` audit (C 의 cancel 콜백과 짝) · 마감 9/21
 - [ ] 계량 그래프에 목표선·허용 오차 밴드, 배치 클릭 → `/batch/<id>` 상세 · 마감 9/21
@@ -136,6 +159,6 @@
 - [ ] 가상 모드에서 4노드 기동 확인, `ros2 node list`/`rqt_graph` 캡처 · 마감 9/17
 - [ ] `docs/demo_run_procedure.md` T1~T7 실물 검증 · 마감 9/23
 - [x] **[9/18 확정]** `stations.yaml` 구조 개편 — `scoop_rack` 폐지, `scoop_1`~`scoop_4` 신설 (원료통 아래, `material_id` 짝). FSM 은 `material_id` 만 넘기고 `process_node` 가 짝을 찾는다. **좌표값은 실측 후 조장이 채운다** · 마감 9/18
-- [ ] **[9/18 확정]** `common.yaml` 에 회수 용량 추가 — `output_tray.capacity`·`reject_bin.capacity`, 도달 시 인터락 요청 · 마감 9/18
+- [ ] **[9/18 확정]** `common.yaml` 에 회수 용량 추가 — `passbox_done.capacity`·`reject_bin.capacity`, 도달 시 인터락 요청 · 마감 9/18
 - [ ] `common.yaml` 에 `qa.decision_timeout_s`·`interlock.timeout_s` 추가 — `docs/interfaces.md` §4 는 common.yaml 이 "타임아웃" 을 담는다고 적혀 있으나 **실제 키가 하나도 없다** · 마감 9/18
 - [ ] BRD v1.0 · SDD v1.0 (`docs/spec/`) · 마감 9/28
