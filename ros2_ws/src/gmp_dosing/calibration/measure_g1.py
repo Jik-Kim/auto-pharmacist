@@ -114,6 +114,47 @@ def baseline(arm, n: int, period: float):
           + ('   ⚠ 빈 상태인데 0 이 아니다 — 등록 툴 무게와 실제가 다르거나 영점 미적용' if kg and abs(wp_g) > 50 else ''))
 
 
+def probe(arm, grip, close_cmd, sec: float, actual_g: float):
+    """workpiece 추정기의 거동을 본다 — reset 뒤 값이 수렴하는지, 빈 상태 편향이 얼마인지, 물체를 잡으면 얼마나 반응하는지."""
+    import rclpy
+    try:
+        if grip:
+            grip.send('o')
+        input(f'\n[probe] 빈 그리퍼로 계량 자세에서 정지 → Enter (reset 후 {sec:.0f} s 관찰) ')
+        r = arm.reset_workpiece()
+        print(f'    reset_workpiece_weight return={r!r}')
+        _watch(arm, sec, '빈')
+        if grip:
+            input(f'[probe] 물체({actual_g:g} g) 를 핑거 사이에 대고 → Enter (닫는다) ')
+            grip.send(close_cmd)
+        else:
+            input(f'[probe] 물체({actual_g:g} g) 를 잡고 정지 → Enter ')
+        _watch(arm, sec, f'{actual_g:g} g 파지')
+        input('[probe] 리셋 없이 자세를 바꿔(툴이 옆을 향하게 등) 정지 → Enter (자세 의존 편향 확인, 건너뛰려면 Ctrl-C) ')
+        _watch(arm, sec, '다른 자세')
+    except KeyboardInterrupt:
+        print('\nprobe 종료')
+    finally:
+        if grip:
+            try:
+                grip.send('o')
+            except Exception as e:      # noqa: BLE001
+                print(f'    그리퍼 열기 실패: {e}')
+        rclpy.shutdown()
+    return 0
+
+
+def _watch(arm, sec: float, label: str):
+    t0 = time.monotonic()
+    print(f'    --- {label}: t[s]  Fz→g(offset 전)  workpiece[g]')
+    while time.monotonic() - t0 < sec:
+        f = arm.tool_force(); w = arm.R.get_workpiece_weight()
+        fz_g = -f[2] / 9.80665 * 1000 if f else float('nan')
+        wp_g = float(w) * 1000 if isinstance(w, (int, float)) else float('nan')
+        print(f'    {time.monotonic() - t0:5.1f}  {fz_g:8.1f}  {wp_g:8.1f}', flush=True)
+        time.sleep(0.5)
+
+
 class Gripper:
     """/onrobot/sendCommand 만 쓴다 — 'o' 열기, 'c' 닫기, '<정수>' 폭 1/10 mm. 폭 피드백은 안 본다 (사람이 눈으로)."""
     def __init__(self, rclpy):
@@ -145,6 +186,8 @@ def main(argv=None):
     ap.add_argument('--settle', type=float, default=1.0, help='회차 전 정착 대기 [s]')
     ap.add_argument('--out', required=True, help='CSV 경로 (records/ 는 git 밖. 확정되면 calibration/ 으로 복사)')
     ap.add_argument('--no-reset', action='store_true', help='reset_workpiece_weight 를 건너뛴다 (이미 한 세션)')
+    ap.add_argument('--probe', type=float, default=0.0, metavar='SEC',
+                    help='진단만: 리셋 직후 빈 그리퍼로 SEC 초, 물체를 잡고 SEC 초 동안 0.5 s 마다 두 경로 값을 찍는다 (CSV 안 씀)')
     ap.add_argument('--goto-workbench', action='store_true', help='시작 시 stations.yaml workbench.posx 로 movel (펜던트 조그 대신)')
     ap.add_argument('--vel-scale', type=float, default=0.2, help='--goto-workbench 속도 스케일')
     ap.add_argument('--gripper', action='store_true', help='/onrobot/sendCommand 로 세트마다 열기·닫기')
@@ -164,6 +207,8 @@ def main(argv=None):
         input(f'\n[0] workbench 계량 자세 {posx} 로 이동합니다 (vel_scale {a.vel_scale}). 주변 확인 → Enter ')
         arm.movel(posx, a.vel_scale)
         print('    이동 완료')
+    if a.probe > 0:
+        return probe(arm, grip, close_cmd, a.probe, a.actual_g)
     cond = a.condition or f'{a.object}_total_{a.actual_g:g}g'
     stamp = datetime.datetime.now().strftime('%m%d%H%M')
     out = pathlib.Path(a.out); out.parent.mkdir(parents=True, exist_ok=True)
