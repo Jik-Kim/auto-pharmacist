@@ -114,7 +114,8 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
                                                                                                                       ├─ OVER ──────▶ DEVIATION(OVERFILL)
    계량 무효(valid=false): 각 계량 상태에서 같은 요청 재시도 ≤2, 3회째 WEIGH_INVALID → DEVIATION                       └─ 4회째 UNDER ▶ DEVIATION(TIMEOUT)
 
- RETURN_SCOOP ──마지막 원료였음──▶ VERIFY ──weigh(용기를 들어) · ① 규격 OK · ② 계측 일치──▶ FINISH ──carry(workbench→passbox_done)──▶ DONE
+ RETURN_SCOOP ──마지막 원료였음──▶ VERIFY ──weigh(용기를 들어) · ① 규격 OK · ② 계측 일치──▶ FINISH ──carry(workbench→passbox_done)──▶ NUDGE_WAIT ──move(nudge_wait) · wait_nudge(사람이 건드림)──▶ DONE
+                                     (폐기도 같다: DISCARDED ──carry(→reject_bin)──▶ NUDGE_WAIT ──▶ DISCARDED)
                                      ├─ ① |net − Σtarget| > Σ(target×tol) ─▶ DEVIATION(BATCH_OUT_OF_SPEC) ──APPROVED──▶ FINISH
                                      └─ ② |net − Σ투입량| > min_resolvable_g ─▶ DEVIATION(VERIFY_MISMATCH) ──APPROVED──▶ FINISH
 
@@ -140,11 +141,12 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 | `WEIGH_RESIDUAL` | `weigh_scoop` → gross, valid | `residual = gross − scoop_tare`, **`actual += scooped − residual`** (실제 투입량 누적). `decide(target, actual, tol, attempts, True, invalid, cfg)` → DONE / SCOOP(fraction 힌트) / DEVIATION(kind). 무효 ≤2 재계량 | DONE→`move(scoop_N)` · SCOOP→`scoop(attempt+1)` · DEVIATION→`wait_qa` | `weight` · **`scoop_cycle`** · `dispense_result` (DONE·DEVIATION 시) · `deviation` |
 | `RETURN_SCOOP` | `move` / `grip(open)` | idx+1. 남았으면 다음 원료, 없으면 VERIFY | `move(scoop_N)` → `grip(open)` → `move(scoop_N)`(다음) 또는 `weigh(workbench, tare)` | `state` |
 | `VERIFY` | `weigh` → net, valid | **용기를 들어** 순량 계량 (그리퍼 비어 있음). ① `\|net − Σspec.target\| > Σ(target×tol)` → BATCH_OUT_OF_SPEC → QA(폐기 권고) ② `\|net − Σresults.actual\| > min_resolvable_g` → VERIFY_MISMATCH → QA. 무효 ≤2 재계량 | `carry(workbench→passbox_done)` | `weight` · `deviation` |
-| `FINISH` | `carry` → grip_inferred | 실패 → GRIP_FAIL 재시도 | 없음 (None = 끝) | `event BATCH_END`, `state DONE` |
+| `FINISH` | `carry` → grip_inferred | 실패 → GRIP_FAIL 재시도 | `move(nudge_wait)` | — |
+| `NUDGE_WAIT` | `move(nudge_wait)` → 도착 · `wait_nudge` → 사람이 건드림 | **세트 경계 (D-23)** — 반송 뒤 nudge_wait 로 물러나 서서 기다린다. 이동 중 RUNNING, 대기 중 **PAUSED**(주문 거부 · HMI 는 note 로 사유). `safety.nudge_enabled=false` 면 대기 없이 통과. 이 대기의 NUDGE 는 정지 토글이 아니라 「다음 세트」 신호 | `wait_nudge` → None (끝: DONE 또는 DISCARDED) | `event SET_DONE`(대기 진입) · `SET_NEXT`(건드림) · `BATCH_END`, `state DONE` |
 | `DEVIATION` | `wait_qa` → decision | APPROVED → (원료 일탈) 결과에 남기고 RETURN_SCOOP / (VERIFY) FINISH. DISCARDED → 스쿱 든 채면 먼저 반납 → 용기째 폐기 | `move(scoop_N)` / `carry(workbench→passbox_done)` / `carry(workbench→reject_bin)` | `deviation` 재발행(decision·operator_id 채움) |
 | `PAUSED` | `wait_interlock` → {} | `_resume` 요청을 그대로 다시 실행 | `_resume` | `event INTERLOCK_ENTER/EXIT`, `state PAUSED` |
 | `ERROR` | `safe(then=None)` | 종료 | None | `event INTERVENTION_FORCED`, `state ERROR` |
-| `DISCARDED` | `move` / `grip(open)` / `carry` | 스쿱 반납 후 용기 폐기, 종료 | `grip(open)` → `carry(workbench→reject_bin)` → None | `event BATCH_END`, `state DONE`(mode) |
+| `DISCARDED` | `move` / `grip(open)` / `carry` | 스쿱 반납 후 용기 폐기 → 폐기도 세트의 끝이라 `NUDGE_WAIT` 로 | `grip(open)` → `carry(workbench→reject_bin)` → `move(nudge_wait)` | 종료 상태는 `DISCARDED` 로 남는다 (record_node 가 본다) |
 
 ## 5. 일탈 정책표 (`core/deviation.py` — 바꾸려면 여기만)
 
@@ -196,6 +198,8 @@ event 구독(NUDGE):                   _gate() — 로봇 동작 요청 **앞**�
 들여다보면 남는 신호가 없다.
 
 **게이트를 두는 자리**: `wait_qa`·`wait_interlock`·**`safe`** 앞에는 두지 않는다 (`GATE_BYPASS`). `safe` 는 "사람이 곧 들어오니 물러나라" 는 이동이라 NUDGE·인터락 정지보다 우선한다 — 안 그러면 NUDGE 로 세워 둔 로봇이 원료 소진에도 스쿱을 든 채 서서 두 번째 nudge 를 기다린다. 정지를 잡는 자리는 **다음 요청 앞 하나**뿐이다 — 스킬 결과 직후에 잡으면 FSM 이 `safe` 를 내야 하는 상황(원료 소진·강제 개입)에서도 결정을 못 하고 서 버린다. **EXIT 는 기다리는 쪽이 있을 때만 받는다** — `_pause`(ENTER) 또는 `_refill_waiting`(REFILL 대기). mode==PAUSED 로 가르면 NUDGE 정지 중에 눌린 EXIT 가 신호로 남아 다음 보충 대기가 보충 없이 풀린다. REFILL 대기가 EXIT 를 소비할 때 `_pause` 도 같이 내린다 — 대기 중에 ENTER 가 또 왔어도 EXIT 는 한 번이다.
+
+**세트 끝의 NUDGE 는 정지가 아니다 (9/19, PR #23 리뷰 반영)**: FSM 이 `NUDGE_WAIT` 에서 `wait_nudge` 를 내면 노드는 `_nudge_waiting` 을 세우고 `_nudge_go` 를 기다린다. 그동안 들어온 NUDGE 는 `_on_event` 가 토글하지 않고 `_nudge_go` 를 세운다 — 로봇은 이미 서 있으니 「정지」 는 뜻이 없고, 이 접촉은 「다음 세트」 다. 대기에 들어갈 때 `_nudge_paused` 를 지운다 (nudge_wait 로 가는 동안의 접촉이 남아 다음 배치 첫 동작을 막지 않게). 인터락 ENTER 는 이 대기 중에도 `safe_pose` 를 실제로 부른다 — nudge_wait 는 안전 자세가 아니다.
 
 **사람 대기 앞에 게이트를 두지 않는 이유**: `wait_qa`·`wait_interlock` **앞에는 두지 않는다**. 그 요청들은 로봇을 움직이지 않으니
 멈출 것이 없고, 거기서 잡으면 QA 판정을 받기도 전에 서 버린다 — 그리고 판정 대기 중에는 mode 를 PAUSED 로

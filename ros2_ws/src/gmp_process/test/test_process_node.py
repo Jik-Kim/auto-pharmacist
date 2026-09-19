@@ -63,9 +63,11 @@ def cell():
         ex.add_node(n)
     t = threading.Thread(target=ex.spin, daemon=True)
     t.start()
+    fake.attend(proc)                   # 세트 끝마다 건드려 주는 사람 — 배치가 DONE 까지 가게 한다 (D-23)
     try:
         yield proc, fake, col
     finally:
+        fake.stop_attending()
         proc.shutdown()                 # 실행 루프를 먼저 세운다 — 죽은 노드로 발행하지 않게
         ex.shutdown()
         for n in (proc, fake, col):
@@ -619,5 +621,76 @@ def test_refill_wait_with_nudge_and_enter_needs_one_exit(cell):
     time.sleep(0.5)
     assert not proc._pause and not proc._refill_waiting, _why(proc)      # EXIT 한 번으로 둘 다 풀렸다
     assert proc._nudge_paused and proc.fsm.mode == 'PAUSED'              # NUDGE 만 남았다
+    fake.nudge()
+    assert _wait_done(proc) == 'DONE', _why(proc)
+
+
+def _lock(col, request, reason='TEST'):
+    from gmp_interfaces.srv import InterlockRequest
+    cli = col.create_client(InterlockRequest, 'interlock')
+    assert cli.wait_for_service(timeout_sec=5.0)
+    fut = cli.call_async(InterlockRequest.Request(request=request, reason=reason))
+    t0 = time.time()
+    while not fut.done() and time.time() - t0 < 10.0:
+        time.sleep(0.02)
+    assert fut.done()
+    return fut.result()
+
+
+def test_set_end_waits_at_nudge_wait_until_nudged(cell):
+    """D-23: passbox_done 반송 → nudge_wait 이동 → NUDGE 대기. 그동안 주문은 거부, 건드리면 DONE 이고 다음 주문을 받는다."""
+    proc, fake, col = cell
+    fake.attendant = False                         # 아무도 안 건드린다
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: proc.fsm and proc.fsm.state == 'NUDGE_WAIT' and proc._nudge_waiting, 60.0), _why(proc)
+    assert fake.station == 'nudge_wait' and proc.fsm.mode == 'PAUSED'
+    moves = [c for c in fake.calls if c.startswith('move:')]
+    assert any('passbox_done' in c for c in moves) and moves[-1].startswith('move:nudge_wait'), moves[-4:]
+    assert 'NUDGE_WAIT' in proc.note
+    r = _submit(col, [('A', 100.0, 5.0)])
+    assert not r.accepted and 'NUDGE_WAIT' in r.message, r.message
+
+    time.sleep(0.5)
+    assert proc.fsm.state == 'NUDGE_WAIT', '건드리기 전에는 끝나지 않는다'
+    fake.nudge()
+    assert _wait_done(proc) == 'DONE' and proc.fsm.state == 'DONE', _why(proc)
+    assert not proc._nudge_paused, '세트 끝의 NUDGE 는 정지 토글이 아니다'
+    fake.attendant = True
+    with fake.lock:                                # 가짜 셀을 다음 배치 상태로 — 첫 배치의 스쿱 잔량·용기 내용물이 남으면 계량이 어긋난다
+        fake.in_cup, fake.held = 0.0, None
+        fake.content.clear()
+    r = _submit(col, [('A', 100.0, 5.0)])
+    assert r.accepted, r.message
+    assert _wait_done(proc) == 'DONE', f'{_why(proc)} | waiting={proc._nudge_waiting} paused={proc._nudge_paused} calls={fake.calls[-5:]}'
+    assert any(e.code == 'SET_DONE' for e in col.events) and any(e.code == 'SET_NEXT' for e in col.events)
+
+
+def test_discarded_batch_also_parks_at_nudge_wait(cell):
+    """폐기도 세트의 끝 — reject_bin 뒤 nudge_wait 에서 기다리고, NUDGE 뒤 상태는 DISCARDED 로 남는다 (record_node 가 본다)."""
+    proc, fake, col = cell
+    fake.attendant = False
+    fake.transfer = 2.0                            # 과투입 → OVERFILL → QA
+    _submit(col, [('A', 10.0, 5.0)])
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    dev = proc._pending_dev()
+    assert _qa(col, dev.deviation_id, Deviation.DISCARDED).accepted
+    assert _wait_until(lambda: proc._nudge_waiting, 30.0), _why(proc)
+    assert fake.station == 'nudge_wait' and proc.fsm.state == 'NUDGE_WAIT'
+    fake.nudge()
+    assert _wait_done(proc) == 'DONE' and proc.fsm.state == 'DISCARDED', _why(proc)
+
+
+def test_enter_during_nudge_wait_goes_to_safe_pose(cell):
+    """NUDGE_WAIT 는 PAUSED 지만 안전 자세가 아니다 — ENTER 는 safe_pose 를 실제로 불러야 하고, EXIT 뒤 NUDGE 로 끝난다."""
+    proc, fake, col = cell
+    fake.attendant = False
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: proc._nudge_waiting, 60.0), _why(proc)
+    from gmp_interfaces.srv import InterlockRequest
+    n_safe = sum(c.startswith('safe:') for c in fake.calls)
+    r = _lock(col, InterlockRequest.Request.ENTER, 'CHECK')
+    assert r.granted and '이미 대기 중' not in r.message, r.message
+    assert sum(c.startswith('safe:') for c in fake.calls) == n_safe + 1, 'safe_pose 를 불러야 한다'
+    assert _lock(col, InterlockRequest.Request.EXIT).granted
     fake.nudge()
     assert _wait_done(proc) == 'DONE', _why(proc)

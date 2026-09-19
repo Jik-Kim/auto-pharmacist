@@ -41,6 +41,8 @@ class FakeSkillNode(Node):
         self.delay = {}                         # 스킬 이름 → 응답 전 대기 [s] (인터락 끼어들기 시험용)
         self.transfer = TRANSFER                # 붓기 전달률. 1 을 넘기면 과투입을 만들 수 있다
         self.cancelled = False                  # safe_pose 가 세운다 — 진행 중 스킬 1건이 실패로 끝난다
+        self.attendant = True                   # 세트 끝 NUDGE_WAIT 에서 사람이 건드려 준다 (D-23). 대기 자체를 시험하면 False
+        self._attend_stop = threading.Event()
 
         # 진짜 skill_node 처럼 event 로 알린다 — NUDGE 는 여기로 나간다 (D-21)
         self.pub_event = self.create_publisher(CellEvent, 'event', 100)
@@ -53,6 +55,22 @@ class FakeSkillNode(Node):
         self.create_service(SetGripper, 'set_gripper', self._set_gripper, callback_group=self.cb)
         self.create_service(MeasureForce, 'measure_force', self._measure, callback_group=self.cb)
         self.create_service(SafePose, 'safe_pose', self._safe, callback_group=self.cb)
+
+    def attend(self, proc):
+        """반자동 운전의 사람 — process 가 nudge_wait 에서 기다리면 잠시 뒤 건드린다."""
+        def run():
+            while not self._attend_stop.is_set():
+                if self.attendant and getattr(proc, '_nudge_waiting', False):
+                    time.sleep(0.15)
+                    if self.attendant and getattr(proc, '_nudge_waiting', False):
+                        self.nudge()
+                        while getattr(proc, '_nudge_waiting', False) and not self._attend_stop.is_set():
+                            time.sleep(0.02)
+                time.sleep(0.03)
+        threading.Thread(target=run, daemon=True, name='attendant').start()
+
+    def stop_attending(self):
+        self._attend_stop.set()
 
     def nudge(self):
         """사람이 로봇을 툭 건드렸다. 실물에서는 워커가 get_tool_force 폴링으로 낸다 (D-21)."""
