@@ -1,29 +1,32 @@
-# 무게 측정 실험에서 사용하는 고정 기준 무게.
-# 값은 내용물을 제외하고 실제 저울로 측정한 물체 자체의 무게이며 단위는 g이다.
-reference_weights:
+# G1 계량 실측 요약 — 코드가 읽는 파일이 아니다. 런타임 값은 gmp_bringup/params/common.yaml 의 scale.* 가 단일 출처.
+# 여기 숫자는 calibration/g1_scoop133g_tool_force.csv 를 core/calib.py 로 돌리면 다시 나온다:
+#   python3 -m gmp_dosing.core.calib ros2_ws/src/gmp_dosing/calibration/g1_scoop133g_tool_force.csv
+# test/test_dosing.py 가 CSV → 이 값 → ScaleConfig 기본값의 정합을 검사한다.
+
+reference_weights:            # 실제 저울로 잰 물체 자체 무게 [g]
   empty_scoop_g: 32.0
   empty_container_g: 78.0
 
-# 133 g 스쿱 조건의 6개 세트(세트당 30회)를 비교한 1차 제안값이다.
-# 단일 실제 무게만 사용했으므로 gain과 offset은 다중 무게 검증 전까지 임시값이다.
-tool_force_calibration:
+tool_force_calibration:       # method=tool_force 에만 적용. workpiece 경로는 아직 측정하지 않았다
   fz_sign: -1.0
-  gain: 1.0
-  offset_g: 259.765
-  min_resolvable_g: 17.0
-  max_std_g: 5.0
+  gain: 1.0                   # 단일 무게라 기울기를 못 구한다 — 32/86/133 g 다중 무게 후 확정 (todo 9/21)
+  offset_g: 260.164           # 133 g 를 맞추는 값. PR #22 초안 259.765 는 세트별 값 평균 — 0.4 g 차이
+  min_resolvable_g: 19.0      # 회차 평균 3σ 18.04 g 에 여유 1 g
+  max_std_g: 5.0              # 회차 내부 σ p95 4.13 g 위
   status: provisional_single_weight
   basis:
     object: scoop
     actual_g: 133.0
     sets: 6
     trials_per_set: 30
-    repeat_sigma_g: 5.5076
-    three_sigma_g: 16.5228
+    samples_per_trial: 10     # PR #22 본문의 '20표본' 은 이전 실험. 이 CSV 는 10표본
+    repeat_sigma_g: 6.0130    # 회차 평균의 σ, 6세트 합산 — 세트를 다시 잡을 때의 흐름을 포함한다
+    three_sigma_g: 18.0389
+    within_set_sigma_mean_g: 5.5076   # PR #22 초안이 쓴 값 — 세트 간 흐름 8.0 g 가 빠져 있어 낙관
+    set_drift_g: 8.0          # 세트 평균 130.2 ~ 138.2 g
     within_trial_sigma_mean_g: 1.8149
-    within_trial_sigma_p95_g: 4.1433
+    within_trial_sigma_p95_g: 4.1347
+    distinct_sample_ratio: 0.57       # 표본 10개 중 4개꼴로 앞 값 반복 — 표본 간격이 센서 갱신 주기보다 짧다
   sampling:
-    previous_samples_per_trial: 20
-    proposed_samples_per_trial_min: 5
-    proposed_samples_per_trial_max: 10
-    reason: 20개 표본에서 동일한 센서값이 반복되는 경우가 빈번해 5~10개로 줄일 예정
+    finding: 표본 수를 20→10 으로 줄여도 중복이 43 % 남는다. 수가 아니라 간격 문제 — 센서 갱신 주기(추정 100 ms 급)에 맞춰 재측정
+    next: 표본 간격을 갱신 주기 이상으로 두고 같은 6세트×30회로 σ 를 다시 구한다. σ 가 내려가면 min_resolvable_g 도 따라 내린다

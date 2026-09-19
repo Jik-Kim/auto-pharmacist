@@ -29,11 +29,11 @@
       method: workpiece             # workpiece | tool_force  (D-07)
       samples: 20
       settle_s: 1.0
-      gain: 1.0                     # 9/21 실제 저울 5점 비교로 확정
-      offset_g: 0.0
-      min_resolvable_g: 30.0        # [G1 실측 3σ 로 갱신 — I-001]
-      max_std_g: 10.0
-      fz_sign: -1.0                   # 아래 방향 하중이 음수라는 가정 — G1에서 확인
+      gain: 1.0                     # 9/21 실제 저울 5점 비교로 확정 (G1 은 133 g 단일 무게라 기울기 미확정)
+      offset_g: 0.0                 # method 에 종속 — tool_force 로 바꾸면 260.164 (gmp_dosing/config/scale_reference.yaml). workpiece 는 미측정
+      min_resolvable_g: 19.0        # G1 9/18 실측 — 회차 평균 3σ 18.0 g + 여유 (근거: gmp_dosing/calibration, core/calib.py)
+      max_std_g: 5.0                # G1 회차 내부 σ p95 4.1 g 위
+      fz_sign: -1.0                   # G1 확인: 아래 하중이 +Fz 로 읽혀 -1 로 뒤집는다
       simulated: false              # virtual 은 런치가 true 로
     dosing:
       max_attempts: 3

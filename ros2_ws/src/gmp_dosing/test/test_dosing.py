@@ -30,34 +30,30 @@ def test_invalid_then_deviation():
     assert decide(100, 0, 5, 1, False, 1, CFG).kind == 'WEIGH_INVALID'
 
 
-# 기존 30 g 가정 기준 테스트. G1 실측 1차 제안값으로 교체해 이력만 남긴다.
-# def test_scale_tare_and_resolution():
-#     m = WeightModel(ScaleConfig(method='workpiece', min_resolvable_g=30.0))
-#     m.set_tare(m.raw_to_g(0.05))            # 50 g 용기
-#     gross, tare, net, std, valid = m.reading(0.08, 0.001, True)
-#     assert abs(net - 30.0) < 1e-6 and valid
-#     assert m.resolvable(100, 5.0) is False   # ±5 g 폭은 30 g 분해능으로 못 가른다
-#     assert m.resolvable(100, 30.0)
-
-
-def test_scale_tare_and_resolution_with_g1_proposal():
-    m = WeightModel(ScaleConfig(
-        method='workpiece',
-        offset_g=0.0,
-        min_resolvable_g=17.0,
-        max_std_g=5.0,
-    ))
+def test_scale_tare_and_resolution():
+    m = WeightModel(ScaleConfig(method='workpiece', offset_g=0.0, min_resolvable_g=19.0, max_std_g=5.0))
     m.set_tare(m.raw_to_g(0.05))            # 50 g 용기
     gross, tare, net, std, valid = m.reading(0.08, 0.001, True)
     assert abs(net - 30.0) < 1e-6 and valid
-    assert m.resolvable(100, 16.9) is False  # 허용 폭이 실측 3σ보다 작아 판정 불가
-    assert m.resolvable(100, 17.0)           # 허용 폭이 실측 3σ 이상이면 판정 가능
+    assert m.resolvable(100, 5.0) is False   # ±5 g 폭은 3σ 19 g 로 못 가른다 (Q-11)
+    assert m.resolvable(100, 18.9) is False
+    assert m.resolvable(100, 19.0)
 
 
-def test_scale_g1_proposal_defaults():
+def test_g1_csv_reproduces_reference_and_defaults():
+    """CSV → calib → scale_reference.yaml → ScaleConfig 기본값이 한 줄로 이어지는지. 숫자를 손으로 옮기면 여기서 깨진다."""
+    import pathlib
+    import yaml
+    from gmp_dosing.core.calib import load_trials, summarize
+    root = pathlib.Path(__file__).resolve().parent.parent
+    s = summarize(load_trials(str(root / 'calibration' / 'g1_scoop133g_tool_force.csv')))
+    ref = yaml.safe_load((root / 'config' / 'scale_reference.yaml').read_text())['tool_force_calibration']
+    assert s['n_sets'] == 6 and s['n_trials'] == 180 and s['samples_per_trial'] == (10, 10)
+    assert abs(s['offset_g'] - ref['offset_g']) < 0.01
+    assert abs(s['three_sigma_g'] - ref['basis']['three_sigma_g']) < 0.01
+    assert abs(s['within_set_sigma_mean_g'] - ref['basis']['within_set_sigma_mean_g']) < 0.01
     cfg = ScaleConfig()
-    assert cfg.fz_sign == -1.0
-    assert cfg.gain == 1.0
-    assert cfg.offset_g == 259.765
-    assert cfg.min_resolvable_g == 17.0
-    assert cfg.max_std_g == 5.0
+    assert cfg.offset_g == 0.0                                  # method 별 값 — 기본값에 섞지 않는다
+    assert cfg.min_resolvable_g == ref['min_resolvable_g'] >= s['three_sigma_g']
+    assert cfg.max_std_g == ref['max_std_g'] >= s['within_trial_sigma_p95_g']
+    assert s['distinct_sample_ratio'] < 0.7                     # 표본 중복 — 간격을 고치기 전까지는 사실로 남긴다
