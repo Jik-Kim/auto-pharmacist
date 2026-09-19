@@ -186,6 +186,8 @@ def main(argv=None):
     ap.add_argument('--settle', type=float, default=1.0, help='회차 전 정착 대기 [s]')
     ap.add_argument('--out', required=True, help='CSV 경로 (records/ 는 git 밖. 확정되면 calibration/ 으로 복사)')
     ap.add_argument('--no-reset', action='store_true', help='reset_workpiece_weight 를 건너뛴다 (이미 한 세션)')
+    ap.add_argument('--no-workpiece', action='store_true',
+                    help='get_workpiece_weight 를 안 부른다 (호출 0.7 s — 9/19 실측). 빠른 표본 간격으로 센서 갱신 주기를 잴 때')
     ap.add_argument('--probe', type=float, default=0.0, metavar='SEC',
                     help='진단만: 리셋 직후 빈 그리퍼로 SEC 초, 물체를 잡고 SEC 초 동안 0.5 s 마다 두 경로 값을 찍는다 (CSV 안 씀)')
     ap.add_argument('--goto-workbench', action='store_true', help='시작 시 stations.yaml workbench.posx 로 movel (펜던트 조그 대신)')
@@ -242,7 +244,7 @@ def main(argv=None):
                 fz, kg = [], []
                 for n in range(1, a.samples + 1):
                     force = arm.tool_force()
-                    wp = arm.R.get_workpiece_weight()
+                    wp = None if a.no_workpiece else arm.R.get_workpiece_weight()
                     ts = time.monotonic() - t0
                     force6 = list(force) if force else [''] * 6
                     wp_v = float(wp) if isinstance(wp, (int, float)) and wp >= 0 else ''

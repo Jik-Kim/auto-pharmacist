@@ -1,32 +1,41 @@
 # G1 계량 실측 요약 — 코드가 읽는 파일이 아니다. 런타임 값은 gmp_bringup/params/common.yaml 의 scale.* 가 단일 출처.
-# 여기 숫자는 calibration/g1_scoop133g_tool_force.csv 를 core/calib.py 로 돌리면 다시 나온다:
-#   python3 -m gmp_dosing.core.calib ros2_ws/src/gmp_dosing/calibration/g1_scoop133g_tool_force.csv
+# 숫자는 calibration/*.csv 를 core/calib.py 로 돌리면 다시 나온다:
+#   python3 -m gmp_dosing.core.calib ros2_ws/src/gmp_dosing/calibration/g1_scoop_0919_both.csv --method tool_force
 # test/test_dosing.py 가 CSV → 이 값 → ScaleConfig 기본값의 정합을 검사한다.
 
 reference_weights:            # 실제 저울로 잰 물체 자체 무게 [g]
   empty_scoop_g: 32.0
   empty_container_g: 78.0
 
-tool_force_calibration:       # method=tool_force 에만 적용. workpiece 경로는 아직 측정하지 않았다
+method: tool_force            # 9/19 확정 (D-07). workpiece 는 아래 사유로 탈락
+
+tool_force_calibration:       # 9/19, 같은 자세·같은 세션, 빈 스쿱 32 g 3세트 + 원료 담은 132 g 3세트 (세트마다 다시 잡음)
   fz_sign: -1.0
-  gain: 1.0                   # 단일 무게라 기울기를 못 구한다 — 32/86/133 g 다중 무게 후 확정 (todo 9/21)
-  offset_g: 260.164           # 133 g 를 맞추는 값. PR #22 초안 259.765 는 세트별 값 평균 — 0.4 g 차이
-  min_resolvable_g: 19.0      # 회차 평균 3σ 18.04 g 에 여유 1 g
-  max_std_g: 5.0              # 회차 내부 σ p95 4.13 g 위
-  status: provisional_single_weight
-  basis:
-    object: scoop
-    actual_g: 133.0
-    sets: 6
+  gain: 0.8859                # 두 점 직선 — 실제 100 g 차이가 센서 113 g 으로 읽힌다. 단일점 offset 274.8(32 g) vs 261.9(132 g) 차 13 g ≈ 3σ 라 gain 을 둔다
+  offset_g: 247.091
+  min_resolvable_g: 19.0      # skill_node 의 현재 표본(20개 × 0.05 s, 중복 섞임)은 9/18 조건(3σ 18.0) — 표본 간격을 늘리면 14 로 내린다 (아래 sampling)
+  max_std_g: 10.0             # 독립 표본의 회차 내부 σ p95 7.8 g 위. 9/18 의 5.0 은 중복 표본이라 과소평가였다
+  status: two_point_line
+  basis_0919:
+    file: calibration/g1_scoop_0919_both.csv
+    sets_per_weight: 3
     trials_per_set: 30
-    samples_per_trial: 10     # PR #22 본문의 '20표본' 은 이전 실험. 이 CSV 는 10표본
-    repeat_sigma_g: 6.0130    # 회차 평균의 σ, 6세트 합산 — 세트를 다시 잡을 때의 흐름을 포함한다
+    samples_per_trial: 10
+    effective_period_s: 0.82  # 설정 0.1 s 였지만 get_workpiece_weight 호출이 0.7 s 걸려 실제 간격. 그래서 표본이 전부 독립 (중복 0 %)
+    w32:  {repeat_sigma_g: 4.2004, three_sigma_g: 12.6012, offset_single_g: 274.787, set_drift_g: 8.6, within_trial_sigma_p95_g: 7.6081}
+    w132: {repeat_sigma_g: 4.1333, three_sigma_g: 12.3998, offset_single_g: 261.911, set_drift_g: 7.9, within_trial_sigma_p95_g: 7.7621}
+    fit: {gain: 0.8859, offset_g: 247.091, n_weights: 2}
+  basis_0918:                 # 이전 실측 — calibration/g1_scoop133g_tool_force.csv (스쿱+원료 총 133 g, 6세트×30회×10표본, 빠른 표본이라 43 % 중복)
+    offset_single_g: 260.164  # 9/19 의 132 g 점(261.9) 과 2 g 차 — 날이 바뀌어도 offset 은 안정
+    repeat_sigma_g: 6.0130
     three_sigma_g: 18.0389
-    within_set_sigma_mean_g: 5.5076   # PR #22 초안이 쓴 값 — 세트 간 흐름 8.0 g 가 빠져 있어 낙관
-    set_drift_g: 8.0          # 세트 평균 130.2 ~ 138.2 g
-    within_trial_sigma_mean_g: 1.8149
-    within_trial_sigma_p95_g: 4.1347
-    distinct_sample_ratio: 0.57       # 표본 10개 중 4개꼴로 앞 값 반복 — 표본 간격이 센서 갱신 주기보다 짧다
   sampling:
-    finding: 표본 수를 20→10 으로 줄여도 중복이 43 % 남는다. 수가 아니라 간격 문제 — 센서 갱신 주기(추정 100 ms 급)에 맞춰 재측정
-    next: 표본 간격을 갱신 주기 이상으로 두고 같은 6세트×30회로 σ 를 다시 구한다. σ 가 내려가면 min_resolvable_g 도 따라 내린다
+    finding: 표본이 독립이면 3σ 12.6, 중복이 섞이면(0.05 s 간격) 18. σ 는 표본 수가 아니라 **간격**이 정한다
+    next: skill_node measure_force 의 period_s(현재 0.05 고정) 를 파라미터로 빼고 센서 갱신 주기 이상으로 — A. 그 뒤 min_resolvable_g 14
+
+workpiece_calibration:        # 9/19 탈락 — get_workpiece_weight 는 같은 JTS 를 컨트롤러가 환산한 값 (매뉴얼: "외력으로부터 측정")
+  verdict: rejected_0919
+  why: reset_workpiece_weight 가 success 를 돌려줘도 1 s 뒤 빈 그리퍼가 869 g 으로 읽혔다(9/18 세션은 32 g 스쿱이 1003 g).
+       세션마다 다른 잔류 오차가 값을 지배해 32 g→1001, 132 g→723 으로 무게를 올리면 값이 내려갔다 (2점 gain −0.36).
+       σ 도 4.4~5.0 으로 tool_force(4.1~4.2) 보다 나을 게 없고, 호출이 0.7 s 로 느리다.
+  reopen_if: 매뉴얼 예제(리셋 → 이동 → 파지 → 이동 → 측정)처럼 이동을 끼운 뒤 값이 갱신되는지 별도 실험으로 확인될 때

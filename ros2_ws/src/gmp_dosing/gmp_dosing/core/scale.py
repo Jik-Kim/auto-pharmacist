@@ -13,12 +13,11 @@ G0 = 9.80665
 
 @dataclass
 class ScaleConfig:
-    method: str = 'workpiece'        # workpiece | tool_force
-    gain: float = 1.0                # 실제 저울 대비 선형 보정 (9/21 5점 비교)
-    offset_g: float = 0.0            # **method 에 종속** — tool_force 는 260.2 (G1, 133 g 단일 조건 임시값), workpiece 는 미측정.
-                                     # 값은 common.yaml 이 넣는다. 기본값 0 — 다른 경로의 편향을 섞어 쓰면 안 된다
-    min_resolvable_g: float = 19.0   # G1 실측(9/18) 회차 평균 3σ = 18.0 g 에 여유. 이보다 좁은 허용 폭은 이 저울로 못 가른다
-    max_std_g: float = 5.0           # 표본 σ 가 이보다 크면 valid=false (정착 실패) — G1 회차 내부 σ p95 = 4.1 g
+    method: str = 'tool_force'       # tool_force | workpiece — 9/19 tool_force 확정 (D-07), workpiece 는 config/scale_reference.yaml 사유로 탈락
+    gain: float = 1.0                # 실제 저울 대비 선형 보정 — tool_force 는 0.8859 (9/19 두 점). 값은 common.yaml 이 넣는다
+    offset_g: float = 0.0            # **method 에 종속** — tool_force 는 247.1 (9/19 두 점 직선). 기본값 0 — 다른 경로의 편향을 섞어 쓰면 안 된다
+    min_resolvable_g: float = 19.0   # 회차 평균 3σ — 중복 표본(0.05 s 간격) 조건 18.0 g 에 여유. 독립 표본이면 12.6 (9/19) → 표본 간격 바꾸면 14
+    max_std_g: float = 10.0          # 표본 σ 가 이보다 크면 valid=false (정착 실패) — 독립 표본의 회차 내부 σ p95 = 7.8 g (9/19)
     fz_sign: float = -1.0            # Fz 부호 (G1 확인: 아래 하중이 +Fz 로 읽혀 -1 로 뒤집는다)
 
 

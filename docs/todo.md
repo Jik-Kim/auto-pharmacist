@@ -5,13 +5,13 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 26/81 완료** (██████░░░░░░░░░░░░░░)  ·  기준 09/19
+**전체 27/81 완료** (███████░░░░░░░░░░░░░)  ·  기준 09/19
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
 | gmp_interfaces [조장] | 4/7 | `██████░░░░` | **3** |
 | gmp_skills [A 스킬] | 0/18 | `░░░░░░░░░░` | **13** |
-| gmp_dosing [B 도징] | 1/10 | `█░░░░░░░░░` | **4** |
+| gmp_dosing [B 도징] | 2/10 | `██░░░░░░░░` | **4** |
 | gmp_process [C 공정] | 11/21 | `█████░░░░░` | **2** |
 | gmp_hmi [D HMI·기록] | 7/16 | `████░░░░░░` | **2** |
 | gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **4** |
@@ -47,9 +47,8 @@
 - `9/18` gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — passbox_done.capacity·reject_bin.cap…
 - `9/18` gmp_bringup — common.yaml 에 qa.decision_timeout_s·interlock.timeout_s 추가 — docs/inter…
 
-**오늘 마감 2건**
+**오늘 마감 1건**
 
-- gmp_dosing — [G1 후속] get_workpiece_weight 경로 측정 — calibration/measure_g1.py 로 두 경로 동…
 - gmp_hmi — [추가 7] HMI: PAUSED 사유(NUDGE/REFILL) 표시, 이벤트 타임라인에 NUDGE
 
 > 이 표는 `python3 tools/todo_stats.py` 가 체크박스를 세어 다시 쓴다. 손으로 고치지 않는다.
@@ -92,10 +91,10 @@
 - [ ] `test/test_dosing.py`: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ 가 tol 보다 클 때 `valid=false` · 마감 9/17
 - [x] G1 σ 로 `scale.min_resolvable_g` 갱신 — **9/18 3σ = 18.0 g → 19**, `max_std_g 5`, tool_force `offset_g 260.2`. CSV·`core/calib.py`·`config/scale_reference.yaml` 로 재현 가능 (PR #22, C 가 이어서) · 마감 9/17
 - [ ] **[G1 후속]** 판정 근거 확정 (Q-11) — 원료별 ±5 g 는 3σ 18 g 로 못 가른다. 제안: 합격 판정은 VERIFY ①, 스쿱 계량은 붓기 비율용. 조장 확인 후 레시피 `tol_pct`·FSM 판정 위치 반영 · 마감 9/21
-- [ ] **[G1 후속]** 표본 간격을 센서 갱신 주기에 맞춰 재측정 — 표본 43 % 가 앞 값 반복. `scale.samples` 수가 아니라 간격 문제 (skill_node `measure_force` 는 A 와) · 마감 9/21
-- [ ] **[G1 후속]** `get_workpiece_weight` 경로 측정 — `calibration/measure_g1.py` 로 두 경로 동시 기록 → `calib.py --method workpiece` 로 σ 비교 → 경로 확정(D-07)·`common.yaml` method/offset/min_resolvable_g 갱신. 조장 9/19: 오차 작고 연산 적으면 도입 · 마감 9/19
+- [ ] **[G1 후속]** skill_node `measure_force` 표본 간격 — 9/19 확인: 0.82 s 간격이면 중복 0 %·3σ 12.6, 0.05 s 면 43 % 중복·3σ 18. `period_s`(현재 0.05 고정) 를 `scale.period_s` 파라미터로 빼고 ≥ 0.5 s 로 (A 와). 그 뒤 `min_resolvable_g` 19 → 14 · 마감 9/21
+- [x] **[G1 후속]** `get_workpiece_weight` 경로 측정 — 9/19 두 경로 동시 측정. **tool_force 확정, workpiece 탈락** (reset 이 안 먹어 잔류 오차가 값을 지배). `common.yaml` method/gain/offset/max_std_g 반영, SOT D-07 · 마감 9/19
 - [ ] 스쿱 1회 퍼올림량 실측 → `dosing.scoop_nominal_g` (보정 투입 fraction 계산 근거) · 마감 9/18
-- [ ] 보정 계수: 실제 저울 vs 로봇 측정 다중 무게 → `scale.gain`/`scale.offset` — 9/19 G1 에서 빈 스쿱 32 g·원료 담은 총무게 두 점을 한 CSV 에 쌓으면 `calib.py` 가 직선을 낸다. 3점째(≈86 g)는 9/21 · 마감 9/21
+- [ ] 보정 계수: 실제 저울 vs 로봇 측정 다중 무게 → `scale.gain`/`scale.offset` — **9/19 두 점(32·132 g) 으로 gain 0.886·offset 247.1 반영**. 3점째(≈86 g)로 직선 확인만 남음 · 마감 9/21
 
 ## gmp_process [C 공정]
 - [x] `core/recipe.py`: yaml → `RecipeSpec` 변환, 필수 필드·원료 중복·양수 검증 + `test_recipe.py` 25건 (`Recipe` msg 변환은 계층 원칙상 `nodes/` 가 한다 / **순서는 검증 대상이 아니다** — 계약 1절 "순서 위반은 일탈이 아니라 버그") · 마감 9/16
