@@ -28,7 +28,7 @@
 외력·작업물무게 분해능 미측정 · 심각도 상 · A + B · 등록 9/16
 - **내용·재현**: 툴 1.320 kg 에서 30 g(0.3 N) 변화를 JTS 기반 추정으로 가를 수 있는지 아무도 재지 않았다. `get_workpiece_weight` 와 `get_tool_force` 둘 다 같은 센서에서 나온다.
 - **조치·남은 것**: 9/17 오전 G1 (`docs/demo_run_procedure.md` 1절). σ 를 `docs/SOT.md` D-08 에 적고 도징 단위를 정한다.
-- **9/18 G1 결과 (tool_force, 133 g 스쿱)**: 회차 평균 σ 6.0 g · 3σ 18.0 g → `min_resolvable_g 19`, `max_std_g 5`, `offset_g 260.2`(tool_force 전용, gain 1 임시). 원시 CSV·재계산 모듈을 `gmp_dosing/calibration/`·`core/calib.py` 에 넣었다 (PR #22, C 가 이어서). 판정 근거는 Q-11 로.
+- **9/18 G1 결과 (tool_force, 스쿱+원료 총 133 g (빈 스쿱 32 g))**: 회차 평균 σ 6.0 g · 3σ 18.0 g → `min_resolvable_g 19`, `max_std_g 5`, `offset_g 260.2`(tool_force 전용, gain 1 임시). 원시 CSV·재계산 모듈을 `gmp_dosing/calibration/`·`core/calib.py` 에 넣었다 (PR #22, C 가 이어서). 판정 근거는 Q-11 로.
 - **남은 것**: (a) `get_workpiece_weight` 경로(D-07 1순위)는 아직 미측정 — 어느 경로를 쓸지 확정 (b) 표본 간격이 센서 갱신 주기보다 짧아 표본 43 % 가 중복 — 간격을 맞춰 재측정하면 σ 가 내려갈 수 있다 (c) 32/86/133 g 다중 무게로 gain 확정 (9/21). 재측정 전까지 **열림** 유지.
 
 ### I-002

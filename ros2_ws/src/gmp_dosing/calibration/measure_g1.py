@@ -66,7 +66,7 @@ class Gripper:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--actual-g', type=float, required=True, help='실제 저울로 잰 물체 총무게 [g]')
+    ap.add_argument('--actual-g', type=float, required=True, help='실제 저울로 잰 **들고 있는 것 전체** 무게 [g] — 빈 스쿱이면 32, 원료를 담았으면 스쿱+원료 (9/18 은 133)')
     ap.add_argument('--object', default='scoop', help='물체종류 (scoop | container | …)')
     ap.add_argument('--condition', default='', help='측정조건 표기. 비우면 <object>_total_<g>g')
     ap.add_argument('--sets', type=int, default=6)
