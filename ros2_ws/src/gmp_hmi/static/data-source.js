@@ -153,7 +153,11 @@ class DemoSource {
   // 표시용 설정 변경은 재고/높이 래치를 해제하지 않는다. 만충 확인은 개별 보충 API만 사용한다.
   this.record(this.user.username,'HMI_SETTINGS','local','데모 표시 설정 변경 · 현재 재고 유지');return {...copy(this.localSettings),ok:true,message:'데모 표시 설정을 저장했습니다. 현재 재고·높이 부족 상태는 유지됩니다.'};
  }
- async post(path,d){this.advance();if(this.scenario==='offline')return {ok:false,message:'상태 수신이 중단되었습니다.'};d.actor=this.user.username;const allowed=path==='/qa'?['qa','admin']:['operator','admin'];if(!allowed.includes(this.user.role))return {ok:false,message:'현재 데모 역할에는 조작 권한이 없습니다.'};
+ async post(path,d){this.advance();if(this.scenario==='offline')return {ok:false,message:'상태 수신이 중단되었습니다.'};d.actor=this.user.username;const allowed=['/qa','/collection-confirm'].includes(path)?['qa','admin']:['operator','admin'];if(!allowed.includes(this.user.role))return {ok:false,message:'현재 데모 역할에는 조작 권한이 없습니다.'};
+  if(path==='/collection-confirm'){
+   if(!d.passbox_done_empty||!d.reject_bin_empty)return {ok:false,message:'완성품 패스박스와 폐기함을 모두 비웠음을 확인하세요.'};
+   this.record(d.actor,'HMI_COLLECTION_CONFIRMED','collection','데모 회수 확인 · 적재 카운터 연동 없음');return {ok:true,message:'데모 회수 확인을 기록했습니다.'};
+  }
   if(path==='/test/refill')return this.refill(d.material_id,d.confirmed_full);
   if(path==='/order'){
    if(!['IDLE','DONE'].includes(this.state.mode)||(this.state.mode==='DONE'&&this.state.step!=='DONE')||this.entered)return {ok:false,message:'실행 또는 진입 중인 배치가 있습니다.'};const recipe=RECIPES.find(r=>r.name===d.recipe);if(!recipe)return {ok:false,message:'알 수 없는 레시피입니다.'};
