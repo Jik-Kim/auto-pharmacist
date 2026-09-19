@@ -33,7 +33,20 @@ import sys
 import time
 
 HERE = pathlib.Path(__file__).resolve().parent
-COMMON = HERE.parents[2] / 'gmp_bringup' / 'params' / 'common.yaml'
+
+def _params_dir() -> pathlib.Path:
+    """gmp_bringup/params — 설치본(share) 우선, 없으면 소스 트리 (calibration/ → gmp_dosing → src)."""
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        d = pathlib.Path(get_package_share_directory('gmp_bringup')) / 'params'
+        if (d / 'common.yaml').exists():
+            return d
+    except Exception:  # noqa: BLE001 — 설치 안 됐거나 환경 미설정
+        pass
+    return HERE.parents[1] / 'gmp_bringup' / 'params'
+
+
+COMMON = _params_dir() / 'common.yaml'
 STATIONS = COMMON.with_name('stations.yaml')
 COLUMNS = ['실험명', '물체종류', '측정조건', '실제총무게_g', '반복번호', '표본번호', '시각_s',
            'X축힘_N', 'Y축힘_N', 'Z축힘_N', 'X축모멘트_Nm', 'Y축모멘트_Nm', 'Z축모멘트_Nm', '작업물무게_kgf']
@@ -47,7 +60,10 @@ def robot_params():
 
 def workbench_posx():
     import yaml
-    return [float(v) for v in yaml.safe_load(STATIONS.read_text())['workbench']['posx']]
+    st = yaml.safe_load(STATIONS.read_text())
+    wb = st['stations']['workbench']
+    print(f"    stations.yaml({st.get('frame')} frame) workbench: {wb.get('note', '')}")
+    return [float(v) for v in wb['posx']]
 
 
 class Gripper:
