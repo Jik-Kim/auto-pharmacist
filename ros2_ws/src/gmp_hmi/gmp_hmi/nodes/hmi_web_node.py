@@ -771,6 +771,17 @@ def build_app(node: HmiRosNode, db: CellDB, admin_store=None):
             raise ValueError('배치·일탈 ID는 문자열이어야 합니다')
         return command(lambda: node.qa(batch_id, deviation_id, decision, g.user['username']))
 
+    @app.post('/collection-confirm')
+    @requires('qa', 'admin')
+    def collection_confirm():
+        data = payload()
+        if data.get('passbox_done_empty') is not True or data.get('reject_bin_empty') is not True:
+            raise ValueError('완성품 패스박스와 폐기함을 모두 비웠음을 확인하세요')
+        # 적재 카운터의 권위자는 아직 C 공정이다. HMI는 사람의 회수 확인만 감사 기록으로 남긴다.
+        node.audit('COLLECTION_CONFIRMED', g.user['username'],
+                   'passbox_done_empty=true reject_bin_empty=true counter_reset=not_connected', batch_id='')
+        return jsonify(ok=True, message='회수 확인을 기록했습니다. 공정 적재 카운터 초기화 연동은 아직 준비 중입니다.')
+
     @app.post('/interlock')
     @requires('operator', 'admin')
     def interlock():

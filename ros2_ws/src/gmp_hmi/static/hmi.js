@@ -28,6 +28,8 @@ function gate(){
  const inv=snapshot.inventory||{};
  document.querySelectorAll('[data-refill]').forEach(b=>{const item=inv.items?.find(i=>i.material_id===b.dataset.refill);b.disabled=!enabled||!can(['operator'])||!inv.fresh||!inv.can_refill||!item?.refill_ready;});
  if($('refillConfirm').open){const item=inv.items?.find(i=>i.material_id===refillMaterial);$('confirmRefill').disabled=!enabled||!can(['operator'])||!inv.fresh||!inv.can_refill||!item?.refill_ready||!$('confirmFull').checked;}
+ $('openCollectionConfirm').disabled=!can(['qa'])||inFlight;
+ if($('collectionConfirm').open)$('confirmCollection').disabled=!can(['qa'])||inFlight||!$('confirmPassboxEmpty').checked||!$('confirmRejectBinEmpty').checked;
  $('showStockAlert').hidden=!(heightBlocked().length||(canStartOrder(snapshot.state)&&shortage().length));
  if(source.demo){$('nudgeDemo').hidden=!(snapshot.state?.mode==='PAUSED'&&snapshot.state?.pause_reason==='NUDGE'&&!snapshot.state?.demo_entry_granted);$('nudgeDemo').disabled=!enabled||!can(['operator']);$('injectHeight').disabled=!enabled||!can(['operator']);}
 
@@ -81,6 +83,10 @@ $('inventory').onclick=e=>{const b=e.target.closest('[data-refill]');if(b)openRe
 $('confirmFull').onchange=gate;
 $('refillConfirmForm').onsubmit=async e=>{e.preventDefault();if($('confirmRefill').disabled)return;const id=refillMaterial;$('refillConfirm').close();$('refillMsg').hidden=false;await command('/test/refill',{material_id:id,confirmed_full:true},'refillMsg');};
 $('cancelRefill').onclick=()=>$('refillConfirm').close();
+$('openCollectionConfirm').onclick=()=>{if(!can(['qa'])||inFlight)return;$('confirmPassboxEmpty').checked=false;$('confirmRejectBinEmpty').checked=false;$('collectionConfirm').showModal();gate();};
+['confirmPassboxEmpty','confirmRejectBinEmpty'].forEach(id=>$(id).onchange=gate);
+$('cancelCollection').onclick=()=>$('collectionConfirm').close();
+$('collectionConfirmForm').onsubmit=async e=>{e.preventDefault();if($('confirmCollection').disabled)return;$('collectionConfirm').close();await command('/collection-confirm',{passbox_done_empty:$('confirmPassboxEmpty').checked,reject_bin_empty:$('confirmRejectBinEmpty').checked},'collectionMsg',false);};
 $('closeStockAlert').onclick=()=>$('stockAlert').close();
 $('showStockAlert').onclick=()=>renderStockAlert(true);
 
@@ -101,7 +107,7 @@ function render(s){if(!source.demo){const test=s.diagnostics?.namespace==='/hmi_
  const pending=(s.deviations||[]).filter(d=>d.decision==='PENDING'&&d.requires_decision);$('pendingCount').textContent='대기 '+pending.length+'건';$('deviations').innerHTML=pending.length?pending.map(d=>{const r=[...(s.results||[])].reverse().find(r=>r.batch_id===d.batch_id&&r.material_id===d.material_id);return `<article class="deviation"><h3>! ${escapeHtml(d.kind)}</h3><p>일탈 ${escapeHtml(d.deviation_id)} · 배치 ${escapeHtml(d.batch_id)}</p><p>${escapeHtml(d.detail)}</p>${r?`<p>원료 ${escapeHtml(d.material_id)} · 목표 ${number(r.target_g)} g / 실측 ${number(r.actual_g)} g</p>`:''}<div class="button-pair"><button data-dev="${escapeHtml(d.deviation_id)}" data-batch="${escapeHtml(d.batch_id)}" data-decision="1">승인 · 계속</button><button class="danger" data-dev="${escapeHtml(d.deviation_id)}" data-batch="${escapeHtml(d.batch_id)}" data-decision="2">폐기</button></div></article>`;}).join(''):'<div class="empty">✓ 판정 대기 일탈이 없습니다.</div>';renderInventory(s);renderProgress(s);renderDiagnostics(s);renderCompletion(s);renderCycle(s);renderNetwork();$('alarmCount').textContent=pending.length+heightBlocked().length+(fresh?0:1)+(st.mode==='ERROR'?1:0);gate();}
 async function tick(){try{if(session.authenticated){render(await source.status());lastHttpError='';}}catch(e){lastHttpError=e.message;fresh=false;$('completion').hidden=true;$('mode').textContent=e.status===401?'로그인 필요':'서버 연결 끊김';$('mode').className='state-pill OFFLINE';$('connection').textContent='서버 응답 미확인';$('note').textContent='마지막 수신값입니다. 연결이 복구되면 자동 갱신됩니다.';handleAuthError(e);renderNetwork();gate();}finally{setTimeout(tick,500);}}
 function response(id,text,type=''){const el=$(id);el.textContent=text;el.className='response '+type;}
-async function command(path,data,msgId){if(!fresh||inFlight)return;inFlight=true;gate();response(msgId,'요청 중…');try{const payload={...data};delete payload.actor;const r=await source.post(path,payload);response(msgId,(r.ok?'요청 수락 · ':'거부 / 미확인 · ')+(r.message||'')+(r.batch_id?' · '+r.batch_id:''),r.ok?'success':'error');render(await source.status());await refreshRecords();}catch(e){handleAuthError(e);response(msgId,e.status===403?'이 조작에 필요한 권한이 없습니다.':e.message+' · 처리 여부를 확인한 뒤 다시 요청하세요.','error');}finally{inFlight=false;gate();}}
+async function command(path,data,msgId,requiresFresh=true){if((requiresFresh&&!fresh)||inFlight)return;inFlight=true;gate();response(msgId,'요청 중…');try{const payload={...data};delete payload.actor;const r=await source.post(path,payload);response(msgId,(r.ok?'요청 수락 · ':'거부 / 미확인 · ')+(r.message||'')+(r.batch_id?' · '+r.batch_id:''),r.ok?'success':'error');render(await source.status());await refreshRecords();}catch(e){handleAuthError(e);response(msgId,e.status===403?'이 조작에 필요한 권한이 없습니다.':e.message+' · 처리 여부를 확인한 뒤 다시 요청하세요.','error');}finally{inFlight=false;gate();}}
 $('orderForm').onsubmit=e=>{e.preventDefault();command('/order',Object.fromEntries(new FormData(e.target)),'orderMsg');};
 $('lockForm').onsubmit=e=>{e.preventDefault();command('/interlock',{...Object.fromEntries(new FormData(e.target)),request:e.submitter.value},'lockMsg');};
 $('deviations').onclick=e=>{const b=e.target.closest('button[data-dev]');if(b)command('/qa',{batch_id:b.dataset.batch,deviation_id:b.dataset.dev,decision:Number(b.dataset.decision)},'qaMsg');};

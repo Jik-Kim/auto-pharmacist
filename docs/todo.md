@@ -5,7 +5,7 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 25/78 완료** (██████░░░░░░░░░░░░░░)  ·  기준 09/18
+**전체 26/78 완료** (███████░░░░░░░░░░░░░)  ·  기준 09/18
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
@@ -13,7 +13,7 @@
 | gmp_skills [A 스킬] | 0/18 | `░░░░░░░░░░` | **6** |
 | gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **4** |
 | gmp_process [C 공정] | 11/21 | `█████░░░░░` | — |
-| gmp_hmi [D HMI·기록] | 7/16 | `████░░░░░░` | **1** |
+| gmp_hmi [D HMI·기록] | 8/16 | `█████░░░░░` | **1** |
 | gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **2** |
 
 **마감이 지난 항목 14건**
@@ -33,7 +33,7 @@
 - `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
 - `9/17` gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
 
-**오늘 마감 15건**
+**오늘 마감 14건**
 
 - gmp_interfaces — 계약 v1.2 팀 채널 공지 — 위 항목 중 공지만 남았다 (WeighHeld 신설·Deviation.kind 3종 추가)
 - gmp_interfaces — 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02)
@@ -47,7 +47,6 @@
 - gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
 - gmp_process — [추가 7] NUDGE 전이: RUNNING→PAUSED(NUDGE), 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 …
 - gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
-- gmp_hmi — [9/18 확정] 회수 확인 버튼 — QA 가 패스박스·폐기함 비운 뒤 누르면 카운터 리셋 + HMI_* audit 기록 (누가…
 - gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — passbox_done.capacity·reject_bin.cap…
 - gmp_bringup — common.yaml 에 qa.decision_timeout_s·interlock.timeout_s 추가 — docs/inter…
 
@@ -125,7 +124,7 @@
 - [x] 다른 기기(폰·노트북)에서 HMI 접속 확인 — 9/18 휴대폰에서 `http://172.24.0.3:5002` 접속 성공 (ROS 통신 시험 서버) · 마감 9/18
 - [x] process_node 가 `BATCH_START` 이벤트에 product 를 싣게 C 와 합의 — **C 측 구현 완료 (9/18)**. `CellEvent(code='BATCH_START', text=product, batch_id=...)` 로 나간다 · 마감 9/18
 - [x] **[I-009]** `hmi_web_node.py` 의 `InterlockRequest.ENTER` 참조가 `AttributeError` 였다 — 계약 상수가 응답 절에 있었다. 상수를 요청 절로 옮기고 `InterlockRequest.Request.ENTER` 로 고쳤다 (9/18, C 가 처리) · 마감 9/18
-- [ ] **[9/18 확정]** 회수 확인 버튼 — QA 가 패스박스·폐기함 비운 뒤 누르면 카운터 리셋 + `HMI_*` audit 기록 (누가 언제 회수했는지) · 마감 9/18
+- [x] **[9/18 구현]** 회수 확인 버튼 — QA가 패스박스·폐기함을 모두 비웠음을 확인한 뒤 `HMI_COLLECTION_CONFIRMED` 감사 기록(작업자·시각)을 남김. C 적재 카운터 초기화 연동은 별도 TODO · 마감 9/18
 - [ ] 배치 중단 버튼 — `RunBatch` cancel 호출 + `HMI_*` audit (C 의 cancel 콜백과 짝) · 마감 9/21
 - [ ] 계량 그래프에 목표선·허용 오차 밴드, 배치 클릭 → `/batch/<id>` 상세 · 마감 9/21
 - [ ] **[추가 3] 재기동 이어하기**: `db.py` 에 미완료 배치·마지막 상태 조회 API, `record_node` 가 상태 전이마다 저장 · 마감 9/21 (C 와)
