@@ -1037,17 +1037,31 @@ def build_app(node: HmiRosNode, db: CellDB, admin_store=None):
     return app
 
 def main(args=None):
+    from rclpy.executors import ExternalShutdownException
     rclpy.init(args=args)
     node = HmiRosNode()
     try:
         import flask  # noqa: F401
     except ImportError:
         node.get_logger().error('flask 없음 — sudo apt install python3-flask (docs/setup.md)')
-        rclpy.shutdown(); return
+        node.destroy_node()
+        rclpy.try_shutdown()
+        return
     db = ReadOnlyCellDB(node.get_parameter('db_path').value)
     ex = MultiThreadedExecutor(num_threads=2)
     ex.add_node(node)
-    threading.Thread(target=ex.spin, daemon=True, name='rclpy-executor').start()
+    def spin():
+        try:
+            ex.spin()
+        except ExternalShutdownException:
+            pass
+        except Exception:
+            # SIGINT 직후 wait-set 생성과 context 종료가 경합할 수 있다.
+            # context가 살아 있을 때의 예외는 숨기지 않는다.
+            if node.context.ok():
+                raise
+    ros_thread = threading.Thread(target=spin, daemon=True, name='rclpy-executor')
+    ros_thread.start()
     app = build_app(node, db)
     port = int(node.get_parameter('port').value)
     if node.admin_store.setup_required():
@@ -1056,7 +1070,12 @@ def main(args=None):
     try:
         app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
     finally:
-        db.close(); ex.shutdown(); node.destroy_node(); rclpy.shutdown()
+        # 콜백이 멎은 뒤 DB·노드를 해제한다. SIGINT의 선행 종료도 허용한다.
+        ex.shutdown()
+        ros_thread.join()
+        db.close()
+        node.destroy_node()
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':
