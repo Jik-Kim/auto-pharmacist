@@ -255,15 +255,20 @@ class DepthCell(Cell):
 
     def __init__(self, gain=1.0, nominal=40.0, **kw):
         super().__init__(yields=[], **kw)
-        self.gain, self.nominal, self.fractions = gain, nominal, []
+        self.gain, self.nominal = gain, nominal
+        self.fractions = []          # (material_id, fraction) — 원료가 2종이라 섞으면 안 된다
 
     def __call__(self, req):
         if req['kind'] == 'scoop':
-            self.fractions.append(req['fraction'])
+            self.fractions.append((req['material_id'], req['fraction']))
             amt = req['fraction'] * self.nominal * self.gain
             self.in_scoop += amt
             return {'contact_detected': amt > 0}
         return super().__call__(req)
+
+
+def depths(cell, material_id):
+    return [f for m, f in cell.fractions if m == material_id]
 
 
 def test_rescoop_after_return_digs_shallower_not_deeper():
@@ -271,9 +276,9 @@ def test_rescoop_after_return_digs_shallower_not_deeper():
     cell = DepthCell(gain=1.6, residual=0.0)           # 힌트보다 60 % 더 퍼지는 원료
     fsm = _fsm()
     run(fsm, cell)
-    assert fsm.results and fsm.results[0].returns >= 1, '반환이 일어나야 하는 조건이다'
-    overshot = max(cell.fractions)
-    assert cell.fractions[-1] < overshot, cell.fractions
+    assert fsm.results[0].returns == 1, '반환이 일어나야 하는 조건이다'
+    a = depths(cell, 'A')
+    assert a[-1] < a[-2], a                            # 반환 직전 깊이보다 얕게 다시 푼다
 
 
 def test_return_does_not_consume_a_pour_attempt():
@@ -285,3 +290,18 @@ def test_return_does_not_consume_a_pour_attempt():
     assert a.returns == 1, '반환을 거치는 경로여야 한다'
     assert fsm.state == 'DONE', [d['kind'] for d in fsm.deviations]
     assert a.attempts <= fsm.dosing_cfg.max_attempts and abs(a.actual_g - 100) < 1e-6
+
+
+def test_rescoop_depth_compounds_when_already_shallow():
+    """이미 얕게 펐는데 또 초과하면 그 얕은 깊이에서 더 줄여야 한다.
+
+    보정을 비율 그대로 쓰면 깊이가 한 값에 멈춰(0.5 → 0.5 → 0.5) 반환만 반복하다
+    TIMEOUT 으로 끝난다 — PR #33 리뷰에서 A 가 잡은 결함이다.
+    """
+    cell = DepthCell(gain=2.0, residual=0.0)           # 힌트의 2배로 퍼지는 원료
+    fsm = _fsm()
+    run(fsm, cell)
+    a = depths(cell, 'A')
+    assert fsm.results[0].returns == 1 and a == [1.0, 0.5, 0.25], a
+    assert fsm.state == 'DONE' and not fsm.deviations, [d['kind'] for d in fsm.deviations]
+    assert abs(fsm.results[0].actual_g - 100) < 1e-6

@@ -30,7 +30,7 @@ kind: move | grip | carry | scoop | pour | weigh | weigh_scoop | measure | safe 
 """
 from dataclasses import dataclass, field
 
-from gmp_dosing.core.dosing import decide, pour_fraction
+from gmp_dosing.core.dosing import decide
 from gmp_process.core.deviation import policy
 
 
@@ -41,6 +41,7 @@ class ItemRun:
     tol_pct: float
     attempts: int = 0            # 붓기까지 간 횟수 — ScoopCycle.attempt 는 process_node 가 따로 센다
     returns: int = 0             # 원료통 반환 횟수. 붓지 않았으므로 attempts 에 넣지 않는다
+    last_fraction: float = 1.0   # 마지막으로 요청한 담그기 깊이 — 반환 뒤 보정의 기준
     invalid: int = 0
     scoop_tare_g: float = 0.0    # 빈 스쿱 (SCOOP_TARE)
     scooped_g: float = 0.0       # 붓기 전 스쿱 안의 원료 (WEIGH_SCOOP)
@@ -92,6 +93,7 @@ class ProcessFSM:
         # 연장으로 보고 번호를 올리지 않는다 — 올리면 반환 한 번이 붓기 기회 하나를 먹는다.
         if not after_return:
             self.cur.attempts += 1
+        self.cur.last_fraction = fraction
         return {'kind': 'scoop', 'material_id': self.cur.material_id, 'attempt': self.cur.attempts,
                 'fraction': fraction}                 # 담그기 깊이 힌트일 뿐 — 붓기 비율은 WEIGH_SCOOP 가 정한다
 
@@ -99,6 +101,16 @@ class ProcessFSM:
         """초과 스쿱을 약통에 붓지 않고 원래 원료통으로 되돌린다."""
         return {'kind': 'return_material', 'material_id': self.cur.material_id,
                 'attempt': self.cur.attempts, 'scooped_g': self.cur.scooped_g}
+
+    def _rescoop_fraction(self) -> float:
+        """반환 뒤 다시 풀 깊이. 비율 자체가 아니라 **직전 깊이에 대한 보정**이다 —
+        이미 얕게 펐는데 또 초과했다면 그 얕은 깊이에서 더 줄여야 수렴한다.
+        """
+        if self.cur.scooped_g <= 0.0:
+            return self.dosing_cfg.min_fraction
+        remaining = max(0.0, self.cur.target_g - self.cur.actual_g)
+        ratio = remaining / self.cur.scooped_g
+        return max(self.dosing_cfg.min_fraction, min(1.0, self.cur.last_fraction * ratio))
 
     def _scoop_allowance_g(self) -> float:
         """남은 목표량에 허용하는 스쿱량 여유. 원래 목표량 기준의 절대 허용오차다."""
@@ -187,11 +199,9 @@ class ProcessFSM:
             if self.cur.returns >= self.dosing_cfg.max_attempts:
                 return self._deviate('TIMEOUT', 'RETURN_MATERIAL')
             self.state = 'SCOOP'
-            # 같은 깊이로 다시 푸면 초과가 그대로 재현된다. 방금 잰 초과 스쿱량이 곧 깊이 보정
-            # 기준이라, 남은 목표량과의 비를 담그기 깊이 힌트로 쓴다 (min_fraction 하한 유지).
-            remaining = max(0.0, self.cur.target_g - self.cur.actual_g)
-            return self._scoop(pour_fraction(remaining, self.cur.scooped_g, self.dosing_cfg),
-                               after_return=True)
+            # 같은 깊이로 다시 푸면 초과가 그대로 재현된다. 직전 깊이를 남은 목표량과
+            # 실제 퍼올린 양의 비로 줄여서 다시 푼다 (min_fraction 하한 유지).
+            return self._scoop(self._rescoop_fraction(), after_return=True)
         if k == 'pour' and st == 'POUR':
             self.state = 'WEIGH_RESIDUAL'
             return self._weigh_scoop()                 # 붓기 후 — 스쿱 잔량
