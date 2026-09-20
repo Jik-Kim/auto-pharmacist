@@ -2,8 +2,10 @@
 """G1 계량 실측 — tool_force(Fz) 와 workpiece(kgf) 를 **같은 표본에서 동시에** 기록한다.
 
 기본은 읽기만 한다 — 충돌 감지는 그대로다. 실물 모드로 ROS 가 붙어 있으면 펜던트 조그가 막힐 수 있어
-`--goto-workbench`(stations.yaml 의 workbench.posx 로 movel, 느리게) 와 `--gripper`(/onrobot/sendCommand 로 열기·닫기) 를
-켜면 터미널 하나로 끝난다. 둘 다 켜기 전에 로봇 주변을 비운다.
+`--goto-station <STATION_ID>`(stations.yaml 의 <STATION_ID>.posx 로 movel, 느리게) 와 `--gripper`(/onrobot/sendCommand 로
+열기·닫기) 를 켜면 터미널 하나로 끝난다. 둘 다 켜기 전에 로봇 주변을 비운다.
+**보정값은 반드시 실제 weigh_held 가 재는 자세(`material_1/2/3`)에서 잰다** — `workbench`는 자세(orientation)가
+달라(`skill_node._do_weigh_held`가 이동하는 `material_N.posx` 참고) tool_force 의 JTS 기반 편향이 안 옮겨간다.
 출력 CSV 는 calibration/g1_scoop133g_tool_force.csv 와 같은 열에 `작업물무게_kgf`·`시각_s` 를 더한 것이라
 core/calib.py 가 `--method tool_force` / `--method workpiece` 로 두 경로를 같은 방법으로 비교한다.
 
@@ -11,7 +13,7 @@ core/calib.py 가 `--method tool_force` / `--method workpiece` 로 두 경로를
   — 로봇 컨트롤러 + OnRobot 그리퍼 드라이버. cell.launch.py 는 쓰지 않는다 (skill_node 가 로봇을 움직인다).
 실행 (터미널 2):
   source tools/env.sh && python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py --actual-g 133 --object scoop \\
-      --goto-workbench --gripper --sets 6 --trials 30 --samples 10 --period 0.1 --out records/g1_both_$(date +%m%d).csv
+      --goto-station material_3 --gripper --sets 6 --trials 30 --samples 10 --period 0.1 --out records/g1_both_$(date +%m%d).csv
 
 두 무게를 한 파일에 (9/19 확정 — 빈 스쿱 6세트 → 원료 담고 6세트, gain 의 두 점이 된다):
   1회차  --actual-g 32  --out records/g1_both_0919.csv                 (빈 스쿱, 영점 포함)
@@ -58,12 +60,12 @@ def robot_params():
     return r['id'], r['model'], float(r['vel']), float(r['acc']), r.get('tool_name', ''), r.get('tcp_name', '')
 
 
-def workbench_posx():
+def station_posx(station_id: str):
     import yaml
     st = yaml.safe_load(STATIONS.read_text())
-    wb = st['stations']['workbench']
-    print(f"    stations.yaml({st.get('frame')} frame) workbench: {wb.get('note', '')}")
-    return [float(v) for v in wb['posx']]
+    s = st['stations'][station_id]
+    print(f"    stations.yaml({st.get('frame')} frame) {station_id}: {s.get('note', '')}")
+    return [float(v) for v in s['posx']]
 
 
 STATES = {0: 'INITIALIZING', 1: 'STANDBY', 2: 'MOVING', 3: 'SAFE_OFF', 4: 'TEACHING', 5: 'SAFE_STOP',
@@ -92,7 +94,7 @@ def setup_tool(arm, tool: str, tcp: str, need_motion: bool):
         else:
             print(f'  ⚠ set_{what}({want!r}) 실패 return={r}. 펜던트에 그 이름으로 등록돼 있는지, Auto 모드인지 확인.')
             input(f'    현재 {what}={now!r} 그대로 계속하려면 Enter (workpiece 값이 어긋날 수 있다), 중단은 Ctrl-C ')
-    if need_motion:                         # --goto-workbench 때만 속도 상한을 건다
+    if need_motion:                         # --goto-station 때만 속도 상한을 건다
         for name, r in (('set_velx', R.set_velx(arm.vel, arm.vel)), ('set_accx', R.set_accx(arm.acc, arm.acc))):
             if r != 0:
                 raise RuntimeError(f'{name} 실패 return={r} — Auto 모드·서보 ON 확인')
@@ -190,8 +192,11 @@ def main(argv=None):
                     help='get_workpiece_weight 를 안 부른다 (호출 0.7 s — 9/19 실측). 빠른 표본 간격으로 센서 갱신 주기를 잴 때')
     ap.add_argument('--probe', type=float, default=0.0, metavar='SEC',
                     help='진단만: 리셋 직후 빈 그리퍼로 SEC 초, 물체를 잡고 SEC 초 동안 0.5 s 마다 두 경로 값을 찍는다 (CSV 안 씀)')
-    ap.add_argument('--goto-workbench', action='store_true', help='시작 시 stations.yaml workbench.posx 로 movel (펜던트 조그 대신)')
-    ap.add_argument('--vel-scale', type=float, default=0.2, help='--goto-workbench 속도 스케일')
+    ap.add_argument('--goto-station', default='', metavar='STATION_ID',
+                    help="시작 시 stations.yaml <STATION_ID>.posx 로 movel (펜던트 조그 대신). "
+                         "예: workbench(용기 계량) | material_1/2/3(weigh_held 가 실제로 재는 자세 — "
+                         "calibration 은 이 자세로 해야 gain/offset 이 운영과 맞는다)")
+    ap.add_argument('--vel-scale', type=float, default=0.2, help='--goto-station 속도 스케일')
     ap.add_argument('--gripper', action='store_true', help='/onrobot/sendCommand 로 세트마다 열기·닫기')
     ap.add_argument('--grip-width-mm', type=float, default=None, help='닫을 때 목표 폭 [mm]. 없으면 완전 닫기(c)')
     a = ap.parse_args(argv)
@@ -201,12 +206,12 @@ def main(argv=None):
     rid, model, vel, acc, tool, tcp = robot_params()
     rclpy.init()
     arm = DsrArm(rid, model, 'real', vel, acc, tool, tcp)
-    setup_tool(arm, tool, tcp, a.goto_workbench)
+    setup_tool(arm, tool, tcp, bool(a.goto_station))
     grip = Gripper(rclpy) if a.gripper else None
     close_cmd = f'{int(round(a.grip_width_mm * 10))}' if a.grip_width_mm else 'c'
-    if a.goto_workbench:
-        posx = workbench_posx()
-        input(f'\n[0] workbench 계량 자세 {posx} 로 이동합니다 (vel_scale {a.vel_scale}). 주변 확인 → Enter ')
+    if a.goto_station:
+        posx = station_posx(a.goto_station)
+        input(f'\n[0] {a.goto_station} 계량 자세 {posx} 로 이동합니다 (vel_scale {a.vel_scale}). 주변 확인 → Enter ')
         arm.movel(posx, a.vel_scale)
         print('    이동 완료')
     if a.probe > 0:
