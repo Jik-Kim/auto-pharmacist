@@ -15,13 +15,8 @@ from rclpy.action import ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 
-<<<<<<< HEAD
 from gmp_interfaces.action import MoveToStation, Pour, ReturnMaterial, Scoop, WeighContainer, WeighHeld
-from gmp_interfaces.msg import WeightReading
-=======
-from gmp_interfaces.action import MoveToStation, Pour, Scoop, WeighContainer, WeighHeld
 from gmp_interfaces.msg import CellEvent, WeightReading
->>>>>>> 78f68ee7c37e8939c8cf7042dbdbf2f335f777e4
 from gmp_interfaces.srv import MeasureForce, SafePose, SetGripper
 
 SCOOP_MASS_G = 45.0        # 빈 스쿱
