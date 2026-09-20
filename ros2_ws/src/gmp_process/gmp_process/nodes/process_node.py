@@ -550,7 +550,8 @@ class ProcessNode(Node):
             return self._carry(req)
         if k == 'scoop':
             r = self._call_act('scoop', Scoop.Goal(material_id=req['material_id'],
-                                                   attempt=min(255, int(req.get('attempt', 1)))))
+                                                   attempt=min(255, int(req.get('attempt', 1))),
+                                                   depth_fraction=float(req.get('fraction', 1.0))))
             self._check('scoop', r.success, r.message)
             return {'contact_detected': bool(r.contact_detected),
                     'max_contact_force_n': float(r.max_contact_force_n),
