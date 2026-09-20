@@ -5,14 +5,14 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 31/82 완료** (████████░░░░░░░░░░░░)  ·  기준 09/20
+**전체 32/82 완료** (████████░░░░░░░░░░░░)  ·  기준 09/20
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
 | gmp_interfaces [조장] | 4/7 | `██████░░░░` | **3** |
 | gmp_skills [A 스킬] | 0/18 | `░░░░░░░░░░` | **13** |
 | gmp_dosing [B 도징] | 3/10 | `███░░░░░░░` | **4** |
-| gmp_process [C 공정] | 13/22 | `██████░░░░` | **1** |
+| gmp_process [C 공정] | 14/22 | `██████░░░░` | **1** |
 | gmp_hmi [D HMI·기록] | 8/16 | `█████░░░░░` | **2** |
 | gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **4** |
 
@@ -101,7 +101,7 @@
 - [x] `nodes/process_node.py`: 스킬 Action 5 · Service 3 연동, `grade/scoop_id` 없음, `Pour`·`WeighContainer` station 인자 없음, `SetGripper`, `QaDecision.deviation_id` 일치 검증 + 판정 후 같은 ID 재발행, `scoop_cycle` 발행, 원료 → `scoop_N` 해석(`core/station_map.py`), 인터락 ENTER(`safe_pose` → PAUSED → EXIT 후 같은 요청 재시도), 스킬 실패 → `FORCE_LIMIT` 1회 재시도 후 ERROR. **완주 확인은 가짜 skill_node 로 했다** (`test/fake_skill_node.py`, 6건) — 진짜 가상 브링업은 아래 항목 · 마감 9/18
 - [ ] **가상 브링업으로 레시피 1건 완주** — `ros2 launch gmp_bringup cell.launch.py mode:=virtual` 로 진짜 `skill_node` 상대 확인. **A 의 `weigh_held` Action 서버가 올라온 뒤에 가능하다** (지금은 `SCOOP_TARE` 에서 서버 없음 → FORCE_LIMIT → ERROR 로 끝난다) · 마감 9/21
 - [ ] **[I-008]** `ScoopCycle` 6축 wrench 를 채울 경로 결정 — 계량 스킬이 `WeightReading` 만 돌려줘서 지금은 `*_wrench_valid=false` 다. (a) `WeighHeld`/`WeighContainer` 결과에 wrench 6축 추가(제일 쌈) (b) `weights` 로 옮김 (c) 필드 삭제. `DispenseResult.verdict` 에 `INVALID` 가 없는 것도 같이 본다. **G1 으로 wrench 가 쓸모 있는지 본 뒤** — 그 전에 계약을 또 흔들지 않는다 · 마감 9/21 (조장과)
-- [ ] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) · 마감 9/21
+- [x] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) — 11종은 이미 있었고 `WRONG_TOOL`(추가 1, v1.2) 이 빠져 있었다. `docs/process_flow.md` 정책표대로 `(0, QA, QA)` 로 추가, `Deviation.msg` kind 12종과 1:1인지 확인하는 assert + `test_deviation.py` 14건 추가. 폭 지문 검출 로직 자체는 별개(A 와, 마감 9/21) · 마감 9/21
 - [x] 스테이션 물리 배치·테이프 표시 (하드웨어) — **9/18 완료**. 좌표 실측(G3)과 SOT D-24 등록이 이제 가능하다 · 마감 9/17
 - [ ] 고의 장애 주입 T6 (a)(b)(c) 재현 · 마감 9/22
 - [x] **[추가 7] NUDGE 전이**: `event` 구독 → 토글 → 루프 게이트. 인터락과 **게이트 하나**로 합쳤다 — 둘 다 걸리면 둘 다 풀려야 간다. 정지는 **그 자리에 서는 것**(안전 자세 아님)이고, 로봇 동작 요청 **앞**에서만 잡는다(`wait_qa`·`wait_interlock` 앞에서는 안 잡는다 — 판정을 못 받고 서 버린다). 테스트 6건. **9/19 리뷰 반영**: 세트 끝 `NUDGE_WAIT` — 반송(passbox_done·reject_bin) 뒤 `nudge_wait` 로 이동해 NUDGE 대기, 그 뒤 DONE/DISCARDED. 대기 중 주문 거부, 이벤트 `SET_DONE`/`SET_NEXT`. 테스트 +4 · 마감 9/18
