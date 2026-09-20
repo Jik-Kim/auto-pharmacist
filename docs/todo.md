@@ -16,7 +16,7 @@
 | gmp_hmi [D HMI·기록] | 8/16 | `█████░░░░░` | **2** |
 | gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **4** |
 
-**마감이 지난 항목 26건**
+**마감이 지난 항목 27건**
 
 - `9/18` gmp_interfaces — 계약 v1.2 팀 채널 공지 — 위 항목 중 공지만 남았다 (WeighHeld 신설·Deviation.kind 3종 추가)
 - `9/17` gmp_interfaces — G1 결과로 도징 단위 확정 → RecipeItem.tol_pct 기본값·레시피 yaml 갱신 (SOT D-08)
@@ -40,14 +40,11 @@
 - `9/18` gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
 - `9/18` gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
 - `9/17` gmp_hmi — [연동 대기 — 9/18 확인] 가상 모드에서 주문 → 상태 → QA 승인 → 이력 조회 한 바퀴 — HMI 시험 공정 검증은 …
+- `9/19` gmp_hmi — [추가 7] HMI: PAUSED 사유(NUDGE/REFILL) 표시, 이벤트 타임라인에 NUDGE
 - `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
 - `9/17` gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
 - `9/18` gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — passbox_done.capacity·reject_bin.cap…
 - `9/18` gmp_bringup — common.yaml 에 qa.decision_timeout_s·interlock.timeout_s 추가 — docs/inter…
-
-**오늘 마감 1건**
-
-- gmp_hmi — [추가 7] HMI: PAUSED 사유(NUDGE/REFILL) 표시, 이벤트 타임라인에 NUDGE
 
 > 이 표는 `python3 tools/todo_stats.py` 가 체크박스를 세어 다시 쓴다. 손으로 고치지 않는다.
 
@@ -88,7 +85,7 @@
 - [ ] `core/dosing.py`: `decide(target_g, actual_g, tol_pct, attempts, history) → Decision(action, fraction)` — `OK/UNDER/OVER/TIMEOUT`, 보정 투입 시 `fraction` 축소 규칙 · 마감 9/16
 - [ ] `test/test_dosing.py`: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ 가 tol 보다 클 때 `valid=false` · 마감 9/17
 - [x] G1 σ 로 `scale.min_resolvable_g` 갱신 — **9/18 3σ = 18.0 g → 19**, `max_std_g 5`, tool_force `offset_g 260.2`. CSV·`core/calib.py`·`config/scale_reference.yaml` 로 재현 가능 (PR #22, C 가 이어서) · 마감 9/17
-- [ ] **[G1 후속]** 판정 근거 확정 (Q-11) — 원료별 ±5 g 는 3σ 18 g 로 못 가른다. 제안: 합격 판정은 VERIFY ①, 스쿱 계량은 붓기 비율용. 조장 확인 후 레시피 `tol_pct`·FSM 판정 위치 반영 · 마감 9/21
+- [x] **[G1 후속]** 판정 근거 확정 (Q-11) — **확정 (9/19, 조장 "제안 기준 타당")**: 합격 판정은 VERIFY ①(용기 순량 vs Σtarget), 스쿱 계량(`WEIGH_RESIDUAL`)은 초과 예방·붓기 비율용으로만. 코드 변경 없음 — 레시피 `tol_pct`·FSM 판정 위치가 이미 이 형태 · 마감 9/21
 - [ ] **[G1 후속]** skill_node `measure_force` 표본 간격 — 9/19 확인: 0.82 s 간격이면 중복 0 %·3σ 12.6, 0.05 s 면 43 % 중복·3σ 18. `period_s`(현재 0.05 고정) 를 `scale.period_s` 파라미터로 빼고 ≥ 0.5 s 로 (A 와). 그 뒤 `min_resolvable_g` 19 → 14 · 마감 9/21
 - [x] **[G1 후속]** `get_workpiece_weight` 경로 측정 — 9/19 두 경로 동시 측정. **tool_force 확정, workpiece 탈락** (reset 이 안 먹어 잔류 오차가 값을 지배). `common.yaml` method/gain/offset/max_std_g 반영, SOT D-07 · 마감 9/19
 - [ ] 스쿱 1회 퍼올림량 실측 → `dosing.scoop_nominal_g` (보정 투입 fraction 계산 근거) · 마감 9/18
@@ -100,7 +97,7 @@
 - [x] `test/test_process_fsm.py`: 정상 완주(6단계 순서), 붓기 전 계량으로 초과 예방, UNDER 보정 누적, OVER → QA → DISCARD(스쿱 반납 후), VERIFY 불일치 → QA, 계량 무효 재시도, 파지 실패, REFILL 재개 — 9건 · 마감 9/17
 - [x] **[D-22]** `_pour_fraction` → `gmp_dosing/core/dosing.py` 의 `pour_fraction(need_g, scooped_g, cfg)` 로 이관 완료. `weigh_scoop` 요청은 계약 v1.2 의 `WeighHeld` Action 에 대응한다 (매핑은 `process_node` 구현 시) · 마감 9/18
 - [x] **[D-22]** `VERIFY` 이중 판정 구현 — ① `|net − Σtarget| > Σ(target×tol)` → `BATCH_OUT_OF_SPEC` ② `|net − Σ투입량| > min_resolvable_g` → `VERIFY_MISMATCH`. **임계 제약 발견**: `min_resolvable_g < Σ(target×tol)` 가 아니면 ②는 죽은 검사다 (현재 30 > 22.5) → SOT Q-11 에 기록 · 마감 9/18
-- [ ] **[D-22]** G1 결과로 **VERIFY ② 유효성 판단** — `min_resolvable_g < Σ(target×tol)` 이면 ②를 유지하고, 아니면 **②(`VERIFY_MISMATCH`)를 제거**한다. 현재 값(30 vs 22.5)이면 ②는 한 번도 안 울린다. 있으나 마나 한 검사를 남기면 나중에 "왜 안 울리지" 로 또 헤맨다. **G1(A) · `min_resolvable_g` 갱신(B) 이후** · 마감 9/21
+- [x] **[D-22]** G1 결과로 **VERIFY ② 유효성 판단** — **확정**: `min_resolvable_g`(19) `< Σ(target×tol)`(22.5, 데모 레시피 200/150/100 g × 5 %) → **② 유지**. 표본 간격 조정 후 14 가 되어도 여전히 22.5 보다 작아 결론 불변. 코드는 이미 무조건 ②를 돌리므로 변경 없음 — `process_fsm.py` VERIFY 절에 근거 주석 추가 (SOT Q-11) · 마감 9/21
 - [x] `nodes/process_node.py`: 스킬 Action 5 · Service 3 연동, `grade/scoop_id` 없음, `Pour`·`WeighContainer` station 인자 없음, `SetGripper`, `QaDecision.deviation_id` 일치 검증 + 판정 후 같은 ID 재발행, `scoop_cycle` 발행, 원료 → `scoop_N` 해석(`core/station_map.py`), 인터락 ENTER(`safe_pose` → PAUSED → EXIT 후 같은 요청 재시도), 스킬 실패 → `FORCE_LIMIT` 1회 재시도 후 ERROR. **완주 확인은 가짜 skill_node 로 했다** (`test/fake_skill_node.py`, 6건) — 진짜 가상 브링업은 아래 항목 · 마감 9/18
 - [ ] **가상 브링업으로 레시피 1건 완주** — `ros2 launch gmp_bringup cell.launch.py mode:=virtual` 로 진짜 `skill_node` 상대 확인. **A 의 `weigh_held` Action 서버가 올라온 뒤에 가능하다** (지금은 `SCOOP_TARE` 에서 서버 없음 → FORCE_LIMIT → ERROR 로 끝난다) · 마감 9/21
 - [ ] **[I-008]** `ScoopCycle` 6축 wrench 를 채울 경로 결정 — 계량 스킬이 `WeightReading` 만 돌려줘서 지금은 `*_wrench_valid=false` 다. (a) `WeighHeld`/`WeighContainer` 결과에 wrench 6축 추가(제일 쌈) (b) `weights` 로 옮김 (c) 필드 삭제. `DispenseResult.verdict` 에 `INVALID` 가 없는 것도 같이 본다. **G1 으로 wrench 가 쓸모 있는지 본 뒤** — 그 전에 계약을 또 흔들지 않는다 · 마감 9/21 (조장과)
