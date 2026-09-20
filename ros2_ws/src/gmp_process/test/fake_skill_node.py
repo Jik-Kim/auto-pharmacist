@@ -7,6 +7,7 @@ A 의 `skill_node` 와 **같은 이름·같은 계약**의 서버 8개를 세우
 이것으로 확인하는 것은 **process_node 가 계약대로 부르고 계약대로 해석하는가** 하나다.
 힘제어·티칭·실제 분해능은 여기서 검증되지 않는다 — 그건 G1·G4 실측의 몫이다.
 """
+import json
 import threading
 import time
 
@@ -17,7 +18,7 @@ from rclpy.node import Node
 
 from gmp_interfaces.action import MoveToStation, Pour, ReturnMaterial, Scoop, WeighContainer, WeighHeld
 from gmp_interfaces.msg import CellEvent, WeightReading
-from gmp_interfaces.srv import MeasureForce, SafePose, SetGripper
+from gmp_interfaces.srv import MeasureForce, RecoverSafety, SafePose, SetGripper
 
 SCOOP_MASS_G = 45.0        # 빈 스쿱
 CUP_MASS_G = 120.0         # 빈 약통
@@ -43,6 +44,7 @@ class FakeSkillNode(Node):
         self.cancelled = False                  # safe_pose 가 세운다 — 진행 중 스킬 1건이 실패로 끝난다
         self.attendant = True                   # 세트 끝 NUDGE_WAIT 에서 사람이 건드려 준다 (D-23). 대기 자체를 시험하면 False
         self._attend_stop = threading.Event()
+        self.recover_result = (True, False, 1, 'ok')   # recover_safety 응답 — 테스트가 덮어쓴다 (v1.4)
 
         # 진짜 skill_node 처럼 event 로 알린다 — NUDGE 는 여기로 나간다 (D-21)
         self.pub_event = self.create_publisher(CellEvent, 'event', 100)
@@ -56,6 +58,7 @@ class FakeSkillNode(Node):
         self.create_service(SetGripper, 'set_gripper', self._set_gripper, callback_group=self.cb)
         self.create_service(MeasureForce, 'measure_force', self._measure, callback_group=self.cb)
         self.create_service(SafePose, 'safe_pose', self._safe, callback_group=self.cb)
+        self.create_service(RecoverSafety, 'recover_safety', self._recover, callback_group=self.cb)
 
     def attend(self, proc):
         """반자동 운전의 사람 — process 가 nudge_wait 에서 기다리면 잠시 뒤 건드린다."""
@@ -80,6 +83,24 @@ class FakeSkillNode(Node):
         self.pub_event.publish(m)
         with self.lock:
             self.calls.append('nudge')
+
+    def safety_stop(self, reason='vendor alarm', robot_state=5):
+        """A 가 SAFE_STOP 류를 감지했다고 알린다 (v1.4, docs/interfaces.md 8절)."""
+        m = CellEvent(level=CellEvent.ERROR, code='ROBOT_SAFETY_STOP',
+                     text=json.dumps({'robot_state': robot_state, 'reason': reason}, ensure_ascii=False))
+        m.header.stamp = self.get_clock().now().to_msg()
+        self.pub_event.publish(m)
+
+    def safety_recovery(self, success, manual_required, robot_state=1, message='',
+                        request_id='r1', operator_id='op'):
+        """A 의 복구 결과를 알린다 (v1.4). 배치 소유자가 아니라 batch_id 는 비운다."""
+        level = CellEvent.INFO if success else CellEvent.WARN
+        m = CellEvent(level=level, code='ROBOT_SAFETY_RECOVERY', text=json.dumps(
+            {'request_id': request_id, 'operator_id': operator_id, 'success': success,
+             'manual_required': manual_required, 'robot_state': robot_state, 'message': message},
+            ensure_ascii=False))
+        m.header.stamp = self.get_clock().now().to_msg()
+        self.pub_event.publish(m)
 
     def _hold(self, name: str):
         """이 스킬이 도는 데 걸리는 시간. 스킬 **중간**에 사람이 끼어드는 상황을 만든다.
@@ -232,4 +253,10 @@ class FakeSkillNode(Node):
             self.calls.append(f'safe:{req.reason}')
             self.cancelled = True        # 진행 중 스킬 1건을 실패로 끝낸다 (skill_node 와 같은 규칙)
         res.success = True
+        return res
+
+    def _recover(self, req, res):
+        with self.lock:
+            self.calls.append(f'recover:{req.request_id}')
+        res.success, res.manual_required, res.robot_state, res.message = self.recover_result
         return res

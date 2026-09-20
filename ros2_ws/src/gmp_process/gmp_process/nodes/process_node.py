@@ -1,8 +1,9 @@
 """공정 노드 — ProcessFSM 의 요청을 스킬 Action/Service 로 실행하고 결과를 돌려준다.
 
-입력  submit_order · qa_decision · interlock (Service 서버) · event 구독 (skill_node 의 NUDGE, D-21)
+입력  submit_order · qa_decision · interlock · request_safety_recovery (Service 서버)
+      event 구독 (skill_node 의 NUDGE·ROBOT_SAFETY_STOP·ROBOT_SAFETY_RECOVERY, D-21·v1.4)
       스킬 Action 클라이언트 move_to_station·scoop·pour·weigh_container·weigh_held
-      스킬 Service 클라이언트 set_gripper·measure_force·safe_pose
+      스킬 Service 클라이언트 set_gripper·measure_force·safe_pose·recover_safety
 출력  state (0.5 s + 전이, TRANSIENT_LOCAL) · weight · scoop_cycle · dispense_result · deviation (TRANSIENT_LOCAL) · event
 
 구조 (docs/process_flow.md 0절): rclpy 콜백은 값만 저장한다. 배치 실행 루프는 별도 스레드(_run_loop)에서
@@ -10,7 +11,13 @@
 
 FSM 은 로봇도 ROS 도 모른다 — dict 요청을 주고 dict 결과를 받는다. 이 파일이 그 dict 를 계약 메시지로
 옮기는 유일한 지점이다. 발행은 전이 뒤 `_drain()` 한 곳에서 FSM 상태 변화를 보고 판단한다.
+
+안전 정지(v1.4, docs/interfaces.md 8절): skill_node 가 `CellEvent(ERROR, 'ROBOT_SAFETY_STOP')` 를 내면
+`_safety_stop` 을 세운다 — 새 주문·대기·재시도를 전부 막는다. HMI 는 A 의 `recover_safety` 를 직접 부르지
+않고 `request_safety_recovery` 로 여기를 거친다. 복구 성공(`ROBOT_SAFETY_RECOVERY` 이벤트, success 하고
+manual_required 아님)도 배치 재개를 뜻하지 않는다 — 새 주문만 받아들인다.
 """
+import json
 import threading
 import time
 from datetime import datetime
@@ -25,8 +32,8 @@ from rclpy.qos import DurabilityPolicy, QoSProfile
 from gmp_interfaces.action import MoveToStation, Pour, ReturnMaterial, Scoop, WeighContainer, WeighHeld
 from gmp_interfaces.msg import (CellEvent, CellState, Deviation, DispenseResult, ScoopCycle,
                                 WeightReading)
-from gmp_interfaces.srv import (InterlockRequest, MeasureForce, QaDecision, SafePose, SetGripper,
-                                SubmitOrder)
+from gmp_interfaces.srv import (InterlockRequest, MeasureForce, QaDecision, RecoverSafety, SafePose,
+                                SetGripper, SubmitOrder)
 
 from gmp_dosing.core.dosing import DosingConfig
 from gmp_dosing.core.scale import ScaleConfig, WeightModel
@@ -90,8 +97,12 @@ class ProcessNode(Node):
         self.create_service(SubmitOrder, 'submit_order', self._srv_submit, callback_group=self.cb)
         self.create_service(QaDecision, 'qa_decision', self._srv_qa, callback_group=self.cb)
         self.create_service(InterlockRequest, 'interlock', self._srv_interlock, callback_group=self.cb)
+        # HMI → 여기(현재 배치·권한 확인) → skill_node/recover_safety (v1.4, docs/interfaces.md 8절)
+        self.create_service(RecoverSafety, 'request_safety_recovery', self._srv_recover_safety,
+                            callback_group=self.cb)
         self.create_timer(0.5, self._pub_state, callback_group=self.cb)
-        # skill_node 가 사람 접촉을 여기로 알린다 (D-21). 우리가 내는 event 도 같이 들어오므로 code 로 거른다
+        # skill_node 가 사람 접촉·안전 정지·복구 결과를 여기로 알린다 (D-21·v1.4). 우리가 내는 event 도
+        # 같이 들어오므로 code 로 거른다
         self.create_subscription(CellEvent, 'event', self._on_event, 100, callback_group=self.cb)
 
         self.act = {
@@ -106,6 +117,7 @@ class ProcessNode(Node):
             'grip': self.create_client(SetGripper, 'set_gripper', callback_group=self.cb),
             'measure': self.create_client(MeasureForce, 'measure_force', callback_group=self.cb),
             'safe': self.create_client(SafePose, 'safe_pose', callback_group=self.cb),
+            'recover': self.create_client(RecoverSafety, 'recover_safety', callback_group=self.cb),
         }
 
         self.fsm: ProcessFSM | None = None
@@ -122,6 +134,10 @@ class ProcessNode(Node):
         self._nudge_go = threading.Event()
         self._refill_waiting = False # 루프가 REFILL 로 EXIT 를 기다리는 중 — EXIT 를 받을지 가른다
         self._nudge_lock = threading.Lock()   # 토글은 읽고-쓰기라 콜백 둘이 겹치면 뒤집히지 않는다
+        # 로봇 안전 정지(v1.4) — skill_node 의 CellEvent(ERROR, ROBOT_SAFETY_STOP) 가 세운다. 새 주문·대기·
+        # FORCE_LIMIT 재시도를 전부 막는다. 복구 성공 이벤트가 내린다 — 배치 재개는 아니다(새 주문만 받는다)
+        self._safety_stop = False
+        self._safety_stop_reason = ''
         self._stop = threading.Event()   # 종료 요청 — 무한 대기(QA·인터락)를 깨운다
         self._thread = None
         self._dev_msgs: list = []    # 발행한 Deviation — QA 판정 후 같은 deviation_id 로 재발행한다
@@ -144,11 +160,17 @@ class ProcessNode(Node):
         self.get_logger().info(f'[{code}] {text}')
 
     def _on_event(self, msg):
-        """skill_node 의 NUDGE — 건드리면 정지, 다시 건드리면 재개 (D-21).
+        """skill_node 의 NUDGE·안전 정지·복구 결과 — 콜백은 값만 세운다 (D-21·v1.4).
 
-        토글만 한다. 멈추는 것은 루프의 게이트다 — 콜백에서 멈추면 rclpy 스레드가 잠긴다.
+        NUDGE 는 토글만 한다. 멈추는 것은 루프의 게이트다 — 콜백에서 멈추면 rclpy 스레드가 잠긴다.
         같은 접촉을 두 번 세지 않는 것은 skill_node 의 `nudge_cooldown_s` 가 한다.
         """
+        if msg.code == 'ROBOT_SAFETY_STOP':
+            self._on_safety_stop(msg)
+            return
+        if msg.code == 'ROBOT_SAFETY_RECOVERY':
+            self._on_safety_recovery(msg)
+            return
         if msg.code != 'NUDGE' or not self.get_parameter('safety.nudge_enabled').value:
             return
         with self._nudge_lock:
@@ -159,6 +181,38 @@ class ProcessNode(Node):
             self._nudge_paused = not self._nudge_paused
             now = self._nudge_paused
         self.get_logger().info(f"[NUDGE] {'정지' if now else '재개'}")
+
+    def _on_safety_stop(self, msg):
+        """A 가 SAFE_STOP 류를 감지했다 (docs/interfaces.md 8절). 새 주문·대기·재시도를 막는다.
+
+        진행 중인 루프는 여기서 끊지 않는다 — 다음 스킬 호출이 skill_node 에서 거부되어 SkillError 로
+        돌아오거나, `_await`/`_gate` 의 대기가 이 플래그를 보고 스스로 깬다. 배치는 `_run_loop` 가
+        FORCE_LIMIT 재시도 없이 바로 ERROR 로 끝낸다.
+        """
+        try:
+            data = json.loads(msg.text) if msg.text else {}
+        except (TypeError, ValueError):
+            data = {}
+        reason = data.get('reason') or msg.text or '로봇 안전 정지'
+        self._safety_stop = True
+        self._safety_stop_reason = reason
+        self.get_logger().warning(f'[SAFETY_STOP] 새 주문·재시도 차단: {reason}')
+
+    def _on_safety_recovery(self, msg):
+        """A 의 복구 결과 (docs/interfaces.md 8절). 성공+수동조치 불필요일 때만 차단을 푼다.
+
+        로봇 복구 확인이지 배치 재개가 아니다 — 끝난 배치를 되살리지 않고 새 주문만 다시 받는다.
+        `manual_required` 나 실패는 차단을 유지해 다음 명시적 복구 요청을 기다린다.
+        """
+        try:
+            data = json.loads(msg.text) if msg.text else {}
+        except (TypeError, ValueError):
+            data = {}
+        if not data.get('success') or data.get('manual_required'):
+            return
+        self._safety_stop = False
+        self._safety_stop_reason = ''
+        self.get_logger().info('[SAFETY_STOP] 로봇 복구 확인 — 배치 재개 아님, 새 주문부터 받는다')
 
     def _pause_reason(self) -> str:
         """지금 멈춰 있어야 하는 이유. 둘 다면 NUDGE 를 먼저 보여 준다 (사람이 방금 한 행동이므로)."""
@@ -199,8 +253,8 @@ class ProcessNode(Node):
                 self._interlock_exit.clear()
                 self._pause = False
                 continue
-            if self._stop.is_set() or not rclpy.ok():
-                raise SkillError('정지 대기 중 종료')
+            if self._stop.is_set() or not rclpy.ok() or self._safety_stop:
+                raise SkillError('정지 대기 중 종료' if not self._safety_stop else 'SAFETY_STOP')
             time.sleep(0.1)
         if took_mode and self.fsm and self.fsm.mode == 'PAUSED':
             self.fsm.mode = 'RUNNING'
@@ -209,8 +263,10 @@ class ProcessNode(Node):
         self.event('INFO', 'RESUME', f'{reason} 해제')
 
     def _await(self, ev: threading.Event, what: str):
-        """사람을 기다리는 대기(QA·인터락)는 상한이 없다 (D-23 반자동). 종료 요청만이 깨운다."""
+        """사람을 기다리는 대기(QA·인터락)는 상한이 없다 (D-23 반자동). 종료 요청·안전 정지가 깨운다."""
         while not ev.wait(0.2):
+            if self._safety_stop:
+                raise SkillError(f'{what} 대기 중 SAFETY_STOP: {self._safety_stop_reason}')
             if self._stop.is_set() or not rclpy.ok():
                 raise SkillError(f'{what} 대기 중 종료')
         return True
@@ -225,6 +281,12 @@ class ProcessNode(Node):
 
     # ── 서비스 ───────────────────────────────────────────────────────
     def _srv_submit(self, req, res):
+        if self._safety_stop:
+            # 로봇 안전 정지 중에는 기존 배치를 재실행하지도, 새 배치를 받지도 않는다 — 복구 확인
+            # (ROBOT_SAFETY_RECOVERY, success·manual_required 아님) 뒤에만 새 주문을 받는다.
+            res.accepted = False
+            res.message = f'로봇 안전 정지 — 복구 필요: {self._safety_stop_reason}'
+            return res
         if self.fsm and self.fsm.mode in ('RUNNING', 'PAUSED', 'DEVIATION'):
             res.accepted = False
             res.message = ('세트 완료 — 로봇을 건드리면 다음 주문을 받는다 (NUDGE_WAIT)' if self.fsm.state == 'NUDGE_WAIT'
@@ -334,6 +396,28 @@ class ProcessNode(Node):
         self._interlock_exit.set()
         self.event('INFO', 'INTERLOCK_EXIT', req.reason)
         res.granted, res.message = True, 'resume'
+        return res
+
+    def _srv_recover_safety(self, req, res):
+        """HMI → 여기 → skill_node/recover_safety 중계 (v1.4, docs/interfaces.md 8절).
+
+        skill_node 가 상태·중복 요청·경합의 최종 판단자다 — 여기서는 필드만 검증하고 넘긴다. A 의
+        `_safety_latched` 가 더 최신일 수 있어(이벤트 전파 지연) `_safety_stop` 으로 미리 막지 않는다.
+        """
+        if not req.request_id.strip() or not req.operator_id.strip() or not req.operator_confirmed:
+            res.success, res.manual_required, res.robot_state = False, True, -1
+            res.message = '작업자·고유 요청 ID·원인 제거 확인이 필요합니다'
+            return res
+        try:
+            r = self._call_srv('recover', RecoverSafety.Request(
+                request_id=req.request_id, operator_id=req.operator_id,
+                expected_state=req.expected_state, operator_confirmed=req.operator_confirmed))
+        except SkillError as e:
+            res.success, res.manual_required, res.robot_state = False, True, -1
+            res.message = str(e)
+            return res
+        res.success, res.manual_required = bool(r.success), bool(r.manual_required)
+        res.robot_state, res.message = int(r.robot_state), r.message
         return res
 
     # ── 스킬 호출 ─────────────────────────────────────────────────────
@@ -530,9 +614,11 @@ class ProcessNode(Node):
                     res = self._execute(req)
                 except SkillError as e:
                     # 스킬 실패는 FORCE_LIMIT 일탈로 넘긴다 (docs/process_flow.md 8절) — 1회 재시도 후 ERROR.
-                    # 안전 자세까지 실패하면 더 물러설 곳이 없으니 거기서 멈춘다.
-                    if req['kind'] == 'safe':
-                        self._fail(f'안전 자세 실패: {e}')
+                    # 안전 자세까지 실패하면 더 물러설 곳이 없으니 거기서 멈춘다. 로봇 안전 정지(v1.4)는
+                    # 재시도해도 다시 거부될 뿐이고 사람 개입(RecoverSafety)이 필요하므로 FORCE_LIMIT 을
+                    # 거치지 않고 바로 ERROR 로 끝낸다 (docs/interfaces.md 8절 — 일반 재시도 경로와 분리).
+                    if req['kind'] == 'safe' or self._safety_stop:
+                        self._fail(f'안전 정지: {e}' if self._safety_stop else f'안전 자세 실패: {e}')
                         break
                     self.event('WARN', 'SKILL_FAIL', f'{step} {req["kind"]}: {e}')
                     req = fsm.skill_failed(req, str(e))
