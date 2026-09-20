@@ -227,3 +227,66 @@ def test_condition_wrappers_treat_zero_as_condition_met():
     assert arm.R.calls[-2][2]['min'] == 15.0
     assert arm.R.calls[-1][0] == 'check_position_condition'
     assert arm.R.calls[-1][2]['max'] == 120.0
+
+
+@pytest.mark.parametrize('method', ['measure_force', 'measure_workpiece'])
+@pytest.mark.parametrize('period', [0.0, -1.0, float('nan'), float('inf')])
+def test_invalid_sampling_period_rejected_before_device_call(method, period):
+    arm = _arm()
+    with pytest.raises(ValueError, match='표본 간격'):
+        getattr(arm, method)(3, 0, period_s=period)
+    assert arm.R.calls == []
+
+
+@pytest.mark.parametrize('method', ['measure_force', 'measure_workpiece'])
+@pytest.mark.parametrize('with_observer', [False, True])
+def test_sampling_cadence_and_nudge_reads_are_separate(method, with_observer):
+    arm = _arm()
+    clock = [0.0]
+    reads, observed, workpiece_reads = [], [], []
+    arm._now = lambda: clock[0]
+    arm._sleep = lambda duration: clock.__setitem__(0, clock[0] + duration)
+
+    def force():
+        reads.append(clock[0])
+        # 표본 시각 사이의 큰 값이 계량 평균에 들어가면 실패한다.
+        sample = any(abs(clock[0] - t) < 1e-8 for t in (0, 0.82, 1.64))
+        return [0, 0, 2.0 if sample else 100.0, 0, 0, 0]
+
+    def weight():
+        workpiece_reads.append(clock[0])
+        return 0.1
+
+    arm.tool_force = force
+    arm.R.get_workpiece_weight = weight
+    result = getattr(arm, method)(3, 0, period_s=0.82,
+                                  observer=(lambda _: observed.append(clock[0])) if with_observer else None)
+    assert result[-1] is True
+    assert clock[0] == pytest.approx(1.64)
+    if method == 'measure_force':
+        assert result[1:3] == pytest.approx((2.0, 0.0))
+        if not with_observer:
+            assert reads == pytest.approx([0, 0.82, 1.64])
+    else:
+        assert workpiece_reads == pytest.approx([0, 0.82, 1.64])
+    if with_observer:
+        assert max(b-a for a, b in zip(observed, observed[1:])) <= 0.100001
+
+
+@pytest.mark.parametrize('latency', [0.2, 1.0])
+def test_force_sampling_accounts_for_device_call_latency(latency):
+    arm = _arm()
+    clock, starts = [0.0], []
+    arm._now = lambda: clock[0]
+    arm._sleep = lambda duration: clock.__setitem__(0, clock[0] + duration)
+
+    def force():
+        starts.append(clock[0])
+        clock[0] += latency
+        return [0, 0, 2, 0, 0, 0]
+
+    arm.tool_force = force
+    assert arm.measure_force(3, 0, period_s=0.82)[-1]
+    step = max(0.82, latency)
+    assert starts == pytest.approx([0, step, 2*step])
+    assert clock[0] == pytest.approx(2*step + latency)

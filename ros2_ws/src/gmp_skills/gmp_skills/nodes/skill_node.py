@@ -57,6 +57,7 @@ class SkillNode(Node):
         # launch 또는 --params-file로 전달된 값만 자동 선언해 코드와 YAML의 중복을 없앤다.
         super().__init__('skill_node', automatically_declare_parameters_from_overrides=True)
         g = lambda k: self.get_parameter(k).value  # noqa: E731
+        self._scale_period_s()  # 장치 생성 전에 잘못된 계량 설정을 거부한다.
         self.mode = g('mode')
         self.vel_scale = float(g('robot.vel_scale'))
         self.motion_timeout_s = float(g('robot.motion_timeout_s'))
@@ -437,11 +438,18 @@ class SkillNode(Node):
             self._held_material_id = ''
         return released, self.gripper.width_mm() or -1.0, False
 
+    def _scale_period_s(self):
+        period = float(self.get_parameter('scale.period_s').value)
+        if not math.isfinite(period) or period <= 0:
+            raise ValueError('scale.period_s는 유한한 양수여야 한다')
+        return period
+
     def _do_measure(self, job: Job):
+        period_s = self._scale_period_s()
         if self.get_parameter('scale.simulated').value:
             return [0.0] * 6, 0.0, 0.0, False, 'simulated'
         mean6, fz, std, valid = self.arm.measure_force(job.args['samples'], job.args['settle_s'],
-                                                       observer=self._observe_force)
+                                                       period_s=period_s, observer=self._observe_force)
         return mean6, fz, std, valid, ''
 
     def _do_safe(self, job: Job):
@@ -585,6 +593,7 @@ class SkillNode(Node):
     def _measure_weight_reading(self, tare_g: float, subject: str,
                                 station_id: str = 'workbench') -> WeightReading:
         p = self.get_parameter
+        period_s = self._scale_period_s()
         samples = int(p('scale.samples').value)
         settle_s = float(p('scale.settle_s').value)
         method = p('scale.method').value
@@ -594,10 +603,10 @@ class SkillNode(Node):
             raw_mean, raw_std, valid_src = 0.0, 0.0, False
         elif method == 'workpiece':
             raw_mean, raw_std, valid_src = self.arm.measure_workpiece(
-                samples, settle_s, observer=self._observe_force)
+                samples, settle_s, period_s=period_s, observer=self._observe_force)
         else:
             _, raw_mean, raw_std, valid_src = self.arm.measure_force(
-                samples, settle_s, observer=self._observe_force)
+                samples, settle_s, period_s=period_s, observer=self._observe_force)
         model = WeightModel(ScaleConfig(
             method=method,
             gain=float(p('scale.gain').value),

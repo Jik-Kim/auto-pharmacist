@@ -10,6 +10,7 @@
 TODO([A]): 9/17 G1 — measure_force / measure_workpiece 분해능 실측.
 TODO([A]): I-004 — 이동 취소 수단 (amovel + check_motion).
 """
+import math
 import statistics
 import time
 
@@ -236,17 +237,37 @@ class DsrArm:
                 observer(force)
             self._sleep(min(period_s, max(0.0, end_s - self._now())))
 
+    @staticmethod
+    def _validate_period(period_s):
+        if not math.isfinite(period_s) or period_s <= 0:
+            raise ValueError('계량 표본 간격은 유한한 양수여야 한다')
+
+    def _wait_sample(self, deadline, observer):
+        """표본 시각까지 대기하되 넛지 관측값은 계량 통계에 넣지 않는다."""
+        while True:
+            remaining = deadline - self._now()
+            if remaining <= 0:
+                return
+            self._sleep(min(0.1, remaining) if observer else remaining)
+            if observer and self._now() < deadline:
+                force = self.tool_force()
+                if force is not None:
+                    observer(force)
+
     def measure_force(self, samples: int, settle_s: float, period_s: float = 0.05, observer=None):
-        """정지 상태 외력 평균 (계량 폴백). 반환: (mean6, fz_mean, fz_std, valid)."""
+        """정지 외력 평균. period_s는 표본 시작 간격의 하한이다."""
+        self._validate_period(period_s)
         self._settle(settle_s, 0.1, observer)
         rows = []
-        for _ in range(samples):
+        for index in range(samples):
+            deadline = self._now() + period_s
             f = self.tool_force()
             if f is not None:
                 rows.append(f)
                 if observer:
                     observer(f)
-            self._sleep(period_s)
+            if index + 1 < samples:
+                self._wait_sample(deadline, observer)
         if len(rows) < max(3, samples // 2):
             return [0.0] * 6, 0.0, 0.0, False
         mean6 = [statistics.fmean(c) for c in zip(*rows)]
@@ -259,9 +280,11 @@ class DsrArm:
 
     def measure_workpiece(self, samples: int, settle_s: float, period_s: float = 0.1, observer=None):
         """get_workpiece_weight 평균 [kgf]. 반환: (mean_kg, std_kg, valid). 음수는 오류."""
+        self._validate_period(period_s)
         self._settle(settle_s, 0.1, observer)
         vals = []
-        for _ in range(samples):
+        for index in range(samples):
+            deadline = self._now() + period_s
             w = self.R.get_workpiece_weight()
             if isinstance(w, (int, float)) and w >= 0:
                 vals.append(float(w))
@@ -269,7 +292,8 @@ class DsrArm:
                 force = self.tool_force()
                 if force is not None:
                     observer(force)
-            self._sleep(period_s)
+            if index + 1 < samples:
+                self._wait_sample(deadline, observer)
         if len(vals) < max(3, samples // 2):
             return 0.0, 0.0, False
         return statistics.fmean(vals), statistics.pstdev(vals), True
