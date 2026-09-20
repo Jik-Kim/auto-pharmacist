@@ -37,7 +37,7 @@ def generate_launch_description():
 
     vendor = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(
-            get_package_share_directory('m0609_rg2_bringup'), 'launch', 'new_bringup.launch.py')),
+            get_package_share_directory('gmp_bringup'), 'launch', 'robot.launch.py')),
         launch_arguments={'mode': mode, 'host': LaunchConfiguration('host'), 'port': '12345', 'model': 'm0609',
                           'name': 'dsr01', 'gui': LaunchConfiguration('gui')}.items())
 

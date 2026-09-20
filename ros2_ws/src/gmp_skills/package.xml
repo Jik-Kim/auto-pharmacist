@@ -14,6 +14,7 @@
   <depend>onrobot_rg_msgs</depend>
   <depend>dsr_msgs2</depend>
   <exec_depend>dsr_common2</exec_depend>
+  <exec_depend>onrobot_rg_control</exec_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>python3-pytest</test_depend>
   <export><build_type>ament_python</build_type></export>

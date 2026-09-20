@@ -157,6 +157,13 @@ class DsrArm:
                                   ref=self.R.DR_TOOL if ref_tool else self.R.DR_BASE))
 
     def robot_state(self):
+        # 래퍼는 상태 조회 전에 서비스 준비를 기다리지 않는다. 실제 호출에 쓰는
+        # 클라이언트의 discovery 완료를 확인해야 첫 요청이 무한 대기에 빠지지 않는다.
+        client = getattr(self.R, '_ros2_get_robot_state', None)
+        if client is None or not callable(getattr(client, 'wait_for_service', None)):
+            raise RuntimeError('DSR 래퍼의 상태 조회 서비스 준비 확인 기능이 없습니다')
+        if not client.wait_for_service(timeout_sec=self.startup_timeout_s):
+            raise TimeoutError('로봇 상태 조회 서비스 준비 시간 초과')
         state = self.R.get_robot_state()
         if not isinstance(state, int) or state < 0:
             raise RuntimeError(f'로봇 상태 조회 실패: {state!r}')

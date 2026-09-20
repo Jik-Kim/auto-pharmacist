@@ -1,16 +1,18 @@
-# Interfaces — 계약 v1.4 초안 (2026-09-20)
+# Interfaces — 계약 v1.5 초안 (2026-09-20)
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
-> 현재 조장 1차 승인 상태다. **팀 채널 공유와 영향 담당 최소 2명 승인 전에는 확정 계약이 아니다.**
+> **9/20 사용자 확인: v1.2의 나머지 변경과 v1.3까지 팀 승인 완료.** 두 버전은 확정 계약이며, 아래 v1.4의 세부 검토 상태와 구분한다.
 
-> **v1.3 (9/19 팀 공유 완료, 담당 승인 대기):** `ReturnMaterial` Action과 `ScoopCycle.RETURNED=5/RETURN_FAILED=6`을 추가한다. `Pour.fraction`은 1.0만 지원하며, 초과 스쿱은 원료통에 반환 후 다시 퍼낸다. 스쿱 계량은 원료별 `material_N.posx`로 통일한다.
+> **v1.3 (9/19 팀 공유, 9/20 팀 승인 완료 확인·확정):** `ReturnMaterial` Action과 `ScoopCycle.RETURNED=5/RETURN_FAILED=6`을 추가한다. `Pour.fraction`은 1.0만 지원하며, 초과 스쿱은 원료통에 반환 후 다시 퍼낸다. 스쿱 계량은 원료별 `material_N.posx`로 통일한다.
 
 > **v1.4 (9/20 사용자 전달 팀 합의·A 구현):** HMI→C→A 안전 정지 복구 경로를 추가한다. 아래 서비스 필드·이벤트·C/D 연동 상세는 영향 담당 검토 대상이다. 로봇 복구 성공은 배치 재개를 의미하지 않는다.
 
+> **v1.5 (9/20 팀 합의·A 승인):** `Scoop` Goal 에 `float32 depth_fraction`(담그기 깊이 비율)을 추가한다. 유효 범위는 `dosing.min_fraction` 이상 `1.0` 이하이고 범위 밖이면 이동 전에 거부한다. `attempt` 는 재시도 번호(기록용)로만 쓴다. v1.3 에서 `Pour.fraction` 을 1.0 으로 고정하면서 한 스쿱보다 작은 양을 넣을 수단이 사라졌고, 그 결과 남은 목표량이 스쿱 한 번보다 작아지면 반환만 반복하다 `TIMEOUT` 으로 끝났다. **`depth_fraction` → 실제 Z 좌표 변환식·보정값은 실물 scoop 시험 뒤 확정한다 (`TODO([A])`)** — 이번 판은 계약과 전달 경로까지다. 필드 추가라 메시지 해시가 바뀌므로 `gmp_interfaces` 재빌드가 필요하다.
+
 정의 원본은 `ros2_ws/src/gmp_interfaces`. 이 문서는 의도·규칙·확정 값을 설명한다.
 
-> v1.1은 현재 구현 기준이고, 이 문서의 v1.2 변경분은 승인 대기 중인 통합 초안이다.
+> 확정 계약 기준은 v1.3까지다. v1.4 추가분은 초안이며, 계약 확정은 실물 검증 완료를 의미하지 않는다.
 > **변경 절차:** 계약을 바꿔야 하면 **먼저 팀 채널에 알리고**, `gmp_interfaces` 와 이 문서를 **같은 커밋에서** 고친다. 리뷰는 영향받는 담당 전원, 최소 2명 승인 (PM 없음 — AGENTS 교차검수).
 
 ---
@@ -34,9 +36,9 @@
 | `srv/SetGripper` | process → skill. 열기/닫기와 폭·힘 설정 | `/cell/set_gripper`. 응답에 정지 폭과 파지 추론 |
 | `srv/MeasureForce` | process → skill. 정지 상태 외력 평균 | 로봇이 움직이는 중이면 `valid=false` |
 | `srv/SafePose` | process → skill. 안전 자세로 후퇴 | 인터락·에러 공통 |
-| `srv/RecoverSafety` | HMI → process → skill. 안전 정지 복구 | A `/cell/recover_safety`. C 중계 서비스는 `/cell/request_safety_recovery` 제안, C/D 미구현 |
+| `srv/RecoverSafety` | HMI → process → skill. 안전 정지 복구 | A `/cell/recover_safety`. C 중계 서비스 `/cell/request_safety_recovery` 구현 완료(process_node, 9/20). D 의 HMI 버튼은 미구현 |
 | `action/MoveToStation` | 스테이션 이동 (`ABOVE` 접근점 / `AT` 작업점) | 좌표는 `stations.yaml` 단일 출처 |
-| `action/Scoop` | 원료통에서 퍼올리기 | Feedback은 단계·접촉력·삽입 깊이, Result는 최종 접촉 여부·최대 힘·깊이 |
+| `action/Scoop` | 원료통에서 퍼올리기 | Goal `depth_fraction`(v1.5)이 담그기 깊이 비율. Feedback은 단계·접촉력·삽입 깊이, Result는 최종 접촉 여부·최대 힘·깊이 |
 | `action/Pour` | workbench의 용기에 전량 붓기 (`fraction=1.0`만 허용) | 목적지는 skill 설정의 `workbench`; `target_station`은 제거 |
 | `action/ReturnMaterial` | 전용 스쿱 원료를 동일 원료통에 반환 | `/cell/return_material`. 반환 자세 미티칭·파지 원료 불일치 시 이동 전에 실패 |
 | `action/WeighContainer` | 고정 `workbench`의 용기를 들어 계량하고 내려놓기 (복합 스킬) | `container_station`은 제거. 결과는 `WeightReading`. **그리퍼가 비어 있어야 한다** — TARE 와 배치 끝 VERIFY 에서만 (D-22) |
@@ -208,14 +210,14 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 - **A/조장:** `SetGripper` 서버와 계약 정의 완료. `Scoop` 본문에서 Feedback/Result 관측값을 실제 채우고, `GripperState`의 `busy/grip_inferred/safety_triggered`를 어댑터 실값에 연결하며 G1에서 `MeasureForce`의 tool/TCP 기준을 확인한다.
 - **C:** ✅ **9/18 완료** — `process_node` 가 스킬 8종을 계약대로 부른다. `grade/scoop_id` 없음, 원료 → `scoop_N` 은 `core/station_map.py` 가 `stations.yaml` 에서 풀고, `Pour`·`WeighContainer` 는 station 인자 없이 부르며, `SetGripper` 사용, `QaDecision.deviation_id` 불일치는 거부하고 판정 후 **같은 ID 로 재발행**한다. `scoop_cycle` 은 정상이면 `WEIGH_RESIDUAL` 뒤, 실패면 확정 단계에서 나간다. `CellState.station/note` 도 채운다. 확인: `test/test_process_node.py`(가짜 skill_node 로 레시피 1건 완주). **남은 것** — 6축 wrench 는 채울 경로가 없어 `*_wrench_valid=false` (I-008).
 - **D:** 주문 생성에서 `grade/scoop_id`, `QaDecision.Request`에서 `batch_id` 제거(웹 화면의 배치 표시는 유지), `scoop_cycle` 구독·DB 테이블·JSON 내보내기 추가.
-- **승인:** 팀 채널 공유 후 영향 담당 최소 1명의 추가 승인이 있어야 v1.2를 확정한다.
+- **승인:** 9/20 사용자가 v1.2 전체 및 v1.3의 팀 승인 완료를 확인했다. 계약은 확정하며 실물 검증·후속 연동은 별도 항목으로 관리한다.
 
 **계약 파일 쓸 때** — `.action`/`.srv` 의 상수는 `---` 로 갈린 **그 상수가 설명하는 절**에 적는다. 뒤쪽 절에 적으면 `Feedback`·`Response` 에만 생성되어 정작 쓸 곳에서 `AttributeError` 가 난다 (I-009 에서 실제로 났다). 참조는 `MoveToStation.Goal.ABOVE` 처럼 **절 이름을 붙여** 쓴다.
 
 
 ## 8. 안전 정지 복구 (v1.4 인계)
 
-사용자가 HMI 복구 요청 운영의 팀 합의를 확인했다. A 서비스는 `RecoverSafety.srv`, `/cell/recover_safety`다. HMI가 A를 직접 호출하지 않고 C가 현재 배치·실행 루프·권한을 확인한 뒤 전달한다. C 중계 엔드포인트 `/cell/request_safety_recovery`와 HMI `/recover`는 **인계 제안이며 아직 서버/버튼이 없다**.
+사용자가 HMI 복구 요청 운영의 팀 합의를 확인했다. A 서비스는 `RecoverSafety.srv`, `/cell/recover_safety`다. HMI가 A를 직접 호출하지 않고 C가 현재 배치·실행 루프·권한을 확인한 뒤 전달한다. C 중계 엔드포인트 `/cell/request_safety_recovery`는 **구현됐다** (`process_node._srv_recover_safety`, 9/20) — 필드가 비었거나 `operator_confirmed` 가 아니면 skill_node 를 부르지 않고 거부하고, 그 외는 그대로 전달해 A 의 응답을 돌려준다. 상태·중복 요청·경합의 최종 판단은 A 가 한다. HMI `/recover` 버튼은 **아직 없다** (D).
 
 | 필드 | 의미 |
 |---|---|
@@ -243,7 +245,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 
 - A `CellEvent(ERROR, code='ROBOT_SAFETY_STOP')`, `text`는 JSON `{robot_state, reason}`. 기존 event 경로 사용. C는 ERROR 및 새 주문 차단으로 연결하고 일반 FORCE_LIMIT 1회 재시도에서 제외한다.
 - A `CellEvent(INFO/WARN, code='ROBOT_SAFETY_RECOVERY')`, `text`는 JSON `{request_id, operator_id, success, manual_required, robot_state, message}`. 동일 요청 재전송은 명령/이벤트를 반복하지 않는다. A는 배치를 소유하지 않아 `batch_id`는 빈 문자열이다.
-- C `process_node._on_event`, `_srv_submit`, 실행 루프: 안전 정지에서 실행·대기 및 새 주문을 차단한다. `_srv_submit`의 현재 ERROR 허용을 수정해야 한다. 명시적 복구 요청은 일반 스킬 재시도 경로와 분리한다. 기존 배치를 임의 재실행하지 말고 기록을 종료한 뒤 별도 시작 정책을 적용한다.
+- C `process_node._on_event`, `_srv_submit`, 실행 루프 — **구현 완료(9/20)**: `ROBOT_SAFETY_STOP` 이 `_safety_stop` 플래그를 세우면 새 주문을 거부하고, QA·인터락·NUDGE 대기를 깨워 배치를 FORCE_LIMIT 재시도 없이 바로 ERROR 로 끝낸다(일탈 기록도 남기지 않는다). `ROBOT_SAFETY_RECOVERY` 가 `success` 이고 `manual_required` 가 아닐 때만 플래그를 내린다 — 끝난 배치는 되살리지 않고 새 주문부터 받는다. "`_srv_submit` 의 ERROR 허용 수정" 은 `mode=='ERROR'` 전체 차단이 아니라 이 플래그로 좁혔다: 일반 실패도 `mode='ERROR'` 로 끝나므로 전체를 막으면 새 주문을 영영 못 받는다.
 - D `hmi_web_node.py`, `static/hmi.js`, `templates/index.html`: 인증된 작업자·요청 ID·기대 상태·조치 확인을 C에 전달하는 버튼/POST 추가, 복구 진행/수동 조치/실패 표시. HMI 감사 이벤트에 현재 배치·작업자·요청 ID·결과를 기록한다. HMI가 ROS 클라이언트 권한까지 인증하는 것은 아니므로 접근 통제는 배포 설정에도 달려 있다.
 - NUDGE·Interlock EXIT·controller STANDBY 관측만으로 안전 차단을 해제하지 않는다. 새 알람 뒤에는 과거 성공 응답을 재사용할 수 없다. A 복구 후에도 위치·파지 이력은 무효이므로 다음 공정 전에 명시적 안전 자세/현장 재설정을 수행한다.
 

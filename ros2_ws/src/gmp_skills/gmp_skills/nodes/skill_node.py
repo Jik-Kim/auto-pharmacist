@@ -31,6 +31,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 from dsr_msgs2.msg import RobotError
 from onrobot_rg_msgs.srv import SetCommand
+from onrobot_rg_msgs.msg import OnRobotRGInput
 from gmp_interfaces.action import MoveToStation, ReturnMaterial, Scoop, Pour, WeighContainer, WeighHeld
 from gmp_interfaces.msg import CellEvent, GripperState, WeightReading
 from gmp_interfaces.srv import MeasureForce, SafePose, SetGripper, RecoverSafety
@@ -95,10 +96,14 @@ class SkillNode(Node):
                                   float(g('gripper.open_width_mm')), tuple(g('gripper.dio_pins')),
                                   tuple(g('gripper.din_pins')), self.get_logger(), self._now_s,
                                   float(g('gripper.state_timeout_s')),
-                                  float(g('gripper.dio_settle_s')))
-        js_topic = '/onrobot_joint_states' if backend == 'modbus' else f"/{g('robot.id')}/gripper_joint_states"
-        self.create_subscription(JointState, js_topic, self._on_js,
-                                 QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
+                                  float(g('gripper.dio_settle_s')), float(g('gripper.completion_settle_s')))
+        if backend == 'modbus':
+            self.create_subscription(OnRobotRGInput, '/onrobot/status',
+                                     lambda msg: self.gripper.on_native_status(msg, self._now_s()),
+                                     QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
+        else:
+            self.create_subscription(JointState, f"/{g('robot.id')}/gripper_joint_states", self._on_js,
+                                     QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
 
         self.cb = ReentrantCallbackGroup()
         self.pub_state = self.create_publisher(GripperState, 'gripper_state',
@@ -204,7 +209,7 @@ class SkillNode(Node):
         w = state['width_mm']
         m = GripperState(width_mm=-1.0 if w is None else w, busy=state['busy'],
                          grip_inferred=state['grip_inferred'],
-                         safety_triggered=False, force_cmd_n=self.gripper.force_cmd_n, backend=self.gripper.backend)
+                         safety_triggered=state.get('safety_triggered', False), force_cmd_n=self.gripper.force_cmd_n, backend=self.gripper.backend)
         m.header.stamp = self.get_clock().now().to_msg()
         self.pub_state.publish(m)
         if self.gripper.consume_slip():
