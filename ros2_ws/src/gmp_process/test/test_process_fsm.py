@@ -106,7 +106,9 @@ def test_oversize_scoop_returns_to_material_before_rescoop():
     assert fsm.state == 'DONE' and not fsm.deviations
     assert [k for s, k in trace if s == 'RETURN_MATERIAL'] == ['return_material']
     assert fractions and all(f == 1.0 for f in fractions)
-    assert fsm.results[0].attempts == 2 and abs(fsm.results[0].actual_g - 100) < 1e-6
+    # 반환은 약통에 아무것도 넣지 않았으므로 붓기 시도(attempts)가 아니다. 반환 횟수는 따로 센다.
+    assert fsm.results[0].attempts == 1 and fsm.results[0].returns == 1
+    assert abs(fsm.results[0].actual_g - 100) < 1e-6
 
 
 def test_under_then_correction_accumulates():
@@ -241,3 +243,65 @@ def test_set_end_parks_at_nudge_wait_and_mode_blocks_orders():
         req = fsm.on_result(req, cell(req))
     assert seen == [('move', 'NUDGE_WAIT', 'RUNNING'), ('wait', 'NUDGE_WAIT', 'PAUSED')]
     assert (fsm.state, fsm.mode) == ('DONE', 'DONE') and len(fsm.results) == 2
+
+
+
+class DepthCell(Cell):
+    """담그기 깊이 힌트를 물리로 반영하는 오라클 — 퍼올림량 = fraction × 공칭 × gain.
+
+    기본 Cell 은 yields 를 그대로 돌려줘 fraction 을 무시한다. 반환 뒤 재스쿱이 더 얕게
+    푸는지는 그 오라클로 볼 수 없어 이 클래스를 쓴다. gain 은 원료 밀도·삽입 오차다.
+    """
+
+    def __init__(self, gain=1.0, nominal=40.0, **kw):
+        super().__init__(yields=[], **kw)
+        self.gain, self.nominal = gain, nominal
+        self.fractions = []          # (material_id, fraction) — 원료가 2종이라 섞으면 안 된다
+
+    def __call__(self, req):
+        if req['kind'] == 'scoop':
+            self.fractions.append((req['material_id'], req['fraction']))
+            amt = req['fraction'] * self.nominal * self.gain
+            self.in_scoop += amt
+            return {'contact_detected': amt > 0}
+        return super().__call__(req)
+
+
+def depths(cell, material_id):
+    return [f for m, f in cell.fractions if m == material_id]
+
+
+def test_rescoop_after_return_digs_shallower_not_deeper():
+    """초과로 되돌린 뒤 같은 깊이로 다시 푸면 초과가 그대로 재현된다 — 더 얕게 요청해야 한다."""
+    cell = DepthCell(gain=1.6, residual=0.0)           # 힌트보다 60 % 더 퍼지는 원료
+    fsm = _fsm()
+    run(fsm, cell)
+    assert fsm.results[0].returns == 1, '반환이 일어나야 하는 조건이다'
+    a = depths(cell, 'A')
+    assert a[-1] < a[-2], a                            # 반환 직전 깊이보다 얕게 다시 푼다
+
+
+def test_return_does_not_consume_a_pour_attempt():
+    """반환이 붓기 시도를 먹으면 마지막 한 스쿱을 남기고 TIMEOUT 으로 끝난다 (PR #26 회귀)."""
+    cell = DepthCell(gain=1.5, residual=0.0)          # 한 번은 초과해 반환을 거치는 조건
+    fsm = _fsm()
+    run(fsm, cell)
+    a = fsm.results[0]
+    assert a.returns == 1, '반환을 거치는 경로여야 한다'
+    assert fsm.state == 'DONE', [d['kind'] for d in fsm.deviations]
+    assert a.attempts <= fsm.dosing_cfg.max_attempts and abs(a.actual_g - 100) < 1e-6
+
+
+def test_rescoop_depth_compounds_when_already_shallow():
+    """이미 얕게 펐는데 또 초과하면 그 얕은 깊이에서 더 줄여야 한다.
+
+    보정을 비율 그대로 쓰면 깊이가 한 값에 멈춰(0.5 → 0.5 → 0.5) 반환만 반복하다
+    TIMEOUT 으로 끝난다 — PR #33 리뷰에서 A 가 잡은 결함이다.
+    """
+    cell = DepthCell(gain=2.0, residual=0.0)           # 힌트의 2배로 퍼지는 원료
+    fsm = _fsm()
+    run(fsm, cell)
+    a = depths(cell, 'A')
+    assert fsm.results[0].returns == 1 and a == [1.0, 0.5, 0.25], a
+    assert fsm.state == 'DONE' and not fsm.deviations, [d['kind'] for d in fsm.deviations]
+    assert abs(fsm.results[0].actual_g - 100) < 1e-6
