@@ -124,9 +124,9 @@ ros2 action send_goal /cell/move_to_station gmp_interfaces/action/MoveToStation 
 - 초과 스쿱 반환·재시도와 투입량 기록 분리는 공정 패키지에 함께 반영했다. 새 `ReturnMaterial` Action이 있으므로 사용자는 가상·실물 검증 전에 인터페이스와 호출 패키지를 다시 빌드해야 한다.
 - 원료 A/B/C마다 반환 시작·종료 자세 2개씩 **총 6개 posx**가 필요하다. `material_N.return_start_posx/return_end_posx`에 입력한다. 붓기 자세를 임의 계산하지 않은 이유는 원료통 위치·입구·스쿱 기울기에 따라 낙하 지점과 간섭이 달라지기 때문이다.
 - HMI 담당 인계: 새 `RETURN_MATERIAL` 상태 표시명 및 outcome 5/6 표시를 연결한다. 기존 record_node는 숫자 outcome과 전체 원본을 저장하므로 DB 스키마 변경은 없다.
-- `process_fsm.py:FINISH`는 현재 DONE으로 끝난다. 약통 놓기·이탈 완료 후
-  `nudge_wait` AT(`approach: 1`) 요청을 추가하는 자동 전이는 C 담당 후속 작업이다.
-  `_carry()`의 passbox_done AT→ABOVE 후퇴 순서를 유지해야 하며, AT 관절각을 추가할 필요는 없다.
+- `process_fsm.py:FINISH`는 약통을 `passbox_done`에 놓고 ABOVE로 후퇴한 뒤 `NUDGE_WAIT`로 전이한다.
+  이어서 `nudge_wait` AT(`approach: 1`)로 이동해 NUDGE를 기다리고, 그 신호 뒤 DONE으로 끝난다.
+  `_carry()`의 passbox_done AT→ABOVE 후퇴 순서를 유지하며, passbox_done AT 관절각을 추가할 필요는 없다.
 - 기존 빈통 운반·스쿱 반납·폐기 경로는 이번 두 경로에 포함되지 않는다.
   보호 대상 목적지로 진입하는 추가 경로는 따로 티칭·등록해야 한다.
 

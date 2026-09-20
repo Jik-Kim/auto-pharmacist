@@ -220,8 +220,8 @@
         <mxCell id="c34" value="마지막 원료였음 (그리퍼 비어 있음)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="c14" target="c15">
           <mxGeometry x="0" y="-14" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c35" value="|net − Σactual| ≤ min_resolvable_g" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c15" target="c16">
-          <mxGeometry x="0" y="-14" relative="1" as="geometry" />
+        <mxCell id="c35" value="① |net − Σtarget| ≤ Σ(target×tol)&lt;br&gt;② |net − Σactual| ≤ min_resolvable_g" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c15" target="c16">
+          <mxGeometry x="0" y="-22" relative="1" as="geometry" />
         </mxCell>
         <mxCell id="c36" value="carry ok" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c16" target="c17">
           <mxGeometry x="0" y="-14" relative="1" as="geometry" />

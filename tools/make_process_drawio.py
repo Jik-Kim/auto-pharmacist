@@ -127,7 +127,7 @@ p2.edge(wres, ret, 'OK (|err| ≤ tol) · actual += scooped − residual → dis
 p2.edge(ret, picks, 'grip(open) · idx+1 · 다음 원료 있음', color=ACC,
         exit=(0.5, 0), entry=(0.5, 1), points=((cx(1), Y[2] - 40), (cx(0), Y[2] - 40)), lpos=(0, -14))
 p2.edge(ret, verify, '마지막 원료였음 (그리퍼 비어 있음)', color=ACC, exit=(1, 0.3), entry=(0, 0.3), lpos=(0, -14))
-p2.edge(verify, finish, '|net − Σactual| ≤ min_resolvable_g', color=OK, lpos=(0, -14))
+p2.edge(verify, finish, '① |net − Σtarget| ≤ Σ(target×tol)\n② |net − Σactual| ≤ min_resolvable_g', color=OK, lpos=(0, -22))
 p2.edge(finish, nudgew, 'carry ok', color=OK, lpos=(0, -14))
 p2.edge(nudgew, done, 'NUDGE (사람이 건드림)\n→ DONE · 폐기면 DISCARDED', color=OK, lpos=(0, -22))
 p2.edge(disc, nudgew, 'carry ok — 폐기도 세트의 끝\n같은 자리에서 기다린다', color=RED, exit=(0.5, 0), entry=(0.5, 1), lpos=(0.2, 0))
