@@ -364,3 +364,10 @@ def test_robot_state_waits_for_wrapper_client_before_query(ready):
             arm.robot_state()
         assert len(calls) == 1
     assert calls[0] == ('wait', {'timeout_sec': arm.startup_timeout_s})
+
+
+def test_robot_state_missing_private_client_fails_without_query():
+    arm = DsrArm.__new__(DsrArm)
+    arm.R = types.SimpleNamespace(get_robot_state=lambda: pytest.fail('준비 확인 없이 조회'))
+    with pytest.raises(RuntimeError, match='준비 확인 기능'):
+        arm.robot_state()

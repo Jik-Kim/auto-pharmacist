@@ -57,12 +57,21 @@ class Rg2Gripper:
         self._native_grip = False
         self._native_safety = False
         self._native_busy_seq = 0
+        self._last_completed = None
         self._command_width_mm = None
         self._lock = threading.Lock()
 
     def on_native_status(self, status, stamp_s):
         """벤더 상태 비트 사용. 폭은 기존 relative_width 기준을 유지한다."""
         with self._lock:
+            # 통신 공백이나 상태 변화 뒤에는 이전 완료 이력을 재사용하지 않는다.
+            if self._last_completed is not None:
+                _, width, raw_width, grip, force = self._last_completed
+                if (self._native_stale_locked(stamp_s) or status.gsta & 0x7d
+                        or abs(status.gwdf / 10.0 - width) >= 0.1 - 1e-6
+                        or abs(status.ggwd / 10.0 - raw_width) >= 0.1 - 1e-6
+                        or bool(status.gsta & 2) != grip or self.force_cmd_n != force):
+                    self._last_completed = None
             was_gripped = self._native_grip
             self._native_at = stamp_s
             self._native_busy = bool(status.gsta & 1)
@@ -152,6 +161,8 @@ class Rg2Gripper:
             if self.backend == 'modbus' and (
                     self._native_stale_locked(command_at_s) or self._native_busy or self._native_safety):
                 return False
+            previous = self._last_completed
+            self._last_completed = None
             busy_seq = self._native_busy_seq
             initial_width = self._width_mm
             initial_command_width = self._command_width_mm
@@ -184,9 +195,21 @@ class Rg2Gripper:
                     at_target = (initial_command_width is not None and self._command_width_mm is not None
                                  and abs(initial_command_width - target_mm) <= self.grip_margin_mm
                                  and abs(self._command_width_mm - target_mm) <= self.grip_margin_mm)
+                    repeated = (previous is not None and target_mm == previous[0]
+                                and self.force_cmd_n == previous[4]
+                                and initial_command_width == previous[1]
+                                and initial_width == previous[2]
+                                and self._native_stable_since <= command_at_s
+                                and self._native_busy_seq == busy_seq
+                                and self._command_width_mm == previous[1]
+                                and self._width_mm == previous[2]
+                                and self._native_grip == previous[3])
                     if (self._native_at > command_at_s and not self._native_busy
                             and self._now() - max(self._native_stable_since, command_at_s) >= self.completion_settle_s
-                            and (self._native_busy_seq > busy_seq or at_target)):
+                            and (self._native_busy_seq > busy_seq or at_target or repeated)):
+                        self._last_completed = (target_mm, self._command_width_mm,
+                                                self._width_mm, self._native_grip,
+                                                self.force_cmd_n)
                         return True
                 time.sleep(0.02)
                 continue

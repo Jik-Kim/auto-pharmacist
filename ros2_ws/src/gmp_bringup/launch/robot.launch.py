@@ -30,6 +30,8 @@ def generate_launch_description():
         name='OnRobotRGControllerServer', namespace=LaunchConfiguration('name'),
         output='screen',
         condition=IfCondition(PythonExpression(["'", LaunchConfiguration('mode'), "' == 'real'"])),
+        # offset=5는 벤더 계승값이며 현재 서버는 장치에 쓰지 않는다.
+        # 실제 offset은 /onrobot/status.gfof로 읽는다(9/20 실측 2.0 mm).
         parameters=[{'/onrobot/control': 'modbus', '/onrobot/ip': '192.168.1.1',
                      '/onrobot/port': 502, '/onrobot/changer_addr': 65,
                      '/onrobot/gripper': 'rg2', '/onrobot/offset': 5}],

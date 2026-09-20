@@ -166,3 +166,32 @@ def test_native_noop_waits_for_post_command_stability(monkeypatch):
     monkeypatch.setattr('gmp_skills.adapters.rg2_gripper.time.sleep', tick)
     assert g.move(60., 1.)
     assert clock[0] >= 1.2
+
+
+@pytest.mark.parametrize('change', ['none', 'target', 'width', 'gap', 'safety', 'force'])
+def test_repeat_offset_command_requires_unchanged_success(monkeypatch, change):
+    clock = [1.0]
+    phase = [0]
+    g = Rg2Gripper('modbus', lambda _: True, now_fn=lambda: clock[0])
+    idle = SimpleNamespace(gsta=0, ggwd=618, gwdf=578)
+    g.on_native_status(SimpleNamespace(gsta=0, ggwd=840, gwdf=800), clock[0])
+    def tick(dt):
+        clock[0] += dt
+        if phase[0] == 0 and clock[0] < 1.1:
+            g.on_native_status(SimpleNamespace(gsta=1, ggwd=700, gwdf=660), clock[0])
+        else:
+            g.on_native_status(idle, clock[0])
+    monkeypatch.setattr('gmp_skills.adapters.rg2_gripper.time.sleep', tick)
+    assert g.move(60., 1.)
+    phase[0] = 1
+    if change == 'width':
+        g.on_native_status(SimpleNamespace(gsta=0, ggwd=620, gwdf=580), clock[0])
+    elif change == 'gap':
+        clock[0] += 1.
+        g.on_native_status(idle, clock[0])
+    elif change == 'safety':
+        g.on_native_status(SimpleNamespace(gsta=8, ggwd=618, gwdf=578), clock[0])
+        g.on_native_status(idle, clock[0])
+    elif change == 'force':
+        g.force_cmd_n = 30.
+    assert g.move(65. if change == 'target' else 60., .6) == (change == 'none')

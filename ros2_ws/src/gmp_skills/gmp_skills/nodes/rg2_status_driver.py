@@ -21,7 +21,12 @@ class Rg2StatusDriver(OnRobotRGNode):
     def getStatus(self):
         """벤더 상태 읽기·JointState 발행 후 raw 상태를 추가 발행한다."""
         super().getStatus()
-        fields = status_fields(self.status)
+        try:
+            fields = status_fields(self.status)
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            # 유효하지 않은 표본은 발행하지 않아 수신측 stale 차단을 유지한다.
+            self.get_logger().warning(f'그리퍼 상태 표본 무시: {exc}', throttle_duration_sec=5.0)
+            return
         message = OnRobotRGInput()
         message.gfof = fields["gfof"]
         message.ggwd = fields["ggwd"]
