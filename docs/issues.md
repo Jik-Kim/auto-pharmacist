@@ -7,10 +7,10 @@
 
 | ID | 심각도 | 상태 | 담당 | 제목 |
 |---|---|---|---|---|
-| [I-001](#i-001) | **상** | **열림** | A + B | 외력·작업물무게 분해능 미측정 — 도징 단위(30/100 g)와 허용 오차가 여기에 걸려 있다 |
+| [I-001](#i-001) | **상** | **열림** | A + B | 외력 분해능 측정 완료 — 0.82초 실물 재측정·3점 보정 검증이 남아 있다 |
 | [I-002](#i-002) | 중 | 열림 | A | 실물 그리퍼 드라이버가 `grip`·안전스위치 비트를 토픽으로 내지 않는다 — 파지는 폭 추론 |
 | [I-003](#i-003) | 하 | 열림 | A | (선택) 드라이버 포크 — `OnRobotRGInput` 발행 추가·파지력 수치 설정. 벤더 패키지는 안 고친다 |
-| [I-004](#i-004) | 중 | 열림 | A | 블로킹 `movel` 은 중간 취소가 안 된다 — 인터락 `ENTER` 응답이 현재 이동이 끝날 때까지 늦어진다 |
+| [I-004](#i-004) | 중 | 열림 (실물 검증 대기) | A | 비동기 이동 취소·MoveStop 구현 — 실물 감속 정지·인터락 응답 확인 필요 |
 | [I-005](#i-005) | 중 | 열림 | A | 가상 모드에서 `get_tool_force`/`get_workpiece_weight` 가 값을 주는지 미확인 (Q-07) |
 | [I-007](#i-007) | **상** | ~~해소~~ (9/18 v1.2) | A + C | **계약 v1.2 — `weigh_scoop`(들고 있는 스쿱 계량) Action 과 `Deviation.kind VERIFY_MISMATCH`** — D-22 6단계 흐름이 이 계약에 걸려 있다 |
 | [I-008](#i-008) | 중 | 열림 | C + 조장 | `ScoopCycle` 의 6축 wrench 통계를 채울 경로가 없다 — 계량 스킬이 `WeightReading` 만 돌려준다 |
@@ -25,12 +25,12 @@
 ---
 
 ### I-001
-외력·작업물무게 분해능 미측정 · 심각도 상 · A + B · 등록 9/16
-- **내용·재현**: 툴 1.320 kg 에서 30 g(0.3 N) 변화를 JTS 기반 추정으로 가를 수 있는지 아무도 재지 않았다. `get_workpiece_weight` 와 `get_tool_force` 둘 다 같은 센서에서 나온다.
-- **조치·남은 것**: 9/17 오전 G1 (`docs/demo_run_procedure.md` 1절). σ 를 `docs/SOT.md` D-08 에 적고 도징 단위를 정한다.
+외력 분해능 측정 완료·보정 검증 진행 중 · 심각도 상 · A + B · 등록 9/16
+- **최초 문제**: 툴 1.320 kg에서 30 g(0.3 N) 변화를 JTS 기반 추정으로 구분할 수 있는지 측정 근거가 없었다. `get_workpiece_weight`와 `get_tool_force`는 같은 JTS에서 나온다.
 - **9/18 G1 결과 (tool_force, 스쿱+원료 총 133 g (빈 스쿱 32 g))**: 회차 평균 σ 6.0 g · 3σ 18.0 g → `min_resolvable_g 19`, `max_std_g 5`, `offset_g 260.2`(tool_force 전용, gain 1 임시). 원시 CSV·재계산 모듈을 `gmp_dosing/calibration/`·`core/calib.py` 에 넣었다 (PR #22, C 가 이어서). 판정 근거는 Q-11 로.
 - **9/19 재측정 (C, `calibration/measure_g1.py`, 두 경로 동시)**: 32 g·132 g 각 3세트×30회. tool_force 3σ **12.6 g** (표본 간격 0.82 s 로 독립), 두 점 gain 0.886·offset 247.1 → `common.yaml` method tool_force·gain·offset·max_std_g 10 반영. **workpiece 탈락** — reset 이 success 인데 빈 그리퍼 869 g, 무게를 올리면 값이 내려감 (D-07 확정). 실물 첫 PC 에 `pymodbus` 가 없어 그리퍼 드라이버가 죽었던 것도 이날 발견 (T0 에 추가).
-- **남은 것**: (a) skill_node `measure_force` 의 표본 간격 0.05 s 는 중복 표본 — `period_s` 파라미터로 빼고 센서 갱신 주기 이상으로 (A). 그 뒤 `min_resolvable_g` 19 → 14 (b) 3점째(≈86 g)로 gain 직선 확인 (9/21). (a) 전까지 **열림** 유지.
+- **완료 범위**: `scale.period_s=0.82`를 MeasureForce·WeighHeld·WeighContainer에 연결하고, 표본 사이 NUDGE 관측값이 계량 통계에 섞이지 않도록 분리했다. 관련 단위 테스트 60건이 통과했다. 현재 `min_resolvable_g=19`는 유지한다.
+- **남은 것**: (a) 0.82초 설정으로 실물 재측정해 표본 중복·3σ·계량 소요시간·NUDGE 관측을 확인한 뒤 `min_resolvable_g` 19→14 적용 판단 (b) 3점째(≈86 g)로 gain 직선 확인. 측정 자체는 완료됐지만 보정값 확정 전이므로 **열림** 유지.
 
 ### I-002
 드라이버가 `grip` 비트를 토픽으로 내지 않는다 · 중 · A · 9/16
@@ -42,12 +42,16 @@
 - 서버의 `getStatus()` 타이머에 `OnRobotRGInput` 발행 10줄과 `sendCommand` 에 `f<N>` 파지력 수치 명령을 더하면 I-002 와 D-06 스텝 우회가 사라진다. 벤더 패키지 대신 **포크 패키지**(`gmp_skills/adapters` 에서 선택)로. 9/17 G2 결과를 보고 할지 정한다.
 
 ### I-004
-블로킹 이동 취소 · 중 · A
-- `DSR_ROBOT2.movel` 은 완료까지 돌아오지 않는다. `stop()` 은 DSR_ROBOT2 에 노출되지 않았다 (`drl_script_stop` 만). 후보: `amovel` + `check_motion` 폴링 + 취소 플래그, 또는 이동 거리를 짧게 쪼갠다. 9/18 결정.
+비동기 이동 취소·감속 정지 · 중 · A
+- **최초 문제 (9/18)**: 블로킹 `DSR_ROBOT2.movel`이 끝나기 전에는 같은 워커가 취소를 처리하지 못해 인터락 `ENTER` 응답이 늦어졌다. Python 래퍼에 `stop()`이 없어 비동기 이동과 별도 정지 경로가 필요했다.
+- **반영한 구현 (9/20 확인)**: `adapters/dsr_arm.py`의 `movej_cancellable()`·`movel_cancellable()`은 `amovej/amovel` 실행 후 `wait_motion_cancellable()`에서 `check_motion`과 취소·시간 초과를 감시한다. 취소·시간 초과 시 `stop_motion()`이 `dsr_controller2/motion/move_stop`에 `MoveStop(DR_SSTOP)`을 요청하고 서비스 응답을 확인한다. DSR 전용 노드 호출은 단일 워커에서 직렬 처리한다.
+- **적용 범위**: `MoveToStation`·`SafePose`뿐 아니라 `skill_node`가 연결한 `arm.cancel_requested`를 통해 Scoop·Pour·ReturnMaterial·Weigh 내부 `DsrArm.movel()`도 취소 가능한 경로를 사용한다. 모든 장치 호출·힘제어·계량 자체의 즉시 취소를 의미하지는 않는다.
+- **검증 근거와 남은 조치**: `test/test_dsr_arm.py`에 감속 정지 요청·사전 취소·내부 직선 이동 취소 단위 테스트가 있다. 서비스 성공 응답은 실제 완전 정지의 증거가 아니므로 사용자가 실물에서 이동 중 취소·시간 초과 시 감속/완전 정지, 후속 작업 차단, 인터락 `ENTER` 응답 지연을 확인한 뒤 이슈를 닫는다.
 
 ### I-005
 가상 모드 힘값 · 중 · A
 - 에뮬레이터가 힘을 시뮬레이션하지 않을 가능성이 크다(매뉴얼 6.1 주의: "시뮬레이션 환경에서 정상 동작하지 않을 수 있음"). 9/16 밤 확인. 안 주면 `scale.simulated:=true` 로 도징·상태기계는 가상에서 계속 개발한다.
+- **9/20 통합 확인**: 격리 도메인에서 에뮬레이터·`skill_node` 자가진단과 `MoveToStation(safe)`는 성공했다. 다만 가상 그리퍼가 명령 폭에 정확히 닫혀 폭 추론식 `final_width > target + margin`이 항상 거짓이므로 `PICK_CONTAINER`가 `GRIP_FAIL` 4회 뒤 ERROR로 끝난다. `scale.simulated=true`의 계량값도 `valid=false`라 진짜 C+A 레시피 완주에는 별도의 가상 물체/계량 모델이 필요하다.
 
 ### I-006
 스쿱 치수 · 하 · C

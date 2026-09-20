@@ -16,42 +16,36 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 49/99 완료** (██████████░░░░░░░░░░)  ·  기준 09/20
+**전체 54/102 완료** (███████████░░░░░░░░░)  ·  기준 09/20
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
 | gmp_interfaces [조장] | 5/10 | `█████░░░░░` | **3** |
-| gmp_skills [A 스킬] | 10/23 | `████░░░░░░` | **8** |
+| gmp_skills [A 스킬] | 12/26 | `█████░░░░░` | **7** |
 | gmp_dosing [B 도징] | 7/11 | `██████░░░░` | **1** |
 | gmp_process [C 공정] | 15/25 | `██████░░░░` | **1** |
-| gmp_hmi [D HMI·기록] | 8/18 | `████░░░░░░` | **2** |
-| gmp_bringup [조장] | 4/12 | `███░░░░░░░` | **3** |
+| gmp_hmi [D HMI·기록] | 9/18 | `█████░░░░░` | **2** |
+| gmp_bringup [조장] | 6/12 | `█████░░░░░` | **3** |
 
-**마감이 지난 항목 18건**
+**마감이 지난 항목 17건**
 
 - `9/18` gmp_interfaces — 계약 v1.2 팀 채널 공지 — 위 항목 중 공지만 남았다 (WeighHeld 신설·Deviation.kind 3종 추가)
 - `9/17` gmp_interfaces — G1 결과로 도징 단위 확정 → RecipeItem.tol_pct 기본값·레시피 yaml 갱신 (SOT D-08)
 - `9/18` gmp_interfaces — 계약 v1.2 — 실물 첫날 드러난 것 반영 (인터락 응답 지연 I-004, 그리퍼 백엔드 Q-02)
 - `9/18` gmp_skills — [추가 7] nudge 감지: 워커 유휴 루프·계량 settle·붓기 대기에서 get_tool_force 100 ms 폴링, 임…
 - `9/18` gmp_skills — [추가 1] 폭 지문: 스쿱 손잡이 폭 A/B/C = 15.5/18/28 mm로 확정(9/19), stations.yaml/co…
-- `9/16` gmp_skills — adapters/dsr_arm.py: DR_init·set_tool/tcp·movej/movel·get_tool_force·re…
-- `9/17` gmp_skills — nodes/skill_node.py: 워커 스레드 + 큐, MoveToStation·Scoop·Pour·WeighContaine…
-- `9/17` gmp_skills — G2 그리퍼 modbus 실물 확인 (Q-02) — 안 되면 dio 백엔드 (Q-03 핀)
+- `9/17` gmp_skills — nodes/skill_node.py: 워커 스레드 + 큐와 Action/Service 연결 구현. WeighHeld·Scoop …
+- `9/17` gmp_skills — G2 그리퍼 modbus 실물 확인 (Q-02) — 9/20 연결·빈 그리퍼 개폐·실제 busy/grip 전달·완료 폭 안정 6…
 - `9/18` gmp_skills — Scoop: 컴플라이언스 진입 → Z 힘제어 하강 → check_force_condition 접촉 → 깊이 상한 → 들어올림 →…
 - `9/18` gmp_skills — [9/18 확정] 새 배치에서 용기를 파지한 채 passbox_done·reject_bin 도달 확인 — 현재 용기 AT Z=1…
 - `9/18` gmp_skills — [9/18 확정] 원료 선반(판 바깥·높이 다름)에서 Scoop 힘제어 확인 — 뻗은 자세의 특이점 영향 (힘제어는 특이점 영역…
 - `9/18` gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
 - `9/18` gmp_process — [9/18 확정] 회수·넛지 운영 — 세트=배치 1건, 반송 뒤 NUDGE_WAIT 전이는 구현 완료. HMI 회수 확인 감사 …
-- `9/17` gmp_hmi — [연동 대기 — 9/20 갱신] 가상 모드에서 주문 → 상태 → QA 승인 → 이력 조회 한 바퀴 — HMI 시험 공정 검증 이…
+- `9/17` gmp_hmi — [연동 대기 — 9/20 갱신] HMI 시험 공정에서 주문→상태→QA 승인/폐기→SQLite 이력·KPI까지 자동 검증 17항목…
 - `9/19` gmp_hmi — [추가 7] HMI: static/hmi.js에 NUDGE/REFILL 사유 표시·이벤트 조회 코드 존재. 실제 CellStat…
 - `9/17` gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
 - `9/18` gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — passbox_done.capacity·reject_bin.cap…
 - `9/18` gmp_bringup — [정책 확인] qa.decision_timeout_s·interlock.timeout_s 필요 여부를 D-23 무기한 QA 대기…
-
-**오늘 마감 2건**
-
-- gmp_bringup — [9/20 우선·문서 정합성] docs/SOT.md D-08과 docs/diagrams/process_flow.drawio의 커…
-- gmp_bringup — [G1 이슈 정합성] docs/issues.md I-001의 “미측정” 설명을 9/18·19 측정 결과와 남은 판정/보정 후속으…
 
 > 이 표는 `python3 tools/todo_stats.py` 가 체크박스를 세어 다시 쓴다. 손으로 고치지 않는다.
 
@@ -70,6 +64,8 @@
 - [x] **[D-22]** 계약 v1.2 에 `Deviation.kind BATCH_OUT_OF_SPEC` 추가 — `VERIFY` 를 **계측 신뢰성**(Σ투입량 대조)과 **제품 판정**(레시피 총량 대조)으로 나눈다. **조장 합의 완료 (9/17)**. I-007 과 같이 처리 · 마감 9/18
 
 ## gmp_skills [A 스킬]
+- [ ] **[G2 기구 점검·내일 우선]** 손가락–그리퍼 본체 연결부의 열림 시 달그락거림·체결 상태·좌우 유격을 강사/장비 담당자와 확인. 백래시 여부는 미확정. 동일 60 mm 명령에서 닫힘 실측 평균 51.0 mm, 열림 평균 55.9 mm로 방향 차이 4.9 mm. 점검 및 운전 가능 확인 전 추가 실물 구동·보정 적용 보류 · 마감 9/21
+- [ ] **[G2 방향별 보정 후보]** 아래 실측표를 원시 근거로 보존. 기구 점검 후 운영 파지력을 고정하고 닫힘/열림별 구간 선형 보간 후보를 중간 목표에서 검증. 검증 범위 밖 외삽 금지, 실리콘 두께 이중 차감 금지. 보정값은 코드·설정에 미적용 · 마감 9/21
 - [ ] **[안전 복구 실물]** 벤더 자동 리셋·RobotError 수신·상태별 복구 전이·알람 중 재요청·복구 후 자동 동작 없음 확인. 가상 모드 성공은 실물 검증으로 인정하지 않음 · 마감 9/21
 - [x] **[HMI 안전 복구/A]** 기존 벤더 복구 서비스 호출, 상태 재확인, 안전 정지 차단·중복 요청 방지 구현. 서브에이전트 경합 재검토 및 gmp_skills 단위 테스트 198건 통과. C/D 연동은 각 담당 인계 항목으로 유지 · 마감 9/21
 - [x] **[관절 이송 구현]** `core/transfer.py`·`skill_node._run_transfer()`의 직선 이탈→관절 이송, 출발·도착·파지 검증, 취소/실패 시 이력 무효화 구현 및 단위 테스트 존재. 가상은 기존 직선 이동, 실물은 비활성/미등록 경로 거부. **실물 검증·활성화는 미완료** · 마감 9/20
@@ -77,17 +73,18 @@
 - [ ] **[반환 티칭·실물]** `stations.yaml` 원료 A/B/C의 `return_start_posx`·`return_end_posx` **총 6개** 입력(현재 null), 동일 원료통 낙하·왕복 간섭·잔량 확인. 사용자 검증 후 운용 · 마감 9/21
 - [ ] **[추가 7] nudge 감지**: 워커 유휴 루프·계량 settle·붓기 대기에서 `get_tool_force` 100 ms 폴링, 임계 초과 시 `CellEvent(NUDGE)` 발행. **코드·순수 테스트 완료(9/19), 남은 것은 G1에서 빈 그리퍼 정지 외력 σ로 임계 8 N 실물 검증 — 실물 보류** · 마감 9/18
 - [ ] **[추가 1] 폭 지문**: 스쿱 손잡이 폭 **A/B/C = 15.5/18/28 mm**로 확정(9/19), `stations.yaml`/`common.yaml` 반영 완료. **남은 것은 스쿱 제작 상태 확인, `SetGripper.final_width_mm` 정밀도 실측, C의 WRONG_TOOL 판정 연동 — 실물 보류** · 마감 9/18
-- [ ] `adapters/dsr_arm.py`: `DR_init`·`set_tool/tcp`·`movej/movel`·`get_tool_force`·`reset/get_workpiece_weight`·힘제어 짝 함수 **코드·단위 테스트 완료**. **남은 것은 현재 기동 수정본으로 가상 `movej` 통합 재검증** · 마감 9/16
+- [x] `adapters/dsr_arm.py`: `DR_init`·`set_tool/tcp`·`movej/movel`·`get_tool_force`·`reset/get_workpiece_weight`·힘제어 짝 함수 코드·단위 테스트 완료. **9/20 격리 도메인 71에서 가상 자가진단 후 `MoveToStation(safe)` HOMING→SUCCEEDED 확인** · 마감 9/16
 - [x] `adapters/rg2_gripper.py`: `modbus` 백엔드 (`/onrobot/sendCommand` 폭 정수, `/onrobot_joint_states` → 폭 mm), `virtual` 백엔드 (rad 문자열), 폭 추론 구현·단위 테스트 완료. **실물 Modbus 검증은 G2에서 별도 보류** · 마감 9/17
-- [ ] `nodes/skill_node.py`: 워커 스레드 + 큐, `MoveToStation`·`Scoop`·`Pour`·`WeighContainer`·`WeighHeld`, `SetGripper`·`MeasureForce`·`SafePose`, 피드백·결과 연결 구현. **`WeighHeld`·Scoop 스테이션 조회 결함은 코드·단위 테스트 완료(9/19), 남은 것은 진짜 가상 브링업 E2E** · 마감 9/17
+- [ ] `nodes/skill_node.py`: 워커 스레드 + 큐와 Action/Service 연결 구현. `WeighHeld`·Scoop 스테이션 조회 결함은 코드·단위 테스트 완료, 9/20 가상 자가진단·`MoveToStation(safe)` 성공. **남은 진짜 가상 E2E는 가상 그리퍼가 목표 폭까지 닫혀 `grip_inferred=false`이고 가상 계량이 `valid=false`라 PICK_CONTAINER에서 차단됨(I-005)** · 마감 9/17
 - [x] **G1 외력 분해능 측정 (I-001의 측정 범위)** — 9/18·19 실측 완료: 0.05 s 표본 조건 3σ=18.0 g → `min_resolvable_g=19`, 0.82 s 독립 표본 재측정 3σ=12.6/12.4 g. 근거 `gmp_dosing/calibration/`·`config/scale_reference.yaml`·SOT D-08. 넛지 임계 실물 검증·표본 간격 개선·3점 보정은 별도 미완료 항목이며 I-001 전체 해결을 뜻하지 않는다 · 마감 9/17
-- [ ] **G2 그리퍼 modbus 실물 확인 (Q-02)** — 안 되면 `dio` 백엔드 (Q-03 핀) · 마감 9/17
+- [ ] **G2 그리퍼 modbus 실물 확인 (Q-02)** — 9/20 연결·빈 그리퍼 개폐·실제 busy/grip 전달·완료 폭 안정 6회 확인. 남은 항목: 물체 파지·실제 파지력·안전 스위치·캘리퍼 폭 및 방향/힘별 보정 검증. 전체 완료 아님 · 마감 9/17
 - [x] **G3 `stations.yaml` 좌표 입력** — 실측 BASE 좌표 15곳(`workbench` 붓기 시작·끝, 원료 측정 바닥 접촉점 포함) 저장 및 YAML 파싱 확인 완료(9/19). **실제 접근 궤적·간섭 검증은 아래 실물 항목으로 보류** · 마감 9/17
 - [ ] `Scoop`: 컴플라이언스 진입 → Z 힘제어 하강 → `check_force_condition` 접촉 → 깊이 상한 → 들어올림 → 해제 짝 **본문 구현 완료**. `StationTable.for_material()`은 `material_N`만 선택하도록 수정·회귀 테스트 완료(9/19). **남은 것은 G4 실물 검증 — 실물 보류** · 마감 9/18
 - [x] `Pour`: `workbench.pour_start_posx → pour_end_posx → pour_start_posx` 티칭 경로로 **전량 붓기(fraction=1.0)** 구현. 기존 부분 붓기·털어내기는 폐기했으며 초과 스쿱은 `ReturnMaterial`로 처리한다. 관련 단위 테스트 존재, 실물 궤적·낙하·간섭 검증은 보류 · 마감 9/18
 - [x] `WeighContainer`: 파지 → 계량 자세 → `samples` 회 읽기 → 내려놓기 구현 완료. **실물 계량 검증은 보류** · 마감 9/18
 - [ ] 기동 자가진단: `get_current_tool/tcp` 불일치 기동 거부 구현 완료. **`collision_sensitivity` getter 확인·비교는 미구현** · 마감 9/21
-- [ ] I-004 이동 취소: `MoveToStation`·`SafePose`는 `amovej/amovel` + `check_motion` + `MoveStop` 구현 완료. **Scoop·Pour·Weigh 내부 블로킹 이동 취소는 미구현** · 마감 9/21
+- [x] **[I-004 구현]** `dsr_arm.movej_cancellable()`·`movel_cancellable()`·`wait_motion_cancellable()`·`stop_motion()`: 비동기 이동 감시와 취소·시간 초과 시 `MoveStop(DR_SSTOP)` 호출 구현. `skill_node`의 취소 콜백 연결로 Scoop·Pour·ReturnMaterial·Weigh 내부 직선 이동에도 적용. 관련 단위 테스트 존재 · 마감 9/21
+- [ ] **[I-004 실물 검증]** 이동 중 취소·시간 초과 시 감속/완전 정지, 후속 작업 차단, 인터락 `ENTER` 응답 지연 확인. 서비스 성공만으로 실제 정지를 판정하지 않으며 사용자 검증 후 이슈 종료 · 마감 9/21
 - [x] `gripper_state` 10 Hz 발행, 미끄러짐 감지(`slip_mm`) 구현·단위 테스트 완료 · 마감 9/21
 - [ ] **[I-009]** `skill_node` 의 `approach == 0` 숫자 비교를 `MoveToStation.Goal.ABOVE` 로 — 상수가 이제 Goal 절에 있어 쓸 수 있다 (급하지 않음) · 마감 9/21
 - [x] **`WeighHeld`**: 들고 있는 스쿱을 대응 `material_N.posx`로 이동해 계량하고 그 자리에 머문다. `measure_posx`는 재고 접촉 자세이며 계량에 쓰지 않는다. 빈 그리퍼 실패·`LIFT/SETTLE/MEASURE`·`subject=scoop` 및 단위 테스트 구현. 첫 호출의 BASE +Y 150 mm 인출 유지. 실물 궤적·간섭 검증은 보류 · 마감 9/21
@@ -118,7 +115,7 @@
 - [x] **[D-22]** `VERIFY` 이중 판정 구현 — ① `|net − Σtarget| > Σ(target×tol)` → `BATCH_OUT_OF_SPEC` ② `|net − Σ투입량| > min_resolvable_g` → `VERIFY_MISMATCH`. 기존 30 g 설명은 측정 전 값이며, 현 설정은 19 g·데모 총 허용 폭은 22.5 g이다. G1 이후 ② 유지 결정은 아래 항목 참조 · 마감 9/18
 - [x] **[D-22]** G1 결과로 **VERIFY ② 유효성 판단** — **확정**: `min_resolvable_g`(19) `< Σ(target×tol)`(22.5, 데모 레시피 200/150/100 g × 5 %) → **② 유지**. 표본 간격 조정 후 14 가 되어도 여전히 22.5 보다 작아 결론 불변. 코드는 이미 무조건 ②를 돌리므로 변경 없음 — `process_fsm.py` VERIFY 절에 근거 주석 추가 (SOT Q-11) · 마감 9/21
 - [x] `nodes/process_node.py`: 스킬 Action 6 · Service 3 연동(`ReturnMaterial` 포함), `grade/scoop_id` 없음, `Pour`·`WeighContainer` station 인자 없음, `SetGripper`, `QaDecision.deviation_id` 일치 검증 + 판정 후 같은 ID 재발행, `scoop_cycle` 발행, 원료 → `scoop_N` 해석(`core/station_map.py`), 인터락 ENTER(`safe_pose` → PAUSED → EXIT 후 같은 요청 재시도), 스킬 실패 → `FORCE_LIMIT` 1회 재시도 후 ERROR. **완주 확인은 가짜 skill_node 로 했다** (`test/fake_skill_node.py`, 6건) — 진짜 가상 브링업은 아래 항목 · 마감 9/18
-- [ ] **가상 브링업으로 레시피 1건 완주** — `ros2 launch gmp_bringup cell.launch.py mode:=virtual`에서 진짜 `skill_node` 상대 확인. **`WeighHeld`·`ReturnMaterial` 서버 및 공정 클라이언트 구현 완료**; 인터페이스·호출 패키지 재빌드 후 사용자 E2E 검증이 남았다. 반환 경로를 시험하려면 원료별 반환 좌표도 필요하다 · 마감 9/21
+- [ ] **가상 브링업으로 레시피 1건 완주** — 9/20 전체 6패키지 재빌드, 격리 도메인에서 진짜 `skill_node`의 서버 6개·서비스와 `process_node` 연결 및 가상 이동 확인. 데모 주문은 수락됐으나 가상 그리퍼의 물체 접촉 모델이 없어 `PICK_CONTAINER`의 `GRIP_FAIL` 4회 뒤 ERROR로 종료(I-005). 가상 계량도 `valid=false`이므로 완주용 가상 파지·계량 모델이 남음 · 마감 9/21
 - [ ] **[I-008]** `ScoopCycle` 6축 wrench 를 채울 경로 결정 — 계량 스킬이 `WeightReading` 만 돌려줘서 지금은 `*_wrench_valid=false` 다. (a) `WeighHeld`/`WeighContainer` 결과에 wrench 6축 추가(제일 쌈) (b) `weights` 로 옮김 (c) 필드 삭제. `DispenseResult.verdict` 에 `INVALID` 가 없는 것도 같이 본다. **G1 으로 wrench 가 쓸모 있는지 본 뒤** — 그 전에 계약을 또 흔들지 않는다 · 마감 9/21 (조장과)
 - [x] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) — 11종은 이미 있었고 `WRONG_TOOL`(추가 1, v1.2) 이 빠져 있었다. `docs/process_flow.md` 정책표대로 `(0, QA, QA)` 로 추가, `Deviation.msg` kind 12종과 1:1인지 확인하는 assert + `test_deviation.py` 14건 추가. 폭 지문 검출 로직 자체는 별개(A 와, 마감 9/21) · 마감 9/21
 - [x] 스테이션 물리 배치·테이프 표시 (하드웨어) — **9/18 완료**. 좌표 실측(G3)과 SOT D-24 등록이 이제 가능하다 · 마감 9/17
@@ -136,12 +133,12 @@
 
 ## gmp_hmi [D HMI·기록]
 - [ ] **[v1.4 안전 복구 인계]** 인증된 작업자·요청 ID·현재 상태·조치 확인을 C에 전달하는 복구 버튼/POST, 상태별 안내·감사 기록 구현. 기존 화면에 버튼 없음 · 마감 9/21
-- [ ] **[v1.3 인계]** `static/hmi.js`의 `RETURN_MATERIAL` 상태명 및 `ScoopCycle` outcome 5/6 표시 연결. `record_node`는 숫자 outcome·원본을 저장하므로 DB 스키마 변경 없이 반환 기록 표시·조회 확인 · 마감 9/21
+- [x] **[v1.3 인계]** `static/hmi.js`의 `RETURN_MATERIAL` 상태명 및 `ScoopCycle` outcome 5/6 표시 연결. 정적 계약 테스트를 추가했으며 `record_node`는 기존 숫자 outcome·원본 저장을 유지해 DB 스키마 변경 없음 · 마감 9/21
 - [x] `config/schema.sql` · `core/db.py`: 6 테이블, 쓰기·조회·KPI·JSON 내보내기, 단위 테스트 · 마감 9/16
 - [x] `nodes/record_node.py`: 구독 5종 → SQLite, 배치 종료 시 JSON 내보내기, `HMI_*` → audit · 마감 9/16
 - [x] v1.2 적용: 주문 메시지의 `grade/scoop_id`, `QaDecision.Request`의 `batch_id` 제거(웹 표시는 유지), `scoop_cycle` 구독·DB 테이블·JSON 내보내기 추가 · 마감 9/18
 - [x] `nodes/hmi_web_node.py` + `templates/index.html`: Flask 골격 — 주문·상태·계량 그래프·일탈 판정·인터락·이력·KPI·감사 추적 · 마감 9/16
-- [ ] **[연동 대기 — 9/20 갱신]** 가상 모드에서 **주문 → 상태 → QA 승인 → 이력 조회 한 바퀴** — HMI 시험 공정 검증 이력은 있으나 실제 C·A 통합 완주는 별도다. `WeighHeld` 미구현이라는 기존 장애 설명은 해소됐으며, 현재 인터페이스 재빌드 후 사용자 E2E 확인 대기 · 마감 9/17
+- [ ] **[연동 대기 — 9/20 갱신]** HMI 시험 공정에서 주문→상태→QA 승인/폐기→SQLite 이력·KPI까지 자동 검증 **17항목 통과**. 실제 C·A 통합은 인터페이스 재빌드와 가상 이동까지 확인했으나 가상 파지·계량 모델 부재로 레시피 완주가 차단됨(I-005) · 마감 9/17
 - [x] 다른 기기(폰·노트북)에서 HMI 접속 확인 — 9/18 휴대폰에서 `http://172.24.0.3:5002` 접속 성공 (ROS 통신 시험 서버) · 마감 9/18
 - [x] process_node 가 `BATCH_START` 이벤트에 product 를 싣게 C 와 합의 — **C 측 구현 완료 (9/18)**. `CellEvent(code='BATCH_START', text=product, batch_id=...)` 로 나간다 · 마감 9/18
 - [x] **[I-009]** `hmi_web_node.py` 의 `InterlockRequest.ENTER` 참조가 `AttributeError` 였다 — 계약 상수가 응답 절에 있었다. 상수를 요청 절로 옮기고 `InterlockRequest.Request.ENTER` 로 고쳤다 (9/18, C 가 처리) · 마감 9/18
@@ -155,8 +152,8 @@
 - [ ] 1분 영상 편집·PPT (조장과) · 마감 9/28
 
 ## gmp_bringup [조장]
-- [ ] **[9/20 우선·문서 정합성]** `docs/SOT.md` D-08과 `docs/diagrams/process_flow.drawio`의 커밋된 충돌 표시 해소. `tools/make_process_drawio.py`와 산출물 대조·XML 파싱, SOT의 오래된 nudge 미구현 문구 및 `docs/setup.md`의 FINISH→DONE/C 후속 인계 설명을 현 NUDGE_WAIT 구현과 맞춤. **이번 todo 정리에서는 해당 파일을 수정하지 않음** · 마감 9/20
-- [ ] **[G1 이슈 정합성]** `docs/issues.md` I-001의 “미측정” 설명을 9/18·19 측정 결과와 남은 판정/보정 후속으로 구분해 정리. 이번에는 측정 범위만 완료 처리하며 이슈 전체를 자동 종결하지 않음 · 마감 9/20
+- [x] **[9/20 우선·문서 정합성]** `docs/SOT.md` D-08과 `docs/diagrams/process_flow.drawio`의 VERIFY 판정을 현재 코드와 일치시켰다. `tools/make_process_drawio.py`와 산출물 대조·XML 파싱 완료, SOT의 오래된 nudge 미구현 문구 및 `docs/setup.md`의 FINISH→DONE 설명을 현 NUDGE_WAIT 구현과 맞춤 · 마감 9/20
+- [x] **[G1 이슈 정합성]** `docs/issues.md` I-001을 9/18·19 측정 결과, 0.82초 코드 반영 완료, 남은 실물 재측정·3점 보정으로 구분했다. 측정 범위만 완료 처리하며 이슈 전체는 열림 유지 · 마감 9/20
 - [ ] **[관절 이송 설정]** `stations.yaml: transfers` 2개 경로는 관절각 입력 완료·`enabled=false`, `common.yaml` 관절 속도·가속도는 0. 사용자 경로 검증과 값 확정 후 활성화. 추가 보호 목적지 진입 경로는 별도 티칭·등록 필요 · 마감 9/21
 - [x] `cell.launch.py` — 벤더 브링업 include + 우리 노드 4개 (ns `cell`), `mode`/`host`/`vel_scale` 인자 · 마감 9/16
 - [x] `params/common.yaml` · `stations.yaml`(placeholder) · `recipes/demo_batch.yaml` · 마감 9/16
@@ -167,3 +164,21 @@
 - [ ] **[9/18 확정]** `common.yaml` 에 회수 용량 추가 — `passbox_done.capacity`·`reject_bin.capacity`, 도달 시 인터락 요청 · 마감 9/18
 - [ ] **[정책 확인]** `qa.decision_timeout_s`·`interlock.timeout_s` 필요 여부를 D-23 무기한 QA 대기 결정 및 `docs/interfaces.md` §4와 대조. 키는 현재 없으며, 기존 TODO만 근거로 타임아웃을 추가하지 않는다. QA 대기 정책과 인터락 요청 응답 제한을 구분해 조장이 문서를 정리 · 마감 9/18
 - [ ] BRD v1.0 · SDD v1.0 (`docs/spec/`) · 마감 9/28
+
+
+### G2 캘리퍼 측정 기록 · 9/20 · 보정 미적용
+
+실측은 **실리콘 골무 장착 상태의 안쪽 표면 사이 간격**이다. 사용자가 언급한 실리콘 두께 합계 2 mm는 이미 실측에 포함되므로 다시 빼지 않는다. 센서 열은 offset 포함 폭(`gwdf/10`), 명령 파지력은 40 N 조건이다. 장치 offset 2.0 mm, `ggwd−gwdf=4.0 mm`와 실리콘 두께는 서로 다른 정보다.
+
+| 방향 | 명령 폭 mm | 센서 폭 mm | 사용자 실측 mm | 보정 후보용 대표 실측 mm |
+|---|---:|---:|---|---:|
+| 닫힘 | 40 | 37.7 | 30.8 | 30.8 |
+| 닫힘 | 60 | 57.8 | 50.8 / 51.2 | 51.0 |
+| 열림 | 60 | 61.9 | 55.8 / 56.0 | 55.9 |
+| 열림 | 80 | 81.5 | 75.2 | 75.2 |
+| 열림 | 100 | 100.9 | 94.0 | 94.0 |
+
+- 임시 후보는 위 **명령→실측 대응점**을 방향별로 보간하고, 원하는 실제 간격에 대해 역으로 명령을 구하는 방식이다. 센서 표시 보정과 구동 명령 보정을 혼용하지 않는다.
+- 닫힘 60 mm 반복 범위 0.4 mm, 열림 60 mm 반복 범위 0.2 mm는 각 2회 관측값일 뿐 정밀도 보증이 아니다.
+- 열림 중 연결부 달그락거림 보고로 후보의 유효성은 미확정이다. 기구 점검 후 동일 조건 재측정이 먼저이며, 현재 자료로 자동 보정하지 않는다.
+- 마지막 확인 상태: 목표 60 mm 닫힘, 센서 57.8 mm, 사용자 실측 51.2 mm. 이 문서 갱신에서는 실물 명령을 보내지 않았다.
