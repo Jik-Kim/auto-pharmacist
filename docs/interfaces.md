@@ -69,7 +69,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 
 ### 초과 스쿱 반환 규칙 (v1.3)
 
-`순 스쿱량 > max(0, target_g - actual_g) + target_g × tol_pct / 100`이면 `Pour` 대신 `ReturnMaterial`을 요청한다. 경계값 이하는 전량 붓는다. 반환 성공 후 시도 한도 안에서 재스쿱하며, 실패 시 재스쿱으로 진행하지 않는다. 반환은 `actual_g`에 더하지 않고 `ScoopCycle.delivered_g=0`, `valid=false`로 기록한다. 반환 후 잔량은 새로운 빈 스쿱 영점으로 숨기지 않고 기존 tare를 유지해 다음 계량에 포함한다.
+`순 스쿱량 > max(0, target_g - actual_g) + target_g × tol_pct / 100`이면 `Pour` 대신 `ReturnMaterial`을 요청한다. 경계값 이하는 전량 붓는다. 반환 성공 후 반환 한도 안에서 재스쿱하며, 실패 시 재스쿱으로 진행하지 않는다. 반환은 붓기 시도 횟수를 소모하지 않는다 — 약통에 아무것도 넣지 않았으므로 같은 시도의 연장이다. 재스쿱은 `남은 목표량 / 방금 잰 초과 스쿱량` 을 담그기 깊이 힌트로 쓴다. 반환은 `actual_g`에 더하지 않고 `ScoopCycle.delivered_g=0`, `valid=false`로 기록한다. 반환 후 잔량은 새로운 빈 스쿱 영점으로 숨기지 않고 기존 tare를 유지해 다음 계량에 포함한다.
 
 ### 1.2 인터페이스별 방향과 필드
 
