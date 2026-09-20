@@ -11,9 +11,11 @@
 
 파라미터는 gmp_bringup/params/common.yaml 이 단일 출처. stations.yaml 경로는 파라미터 `stations_file`.
 
-TODO([A]): I-004 취소 — 워커가 Job.cancel 플래그를 movel 사이에서만 본다. 긴 movel 은 쪼갠다.
+종료 시 ROS 문맥을 유지한 채 워커에서 정지·힘제어 해제를 시도한다.
 """
 import queue
+import json
+import signal
 import math
 import threading
 import time
@@ -27,15 +29,17 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 
 from sensor_msgs.msg import JointState
+from dsr_msgs2.msg import RobotError
 from onrobot_rg_msgs.srv import SetCommand
 from gmp_interfaces.action import MoveToStation, ReturnMaterial, Scoop, Pour, WeighContainer, WeighHeld
 from gmp_interfaces.msg import CellEvent, GripperState, WeightReading
-from gmp_interfaces.srv import MeasureForce, SafePose, SetGripper
+from gmp_interfaces.srv import MeasureForce, SafePose, SetGripper, RecoverSafety
 from gmp_dosing.core.scale import ScaleConfig, WeightModel
 
 from gmp_skills.adapters.dsr_arm import DsrArm
 from gmp_skills.adapters.rg2_gripper import Rg2Gripper
 from gmp_skills.core.nudge import NudgeDetector
+from gmp_skills.core.recovery import recovery_step, STANDBY
 from gmp_skills.core.stations import StationTable
 from gmp_skills.core.transfer import MotionAnchor, joints_match, pose_matches, validate_start
 
@@ -110,11 +114,34 @@ class SkillNode(Node):
         self._q: 'queue.Queue[Job]' = queue.Queue()
         self._job_lock = threading.Lock()
         self._current: Job | None = None
-        threading.Thread(target=self._worker, daemon=True, name='dsr-worker').start()
-        startup = self._submit('startup', expect_tool=g('robot.tool_name'), expect_tcp=g('robot.tcp_name'))
-        if startup.error or not startup.result[0]:
-            raise RuntimeError(f'자가진단 실패 — 기동 거부: {startup.error or startup.result[1]}')
-        self.event('INFO', 'SELF_CHECK', f'OK {startup.result[1]}')
+        self._stopping = threading.Event()
+        self._worker_stopped = threading.Event()
+        self._cleanup_error = ''
+        self.shutdown_timeout_s = float(g('robot.shutdown_timeout_s'))
+        if not math.isfinite(self.shutdown_timeout_s) or self.shutdown_timeout_s <= 0:
+            raise ValueError('robot.shutdown_timeout_s는 유한한 양수여야 한다')
+        self.arm.cancel_requested = self._cancel_requested
+        self.arm.motion_timeout_s = self.motion_timeout_s
+        self._safety_latched = False
+        self._safety_reason = ''
+        self._safety_revision = 0
+        self._last_robot_state = -1
+        self._last_state_poll = float('-inf')
+        self._configured = False
+        self._recovery_requests = {}
+        self._recovery_inflight = False
+        self.state_poll_s = float(g('safety.state_poll_s'))
+        self.recovery_timeout_s = float(g('safety.recovery_timeout_s'))
+        self.recovery_cache_size = int(g('safety.recovery_cache_size'))
+        if (any(not math.isfinite(v) or v <= 0 for v in
+                (self.state_poll_s, self.recovery_timeout_s)) or self.recovery_cache_size <= 0):
+            raise ValueError('안전 조회·복구 설정은 유한한 양수여야 한다')
+        self._worker_thread = threading.Thread(target=self._worker, daemon=True, name='dsr-worker')
+        self._worker_thread.start()
+        self._ready = False
+        self._startup_job = Job('startup', {'expect_tool': g('robot.tool_name'),
+                                             'expect_tcp': g('robot.tcp_name')})
+        self._q.put(self._startup_job)
 
         # 서버 객체를 멤버로 유지해야 가비지 컬렉션 뒤에도 ROS 그래프에 계속 남는다.
         self._action_servers = [
@@ -136,6 +163,9 @@ class SkillNode(Node):
             '[ACTION_SERVERS_READY] move_to_station, scoop, pour, return_material, weigh_container, weigh_held')
         self.create_service(SetGripper, 'set_gripper', self._srv_set_gripper, callback_group=self.cb)
         self.create_service(MeasureForce, 'measure_force', self._srv_measure, callback_group=self.cb)
+        self.create_service(RecoverSafety, 'recover_safety', self._srv_recover, callback_group=self.cb)
+        self.create_subscription(RobotError, f"/{g('robot.id')}/dsr_controller2/error",
+                                 self._on_robot_alarm, 100, callback_group=self.cb)
         self.create_service(SafePose, 'safe_pose', self._srv_safe, callback_group=self.cb)
 
     # ── 공용 ────────────────────────────────────────────────────────────
@@ -181,6 +211,8 @@ class SkillNode(Node):
             self.event('WARN', 'GRIP_SLIP', f'폭 변화가 slip_mm를 초과함: width={m.width_mm:.2f} mm')
 
     def _observe_force(self, force6):
+        if self._cancel_requested():
+            raise RuntimeError('cancelled')
         if self._nudge_enabled and self._nudge.update(force6, self._now_s()):
             magnitude_n = math.sqrt(sum(float(v) ** 2 for v in force6[:3]))
             self.event('INFO', 'NUDGE', f'외력 nudge 입력 감지: |F|={magnitude_n:.2f} N')
@@ -207,48 +239,284 @@ class SkillNode(Node):
             time.sleep(min(0.1, max(0.0, end_s - self._now_s())))
 
     # ── 워커: 로봇 명령은 여기서만 ──────────────────────────────────────
+    def _latch_safety(self, reason, *, alarm=False):
+        # 콜백은 상태만 저장한다. 정지·복구 명령은 워커에서만 실행한다.
+        with self._job_lock:
+            changed = not self._safety_latched or reason != self._safety_reason
+            if changed or alarm:
+                self._safety_revision += 1
+            self._safety_latched = True
+            self._safety_reason = reason
+            self._motion_anchor = None
+            self._held_payload = 'unknown'
+            self._held_material_id = ''
+            self._scoop_extract_uncertain = True
+            if self._current and self._current.kind != 'startup':
+                self._current.cancel = True
+            self._drain_jobs_locked(f'SAFETY_STOP: {reason}')
+        if changed:
+            self.event('ERROR', 'ROBOT_SAFETY_STOP', json.dumps(
+                {'robot_state': self._last_robot_state, 'reason': reason}, ensure_ascii=False))
+
+    def _poll_safety(self, force=False):
+        if self.mode == 'virtual':
+            return
+        now = self._now_s()
+        if not force and now - self._last_state_poll < self.state_poll_s:
+            return
+        self._last_state_poll = now
+        try:
+            self._last_robot_state = self.arm.robot_state()
+        except Exception as exc:  # noqa: BLE001 — 조회 불가도 동작 허용 근거가 아니다.
+            self._last_robot_state = -1
+            self._latch_safety(f'로봇 상태 조회 실패: {exc}')
+            return
+        if self._last_robot_state not in (1, 2):
+            self._latch_safety(f'로봇 상태 {self._last_robot_state}: 작업자 복구 필요')
+
+    def _on_robot_alarm(self, msg):
+        if msg.level >= 3 or (msg.group == 5 and msg.level >= 2):
+            self._latch_safety(f'vendor alarm {msg.group}/{msg.code}: {msg.msg1}', alarm=True)
+
+    def _do_recover(self, job):
+        args = job.args
+        if self.mode == 'virtual':
+            return False, True, -1, '가상 모드의 안전 복구는 실물 복구 성공으로 처리하지 않습니다'
+        revision = self._safety_revision
+        state = self.arm.robot_state()
+        self._last_robot_state = state
+        if state != args['expected_state']:
+            return False, True, state, '로봇 상태가 요청 이후 변경됐습니다. 상태를 확인하고 새 요청을 보내세요'
+        step = recovery_step(state, args['operator_confirmed'])
+        if step.control is not None:
+            if self._stopping.is_set() or job.cancel:
+                raise RuntimeError('복구 요청 취소됨')
+            def dispatch(operation):
+                # 비동기 전송 순간만 잠근다. 응답 대기 중에는 알람 콜백이 실행돼야 한다.
+                with self._job_lock:
+                    if (self._safety_revision != revision or self._stopping.is_set()
+                            or job.cancel):
+                        raise RuntimeError('복구 명령 전 새 알람·종료·취소 발생')
+                    return operation()
+            self.arm.recover_control(step.control, self.recovery_timeout_s, dispatch)
+        deadline = self._now_s() + self.recovery_timeout_s
+        while True:
+            if self._stopping.is_set() or job.cancel:
+                raise RuntimeError('복구 요청 취소됨')
+            state = self.arm.robot_state()
+            self._last_robot_state = state
+            if state == step.target:
+                break
+            if self._now_s() >= deadline:
+                return False, True, state, '복구 후 기대 상태 미도달. 작업자 확인 필요'
+            time.sleep(self.state_poll_s)
+        if step.manual_required:
+            return False, True, state, '복구 모드 진입. 펜던트에서 원인 제거·자세 교정 후 새 복구 요청 필요'
+        # STANDBY에서도 남아 있는 힘제어 해제 실패를 숨기지 않는다.
+        self.arm.compliance_off()
+        if not self._configured:
+            self.arm.initialize()
+            ok, detail = self.arm.self_check(self.get_parameter('robot.tool_name').value,
+                                             self.get_parameter('robot.tcp_name').value)
+            if not ok:
+                raise RuntimeError(f'복구 후 자가진단 실패: {detail}')
+            self._configured = True
+        state = self.arm.robot_state()
+        with self._job_lock:
+            if (self._safety_revision != revision or self._stopping.is_set()
+                    or job.cancel or state != STANDBY):
+                return False, True, state, '복구 중 새 알람·정지·상태 변경 발생. 차단 유지'
+            self._safety_latched = False
+            self._safety_reason = ''
+            self._station_id = ''
+            self._motion_anchor = None
+            self._cartesian_ready = False
+            self._held_payload = 'unknown'
+            self._held_material_id = ''
+            self._pending_scoop_extract = False
+            # 자동 재개는 금지하고 이후 명시적 SafePose/현장 재설정을 요구한다.
+            self._scoop_extract_uncertain = True
+        return True, False, state, '로봇 복구 확인. 배치 재개·자세 이동은 수행하지 않았습니다'
+
+    def _srv_recover(self, req, res):
+        fingerprint = (req.operator_id, req.expected_state, req.operator_confirmed)
+        if not req.request_id.strip() or not req.operator_id.strip() or not req.operator_confirmed:
+            res.success, res.manual_required, res.robot_state = False, True, -1
+            res.message = '작업자·고유 요청 ID·원인 제거 확인이 필요합니다'
+            return res
+        with self._job_lock:
+            entry = self._recovery_requests.get(req.request_id)
+            if entry is None:
+                if self._recovery_inflight:
+                    res.success, res.manual_required, res.robot_state = False, False, self._last_robot_state
+                    res.message = '다른 복구 요청 처리 중입니다'
+                    return res
+                if len(self._recovery_requests) >= self.recovery_cache_size:
+                    res.success, res.manual_required, res.robot_state = False, True, -1
+                    res.message = '기동 세션 복구 요청 기록 상한 도달. 운영자 확인 필요'
+                    return res
+                entry = {'fingerprint': fingerprint, 'done': threading.Event()}
+                self._recovery_requests[req.request_id] = entry
+                self._recovery_inflight = True
+                owner = True
+            else:
+                owner = False
+        if entry['fingerprint'] != fingerprint:
+            res.success, res.manual_required, res.robot_state = False, True, -1
+            res.message = '같은 요청 ID의 내용이 다릅니다'
+            return res
+        if owner:
+            try:
+                # 복구 요청 자체도 동작 차단을 먼저 설정한다. 자동 리셋된 상태도 명시 확인한다.
+                self._latch_safety('HMI 안전 복구 요청')
+                job = self._submit('recover', operator_id=req.operator_id,
+                                   expected_state=req.expected_state,
+                                   operator_confirmed=req.operator_confirmed)
+                result = job.result if not job.error and job.result else (
+                    False, True, self._last_robot_state, job.error or '복구 결과 없음')
+                entry['result'] = result
+                entry['revision'] = self._safety_revision
+                self.event('INFO' if result[0] else 'WARN', 'ROBOT_SAFETY_RECOVERY', json.dumps(
+                    {'request_id': req.request_id, 'operator_id': req.operator_id,
+                     'success': result[0], 'manual_required': result[1],
+                     'robot_state': result[2], 'message': result[3]}, ensure_ascii=False))
+            finally:
+                entry.setdefault('result', (False, True, -1, '복구 처리 실패'))
+                entry.setdefault('revision', self._safety_revision)
+                with self._job_lock:
+                    self._recovery_inflight = False
+                    entry['done'].set()
+        elif not entry['done'].is_set():
+            res.success, res.manual_required, res.robot_state = False, False, self._last_robot_state
+            res.message = '동일 복구 요청 처리 중입니다. 같은 ID로 결과를 재조회하세요'
+            return res
+        result = entry['result']
+        with self._job_lock:
+            if result[0] and (entry['revision'] != self._safety_revision or self._safety_latched):
+                result = False, True, self._last_robot_state, '이전 복구 결과 이후 새 정지 발생. 새 요청 필요'
+        res.success, res.manual_required, res.robot_state, res.message = result
+        return res
+
+    def check_startup(self):
+        if self._ready or not self._startup_job.done.is_set():
+            return
+        job = self._startup_job
+        if job.cancel or job.error or not job.result or not job.result[0]:
+            raise RuntimeError(f'자가진단 실패 — 기동 거부: {job.error or job.result}')
+        self._ready = True
+        self.event('INFO', 'SELF_CHECK', f'OK {job.result[1]}')
+
+    def _cancel_requested(self):
+        if self._current and self._current.kind not in ('startup', 'recover'):
+            self._poll_safety()
+        return (self._stopping.is_set() or bool(self._current and self._current.cancel)
+                or (self._safety_latched and bool(self._current)
+                    and self._current.kind not in ('startup', 'recover')))
+
+    def _drain_jobs_locked(self, reason):
+        while True:
+            try:
+                job = self._q.get_nowait()
+            except queue.Empty:
+                return
+            job.cancel, job.error = True, reason
+            job.done.set()
+
+    def shutdown(self):
+        """DSR 호출은 워커에 맡기고 정해진 시간까지만 기다린다."""
+        with self._job_lock:
+            self._stopping.set()
+            if self._current:
+                self._current.cancel = True
+            self._drain_jobs_locked('skill_node shutdown')
+        self._worker_thread.join(self.shutdown_timeout_s)
+        stopped = self._worker_stopped.is_set()
+        if not stopped:
+            self._cleanup_error = '워커 종료 시간 초과: 정지·힘제어 해제 확인 불가'
+        if self._cleanup_error:
+            self.get_logger().error(self._cleanup_error)
+        return stopped and not self._cleanup_error
+
     def _submit(self, kind: str, feedback=None, **args) -> Job:
         job = Job(kind, args, feedback=feedback)
-        self._q.put(job)
+        with self._job_lock:
+            if self._stopping.is_set() or self._worker_stopped.is_set():
+                job.cancel, job.error = True, 'skill_node shutdown'
+                job.done.set()
+                return job
+            if self._safety_latched and kind != 'recover':
+                job.error = f'SAFETY_STOP: {self._safety_reason}'
+                job.done.set()
+                return job
+            if not self._ready:
+                job.error = '기동 자가진단 대기 중'
+                job.done.set()
+                return job
+            self._q.put(job)
         job.done.wait()
         return job
 
     def _worker(self):
-        while rclpy.ok():
-            try:
-                job = self._q.get(timeout=0.1)
-            except queue.Empty:
-                self._poll_nudge()
-                continue
-            with self._job_lock:
-                self._current = job
-            try:
-                if job.kind in ('scoop', 'pour', 'return_material', 'weigh', 'weigh_held', 'safe'):
-                    # 이 스킬들은 MoveToStation 밖에서 움직이므로 이전 출발 이력은 폐기한다.
-                    self._motion_anchor = None
-                if job.kind == 'weigh':
-                    self._held_payload = 'unknown'
-                    self._held_material_id = ''
-                job.result = getattr(self, f'_do_{job.kind}')(job)
-            except Exception as e:  # noqa: BLE001 — 로봇 에러는 전부 결과로 돌려준다
-                self._motion_anchor = None
-                self._held_payload = 'unknown'
-                self._held_material_id = ''
-                job.error = f'{type(e).__name__}: {e}'
-                self.event('ERROR', f'{job.kind.upper()}_FAIL', job.error)
-            finally:
-                # 취소 콜백과 완료 확정을 같은 잠금으로 묶어 마지막 도착 기록 경합을 막는다.
+        try:
+            while rclpy.ok() and not self._stopping.is_set():
+                try:
+                    job = self._q.get(timeout=0.1)
+                except queue.Empty:
+                    self._poll_safety()
+                    self._poll_nudge()
+                    continue
                 with self._job_lock:
-                    if job.cancel:
+                    self._current = job
+                    if self._stopping.is_set():
+                        job.cancel = True
+                try:
+                    if job.kind not in ('startup', 'recover'):
+                        self._poll_safety(force=True)
+                    if job.cancel or (self._safety_latched and job.kind not in ('startup', 'recover')):
+                        raise RuntimeError(f'SAFETY_STOP: {self._safety_reason}' if self._safety_latched else 'cancelled')
+                    if job.kind in ('scoop', 'pour', 'return_material', 'weigh', 'weigh_held', 'safe'):
                         self._motion_anchor = None
+                    if job.kind == 'weigh':
                         self._held_payload = 'unknown'
                         self._held_material_id = ''
-                    self._current = None
-                    job.done.set()
+                    job.result = getattr(self, f'_do_{job.kind}')(job)
+                except Exception as e:  # noqa: BLE001
+                    self._motion_anchor = None
+                    self._held_payload = 'unknown'
+                    self._held_material_id = ''
+                    job.error = f'{type(e).__name__}: {e}'
+                    if not self._stopping.is_set():
+                        self.event('ERROR', f'{job.kind.upper()}_FAIL', job.error)
+                finally:
+                    with self._job_lock:
+                        if job.cancel:
+                            self._motion_anchor = None
+                            self._held_payload = 'unknown'
+                            self._held_material_id = ''
+                        self._current = None
+                        job.done.set()
+        finally:
+            # 정지 요청 실패와 무관하게 두 힘제어 해제를 시도한다.
+            errors = []
+            for name in ('stop_motion', 'compliance_off'):
+                try:
+                    getattr(self.arm, name)()
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f'{name}: {exc}')
+            with self._job_lock:
+                self._stopping.set()
+                self._drain_jobs_locked('skill worker stopped')
+                self._cleanup_error = '; '.join(errors)
+                self._worker_stopped.set()
 
     def _do_startup(self, job: Job):
+        self._poll_safety(force=True)
+        if self._safety_latched:
+            return True, '안전 복구 필요 — 일반 동작 차단'
         self.arm.initialize()
-        return self.arm.self_check(job.args['expect_tool'], job.args['expect_tcp'])
+        result = self.arm.self_check(job.args['expect_tool'], job.args['expect_tcp'])
+        self._configured = bool(result[0])
+        return result
 
     def _require_scoop_extracted(self):
         if self._scoop_extract_uncertain:
@@ -500,9 +768,10 @@ class SkillNode(Node):
         max_force_n = 0.0
         insertion_mm = 0.0
         deadline_s = self._now_s() + float(p('safety.scoop_timeout_s').value)
+        completed = False
         try:
-            self.arm.compliance_on(list(p('safety.compliance_stx').value))
             try:
+                self.arm.compliance_on(list(p('safety.compliance_stx').value))
                 self.arm.force_z(float(p('safety.scoop_force_n').value))
                 while self._now_s() < deadline_s:
                     if job.cancel:
@@ -520,8 +789,10 @@ class SkillNode(Node):
                     time.sleep(0.05)
             finally:
                 self.arm.compliance_off()
+            completed = True
         finally:
-            self.arm.movel(above, self.vel_scale)
+            if completed and not job.cancel:
+                self.arm.movel(above, self.vel_scale)
         job.feedback and job.feedback('LIFT', contact_z is not None, max_force_n, insertion_mm)
         return {'contact_detected': contact_z is not None, 'max_contact_force_n': max_force_n,
                 'insertion_depth_mm': insertion_mm}
@@ -554,7 +825,7 @@ class SkillNode(Node):
                 raise RuntimeError('cancelled')
             completed = True
         finally:
-            if completed:
+            if completed and not job.cancel:
                 job.feedback and job.feedback('RETURN')
                 self.arm.movel(start, self.vel_scale)
         return True
@@ -585,7 +856,7 @@ class SkillNode(Node):
                 raise RuntimeError('cancelled')
             completed = True
         finally:
-            if completed:
+            if completed and not job.cancel:
                 job.feedback and job.feedback('RETURN')
                 self.arm.movel(start, self.vel_scale)
         return True
@@ -643,6 +914,7 @@ class SkillNode(Node):
         job.feedback and job.feedback('GRIP')
         grip_commanded = True
         reading = WeightReading()
+        completed = False
         try:
             ok, _, inferred = self.gripper.grip(float(p('gripper.cup_width_mm').value),
                                                 float(p('gripper.force_n').value), 3.0)
@@ -653,8 +925,9 @@ class SkillNode(Node):
             job.feedback and job.feedback('SETTLE')
             reading = self._measure_weight_reading(float(job.args['tare_g']), 'container')
             job.feedback and job.feedback('MEASURE')
+            completed = True
         finally:
-            if grip_commanded:
+            if completed and grip_commanded and not job.cancel:
                 job.feedback and job.feedback('PLACE')
                 self.arm.movel(pick_posx, self.vel_scale)
                 self.gripper.release(3.0)
@@ -802,10 +1075,8 @@ class SkillNode(Node):
         return res
 
     def _srv_safe(self, req, res):
-        while not self._q.empty():      # 대기 중인 Job 은 전부 버린다
-            j = self._q.get_nowait()
-            j.error, _ = 'cancelled by safe_pose', j.done.set()
         with self._job_lock:
+            self._drain_jobs_locked('cancelled by safe_pose')
             if self._current:
                 self._current.cancel = True
         job = self._submit('safe', reason=req.reason)
@@ -815,18 +1086,44 @@ class SkillNode(Node):
 
 
 def main(args=None):
-    rclpy.init(args=args)
-    node = SkillNode()
+    # SIGINT/SIGTERM에서 먼저 ROS 문맥이 종료되면 DSR 해제 응답을 받을 수 없다.
+    from rclpy.signals import SignalHandlerOptions
+    rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
+    exit_requested = threading.Event()
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    for sig in previous:
+        signal.signal(sig, lambda *_: exit_requested.set())
+    node = None
+    cleanup_failed = False
     ex = MultiThreadedExecutor(num_threads=4)
-    ex.add_node(node)            # DR_init 노드(node.arm.node)는 넣지 않는다 — D-02
     try:
-        ex.spin()
+        node = SkillNode()
+        ex.add_node(node)  # DR_init 노드는 워커만 spin한다.
+        while rclpy.ok() and not exit_requested.is_set():
+            node.check_startup()
+            ex.spin_once(timeout_sec=0.1)
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
-        node.arm.node.destroy_node()
-        rclpy.shutdown()
+        if node is not None:
+            cleanup_failed = not node.shutdown()
+            # 살아 있는 워커가 사용하는 노드를 먼저 파괴하지 않는다.
+            if node._worker_stopped.is_set():
+                callbacks_stopped = ex.shutdown(timeout_sec=node.shutdown_timeout_s)
+                if callbacks_stopped:
+                    node.destroy_node()
+                    node.arm.node.destroy_node()
+                    rclpy.try_shutdown()
+                else:
+                    cleanup_failed = True
+                    node.get_logger().error('콜백 종료 미확인: 사용 중인 노드를 파괴하지 않음')
+        else:
+            rclpy.try_shutdown()
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+        if cleanup_failed:
+            # 응답 없는 장치 호출은 Python에서 강제 취소할 수 없다. 정상 종료로 숨기지 않는다.
+            raise SystemExit(1)
 
 
 if __name__ == '__main__':

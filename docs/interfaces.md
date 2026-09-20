@@ -1,10 +1,12 @@
-# Interfaces — 계약 v1.3 초안 (2026-09-19)
+# Interfaces — 계약 v1.4 초안 (2026-09-20)
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
 > 현재 조장 1차 승인 상태다. **팀 채널 공유와 영향 담당 최소 2명 승인 전에는 확정 계약이 아니다.**
 
 > **v1.3 (9/19 팀 공유 완료, 담당 승인 대기):** `ReturnMaterial` Action과 `ScoopCycle.RETURNED=5/RETURN_FAILED=6`을 추가한다. `Pour.fraction`은 1.0만 지원하며, 초과 스쿱은 원료통에 반환 후 다시 퍼낸다. 스쿱 계량은 원료별 `material_N.posx`로 통일한다.
+
+> **v1.4 (9/20 사용자 전달 팀 합의·A 구현):** HMI→C→A 안전 정지 복구 경로를 추가한다. 아래 서비스 필드·이벤트·C/D 연동 상세는 영향 담당 검토 대상이다. 로봇 복구 성공은 배치 재개를 의미하지 않는다.
 
 정의 원본은 `ros2_ws/src/gmp_interfaces`. 이 문서는 의도·규칙·확정 값을 설명한다.
 
@@ -32,6 +34,7 @@
 | `srv/SetGripper` | process → skill. 열기/닫기와 폭·힘 설정 | `/cell/set_gripper`. 응답에 정지 폭과 파지 추론 |
 | `srv/MeasureForce` | process → skill. 정지 상태 외력 평균 | 로봇이 움직이는 중이면 `valid=false` |
 | `srv/SafePose` | process → skill. 안전 자세로 후퇴 | 인터락·에러 공통 |
+| `srv/RecoverSafety` | HMI → process → skill. 안전 정지 복구 | A `/cell/recover_safety`. C 중계 서비스는 `/cell/request_safety_recovery` 제안, C/D 미구현 |
 | `action/MoveToStation` | 스테이션 이동 (`ABOVE` 접근점 / `AT` 작업점) | 좌표는 `stations.yaml` 단일 출처 |
 | `action/Scoop` | 원료통에서 퍼올리기 | Feedback은 단계·접촉력·삽입 깊이, Result는 최종 접촉 여부·최대 힘·깊이 |
 | `action/Pour` | workbench의 용기에 전량 붓기 (`fraction=1.0`만 허용) | 목적지는 skill 설정의 `workbench`; `target_station`은 제거 |
@@ -208,3 +211,42 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 - **승인:** 팀 채널 공유 후 영향 담당 최소 1명의 추가 승인이 있어야 v1.2를 확정한다.
 
 **계약 파일 쓸 때** — `.action`/`.srv` 의 상수는 `---` 로 갈린 **그 상수가 설명하는 절**에 적는다. 뒤쪽 절에 적으면 `Feedback`·`Response` 에만 생성되어 정작 쓸 곳에서 `AttributeError` 가 난다 (I-009 에서 실제로 났다). 참조는 `MoveToStation.Goal.ABOVE` 처럼 **절 이름을 붙여** 쓴다.
+
+
+## 8. 안전 정지 복구 (v1.4 인계)
+
+사용자가 HMI 복구 요청 운영의 팀 합의를 확인했다. A 서비스는 `RecoverSafety.srv`, `/cell/recover_safety`다. HMI가 A를 직접 호출하지 않고 C가 현재 배치·실행 루프·권한을 확인한 뒤 전달한다. C 중계 엔드포인트 `/cell/request_safety_recovery`와 HMI `/recover`는 **인계 제안이며 아직 서버/버튼이 없다**.
+
+| 필드 | 의미 |
+|---|---|
+| `request_id` | 기동 세션 내 고유 문자열. 재전송은 동일한 전체 요청을 사용한다. A는 처리 중 중복도 한 번만 실행한다. 처리 중 중복/다른 요청은 즉시 success=false·manual_required=false로 응답해 콜백을 점유하지 않으며, 동일 ID로 결과를 재조회한다. 기록 상한에 도달하면 새 요청을 거부한다. |
+| `operator_id` | HMI가 인증 세션에서 채운 작업자. A 서비스 자체는 인증 서버가 아니며 C가 요청 권한을 검증한다. |
+| `expected_state` | 작업자가 확인한 두산 상태 정수. 현재 상태와 다르면 명령 없이 실패하고 새 상태를 돌려준다. |
+| `operator_confirmed` | 원인 제거·현장 복구 가능 조건 확인. RECOVERY에서는 필요한 자세 교정/펜던트 조치를 완료했다는 확인이다. |
+| `success` | 로봇 STANDBY 재확인·힘제어 해제·필요한 기동 자가진단 후 A 차단 해제. **배치 재개·안전 자세 도착·공정 IDLE 전환은 아니다.** |
+| `manual_required` | 현장 조치 또는 상태 재확인 후 새 요청 필요. 복구 모드 진입만 한 경우에도 true다. |
+| `robot_state` | 두산 상태 코드, 조회 불가/가상 미지원은 -1. |
+| `message` | 운영자 안내/실패 원인. 실패는 자동 재시도하지 않는다. |
+
+### 상태별 실행
+
+- STANDBY(1): 리셋 명령 없이 상태·해제 결과 확인. 벤더가 자동 리셋했더라도 사람의 이 요청 전에는 A 차단 유지.
+- SAFE_STOP(5): reset type=0(프로그램 정지) 후 control=2, STANDBY 확인.
+- SAFE_OFF(3): 작업자 확인 후 control=3, STANDBY 확인. STO/전원 차단 후 필요한 마스터링 등 펜던트 조치는 작업자가 확인해야 한다. Python 래퍼에 `check_robot_mastering`은 없다.
+- SAFE_STOP2(9)/SAFE_OFF2(10): control=4/5로 RECOVERY(8) 진입 확인 후 **success=false, manual_required=true**. 자동 자세 이동은 없다.
+- RECOVERY(8): 사람이 원인·자세를 교정한 뒤 새 요청으로 control=7, STANDBY 확인.
+- EMERGENCY_STOP(6), MOVING(2), TEACHING(4), 초기화/조회 불가 등은 복구 명령을 보내지 않는다. 무동력동작(control=6)·자동 DRL 재개도 호출하지 않는다.
+
+서비스 success=true만으로 판단하지 않는다. 벤더가 무조건 true로 응답하는 구현이므로 기대 상태를 직접 확인한다. `safety.recovery_timeout_s`는 서비스 응답 및 전이 관측 대기 설정이며, 기존 DSR 상태 조회 자체가 응답하지 않을 때의 강제 중단까지 보장하는 시간은 아니다.
+
+### 이벤트 및 C/D 담당 인계
+
+- A `CellEvent(ERROR, code='ROBOT_SAFETY_STOP')`, `text`는 JSON `{robot_state, reason}`. 기존 event 경로 사용. C는 ERROR 및 새 주문 차단으로 연결하고 일반 FORCE_LIMIT 1회 재시도에서 제외한다.
+- A `CellEvent(INFO/WARN, code='ROBOT_SAFETY_RECOVERY')`, `text`는 JSON `{request_id, operator_id, success, manual_required, robot_state, message}`. 동일 요청 재전송은 명령/이벤트를 반복하지 않는다. A는 배치를 소유하지 않아 `batch_id`는 빈 문자열이다.
+- C `process_node._on_event`, `_srv_submit`, 실행 루프: 안전 정지에서 실행·대기 및 새 주문을 차단한다. `_srv_submit`의 현재 ERROR 허용을 수정해야 한다. 명시적 복구 요청은 일반 스킬 재시도 경로와 분리한다. 기존 배치를 임의 재실행하지 말고 기록을 종료한 뒤 별도 시작 정책을 적용한다.
+- D `hmi_web_node.py`, `static/hmi.js`, `templates/index.html`: 인증된 작업자·요청 ID·기대 상태·조치 확인을 C에 전달하는 버튼/POST 추가, 복구 진행/수동 조치/실패 표시. HMI 감사 이벤트에 현재 배치·작업자·요청 ID·결과를 기록한다. HMI가 ROS 클라이언트 권한까지 인증하는 것은 아니므로 접근 통제는 배포 설정에도 달려 있다.
+- NUDGE·Interlock EXIT·controller STANDBY 관측만으로 안전 차단을 해제하지 않는다. 새 알람 뒤에는 과거 성공 응답을 재사용할 수 없다. A 복구 후에도 위치·파지 이력은 무효이므로 다음 공정 전에 명시적 안전 자세/현장 재설정을 수행한다.
+
+### 감지 한계
+
+A 워커는 작업 전·유휴·이동/계량 취소 확인 구간에서 상태를 조회하며 벤더 `/{robot.id}/dsr_controller2/error`도 수신한다. 콜백은 플래그/큐만 바꾸고 DSR 호출은 워커에 맡긴다. ERROR 알람 또는 안전 제어기 WARN 이상은 보수적으로 동작 차단한다. 상태·알람이 모두 유실된 순간 정지를 검출한다고 보장하지 않으며, 벤더 자체 자동 리셋 정책은 별도 실물 확인 대상이다. 가상 모드의 복구 요청은 성공 처리하지 않는다.

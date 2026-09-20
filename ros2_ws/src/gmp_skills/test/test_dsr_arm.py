@@ -21,7 +21,7 @@ def test_dr_init_names_are_not_class_name_mangled(monkeypatch):
     monkeypatch.setitem(sys.modules, 'DSR_ROBOT2', types.SimpleNamespace())
     monkeypatch.setitem(sys.modules, 'DR_common2', types.SimpleNamespace(posx=tuple, posj=tuple))
     monkeypatch.setitem(sys.modules, 'dsr_msgs2.srv',
-                        types.SimpleNamespace(MoveStop=object()))
+                        types.SimpleNamespace(MoveStop=object(), SetRobotControl=object()))
 
     DsrArm('dsr01', 'm0609', 'virtual', 60.0, 60.0)
 
@@ -290,3 +290,59 @@ def test_force_sampling_accounts_for_device_call_latency(latency):
     step = max(0.82, latency)
     assert starts == pytest.approx([0, step, 2*step])
     assert clock[0] == pytest.approx(2*step + latency)
+
+
+def test_internal_linear_move_obeys_worker_cancel():
+    arm = _arm()
+    arm.cancel_requested = lambda: True
+    arm.motion_timeout_s = 30
+    with pytest.raises(RuntimeError, match='cancelled'):
+        arm.movel([1]*6)
+    assert not arm.R.calls
+
+
+def test_rejected_force_release_is_not_reported_success():
+    arm = _arm()
+    arm.R.release_force = lambda: -1
+    with pytest.raises(RuntimeError, match='release_force failed'):
+        arm.compliance_off()
+    assert arm.R.calls[-1][0] == 'release_compliance_ctrl'
+
+
+@pytest.mark.parametrize('control', [2, 3, 4, 5, 7])
+def test_recovery_service_dispatch_and_stop_reset(monkeypatch, control):
+    arm = _arm()
+    sent = []
+    future = types.SimpleNamespace(done=lambda: True,
+                                   result=lambda: types.SimpleNamespace(success=True))
+    arm.node = object()
+    arm._SetRobotControl = types.SimpleNamespace(Request=types.SimpleNamespace)
+    arm._robot_control_cli = types.SimpleNamespace(
+        wait_for_service=lambda **_: True,
+        call_async=lambda req: sent.append(req.robot_control) or future)
+    monkeypatch.setattr('gmp_skills.adapters.dsr_arm.rclpy', types.SimpleNamespace(
+        spin_until_future_complete=lambda *args, **kwargs: None))
+    arm.recover_control(control, 1.0, lambda operation: operation())
+    assert sent == [control]
+    assert arm.R.calls == ([('set_safe_stop_reset_type', (0,), {})] if control == 2 else [])
+
+
+def test_recovery_service_timeout_cancels_future(monkeypatch):
+    arm = _arm()
+    cancelled = []
+    arm.node = object()
+    arm._SetRobotControl = types.SimpleNamespace(Request=types.SimpleNamespace)
+    arm._robot_control_cli = types.SimpleNamespace(
+        wait_for_service=lambda **_: True,
+        call_async=lambda req: types.SimpleNamespace(
+            done=lambda: False, cancel=lambda: cancelled.append(True)))
+    monkeypatch.setattr('gmp_skills.adapters.dsr_arm.rclpy', types.SimpleNamespace(
+        spin_until_future_complete=lambda *args, **kwargs: None))
+    with pytest.raises(TimeoutError):
+        arm.recover_control(3, 1.0, lambda operation: operation())
+    assert cancelled == [True]
+
+
+def test_backdrive_command_is_never_dispatched():
+    with pytest.raises(ValueError):
+        _arm().recover_control(6, 1.0, lambda operation: operation())

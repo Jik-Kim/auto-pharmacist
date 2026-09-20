@@ -14,7 +14,7 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 
 | ID | 항목 | 결정 |
 |---|---|---|
-| D-01 | 로봇 접근 | **`DSR_ROBOT2` 파이썬 API 만 쓴다** (9/16 교육 방식, `rokey/move.py`). 서비스 클라이언트를 직접 만들지 않는다. 네임스페이스 `dsr01`, 모델 `m0609`, `DR_init` → 노드 생성 → import 순서 |
+| D-01 | 로봇 접근 | **`DSR_ROBOT2` 파이썬 API 만 쓴다** (9/16 교육 방식, `rokey/move.py`). 일반 제어는 서비스 클라이언트를 직접 만들지 않는다. **9/20 사용자 승인 예외:** A `DsrArm`의 단일 워커에서 기존 `system/set_robot_control` 복구 서비스만 직접 호출한다(기존 MoveStop 직접 호출 유지). 벤더 수정은 없다. 네임스페이스 `dsr01`, 모델 `m0609`, `DR_init` → 노드 생성 → import 순서 |
 | D-02 | **DSR 호출 위치** | 교육 자료 「두산 ROS2 동작 Sequence」 3장 *Multithreaded* 구조를 따른다 — **메인 스레드는 spin, 작업 스레드가 `movej` 같은 블로킹 호출**. 한 가지를 더 조인다: `DSR_ROBOT2` 는 모든 호출에서 `rclpy.spin_until_future_complete(g_node, …)` 로 **`DR_init` 노드를 직접 spin** 하므로(`dsr_common2/imp/DSR_ROBOT2.py:635` 외 전부), 우리가 executor 로 spin 하는 노드는 **`DR_init` 노드와 별개의 노드**(`skill_node`, ns `cell`)여야 한다. `DR_init` 노드(ns `dsr01`)는 executor 에 넣지 않고 **워커 스레드 한 곳에서만 직렬 호출**한다. Action 콜백은 큐에 넣고 기다린다. 로봇을 만지는 노드는 `skill_node` 하나뿐. 스레드 매뉴얼: https://v2-manual.scroll.site/ko/v2-programming-manual/2.12.1/publish/thread |
 | D-03 | 공정 오케스트레이션 | **`core/process_fsm.py` 순수 Python 상태기계.** `py_trees`(apt 에 2.5.0 있음)는 쓰지 않는다 — 5일 예산에 새 프레임워크를 더하지 않고, 상태 전이표가 그대로 SDD 5장이 된다. `PROJECT_RULES.md` R9 의 "py_trees_ros 채택" 은 이 결정으로 **대체** |
 | D-04 | 그리퍼 제어 경로 | **기본 `modbus` 백엔드** — 기존 드라이버 `OnRobotRGControllerServer`(`~/ws_dsr`, 네임스페이스 `dsr01`)의 `/onrobot/sendCommand` 로 폭(1/10 mm 정수 문자열)을 보낸다. **폴백 `dio` 백엔드** — 9/16 교육의 `grip_test.py` 방식(`set_digital_output(1/2)`). 백엔드는 파라미터 `gripper.backend` 하나로 바꾼다. 가상 모드는 `gripper_virtual_node` 가 같은 서비스 이름을 받는다 |
@@ -130,3 +130,17 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 | 7.1 IO | `set_digital_output`, `get_digital_input` | 그리퍼 `dio` 백엔드 (D-04) | `wait_digital_input` 은 노출 안 됨 → 폴링 |
 
 > 이 표는 발표 자료의 「교육 내용 ↔ 구현」 슬라이드로 그대로 쓴다. 비어 있는 절이 없도록 설계했다.
+
+## 스킬 자체 종료 및 HMI 안전 복구 (9/20 작업)
+
+- 검증: 9/20 서브에이전트 종료·복구 경합 검토 후 gmp_skills 단위 테스트 198건, Python 문법 검사, gmp_interfaces·gmp_skills colcon 빌드 및 생성된 RecoverSafety 필드 확인 통과. 가상/실물 종료·복구 재현은 미수행.
+- 기동 자가진단 완료 전에는 일반 스킬과 SafePose 이동 요청을 거부한다. 자가진단은 비동기 작업이므로 완료 전에도 메인이 종료 신호를 처리한다.
+- PR #30의 process 종료 SafePose 요청은 유지한다. A는 자체 종료 시 신규·대기 작업을 차단하고 현재 작업에 취소를 전달한다. ROS 문맥과 DSR 노드는 워커의 정지·힘제어 해제 시도 뒤에 정리한다.
+- SIGINT/SIGTERM은 종료 요청으로 받고, DSR 호출은 기존 워커 한 곳에서만 수행한다. `robot.shutdown_timeout_s`는 종료 대기 한도이며, 초과/해제 실패를 성공으로 보고하지 않고 프로세스 종료 코드 1로 남긴다. 워커·콜백이 살아 있으면 사용 중인 노드를 파괴하지 않는다. 장치 호출이 응답하지 않으면 강제 종료까지 해제를 보장하지 못한다.
+- 스킬 내부 직선 이동도 비동기 이동·취소 감시를 사용한다. 종료·취소·실패 시 Scoop 복귀 및 용기 내려놓기·그리퍼 열기를 자동으로 이어가지 않는다.
+- 사용자 전달 팀 합의: 안전 정지 복구 요청은 HMI→C→A로 보낸다. 로봇 복구와 배치 재개는 별개이며 NUDGE/인터락 EXIT가 안전 정지 차단을 해제하지 않는다.
+- 현재 Python 래퍼는 `set_robot_control`을 노출하지 않지만 벤더 서비스는 존재한다. 9/20 사용자가 A 내부 단일 워커 직접 호출의 D-01 예외를 승인했다. 벤더의 성공 응답은 실제 전이를 보장하지 않으므로 복구 후 상태 확인이 필수다.
+- C/D 인계: 새 복구 요청 계약·인증된 작업자/요청 ID·중복 요청 처리, ERROR 주문 차단, 안전 정지의 FORCE_LIMIT 재시도 제외, 복구 안내·감사 기록. C/D 코드는 각 담당이 구현한다. 계약 v1.4 초안의 `RecoverSafety`와 이벤트를 구현하며 C/D 연결은 인계 상태다. 상태별 복구·응답 의미는 `docs/interfaces.md` 8절을 따른다.
+
+- A 복구는 상태별 control 2/3/4/5/7만 허용한다. 9/10→8은 수동 조치 필요로 반환하고, 조치 후 새 요청에서 8→1을 확인한다. 무동력동작·자동 프로그램 재개는 없다.
+- 감지 후 A 차단은 명시적 복구 요청으로만 해제한다. 실제 상태 조회 실패/새 알람/종료 경합은 실패로 남기며 벤더 success=true만 신뢰하지 않는다. 위치·파지 이력은 복구 후에도 폐기한다.
