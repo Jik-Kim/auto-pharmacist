@@ -788,3 +788,20 @@ def test_request_safety_recovery_rejects_missing_fields_without_calling_skill(ce
     r = _recover(col, request_id='', operator_confirmed=True)
     assert not r.success and r.manual_required
     assert not any(c.startswith('recover:') for c in fake.calls)
+
+
+def test_late_recovery_event_cannot_clear_new_safety_stop(cell):
+    import json
+    proc, fake, col = cell
+    fake.safety_stop('start', origin='recovery_request', request_id='old', operator_id='op')
+    assert _wait_until(lambda: proc._safety_events.request == ('old', 'op'))
+    old_revision = fake.safety_revision
+    fake.safety_stop('new alarm')
+    assert _wait_until(lambda: proc._safety_stop_reason == 'new alarm')
+    msg = CellEvent(code='ROBOT_SAFETY_RECOVERY', text=json.dumps(dict(
+        safety_session='fake-skill-session', safety_revision=old_revision,
+        request_id='old', operator_id='op', success=True, manual_required=False, robot_state=1)))
+    fake.pub_event.publish(msg)
+    assert _wait_until(lambda: any(e.code == msg.code and e.text == msg.text for e in col.events))
+    assert proc._safety_stop
+    assert not _submit(col, [('A', 100.0, 5.0)]).accepted

@@ -39,9 +39,14 @@ def reply():
 
 
 def order(process, **amounts):
-    req = Message(recipe=Message(product='시험', items=[Message(material_id=mid, target_g=float(amount), tol_pct=5.)
-                                                       for mid, amount in amounts.items()]))
-    return process._order(req, reply())
+    recipe = Message(batch_id='', product='시험', items=[
+        Message(material_id=mid, target_g=float(amount), tol_pct=5.)
+        for mid, amount in amounts.items()])
+    accepted = process._goal_batch(Message(recipe=recipe)) == 1
+    if not accepted:
+        return SimpleNamespace(accepted=False, message='Goal rejected')
+    started, message = process._start_batch(recipe)
+    return SimpleNamespace(accepted=started, message=message)
 
 
 def height(process, mid, value):

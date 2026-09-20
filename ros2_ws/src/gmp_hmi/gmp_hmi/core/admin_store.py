@@ -26,8 +26,8 @@ DEFAULT_SETTINGS = dict(inventory_material_ids=['A', 'B', 'C'],
 
 
 def _password_hash(password):
-    if not isinstance(password, str) or not 12 <= len(password) <= 128:
-        raise ValueError('비밀번호는 12~128자로 입력하세요')
+    if not isinstance(password, str) or not 10 <= len(password) <= 128:
+        raise ValueError('비밀번호는 10~128자로 입력하세요')
     salt = secrets.token_hex(16)
     derived = hashlib.pbkdf2_hmac('sha256', password.encode(), bytes.fromhex(salt), 600000)
     return f'pbkdf2_sha256$600000${salt}${derived.hex()}'
@@ -186,7 +186,7 @@ def main():
     store = AdminStore(args.path)
     if not store.setup_required():
         parser.error('이미 초기화되었습니다. 계정 변경은 관리자로 로그인한 뒤 진행하세요')
-    password = os.environ.get(args.password_env, '') if args.password_env else getpass.getpass('새 관리자 비밀번호(12자 이상): ')
+    password = os.environ.get(args.password_env, '') if args.password_env else getpass.getpass('새 관리자 비밀번호(10자 이상): ')
     if not args.password_env and password != getpass.getpass('비밀번호 다시 입력: '):
         parser.error('비밀번호가 일치하지 않습니다')
     try:

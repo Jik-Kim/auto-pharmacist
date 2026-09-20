@@ -1,7 +1,7 @@
 # 시연용 제형. 좌표·스쿱 ID는 stations.yaml이 material_id로 관리한다.
 # 1회 평균 40 g / 원료별 최대 3회 기준의 시험안. 실제 정밀도 검증 전용.
 # tol_pct 5.0 유지: 40 g의 ±2 g 성능은 실물 계량으로 별도 확인해야 한다.
-product: "시험 제형 A — 기본형"
+product: "레시피 1"
 items:
   - {material_id: A, target_g: 40.0, tol_pct: 5.0}
   - {material_id: B, target_g: 40.0, tol_pct: 5.0}

@@ -16,4 +16,4 @@ def test_fixed_recipe_catalog_uses_shared_loader_and_material_ids():
         recipe = load(str(directory / (name + '.yaml')))
         assert [(item.material_id, item.target_g) for item in recipe.items] == items
         assert all(item.tol_pct == 5.0 for item in recipe.items)
-        assert recipe.product.startswith('시험 제형 ')
+        assert recipe.product == f'레시피 {int(name[-2:])}'

@@ -6,7 +6,7 @@
 |---|---|
 | 운영 레시피 | 기본 경로는 `gmp_bringup/params/recipes`, C의 `recipe.load()` 사용 |
 | 시험 레시피 | `config/test_recipes/v4`의 3종. 40 g 단위는 시험용이며 실물 정밀도 검증 결과가 아님 |
-| 주문 | `SubmitOrder`에 전달하고 C의 수락 여부 사용. 운영 주문에 시험 재고 조건을 적용하지 않음 |
+| 주문 | `RunBatch.Goal(recipe)`로 전달하고 Goal 수락 여부를 사용. Feedback의 `state`·`last_result`와 최종 Result의 `success`·`items_done`·`deviations`·`result`·`message`를 계약 그대로 수신. 운영 주문에 시험 재고 조건을 적용하지 않음 |
 | QA | `QaDecision.Request(deviation_id, decision, operator_id)`, batch_id 전송하지 않음 |
 | 인터락 | Request의 ENTER/EXIT 사용. granted 응답 후 PAUSED 또는 QA 대기 DEVIATION에서 허가 표시. 배치 변경·통신 만료·EXIT 시 해제 |
 | 종료 | C의 DONE/DONE 및 DONE/DISCARDED를 종료로 기록. QA 폐기 판정만으로 종료하지 않음 |

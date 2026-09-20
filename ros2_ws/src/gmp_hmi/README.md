@@ -24,7 +24,7 @@ source ~/auto-pharmacist/ros2_ws/install/setup.bash
 export ROS_DOMAIN_ID=88
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 export GMP_HMI_ADMIN_USER=admin
-read -rsp '시험 관리자 비밀번호(12자 이상): ' GMP_HMI_ADMIN_PASSWORD
+read -rsp '시험 관리자 비밀번호(10자 이상): ' GMP_HMI_ADMIN_PASSWORD
 printf '\n'
 export GMP_HMI_ADMIN_PASSWORD
 ros2 launch gmp_hmi hmi_comm_test.launch.py

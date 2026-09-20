@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""실제 ROS 시험 launch용 HTTP → 서비스 → 토픽 → SQLite 검증기.
+"""실제 ROS 시험 launch용 HTTP → RunBatch 액션/서비스 → 토픽 → SQLite 검증기.
 
 외부망/실제 /cell 조작을 막기 위해 loopback:5002, /hmi_test 및 시험 노드만 허용.
 관리자 비밀번호는 GMP_HMI_ADMIN_PASSWORD 환경변수로만 입력한다. 로그에는 출력하지 않는다.
@@ -108,7 +108,9 @@ class RosHttpCheck:
         nodes=set(self.ros('node','list').splitlines())
         need={'/hmi_test/'+n for n in ('hmi_test_process','hmi_web_node','record_node')}
         if not need<=nodes: raise CheckFailed('시험 노드 누락: '+str(need-nodes))
-        for name,kind in [('submit_order','SubmitOrder'),('qa_decision','QaDecision'),('interlock','InterlockRequest')]:
+        if self.ros('action','type','/hmi_test/run_batch') != 'gmp_interfaces/action/RunBatch':
+            raise CheckFailed('run_batch 타입 불일치')
+        for name,kind in [('qa_decision','QaDecision'),('interlock','InterlockRequest')]:
             if self.ros('service','type','/hmi_test/'+name)!='gmp_interfaces/srv/'+kind: raise CheckFailed(name+' 타입 불일치')
         for name,kind in [('state','CellState'),('weight','WeightReading'),('scoop_cycle','ScoopCycle'),('dispense_result','DispenseResult'),('deviation','Deviation'),('event','CellEvent'),('gripper_state','GripperState')]:
             if self.ros('topic','type','/hmi_test/'+name)!='gmp_interfaces/msg/'+kind: raise CheckFailed(name+' 타입 불일치')
@@ -125,9 +127,9 @@ class RosHttpCheck:
         data={'recipe':{'product':'BYPASS_TEST','items':[
             {'material_id':mid,'target_g':float(amount),'tol_pct':5.0}
             for mid,amount in requirements.items()]}}
-        output=self.ros('service','call','/hmi_test/submit_order','gmp_interfaces/srv/SubmitOrder',json.dumps(data))
-        if not re.search(r'\baccepted\s*[:=]\s*(?:False|false)\b',output):
-            raise CheckFailed('시험 공정의 직접 주문 거부를 확인하지 못함: '+output)
+        output=self.ros('action','send_goal','/hmi_test/run_batch','gmp_interfaces/action/RunBatch',json.dumps(data))
+        if not re.search(r'goal(?: was)? rejected',output,re.IGNORECASE):
+            raise CheckFailed('시험 공정의 직접 RunBatch Goal 거부를 확인하지 못함: '+output)
 
     def direct_refill_rejected(self, material_id='A'):
         output=self.ros('service','call','/hmi_test/test_refill_'+material_id,'std_srvs/srv/Trigger','{}')
@@ -205,20 +207,22 @@ class RosHttpCheck:
         """Transport-specific checks, overridden only by the explicit non-DDS harness."""
 
     def run(self):
-        if len(self.password)<12: raise CheckFailed('GMP_HMI_ADMIN_PASSWORD를 12자 이상으로 설정하세요.')
+        if len(self.password)<10: raise CheckFailed('GMP_HMI_ADMIN_PASSWORD를 10자 이상으로 설정하세요.')
         self.wait('HTTP 기동',lambda:self.get('/auth/session'))
         self.http('GET','/status',expected=401)
         self.login(self.admin,self.password)
         self.guard(); self.graph()
         self.wait('시험 재고 수신',lambda:self.guard().get('inventory',{}).get('fresh'))
         stock=self.stock()
-        self.wait('ROS 서비스 발견',lambda:all(self.guard()['diagnostics']['services'].get(k) for k in ('submit_order','qa_decision','interlock')))
+        self.wait('ROS RunBatch·서비스 발견',lambda:
+            self.guard()['diagnostics'].get('actions',{}).get('run_batch') and
+            all(self.guard()['diagnostics']['services'].get(k) for k in ('qa_decision','interlock')))
         if self.guard().get('state',{}).get('mode')!='IDLE' or self.get('/history'):
             raise CheckFailed('새 DB의 시험 세션이 필요합니다. launch를 종료 후 재실행하세요.')
         if any(abs(stock[mid]['capacity_g']-1000.0)>1e-6 or
                abs(stock[mid]['remaining_g']-amount)>1e-6 for mid,amount in [('A',80),('B',1000),('C',1000)]):
             raise CheckFailed("검증용 초기 재고가 필요합니다. 새 launch에 test_initial_g:='[80.0,1000.0,1000.0]' 를 지정하세요. 만충은 1,000g 그대로입니다.")
-        self.report('시험 네임스페이스·노드3·서비스6·토픽9 및 인증 전 접근 차단')
+        self.report('시험 네임스페이스·노드3·RunBatch 액션1·서비스5·토픽9 및 인증 전 접근 차단')
         catalog={r['name']:r for r in self.get('/recipes')}
         expected={'recipe-01':{'A':40,'B':40,'C':40},'recipe-02':{'A':80,'B':40},'recipe-03':{'A':40,'B':40,'C':80}}
         for name,items in expected.items():

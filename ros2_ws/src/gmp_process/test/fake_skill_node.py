@@ -39,6 +39,7 @@ class FakeSkillNode(Node):
         self.content = {}                       # 스쿱 스테이션 ID → 안에 든 원료 [g]
         self.in_cup = 0.0
         self.calls = []                         # 부른 순서 — 테스트가 본다
+        self.safety_revision = 0
         self.fail = {}                          # 스킬 이름 → 앞으로 실패시킬 횟수 (실패 경로 시험용)
         self.empty = 0                          # 앞으로 몇 번 contact_detected=false 로 답할지 (원료 소진 시험용)
         self.delay = {}                         # 스킬 이름 → 응답 전 대기 [s] (인터락 끼어들기 시험용)
@@ -89,19 +90,26 @@ class FakeSkillNode(Node):
         with self.lock:
             self.calls.append('nudge')
 
-    def safety_stop(self, reason='vendor alarm', robot_state=5):
+    def safety_stop(self, reason='vendor alarm', robot_state=5, **correlation):
         """A 가 SAFE_STOP 류를 감지했다고 알린다 (v1.4, docs/interfaces.md 8절)."""
+        self.safety_revision += 1
+        detail = dict(robot_state=robot_state, reason=reason, origin='robot_alarm',
+                      safety_session='fake-skill-session', safety_revision=self.safety_revision)
+        detail.update(correlation)
         m = CellEvent(level=CellEvent.ERROR, code='ROBOT_SAFETY_STOP',
-                     text=json.dumps({'robot_state': robot_state, 'reason': reason}, ensure_ascii=False))
+                     text=json.dumps(detail, ensure_ascii=False))
         m.header.stamp = self.get_clock().now().to_msg()
         self.pub_event.publish(m)
 
     def safety_recovery(self, success, manual_required, robot_state=1, message='',
                         request_id='r1', operator_id='op'):
         """A 의 복구 결과를 알린다 (v1.4). 배치 소유자가 아니라 batch_id 는 비운다."""
+        self.safety_stop('복구 시작', origin='recovery_request',
+                         request_id=request_id, operator_id=operator_id)
         level = CellEvent.INFO if success else CellEvent.WARN
         m = CellEvent(level=level, code='ROBOT_SAFETY_RECOVERY', text=json.dumps(
             {'request_id': request_id, 'operator_id': operator_id, 'success': success,
+             'safety_session': 'fake-skill-session', 'safety_revision': self.safety_revision,
              'manual_required': manual_required, 'robot_state': robot_state, 'message': message},
             ensure_ascii=False))
         m.header.stamp = self.get_clock().now().to_msg()

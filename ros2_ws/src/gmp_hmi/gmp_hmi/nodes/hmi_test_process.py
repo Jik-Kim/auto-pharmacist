@@ -1,19 +1,24 @@
 """ROS 통신 확인 전용 공정 대역. 실제 로봇/도징/스킬 코드는 호출하지 않는다.
 
-공식 gmp_interfaces 메시지와 서비스를 사용하며 /hmi_test에서만 시작한다.
+공식 gmp_interfaces 메시지·서비스·액션을 사용하며 /hmi_test에서만 시작한다.
 숫자와 안전 자세는 시험용으로 생성된다. 이 노드는 실제 C의 구현 검증이 아니다.
 """
 import math
 import json
+import threading
 import time
 import uuid
 
 import rclpy
+from rclpy.action import ActionServer, CancelResponse, GoalResponse
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
+from gmp_interfaces.action import RunBatch
 from gmp_interfaces.msg import CellEvent, CellState, Deviation, DispenseResult, GripperState, ScoopCycle, WeightReading
-from gmp_interfaces.srv import InterlockRequest, QaDecision, SubmitOrder
+from gmp_interfaces.srv import InterlockRequest, QaDecision
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from gmp_hmi.core.trial_inventory import TrialInventory
@@ -56,7 +61,11 @@ class HmiTestProcess(Node):
         self.pub_event = self.create_publisher(CellEvent, 'event', 100)
         self.pub_grip = self.create_publisher(
             GripperState, 'gripper_state', QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
-        self.create_service(SubmitOrder, 'submit_order', self._order)
+        self.action_group = ReentrantCallbackGroup()
+        self.run_batch = ActionServer(
+            self, RunBatch, 'run_batch', execute_callback=self._execute_batch,
+            goal_callback=self._goal_batch, cancel_callback=self._cancel_batch,
+            callback_group=self.action_group)
         self.create_service(QaDecision, 'qa_decision', self._qa)
         self.create_service(InterlockRequest, 'interlock', self._interlock)
         self.mode, self.step, self.station = CellState.IDLE, 'IDLE', 'test_safe'
@@ -65,6 +74,9 @@ class HmiTestProcess(Node):
         self.note = 'ROS 통신 시험 대기 · 실제 로봇 연결 없음'
         self.phase, self.active_scenario, self.pending = 'idle', 'normal', None
         self.item_duration, self.finish_result = 3.0, 'DONE'
+        self.items_done, self.deviation_count = 0, 0
+        self.last_result = DispenseResult()
+        self.batch_done = threading.Event()
         self.previous = None
         self._previous_tick = time.monotonic()
         self.create_timer(0.5, self._state)
@@ -118,63 +130,117 @@ class HmiTestProcess(Node):
         res.success, res.message = True, f'시험 원료 {material_id} 만충 보충 완료. 실제 장치 미연결 · 자동 재개하지 않습니다.'
         return res
 
+    def _state_message(self):
+        return self._stamp(CellState(
+            mode=self.mode, batch_id=self.batch_id, step=self.step,
+            item_index=self.index, station=self.station, note=self.note))
+
     def _state(self):
         self._publish_inventory()
-        self.pub_state.publish(self._stamp(CellState(
-            mode=self.mode, batch_id=self.batch_id, step=self.step,
-            item_index=self.index, station=self.station, note=self.note)))
+        self.pub_state.publish(self._state_message())
 
     def _event(self, code, text, level=CellEvent.INFO):
         self.pub_event.publish(self._stamp(CellEvent(
             batch_id=self.batch_id, code=code, text=text, level=level)))
 
-    def _order(self, req, res):
+    def _validate_batch(self, recipe):
         if self.mode not in (CellState.IDLE, CellState.DONE):
-            res.message = '시험 배치가 이미 실행 또는 대기 중입니다.'
-            return res
+            return False, '시험 배치가 이미 실행 또는 대기 중입니다.', None
         scenario = self.get_parameter('scenario').value
         if scenario not in ('normal', 'overfill', 'verify_mismatch', 'wrong_tool'):
-            res.message = 'scenario는 normal/overfill/verify_mismatch/wrong_tool을 지원합니다.'
-            return res
-        items = list(req.recipe.items)
+            return False, 'scenario는 normal/overfill/verify_mismatch/wrong_tool을 지원합니다.', None
+        items = list(recipe.items)
         if not 1 <= len(items) <= 255:
-            res.message = '원료 1~255개가 필요합니다.'
-            return res
+            return False, '원료 1~255개가 필요합니다.', None
         ids = [item.material_id for item in items]
         if len(ids) != len(set(ids)) or any(not mid for mid in ids):
-            res.message = '원료 ID가 비어 있거나 중복되었습니다.'
-            return res
+            return False, '원료 ID가 비어 있거나 중복되었습니다.', None
         if any(not math.isfinite(item.target_g) or item.target_g <= 0.0 or
                not math.isfinite(item.tol_pct) or item.tol_pct < 0.0 for item in items):
-            res.message = '목표량은 양수, 허용 오차는 0 이상이어야 합니다.'
-            return res
+            return False, '목표량은 양수, 허용 오차는 0 이상이어야 합니다.', None
         duration = float(self.get_parameter('item_duration_s').value)
         if not math.isfinite(duration) or duration < 2.0:
-            res.message = '시험 item_duration_s는 2초 이상이어야 합니다.'
-            return res
-        batch_id = 'TEST-' + uuid.uuid4().hex[:12].upper()
+            return False, '시험 item_duration_s는 2초 이상이어야 합니다.', None
         # 과다 투입 시나리오도 실제 생성할 시험량 전체를 미리 예약한다.
         requirements = {item.material_id: float(item.target_g * (
             1.10 if scenario == 'overfill' and i == min(1, len(items) - 1) else 1.0))
             for i, item in enumerate(items)}
+        if self.inventory.blocked_materials:
+            return False, ('원료 높이 부족: ' + ', '.join(self.inventory.blocked_materials) +
+                           ' · 해당 원료 만충 보충 완료가 필요합니다'), None
+        for material_id, amount in requirements.items():
+            stock = self.inventory.items.get(material_id)
+            if stock is None:
+                return False, f'시험 재고 미등록 원료: {material_id}', None
+            if stock['remaining_g'] + 1e-8 < amount:
+                return False, (f'시험 원료 부족: {material_id} 필요 {amount:g} g / '
+                               f'잔량 {stock["remaining_g"]:g} g · 만충 보충 후 주문하세요'), None
+        return True, '', (scenario, items, duration, requirements)
+
+    def _goal_batch(self, goal_request):
+        ok, message, _ = self._validate_batch(goal_request.recipe)
+        if not ok:
+            self._event('TEST_ORDER_REJECTED', message, CellEvent.WARN)
+            return GoalResponse.REJECT
+        return GoalResponse.ACCEPT
+
+    @staticmethod
+    def _cancel_batch(_goal_handle):
+        return CancelResponse.ACCEPT
+
+    def _start_batch(self, recipe):
+        ok, message, values = self._validate_batch(recipe)
+        if not ok:
+            self._event('TEST_ORDER_REJECTED', message, CellEvent.WARN)
+            return False, message
+        scenario, items, duration, requirements = values
+        batch_id = recipe.batch_id or 'TEST-' + uuid.uuid4().hex[:12].upper()
         try:
             self.inventory.reserve(requirements, batch_id)
         except ValueError as exc:
-            res.message = str(exc)
-            self._event('TEST_ORDER_REJECTED', res.message, CellEvent.WARN)
-            return res
+            self._event('TEST_ORDER_REJECTED', str(exc), CellEvent.WARN)
+            return False, str(exc)
         self.batch_id = batch_id
-        self.product, self.items, self.active_scenario = req.recipe.product, items, scenario
+        self.product, self.items, self.active_scenario = recipe.product, items, scenario
         self.item_duration, self.index = duration, 0
         self.pending, self.previous = None, None
+        self.items_done, self.deviation_count = 0, 0
+        self.last_result = DispenseResult()
+        self.batch_done.clear()
         self.delivered_total = 0.0
         self.mode, self.step, self.station = CellState.RUNNING, 'SELF_CHECK', 'test_safe'
         self.phase, self.elapsed, self.last_weight = 'start', 0.0, -1.0
         self.note = f'시험 주문 접수 · {scenario} · 실제 로봇 연결 없음'
         self._state()
-        res.accepted, res.batch_id = True, self.batch_id
-        res.message = '시험 배치 접수 완료. 실제 로봇은 움직이지 않습니다.'
-        return res
+        return True, '시험 배치 접수 완료. 실제 로봇은 움직이지 않습니다.'
+
+    def _batch_result(self, success, result, message):
+        return RunBatch.Result(
+            success=success, items_done=self.items_done,
+            deviations=self.deviation_count, result=result, message=message)
+
+    def _execute_batch(self, goal_handle):
+        ok, message = self._start_batch(goal_handle.request.recipe)
+        if not ok:
+            goal_handle.abort()
+            return self._batch_result(False, 'ABORTED', message)
+        while not self.batch_done.wait(0.25):
+            if goal_handle.is_cancel_requested:
+                self.inventory.release()
+                self.mode, self.step, self.phase = CellState.ERROR, 'ERROR', 'idle'
+                self.finish_result = 'ABORTED'
+                self.note = '시험 RunBatch 취소'
+                self._state()
+                goal_handle.canceled()
+                return self._batch_result(False, 'ABORTED', self.note)
+            goal_handle.publish_feedback(RunBatch.Feedback(
+                state=self._state_message(), last_result=self.last_result))
+        goal_handle.publish_feedback(RunBatch.Feedback(
+            state=self._state_message(), last_result=self.last_result))
+        goal_handle.succeed()
+        return self._batch_result(
+            self.finish_result == 'DONE', self.finish_result,
+            '시험 배치 종료 · ' + self.finish_result)
 
     def _qa(self, req, res):
         if self.inventory.blocked_materials:
@@ -281,6 +347,7 @@ class HmiTestProcess(Node):
         self.pub_cycle.publish(cycle)
 
     def _deviation(self, kind, text):
+        self.deviation_count += 1
         self.pending = Deviation(
             deviation_id='D-' + self.batch_id + '-1', batch_id=self.batch_id,
             material_id=self.items[self.index].material_id if kind != Deviation.VERIFY_MISMATCH else '',
@@ -328,6 +395,7 @@ class HmiTestProcess(Node):
                 if self.active_scenario == 'wrong_tool':
                     self._deviation(Deviation.WRONG_TOOL, '스쿱 폭 지문 불일치 시험')
                 self._state()
+                self.batch_done.set()
             return
         if self.phase == 'finish':
             if self.elapsed >= 1.0:
@@ -363,12 +431,14 @@ class HmiTestProcess(Node):
             self._cycle(item, portion, attempt, delivered_before, self.item_duration / attempts)
             delivered_before += portion
         self.delivered_total += actual
-        self.pub_result.publish(self._stamp(DispenseResult(
+        self.last_result = self._stamp(DispenseResult(
             batch_id=self.batch_id, material_id=item.material_id,
             target_g=float(item.target_g), actual_g=actual,
             error_pct=float((actual - item.target_g) / item.target_g * 100.0),
             verdict=DispenseResult.OVER if overfill else DispenseResult.OK,
-            attempts=attempts, duration_s=float(self.item_duration))))
+            attempts=attempts, duration_s=float(self.item_duration)))
+        self.pub_result.publish(self.last_result)
+        self.items_done += 1
         if overfill:
             self._deviation(Deviation.OVERFILL, '원료 10% 초과 투입 시험')
         else:
@@ -379,12 +449,17 @@ class HmiTestProcess(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = None
+    executor = None
     try:
         node = HmiTestProcess()
-        rclpy.spin(node)
+        executor = MultiThreadedExecutor(num_threads=4)
+        executor.add_node(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
+        if executor is not None:
+            executor.shutdown()
         if node is not None:
             node.destroy_node()
         rclpy.try_shutdown()
