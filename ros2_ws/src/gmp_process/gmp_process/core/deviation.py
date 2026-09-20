@@ -18,6 +18,13 @@ RULES = {
     'BATCH_OUT_OF_SPEC': (0, 'QA', 'QA'), # 용기 순량 vs 레시피 총 목표량 불일치 — 제품 규격 판정 (D-22 ①). QA 가 폐기 판단
     'SAFETY_SWITCH':   (1, 'RETRY', 'FORCED'),
     'FORCE_LIMIT':     (1, 'RETRY', 'FORCED'),
+    'WRONG_TOOL':      (0, 'QA', 'QA'),   # 스쿱·약통 폭 지문 불일치 — 교차오염 의심 (D-20 추가 1, v1.2)
+}
+
+# gmp_interfaces/msg/Deviation.msg 의 kind 상수와 1:1 대응해야 한다 — 여기 없는 kind 로 policy() 를 부르면 KeyError.
+assert set(RULES) == {
+    'OVERFILL', 'GRIP_FAIL', 'SLIP', 'SAFETY_SWITCH', 'SCOOP_EMPTY', 'MATERIAL_EMPTY', 'FORCE_LIMIT',
+    'TIMEOUT', 'WEIGH_INVALID', 'VERIFY_MISMATCH', 'BATCH_OUT_OF_SPEC', 'WRONG_TOOL',
 }
 
 

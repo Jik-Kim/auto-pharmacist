@@ -81,7 +81,7 @@
 - [ ] `core/dosing.py`: `decide(target_g, actual_g, tol_pct, attempts, history) → Decision(action, fraction)` — `OK/UNDER/OVER/TIMEOUT`, 보정 투입 시 `fraction` 축소 규칙 · 마감 9/16
 - [ ] `test/test_dosing.py`: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ 가 tol 보다 클 때 `valid=false` · 마감 9/17
 - [x] G1 σ 로 `scale.min_resolvable_g` 갱신 — **9/18 3σ = 18.0 g → 19**, `max_std_g 5`, tool_force `offset_g 260.2`. CSV·`core/calib.py`·`config/scale_reference.yaml` 로 재현 가능 (PR #22, C 가 이어서) · 마감 9/17
-- [ ] **[G1 후속]** 판정 근거 확정 (Q-11) — 원료별 ±5 g 는 3σ 18 g 로 못 가른다. 제안: 합격 판정은 VERIFY ①, 스쿱 계량은 붓기 비율용. 조장 확인 후 레시피 `tol_pct`·FSM 판정 위치 반영 · 마감 9/21
+- [x] **[G1 후속]** 판정 근거 확정 (Q-11) — **확정 (9/19, 조장 "제안 기준 타당")**: 합격 판정은 VERIFY ①(용기 순량 vs Σtarget), 스쿱 계량(`WEIGH_RESIDUAL`)은 초과 예방·붓기 비율용으로만. 코드 변경 없음 — 레시피 `tol_pct`·FSM 판정 위치가 이미 이 형태 · 마감 9/21
 - [ ] **[G1 후속]** skill_node `measure_force` 표본 간격 — 9/19 확인: 0.82 s 간격이면 중복 0 %·3σ 12.6, 0.05 s 면 43 % 중복·3σ 18. `period_s`(현재 0.05 고정) 를 `scale.period_s` 파라미터로 빼고 ≥ 0.5 s 로 (A 와). 그 뒤 `min_resolvable_g` 19 → 14 · 마감 9/21
 - [x] **[G1 후속]** `get_workpiece_weight` 경로 측정 — 9/19 두 경로 동시 측정. **tool_force 확정, workpiece 탈락** (reset 이 안 먹어 잔류 오차가 값을 지배). `common.yaml` method/gain/offset/max_std_g 반영, SOT D-07 · 마감 9/19
 - [ ] 스쿱 1회 퍼올림량 실측 → `dosing.scoop_nominal_g` (보정 투입 fraction 계산 근거) · 마감 9/18
@@ -93,11 +93,11 @@
 - [x] `test/test_process_fsm.py`: 정상 완주(6단계 순서), 붓기 전 계량으로 초과 예방, UNDER 보정 누적, OVER → QA → DISCARD(스쿱 반납 후), VERIFY 불일치 → QA, 계량 무효 재시도, 파지 실패, REFILL 재개 — 9건 · 마감 9/17
 - [x] **[D-22]** `_pour_fraction` → `gmp_dosing/core/dosing.py` 의 `pour_fraction(need_g, scooped_g, cfg)` 로 이관 완료. `weigh_scoop` 요청은 계약 v1.2 의 `WeighHeld` Action 에 대응한다 (매핑은 `process_node` 구현 시) · 마감 9/18
 - [x] **[D-22]** `VERIFY` 이중 판정 구현 — ① `|net − Σtarget| > Σ(target×tol)` → `BATCH_OUT_OF_SPEC` ② `|net − Σ투입량| > min_resolvable_g` → `VERIFY_MISMATCH`. **임계 제약 발견**: `min_resolvable_g < Σ(target×tol)` 가 아니면 ②는 죽은 검사다 (현재 30 > 22.5) → SOT Q-11 에 기록 · 마감 9/18
-- [ ] **[D-22]** G1 결과로 **VERIFY ② 유효성 판단** — `min_resolvable_g < Σ(target×tol)` 이면 ②를 유지하고, 아니면 **②(`VERIFY_MISMATCH`)를 제거**한다. 현재 값(30 vs 22.5)이면 ②는 한 번도 안 울린다. 있으나 마나 한 검사를 남기면 나중에 "왜 안 울리지" 로 또 헤맨다. **G1(A) · `min_resolvable_g` 갱신(B) 이후** · 마감 9/21
+- [x] **[D-22]** G1 결과로 **VERIFY ② 유효성 판단** — **확정**: `min_resolvable_g`(19) `< Σ(target×tol)`(22.5, 데모 레시피 200/150/100 g × 5 %) → **② 유지**. 표본 간격 조정 후 14 가 되어도 여전히 22.5 보다 작아 결론 불변. 코드는 이미 무조건 ②를 돌리므로 변경 없음 — `process_fsm.py` VERIFY 절에 근거 주석 추가 (SOT Q-11) · 마감 9/21
 - [x] `nodes/process_node.py`: 스킬 Action 5 · Service 3 연동, `grade/scoop_id` 없음, `Pour`·`WeighContainer` station 인자 없음, `SetGripper`, `QaDecision.deviation_id` 일치 검증 + 판정 후 같은 ID 재발행, `scoop_cycle` 발행, 원료 → `scoop_N` 해석(`core/station_map.py`), 인터락 ENTER(`safe_pose` → PAUSED → EXIT 후 같은 요청 재시도), 스킬 실패 → `FORCE_LIMIT` 1회 재시도 후 ERROR. **완주 확인은 가짜 skill_node 로 했다** (`test/fake_skill_node.py`, 6건) — 진짜 가상 브링업은 아래 항목 · 마감 9/18
 - [ ] **가상 브링업으로 레시피 1건 완주** — `ros2 launch gmp_bringup cell.launch.py mode:=virtual` 로 진짜 `skill_node` 상대 확인. **A 의 `weigh_held` Action 서버가 올라온 뒤에 가능하다** (지금은 `SCOOP_TARE` 에서 서버 없음 → FORCE_LIMIT → ERROR 로 끝난다) · 마감 9/21
 - [ ] **[I-008]** `ScoopCycle` 6축 wrench 를 채울 경로 결정 — 계량 스킬이 `WeightReading` 만 돌려줘서 지금은 `*_wrench_valid=false` 다. (a) `WeighHeld`/`WeighContainer` 결과에 wrench 6축 추가(제일 쌈) (b) `weights` 로 옮김 (c) 필드 삭제. `DispenseResult.verdict` 에 `INVALID` 가 없는 것도 같이 본다. **G1 으로 wrench 가 쓸모 있는지 본 뒤** — 그 전에 계약을 또 흔들지 않는다 · 마감 9/21 (조장과)
-- [ ] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) · 마감 9/21
+- [x] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) — 11종은 이미 있었고 `WRONG_TOOL`(추가 1, v1.2) 이 빠져 있었다. `docs/process_flow.md` 정책표대로 `(0, QA, QA)` 로 추가, `Deviation.msg` kind 12종과 1:1인지 확인하는 assert + `test_deviation.py` 14건 추가. 폭 지문 검출 로직 자체는 별개(A 와, 마감 9/21) · 마감 9/21
 - [x] 스테이션 물리 배치·테이프 표시 (하드웨어) — **9/18 완료**. 좌표 실측(G3)과 SOT D-24 등록이 이제 가능하다 · 마감 9/17
 - [ ] 고의 장애 주입 T6 (a)(b)(c) 재현 · 마감 9/22
 - [x] **[추가 7] NUDGE 전이**: `event` 구독 → 토글 → 루프 게이트. 인터락과 **게이트 하나**로 합쳤다 — 둘 다 걸리면 둘 다 풀려야 간다. 정지는 **그 자리에 서는 것**(안전 자세 아님)이고, 로봇 동작 요청 **앞**에서만 잡는다(`wait_qa`·`wait_interlock` 앞에서는 안 잡는다 — 판정을 못 받고 서 버린다). 테스트 6건. **9/19 리뷰 반영**: 세트 끝 `NUDGE_WAIT` — 반송(passbox_done·reject_bin) 뒤 `nudge_wait` 로 이동해 NUDGE 대기, 그 뒤 DONE/DISCARDED. 대기 중 주문 거부, 이벤트 `SET_DONE`/`SET_NEXT`. 테스트 +4 · 마감 9/18

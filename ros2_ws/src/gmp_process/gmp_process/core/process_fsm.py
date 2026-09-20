@@ -223,7 +223,9 @@ class ProcessFSM:
             #    순량과 Σ투입량이 함께 낮아 ②로는 안 잡힌다 (9/17 조장 합의)
             if abs(self.verify_net_g - self.target_total()) > self.batch_tol_g():
                 return self._deviate('BATCH_OUT_OF_SPEC', 'VERIFY')
-            # ② 계측 신뢰성 — 스쿱 누적 투입량 대비. 흘림·스쿱 풍량 편향을 잡는다
+            # ② 계측 신뢰성 — 스쿱 누적 투입량 대비. 흘림·스쿱 풍량 편향을 잡는다.
+            #    min_resolvable_g < Σ(target×tol) 일 때만 의미가 있다 — 아니면 ①이 먼저 걸려 ②는 안 운다.
+            #    G1 확정(9/19, SOT Q-11): 19 < 22.5(데모 레시피) → 살아있다. 표본 간격 조정 후 14 여도 결론은 같다.
             if abs(self.verify_net_g - self.dosed_total()) > self.scale.cfg.min_resolvable_g:
                 return self._deviate('VERIFY_MISMATCH', 'VERIFY')
             self.state = 'FINISH'
