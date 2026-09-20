@@ -124,9 +124,9 @@ ros2 action send_goal /cell/move_to_station gmp_interfaces/action/MoveToStation 
 - 초과 스쿱 반환·재시도와 투입량 기록 분리는 공정 패키지에 함께 반영했다. 새 `ReturnMaterial` Action이 있으므로 사용자는 가상·실물 검증 전에 인터페이스와 호출 패키지를 다시 빌드해야 한다.
 - 원료 A/B/C마다 반환 시작·종료 자세 2개씩 **총 6개 posx**가 필요하다. `material_N.return_start_posx/return_end_posx`에 입력한다. 붓기 자세를 임의 계산하지 않은 이유는 원료통 위치·입구·스쿱 기울기에 따라 낙하 지점과 간섭이 달라지기 때문이다.
 - HMI 담당 인계: 새 `RETURN_MATERIAL` 상태 표시명 및 outcome 5/6 표시를 연결한다. 기존 record_node는 숫자 outcome과 전체 원본을 저장하므로 DB 스키마 변경은 없다.
-- `process_fsm.py:FINISH`는 현재 DONE으로 끝난다. 약통 놓기·이탈 완료 후
-  `nudge_wait` AT(`approach: 1`) 요청을 추가하는 자동 전이는 C 담당 후속 작업이다.
-  `_carry()`의 passbox_done AT→ABOVE 후퇴 순서를 유지해야 하며, AT 관절각을 추가할 필요는 없다.
+- `process_fsm.py:FINISH`는 약통을 `passbox_done`에 놓고 ABOVE로 후퇴한 뒤 `NUDGE_WAIT`로 전이한다.
+  이어서 `nudge_wait` AT(`approach: 1`)로 이동해 NUDGE를 기다리고, 그 신호 뒤 DONE으로 끝난다.
+  `_carry()`의 passbox_done AT→ABOVE 후퇴 순서를 유지하며, passbox_done AT 관절각을 추가할 필요는 없다.
 - 기존 빈통 운반·스쿱 반납·폐기 경로는 이번 두 경로에 포함되지 않는다.
   보호 대상 목적지로 진입하는 추가 경로는 따로 티칭·등록해야 한다.
 
@@ -142,3 +142,38 @@ ros2 action send_goal /cell/move_to_station gmp_interfaces/action/MoveToStation 
 | `failed to create symbolic link … Is a directory` (msgs 패키지) | 일반 빌드가 복사해 둔 실제 폴더 위에 symlink 빌드가 링크를 만들려 함 | 해당 패키지의 `build/<pkg>` `install/<pkg>` 삭제 후 재빌드 |
 | `'distutils.core.setup()' was never called` (ament_python) | `setup.py` entry point 의 모듈명이 잘못됨 (하이픈 등). `python3 setup.py --dry-run --name` 으로 진짜 에러 확인 | 파일명·모듈명은 소문자·숫자·밑줄만 사용 |
 | `executable 'xxx.py' not found on the libexec directory` | 스크립트 원본에 실행 권한(+x) 없음. symlink 빌드는 원본 권한이 그대로 보임 | `chmod +x <스크립트>` (재빌드 불필요) |
+
+
+## G2 상태 비트 드라이버 (9/20)
+
+- 실물은 `gmp_bringup/robot.launch.py` 또는 이를 포함하는 `cell.launch.py`를 사용한다.
+  벤더 런치의 기존 OnRobot 서버 한 개만 `gmp_skills/rg2_status_driver`로 교체한다.
+  기존 서버와 확장 서버를 동시에 실행하지 않는다. `skill.launch.py` 단독은 드라이버를 띄우지 않는다.
+- 확장 서버는 벤더 원본을 상속하고 기존 50 Hz 상태 읽기 결과를 `/onrobot/status`
+  (`onrobot_rg_msgs/msg/OnRobotRGInput`)에 발행한다. 로봇 명령 요청은 계속 skill_node 한 곳이다.
+- Modbus 완료는 명령 후 busy 관측→idle 전이와 `gripper.completion_settle_s=0.2`초 폭 안정으로 확인한다. 이미 목표 근처인 무동작 명령은
+  명령 전후 목표 근처의 새 idle 표본으로 확인한다. 상태 누락·노후·안전 스위치는 실패 처리한다.
+  `grip_inferred` 필드명은 기존 계약을 유지하되 Modbus 값은 실제 grip 비트다.
+  가상·DIO 경로는 기존 의미를 유지한다. 힘 표시는 측정 힘이 아니라 추적한 명령값이다.
+- `GripperState.width_mm`는 기존 relative_width 기준을 유지한다. 원시 상태의 ggwd/gwdf/gfof는
+  0.1 mm 단위이며 메시지 정의상 ggwd는 offset 제외, gwdf는 offset 포함 폭이다.
+  물리 폭 기준은 캘리퍼 실측 전까지 확정하지 않는다. 방향별 보정값은 아직 적용하지 않았다.
+- Python 의존성: 기존 onrobot_rg_control과 `pymodbus==3.6.9`가 필요하다.
+  9/20 현장에서는 `/tmp/gmp-g2-venv`에 설치했고, 벤더 egg-link 인식 문제는
+  `ws_dsr/build/onrobot_rg_control`을 실행 환경의 PYTHONPATH에 추가해 해결했다.
+  `/tmp` 환경은 임시이며 재부팅 뒤 재구성이 필요할 수 있다.
+
+
+현장 임시 환경을 다시 사용할 때(기존 드라이버 종료 후):
+
+```bash
+source tools/env.sh
+export PYTHONPATH="/tmp/gmp-g2-venv/lib/python3.12/site-packages:/home/jonny/rokey_proj/Automation/ws_cobot_pjt/ws_dsr/build/onrobot_rg_control:$PYTHONPATH"
+ros2 launch gmp_bringup robot.launch.py mode:=real host:=192.168.1.100 gui:=false
+# 별도 터미널에서 source tools/env.sh 후:
+ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=0.2
+```
+
+벤더 comModbusTcp의 `busy` 키는 이름과 달리 register 268의 원시 상태 워드다.
+확장은 이 워드를 그대로 사용하고 인접 register를 grip/safety로 읽는 벤더 dict 필드는 무시한다.
+근거는 같은 벤더의 `_baseOnRobotRG.getStatus()` 원시 `status[10] → gsta` 매핑이다.

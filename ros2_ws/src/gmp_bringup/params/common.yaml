@@ -52,6 +52,7 @@
       state_timeout_s: 0.5          # 이 시간 동안 폭 표본이 없으면 busy=true, grip_inferred=false
       dio_pins: [1, 2]              # dio 백엔드: DO1 grip / DO2 release (grip_test.py)
       din_pins: [0]                 # [팀 확정 필요] 파지 완료 DI (Q-03). 0 = 없음
+      completion_settle_s: 0.2     # 실제 busy 해제 후 폭 안정 확인 시간
       dio_settle_s: 0.3             # DO1/DO2 전환 뒤 기구 동작 대기
 
     # ── 로봇 센서 계량 ───────────────────────────────────────────────

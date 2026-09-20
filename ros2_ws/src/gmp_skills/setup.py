@@ -22,6 +22,7 @@ setup(
     license='MIT',
     entry_points={
         'console_scripts': [
+            'rg2_status_driver = gmp_skills.nodes.rg2_status_driver:main',
             'skill_node = gmp_skills.nodes.skill_node:main',
         ],
     },

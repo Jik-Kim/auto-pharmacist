@@ -2,9 +2,9 @@
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
-> 현재 조장 1차 승인 상태다. **팀 채널 공유와 영향 담당 최소 2명 승인 전에는 확정 계약이 아니다.**
+> **9/20 사용자 확인: v1.2의 나머지 변경과 v1.3까지 팀 승인 완료.** 두 버전은 확정 계약이며, 아래 v1.4의 세부 검토 상태와 구분한다.
 
-> **v1.3 (9/19 팀 공유 완료, 담당 승인 대기):** `ReturnMaterial` Action과 `ScoopCycle.RETURNED=5/RETURN_FAILED=6`을 추가한다. `Pour.fraction`은 1.0만 지원하며, 초과 스쿱은 원료통에 반환 후 다시 퍼낸다. 스쿱 계량은 원료별 `material_N.posx`로 통일한다.
+> **v1.3 (9/19 팀 공유, 9/20 팀 승인 완료 확인·확정):** `ReturnMaterial` Action과 `ScoopCycle.RETURNED=5/RETURN_FAILED=6`을 추가한다. `Pour.fraction`은 1.0만 지원하며, 초과 스쿱은 원료통에 반환 후 다시 퍼낸다. 스쿱 계량은 원료별 `material_N.posx`로 통일한다.
 
 > **v1.4 (9/20 사용자 전달 팀 합의·A 구현):** HMI→C→A 안전 정지 복구 경로를 추가한다. 아래 서비스 필드·이벤트·C/D 연동 상세는 영향 담당 검토 대상이다. 로봇 복구 성공은 배치 재개를 의미하지 않는다.
 
@@ -12,7 +12,7 @@
 
 정의 원본은 `ros2_ws/src/gmp_interfaces`. 이 문서는 의도·규칙·확정 값을 설명한다.
 
-> v1.1은 현재 구현 기준이고, 이 문서의 v1.2 변경분은 승인 대기 중인 통합 초안이다.
+> 확정 계약 기준은 v1.3까지다. v1.4 추가분은 초안이며, 계약 확정은 실물 검증 완료를 의미하지 않는다.
 > **변경 절차:** 계약을 바꿔야 하면 **먼저 팀 채널에 알리고**, `gmp_interfaces` 와 이 문서를 **같은 커밋에서** 고친다. 리뷰는 영향받는 담당 전원, 최소 2명 승인 (PM 없음 — AGENTS 교차검수).
 
 ---
@@ -210,7 +210,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 - **A/조장:** `SetGripper` 서버와 계약 정의 완료. `Scoop` 본문에서 Feedback/Result 관측값을 실제 채우고, `GripperState`의 `busy/grip_inferred/safety_triggered`를 어댑터 실값에 연결하며 G1에서 `MeasureForce`의 tool/TCP 기준을 확인한다.
 - **C:** ✅ **9/18 완료** — `process_node` 가 스킬 8종을 계약대로 부른다. `grade/scoop_id` 없음, 원료 → `scoop_N` 은 `core/station_map.py` 가 `stations.yaml` 에서 풀고, `Pour`·`WeighContainer` 는 station 인자 없이 부르며, `SetGripper` 사용, `QaDecision.deviation_id` 불일치는 거부하고 판정 후 **같은 ID 로 재발행**한다. `scoop_cycle` 은 정상이면 `WEIGH_RESIDUAL` 뒤, 실패면 확정 단계에서 나간다. `CellState.station/note` 도 채운다. 확인: `test/test_process_node.py`(가짜 skill_node 로 레시피 1건 완주). **남은 것** — 6축 wrench 는 채울 경로가 없어 `*_wrench_valid=false` (I-008).
 - **D:** 주문 생성에서 `grade/scoop_id`, `QaDecision.Request`에서 `batch_id` 제거(웹 화면의 배치 표시는 유지), `scoop_cycle` 구독·DB 테이블·JSON 내보내기 추가.
-- **승인:** 팀 채널 공유 후 영향 담당 최소 1명의 추가 승인이 있어야 v1.2를 확정한다.
+- **승인:** 9/20 사용자가 v1.2 전체 및 v1.3의 팀 승인 완료를 확인했다. 계약은 확정하며 실물 검증·후속 연동은 별도 항목으로 관리한다.
 
 **계약 파일 쓸 때** — `.action`/`.srv` 의 상수는 `---` 로 갈린 **그 상수가 설명하는 절**에 적는다. 뒤쪽 절에 적으면 `Feedback`·`Response` 에만 생성되어 정작 쓸 곳에서 `AttributeError` 가 난다 (I-009 에서 실제로 났다). 참조는 `MoveToStation.Goal.ABOVE` 처럼 **절 이름을 붙여** 쓴다.
 
