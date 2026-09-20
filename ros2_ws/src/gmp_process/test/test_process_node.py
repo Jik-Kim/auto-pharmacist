@@ -694,3 +694,97 @@ def test_enter_during_nudge_wait_goes_to_safe_pose(cell):
     assert _lock(col, InterlockRequest.Request.EXIT).granted
     fake.nudge()
     assert _wait_done(proc) == 'DONE', _why(proc)
+
+
+def _call(col, srv_type, name, request, timeout=10.0):
+    cli = col.create_client(srv_type, name)
+    assert cli.wait_for_service(timeout_sec=5.0), f'{name} 서버가 없다'
+    fut = cli.call_async(request)
+    t0 = time.time()
+    while not fut.done() and time.time() - t0 < timeout:
+        time.sleep(0.02)
+    assert fut.done(), f'{name} 응답 없음'
+    return fut.result()
+
+
+def _recover(col, **kwargs):
+    from gmp_interfaces.srv import RecoverSafety
+    args = {'request_id': 'r1', 'operator_id': 'op', 'expected_state': 5, 'operator_confirmed': True}
+    args.update(kwargs)
+    return _call(col, RecoverSafety, 'request_safety_recovery', RecoverSafety.Request(**args))
+
+
+def test_safety_stop_blocks_new_submission(cell):
+    """로봇 안전 정지 중에는 배치를 시작하지 않는다 (docs/interfaces.md 8절)."""
+    proc, fake, col = cell
+    fake.safety_stop('joint limit', robot_state=5)
+    assert _wait_until(lambda: proc._safety_stop), '이벤트를 못 받았다'
+    r = _submit(col, [('A', 100.0, 5.0)])
+    assert not r.accepted and 'joint limit' in r.message, r.message
+    assert proc.fsm is None, '배치가 시작되지 않아야 한다'
+
+
+def test_safety_stop_skips_force_limit_retry(cell):
+    """안전 정지 중 스킬 실패는 FORCE_LIMIT 재시도 없이 바로 ERROR (재시도해도 skill_node 가 다시 거부할 뿐이다).
+
+    일반 실패(test_skill_failure_becomes_force_limit_then_error)는 같은 요청을 한 번 더 부르고
+    FORCE_LIMIT 일탈 2건을 남긴다 — 안전 정지는 재시도도, 일탈 기록도 남기지 않고 바로 끝낸다.
+    """
+    proc, fake, col = cell
+    fake.delay['move'] = 0.2            # 안전 정지 이벤트가 들어갈 틈을 만든다
+    fake.fail['move'] = 99
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: fake.calls), '첫 move 가 시작되지 않았다'
+    fake.safety_stop('external torque')
+    assert _wait_until(lambda: proc._safety_stop), '이벤트를 못 받았다'
+    assert _wait_done(proc) == 'ERROR', _why(proc)
+    assert not proc.fsm.deviations, proc.fsm.deviations
+
+
+def test_safety_stop_during_qa_wait_ends_batch(cell):
+    """QA 판정을 기다리는 중에 안전 정지가 오면 판정을 기다리지 않고 끝낸다."""
+    proc, fake, col = cell
+    fake.transfer = 2.0                              # 과투입 → OVERFILL → QA 대기
+    _submit(col, [('A', 10.0, 5.0)])
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    fake.safety_stop('collision while paused')
+    assert _wait_done(proc) == 'ERROR', _why(proc)
+
+
+def test_safety_recovery_success_unblocks_submission_not_resume(cell):
+    """복구 성공(수동 조치 불필요)은 새 주문만 받는다 — 끝난 배치를 되살리지 않는다."""
+    proc, fake, col = cell
+    fake.safety_stop('collision')
+    assert _wait_until(lambda: proc._safety_stop), '이벤트를 못 받았다'
+    fake.safety_recovery(success=True, manual_required=False, robot_state=1, message='복구 확인')
+    assert _wait_until(lambda: not proc._safety_stop), '차단이 안 풀렸다'
+    r = _submit(col, [('A', 100.0, 5.0)])
+    assert r.accepted, r.message                                               # 새 주문은 받는다
+    assert _wait_until(lambda: proc.fsm and proc.fsm.mode == 'RUNNING'), _why(proc)   # 배치가 실제로 돈다
+
+
+def test_safety_recovery_manual_required_keeps_block(cell):
+    """복구 모드 진입만 한 결과(manual_required)는 차단을 유지한다 — 새 요청이 또 필요하다."""
+    proc, fake, col = cell
+    fake.safety_stop('joint limit')
+    assert _wait_until(lambda: proc._safety_stop), '이벤트를 못 받았다'
+    fake.safety_recovery(success=False, manual_required=True, robot_state=8, message='복구 모드 진입')
+    time.sleep(0.3)
+    assert proc._safety_stop, '수동 조치가 필요하면 차단을 유지해야 한다'
+
+
+def test_request_safety_recovery_relays_to_skill(cell):
+    """HMI → 여기 → skill_node/recover_safety 중계 (docs/interfaces.md 8절)."""
+    proc, fake, col = cell
+    fake.recover_result = (True, False, 1, '로봇 복구 확인')
+    r = _recover(col, request_id='r7')
+    assert r.success and not r.manual_required and r.robot_state == 1
+    assert any(c == 'recover:r7' for c in fake.calls)
+
+
+def test_request_safety_recovery_rejects_missing_fields_without_calling_skill(cell):
+    """작업자 확인 없는 요청은 skill_node 를 부르지도 않고 거부한다."""
+    proc, fake, col = cell
+    r = _recover(col, request_id='', operator_confirmed=True)
+    assert not r.success and r.manual_required
+    assert not any(c.startswith('recover:') for c in fake.calls)
