@@ -34,7 +34,7 @@
 | `srv/SetGripper` | process → skill. 열기/닫기와 폭·힘 설정 | `/cell/set_gripper`. 응답에 정지 폭과 파지 추론 |
 | `srv/MeasureForce` | process → skill. 정지 상태 외력 평균 | 로봇이 움직이는 중이면 `valid=false` |
 | `srv/SafePose` | process → skill. 안전 자세로 후퇴 | 인터락·에러 공통 |
-| `srv/RecoverSafety` | HMI → process → skill. 안전 정지 복구 | A `/cell/recover_safety`. C 중계 서비스는 `/cell/request_safety_recovery` 제안, C/D 미구현 |
+| `srv/RecoverSafety` | HMI → process → skill. 안전 정지 복구 | A `/cell/recover_safety`. C 중계 서비스 `/cell/request_safety_recovery` 구현 완료(process_node, 9/20). D 의 HMI 버튼은 미구현 |
 | `action/MoveToStation` | 스테이션 이동 (`ABOVE` 접근점 / `AT` 작업점) | 좌표는 `stations.yaml` 단일 출처 |
 | `action/Scoop` | 원료통에서 퍼올리기 | Feedback은 단계·접촉력·삽입 깊이, Result는 최종 접촉 여부·최대 힘·깊이 |
 | `action/Pour` | workbench의 용기에 전량 붓기 (`fraction=1.0`만 허용) | 목적지는 skill 설정의 `workbench`; `target_station`은 제거 |
@@ -215,7 +215,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 
 ## 8. 안전 정지 복구 (v1.4 인계)
 
-사용자가 HMI 복구 요청 운영의 팀 합의를 확인했다. A 서비스는 `RecoverSafety.srv`, `/cell/recover_safety`다. HMI가 A를 직접 호출하지 않고 C가 현재 배치·실행 루프·권한을 확인한 뒤 전달한다. C 중계 엔드포인트 `/cell/request_safety_recovery`와 HMI `/recover`는 **인계 제안이며 아직 서버/버튼이 없다**.
+사용자가 HMI 복구 요청 운영의 팀 합의를 확인했다. A 서비스는 `RecoverSafety.srv`, `/cell/recover_safety`다. HMI가 A를 직접 호출하지 않고 C가 현재 배치·실행 루프·권한을 확인한 뒤 전달한다. C 중계 엔드포인트 `/cell/request_safety_recovery`는 **구현됐다** (`process_node._srv_recover_safety`, 9/20) — 필드가 비었거나 `operator_confirmed` 가 아니면 skill_node 를 부르지 않고 거부하고, 그 외는 그대로 전달해 A 의 응답을 돌려준다. 상태·중복 요청·경합의 최종 판단은 A 가 한다. HMI `/recover` 버튼은 **아직 없다** (D).
 
 | 필드 | 의미 |
 |---|---|
@@ -243,7 +243,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 
 - A `CellEvent(ERROR, code='ROBOT_SAFETY_STOP')`, `text`는 JSON `{robot_state, reason}`. 기존 event 경로 사용. C는 ERROR 및 새 주문 차단으로 연결하고 일반 FORCE_LIMIT 1회 재시도에서 제외한다.
 - A `CellEvent(INFO/WARN, code='ROBOT_SAFETY_RECOVERY')`, `text`는 JSON `{request_id, operator_id, success, manual_required, robot_state, message}`. 동일 요청 재전송은 명령/이벤트를 반복하지 않는다. A는 배치를 소유하지 않아 `batch_id`는 빈 문자열이다.
-- C `process_node._on_event`, `_srv_submit`, 실행 루프: 안전 정지에서 실행·대기 및 새 주문을 차단한다. `_srv_submit`의 현재 ERROR 허용을 수정해야 한다. 명시적 복구 요청은 일반 스킬 재시도 경로와 분리한다. 기존 배치를 임의 재실행하지 말고 기록을 종료한 뒤 별도 시작 정책을 적용한다.
+- C `process_node._on_event`, `_srv_submit`, 실행 루프 — **구현 완료(9/20)**: `ROBOT_SAFETY_STOP` 이 `_safety_stop` 플래그를 세우면 새 주문을 거부하고, QA·인터락·NUDGE 대기를 깨워 배치를 FORCE_LIMIT 재시도 없이 바로 ERROR 로 끝낸다(일탈 기록도 남기지 않는다). `ROBOT_SAFETY_RECOVERY` 가 `success` 이고 `manual_required` 가 아닐 때만 플래그를 내린다 — 끝난 배치는 되살리지 않고 새 주문부터 받는다. "`_srv_submit` 의 ERROR 허용 수정" 은 `mode=='ERROR'` 전체 차단이 아니라 이 플래그로 좁혔다: 일반 실패도 `mode='ERROR'` 로 끝나므로 전체를 막으면 새 주문을 영영 못 받는다.
 - D `hmi_web_node.py`, `static/hmi.js`, `templates/index.html`: 인증된 작업자·요청 ID·기대 상태·조치 확인을 C에 전달하는 버튼/POST 추가, 복구 진행/수동 조치/실패 표시. HMI 감사 이벤트에 현재 배치·작업자·요청 ID·결과를 기록한다. HMI가 ROS 클라이언트 권한까지 인증하는 것은 아니므로 접근 통제는 배포 설정에도 달려 있다.
 - NUDGE·Interlock EXIT·controller STANDBY 관측만으로 안전 차단을 해제하지 않는다. 새 알람 뒤에는 과거 성공 응답을 재사용할 수 없다. A 복구 후에도 위치·파지 이력은 무효이므로 다음 공정 전에 명시적 안전 자세/현장 재설정을 수행한다.
 
