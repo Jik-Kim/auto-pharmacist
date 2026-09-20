@@ -57,6 +57,9 @@ class StationMap:
 
     def check(self, material_ids) -> None:
         """레시피를 받자마자 부른다 — 배치 중간에 KeyError 로 서는 것보다 주문 거부가 낫다."""
-        missing = [m for m in material_ids if m not in self.scoops]
-        if missing:
-            raise KeyError(f'전용 스쿱이 없는 원료 {missing} — stations.yaml 의 scoop_N 을 확인하라')
+        missing_scoops = [m for m in material_ids if m not in self.scoops]
+        if missing_scoops:
+            raise KeyError(f'전용 스쿱이 없는 원료 {missing_scoops} — stations.yaml 의 scoop_N 을 확인하라')
+        missing_materials = [m for m in material_ids if m not in self.materials]
+        if missing_materials:
+            raise KeyError(f'원료통 스테이션이 없는 원료 {missing_materials} — stations.yaml 의 material_N 을 확인하라')

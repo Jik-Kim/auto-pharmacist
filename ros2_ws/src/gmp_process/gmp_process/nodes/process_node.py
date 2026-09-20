@@ -22,7 +22,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 
-from gmp_interfaces.action import MoveToStation, Pour, Scoop, WeighContainer, WeighHeld
+from gmp_interfaces.action import MoveToStation, Pour, ReturnMaterial, Scoop, WeighContainer, WeighHeld
 from gmp_interfaces.msg import (CellEvent, CellState, Deviation, DispenseResult, ScoopCycle,
                                 WeightReading)
 from gmp_interfaces.srv import (InterlockRequest, MeasureForce, QaDecision, SafePose, SetGripper,
@@ -89,6 +89,7 @@ class ProcessNode(Node):
             'move': ActionClient(self, MoveToStation, 'move_to_station', callback_group=self.cb),
             'scoop': ActionClient(self, Scoop, 'scoop', callback_group=self.cb),
             'pour': ActionClient(self, Pour, 'pour', callback_group=self.cb),
+            'return_material': ActionClient(self, ReturnMaterial, 'return_material', callback_group=self.cb),
             'weigh': ActionClient(self, WeighContainer, 'weigh_container', callback_group=self.cb),
             'weigh_scoop': ActionClient(self, WeighHeld, 'weigh_held', callback_group=self.cb),
         }
@@ -285,12 +286,13 @@ class ProcessNode(Node):
     def _reading(self, msg: WeightReading, subject: str) -> dict:
         """WeightReading → FSM 이 읽는 dict. 같은 값을 weight 토픽으로도 낸다."""
         m = WeightReading(gross_g=msg.gross_g, tare_g=msg.tare_g, net_g=msg.net_g, std_g=msg.std_g,
-                          samples=msg.samples, valid=msg.valid, station=msg.station or 'workbench',
+                          samples=msg.samples, valid=msg.valid, station=msg.station or 'unknown',
                           subject=subject)   # subject 는 어느 액션을 불렀는지 아는 이쪽이 채운다 (I-007 c)
         m.header.stamp = self.get_clock().now().to_msg()
         self.pub_weight.publish(m)
         return {'gross_g': float(m.gross_g), 'tare_g': float(m.tare_g), 'net_g': float(m.net_g),
-                'std_g': float(m.std_g), 'samples': int(m.samples), 'valid': bool(m.valid)}
+                'std_g': float(m.std_g), 'samples': int(m.samples), 'valid': bool(m.valid),
+                'station': str(m.station)}
 
     def _station_of(self, req: dict) -> str:
         s = req.get('station', '')
@@ -369,6 +371,10 @@ class ProcessNode(Node):
         if k == 'pour':
             r = self._call_act('pour', Pour.Goal(fraction=float(req.get('fraction', 1.0))))
             self._check('pour', r.success, r.message)
+            return {'success': True}
+        if k == 'return_material':
+            r = self._call_act('return_material', ReturnMaterial.Goal(material_id=req['material_id']))
+            self._check('return_material', r.success, r.message)
             return {'success': True}
         if k == 'weigh':
             r = self._call_act('weigh', WeighContainer.Goal(tare_g=float(req.get('tare_g', 0.0))))
@@ -467,6 +473,8 @@ class ProcessNode(Node):
                 self._item_t0 = self._now()
         if step == 'POUR' and req['kind'] == 'pour' and self._attempt:
             self._attempt.commanded_pour_fraction = float(req.get('fraction', 1.0))
+        if step == 'RETURN_MATERIAL' and req['kind'] == 'return_material' and self._attempt:
+            self._attempt._extra['return_requested'] = True
 
     def _after(self, step: str, req: dict, res: dict):
         a = self._attempt
@@ -480,6 +488,9 @@ class ProcessNode(Node):
             a.pre_pour = Reading(**res)
         elif step == 'WEIGH_RESIDUAL' and a is not None and res.get('valid'):
             a.post_pour = Reading(**res)
+        elif step == 'RETURN_MATERIAL' and req['kind'] == 'return_material' and a is not None:
+            # 반환 성공 뒤에만 닫는다. 실패는 _drain에서 RETURN_FAILED로 기록한다.
+            self._close_attempt('RETURNED')
         elif step == 'PICK_SCOOP' and req['kind'] == 'grip':
             self._scoop_tare = None                       # 원료가 바뀌면 빈 스쿱 무게도 다시 잰다
             self._grip_width = float(res.get('final_width_mm', 0.0))
@@ -494,7 +505,11 @@ class ProcessNode(Node):
 
         kinds = [d['kind'] for d in new_devs]
         outcome = next((DEV_TO_OUTCOME[k] for k in kinds if k in DEV_TO_OUTCOME), '')
-        if outcome:
+        return_failed = any(d['step'] == 'RETURN_MATERIAL' and d['action'] == 'FORCED' for d in new_devs)
+        if return_failed:
+            # 원료통 반환 자체가 실패하면 재시도·재투입 경로로 되돌리지 않는다.
+            self._close_attempt('RETURN_FAILED')
+        elif outcome:
             self._close_attempt(outcome)
         elif self._attempt is not None and self._attempt.post_pour is not None:
             self._close_attempt('COMPLETE')
@@ -555,7 +570,9 @@ class ProcessNode(Node):
         m.delivered_g = float(a.delivered_g())
         m.weigh_method = (ScoopCycle.WEIGH_METHOD_WORKPIECE if self.p('scale.method') == 'workpiece'
                           else ScoopCycle.WEIGH_METHOD_TOOL_FORCE)
-        m.weigh_pose_id = 'workbench'
+        # WeighHeld 결과가 실제로 측정한 material_N 위치를 갖는다. 고정 workbench 로
+        # 기록하면 스쿱 계량 자세 변경 뒤 감사 기록이 거짓이 된다.
+        m.weigh_pose_id = a.weigh_pose_id()
         m.tool_name, m.tcp_name = self.p('robot.tool_name'), self.p('robot.tcp_name')
         m.contact_detected = bool(a.contact_detected)
         m.max_contact_force_n = float(a.max_contact_force_n)
@@ -573,9 +590,9 @@ class ProcessNode(Node):
     @staticmethod
     def _reading_msg(r: Reading | None) -> WeightReading:
         if r is None:
-            return WeightReading(valid=False, subject='scoop', station='workbench')
+            return WeightReading(valid=False, subject='scoop', station='unknown')
         return WeightReading(gross_g=r.gross_g, tare_g=r.tare_g, net_g=r.net_g, std_g=r.std_g,
-                             samples=r.samples, valid=r.valid, subject='scoop', station='workbench')
+                             samples=r.samples, valid=r.valid, subject='scoop', station=r.station or 'unknown')
 
     def shutdown(self, timeout: float = 3.0):
         """실행 루프를 세우고 기다린다. QA·인터락 대기도 깨운다 (Ctrl+C·시험 정리 공통)."""

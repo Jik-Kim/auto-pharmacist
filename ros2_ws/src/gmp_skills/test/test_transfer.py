@@ -58,11 +58,63 @@ def test_duplicate_route_rejected():
         StationTable(data)
 
 
-def test_shipped_routes_are_disabled_without_fabricated_teaching():
+def test_shipped_routes_preserve_teaching_but_remain_disabled():
     params = Path(__file__).resolve().parents[2] / 'gmp_bringup' / 'params'
     table = StationTable.from_yaml(params / 'stations.yaml')
     assert set(table.transfers) == {('workbench', 'passbox_done'), ('passbox_done', 'nudge_wait')}
-    assert all(not r.enabled and not r.waypoints_posj for r in table.transfers.values())
+    assert all(not r.enabled for r in table.transfers.values())
+    cup = table.transfers[('workbench', 'passbox_done')]
+    assert cup.source_at_posx == (423, 93, 100, 90, -90, -90)
+    assert cup.source_above_posx == (423, 93, 200, 90, -90, -90)
+    assert cup.exit_posx == (423, 93, 300, 90, -90, -90)
+    assert cup.waypoints_posj[-1] == (9.34, 33.50, 119.09, 10.64, -63.01, 85.03)
+    empty = table.transfers[('passbox_done', 'nudge_wait')]
+    assert empty.exit_posx == (716.64, 71.32, 250, 180, -90, -90)
+    assert not empty.start_at_posj
+    assert empty.start_from == 'above' and empty.arrival == 'at'
+    assert empty.waypoints_posj == ((14.57, 35.24, 63.40, -0.12, 81.36, 104.70),)
+
+
+def test_above_only_route_can_enable_without_source_at_teaching():
+    data = teaching_data()
+    row = data['transfers'][0]
+    row.update(start_from='above', arrival='at')
+    del row['start_at_posj']
+    route = StationTable(data).transfers[('workbench', 'passbox_done')]
+    assert route.enabled and not route.start_at_posj
+
+
+@pytest.mark.parametrize('field,value', [('start_from', 'at'), ('arrival', 'direct'),
+                                         ('start_from', None), ('arrival', None)])
+def test_unknown_departure_or_arrival_policy_is_rejected(field, value):
+    data = teaching_data()
+    data['transfers'][0][field] = value
+    with pytest.raises(ValueError, match='start_from/arrival'):
+        StationTable(data)
+
+
+def test_relative_exit_tracks_reference_without_changing_orientation():
+    data = teaching_data()
+    row = data['transfers'][0]
+    del row['exit_posx']
+    row['exit_offset_mm'] = 200
+    data['stations']['workbench']['posx'] = [123, 45, 67, 90, -90, -90]
+    route = StationTable(data).transfers[('workbench', 'passbox_done')]
+    assert route.exit_posx == (123, 45, 267, 90, -90, -90)
+
+
+def test_relative_and_absolute_exit_cannot_conflict():
+    data = teaching_data()
+    data['transfers'][0]['exit_offset_mm'] = 200
+    with pytest.raises(ValueError, match='동시에'):
+        StationTable(data)
+
+
+def test_legacy_pick_route_requires_migration():
+    data = teaching_data()
+    data['transfers'][0]['source_pose_key'] = 'pick_posx'
+    with pytest.raises(ValueError, match='통합'):
+        StationTable(data)
 
 
 @pytest.mark.parametrize('change', ['pose', 'joint', 'taught', 'payload', 'unknown'])

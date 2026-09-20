@@ -161,7 +161,7 @@ def test_scoop_cycle_marks_missing_wrench(cell):
     assert c.delivered_g > 0.0
     assert c.scoop_tare.valid and c.pre_pour.valid and c.post_pour.valid
     assert not (c.tare_wrench_valid or c.pre_pour_wrench_valid or c.post_pour_wrench_valid)
-    assert c.weigh_pose_id == 'workbench'
+    assert c.weigh_pose_id == 'material_1'
 
 
 def test_skill_failure_becomes_force_limit_then_error(cell):

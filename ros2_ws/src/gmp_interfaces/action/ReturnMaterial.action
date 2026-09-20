@@ -1,0 +1,8 @@
+# 들고 있는 전용 스쿱의 원료를 동일 원료통으로 반환한다.
+# material_N.return_start_posx/return_end_posx가 미티칭이면 이동 전에 거부한다.
+string material_id
+---
+bool success
+string message
+---
+string phase # APPROACH | TILT | HOLD | RETURN

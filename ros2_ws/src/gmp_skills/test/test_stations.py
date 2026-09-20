@@ -14,6 +14,33 @@ def test_above_raises_z_only():
     assert t.get('workbench').above(t.approach_mm) == [350, 320, 250, 0, 180, 0]
 
 
+def test_station_specific_heights_do_not_change_other_stations():
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[2] / 'gmp_bringup/params/stations.yaml'
+    t = StationTable.from_yaml(path)
+    for name in ('passbox_empty', 'passbox_done', 'reject_bin'):
+        st = t.get(name)
+        assert st.posx[2] == 100
+        assert st.above(t.approach_mm) == st.posx[:2] + [150] + st.posx[3:]
+        assert st.exit() == st.posx[:2] + [250] + st.posx[3:]
+    wb = t.get('workbench')
+    assert wb.above(t.approach_mm) == [423, 93, 200, 90, -90, -90]
+    assert wb.exit() == [423, 93, 300, 90, -90, -90]
+    assert wb.posx == [423, 93, 100, 90, -90, -90]
+    assert 'pick_posx' not in wb.extra
+    assert t.get('material_1').above(t.approach_mm)[2] == 260
+    assert t.get('scoop_1').above(t.approach_mm)[2] == 110
+    assert 'posj' not in t.get('nudge_wait').extra
+    assert t.get('nudge_wait').extra['taught_at_posj'][0] == 14.57
+
+
+@pytest.mark.parametrize('height', [-1, float('nan'), float('inf'), True, '50'])
+def test_bad_relative_height_is_rejected(height):
+    st = _table().get('workbench')
+    with pytest.raises(ValueError):
+        st.offset_z(height)
+
+
 def test_missing_required():
     with pytest.raises(ValueError):
         StationTable({'stations': {'safe': {'posx': [0] * 6}}})

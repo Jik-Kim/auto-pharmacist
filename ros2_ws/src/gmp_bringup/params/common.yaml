@@ -55,14 +55,14 @@
 
     # ── 로봇 센서 계량 ───────────────────────────────────────────────
     scale:
-      method: workpiece             # workpiece | tool_force  (D-07)
+      method: tool_force            # 9/19 G1 실측 확정 (SOT D-07, PR #22)
       samples: 20
       settle_s: 1.0
-      gain: 1.0                     # 9/21 실제 저울 5점 비교로 확정
-      offset_g: 0.0
-      min_resolvable_g: 30.0        # [G1 실측 3σ 로 갱신 — I-001]
+      gain: 0.8859                  # 9/19 G1 두 점 보정
+      offset_g: 247.091
+      min_resolvable_g: 19.0        # 현재 표본 간격 기준 G1 실측
       max_std_g: 10.0
-      fz_sign: -1.0                   # 아래 방향 하중이 음수라는 가정 — G1에서 확인
+      fz_sign: -1.0                   # G1 확인: 아래 하중이 +Fz로 읽혀 -1로 뒤집는다
       simulated: false              # virtual 은 런치가 true 로
 
     # ── 도징 반복 조건 ───────────────────────────────────────────────
@@ -85,13 +85,7 @@
 
     # ── 붓기 궤적 ────────────────────────────────────────────────────
     pour:
-      tilt_deg: 110.0               # [실물 티칭 후 확정] 스쿱 기울임 각
-      tilt_axis: 4                  # posx 회전축 인덱스(3~5). [실물 티칭 후 확정]
       hold_s: 0.5
-      shake_amp_deg: 4.0            # 부분 붓기 털어내기 진폭
-      shake_period_s: 0.5
-      shake_atime_s: 0.2
-      shake_repeat: 2
 
     # ── 인터락 복귀 ──────────────────────────────────────────────────
     interlock:

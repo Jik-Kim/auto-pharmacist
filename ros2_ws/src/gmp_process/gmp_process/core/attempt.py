@@ -8,7 +8,8 @@
 """
 from dataclasses import dataclass, field
 
-OUTCOMES = ('COMPLETE', 'SCOOP_EMPTY', 'WEIGH_INVALID', 'POUR_FAILED', 'ABORTED')
+OUTCOMES = ('COMPLETE', 'SCOOP_EMPTY', 'WEIGH_INVALID', 'POUR_FAILED', 'ABORTED',
+            'RETURNED', 'RETURN_FAILED')
 
 
 @dataclass
@@ -20,6 +21,7 @@ class Reading:
     std_g: float = 0.0
     samples: int = 0
     valid: bool = False
+    station: str = ''
 
 
 @dataclass
@@ -42,6 +44,10 @@ class Attempt:
 
     def delivered_g(self) -> float:
         """용기에 실제로 들어간 양. 음수 원시차는 0 으로 접고 두 reading 에 원본을 남긴다."""
+        # 원료통으로 회수한 양은 약통 투입량이 아니다. 반환 전후 계량값이 있어도
+        # delivered_g 에 섞이면 batch 결과와 회수 기록이 모순된다.
+        if self.outcome in ('RETURNED', 'RETURN_FAILED'):
+            return 0.0
         if not (self.pre_pour and self.post_pour):
             return 0.0
         return max(0.0, self.pre_pour.net_g - self.post_pour.net_g)
@@ -50,6 +56,14 @@ class Attempt:
         """필수 계량 3건이 모두 있고 유효할 때만 학습에 쓸 수 있다."""
         rs = (self.scoop_tare, self.pre_pour, self.post_pour)
         return self.outcome == 'COMPLETE' and all(r is not None and r.valid for r in rs)
+
+    def weigh_pose_id(self) -> str:
+        """스쿱 계량이 실제로 수행된 자세. 실패 시도에도 가능한 마지막 측정 위치를 남긴다."""
+        if self.pre_pour is not None and self.pre_pour.station:
+            return self.pre_pour.station
+        if self.scoop_tare is not None and self.scoop_tare.station:
+            return self.scoop_tare.station
+        return 'unknown'
 
     def duration_s(self, now: float) -> float:
         return max(0.0, now - self.t0)

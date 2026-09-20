@@ -15,6 +15,7 @@ def setup(monkeypatch):
     module = _load_skill_node(monkeypatch)
     node = module.SkillNode.__new__(module.SkillNode)
     node.stations = StationTable(teaching_data())
+    node.mode = 'real'
     node.vel_scale = 0.2
     node.motion_timeout_s = 30
     node.transfer_joint_vel = 10
@@ -34,6 +35,7 @@ def setup(monkeypatch):
     node.arm = SimpleNamespace(pose=pose, joints=[1]*6)
     node.arm.current_posx = lambda: list(node.arm.pose)
     node.arm.current_posj = lambda: list(node.arm.joints)
+    node.joint_end_pose = lambda: node.stations.get('passbox_done').above(60)
     route = node.stations.transfers[('workbench', 'passbox_done')]
 
     def linear(target, scale, cancel, timeout):
@@ -51,7 +53,7 @@ def setup(monkeypatch):
         node.calls.append(('J', list(target), scale, kwargs))
         node.arm.joints = list(target)
         if tuple(target) == route.waypoints_posj[-1]:
-            node.arm.pose = node.stations.get('passbox_done').above(60)
+            node.arm.pose = node.joint_end_pose()
         node.after_move()
 
     node.after_move = lambda: None
@@ -175,6 +177,86 @@ def test_same_station_above_to_at_keeps_linear_motion(setup):
     assert [c[0] for c in node.calls] == ['L']
 
 
+@pytest.fixture
+def direct_setup(setup):
+    node, job, module = setup
+    data = teaching_data()
+    row = data['transfers'][0]
+    row.update(start_from='above', arrival='at', payload='empty')
+    del row['start_at_posj']
+    node.stations = StationTable(data)
+    node.arm.pose = node.stations.get('workbench').above(60)
+    node.arm.joints = [2]*6
+    node._motion_anchor = MotionAnchor('workbench', 0, tuple(node.arm.pose), (2,)*6)
+    node._held_payload = 'empty'
+    node.feedback_state.update(width_mm=100, grip_inferred=False)
+    node.joint_end_pose = lambda: list(node.stations.get('passbox_done').posx)
+    return node, job, module
+
+
+def test_above_departure_direct_at_arrival_has_no_final_linear_move(direct_setup):
+    node, job, _ = direct_setup
+    node._do_move(job)
+    assert [c[0] for c in node.calls] == ['L', 'J', 'J']
+    assert node._motion_anchor.approach == 1
+    assert node._motion_anchor.pose == tuple(node.stations.get('passbox_done').posx)
+
+
+def test_direct_route_rejects_source_at_before_any_motion(direct_setup):
+    node, job, _ = direct_setup
+    node.arm.pose = list(node.stations.get('workbench').posx)
+    node.arm.joints = [1]*6
+    node._motion_anchor = MotionAnchor('workbench', 1, tuple(node.arm.pose), (1,)*6)
+    with pytest.raises(ValueError, match='출발 ABOVE'):
+        node._do_move(job)
+    assert node.calls == []
+
+
+def test_direct_route_rejects_destination_above_request(direct_setup):
+    node, job, _ = direct_setup
+    job.args['approach'] = 0
+    with pytest.raises(ValueError, match='AT 요청'):
+        node._do_move(job)
+    assert node.calls == []
+
+
+def test_direct_route_checks_actual_at_pose(direct_setup):
+    node, job, _ = direct_setup
+    node.joint_end_pose = lambda: node.stations.get('passbox_done').above(60)
+    with pytest.raises(RuntimeError, match='목적지 AT'):
+        node._do_move(job)
+    assert [c[0] for c in node.calls] == ['L', 'J', 'J']
+    assert node._motion_anchor is None
+
+
+@pytest.mark.parametrize('stage', [1, 2, 3])
+def test_direct_route_cancel_does_not_issue_another_segment(direct_setup, stage):
+    node, job, _ = direct_setup
+    node.after_move = lambda: setattr(job, 'cancel', len(node.calls) == stage)
+    with pytest.raises(RuntimeError, match='cancelled'):
+        node._do_move(job)
+    assert len(node.calls) == stage
+    assert node._motion_anchor is None
+
+
+def test_above_only_route_cannot_adopt_source_at_after_manual_teaching(setup):
+    node, job, _ = setup
+    data = teaching_data()
+    row = dict(data['transfers'][0], source='passbox_done', destination='nudge_wait',
+               payload='empty', start_from='above', arrival='at',
+               exit_posx=[300, 0, 160, 90, 90, 0])
+    del row['start_at_posj']
+    data['transfers'].append(row)
+    node.stations = StationTable(data)
+    node._station_id = ''
+    node._motion_anchor = None
+    node.arm.pose = list(node.stations.get('passbox_done').posx)
+    node.arm.joints = [1]*6
+    with pytest.raises(ValueError, match='보호 대상'):
+        node._do_move(job)
+    assert node.calls == []
+
+
 def test_empty_route_can_be_anchored_without_moving_after_manual_teaching(setup):
     node, job, _ = setup
     data = teaching_data()
@@ -269,3 +351,26 @@ def test_other_motion_skills_invalidate_previous_anchor(setup, monkeypatch, kind
     assert anchors == [None]
     if kind == 'weigh':
         assert node._held_payload == 'unknown'
+
+
+@pytest.mark.parametrize('enabled', [False, True])
+@pytest.mark.parametrize('source', ['workbench', 'unknown'])
+def test_virtual_uses_linear_move_without_transfer_protection(setup, enabled, source):
+    from dataclasses import replace
+    node, job, _ = setup
+    node.mode = 'virtual'
+    node._station_id = source
+    node._motion_anchor = None
+    node.transfer_joint_vel = node.transfer_joint_acc = 0
+    key = ('workbench', 'passbox_done')
+    node.stations.transfers[key] = replace(node.stations.transfers[key], enabled=enabled)
+    node._do_move(job)
+    assert node.calls == [('L', node.stations.get('passbox_done').posx)]
+
+
+def test_virtual_direct_arrival_above_uses_requested_linear_target(direct_setup):
+    node, job, _ = direct_setup
+    node.mode = 'virtual'
+    job.args['approach'] = 0
+    node._do_move(job)
+    assert node.calls == [('L', node.stations.get('passbox_done').above(node.stations.approach_mm))]

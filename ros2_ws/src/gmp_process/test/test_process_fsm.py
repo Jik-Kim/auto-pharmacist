@@ -22,7 +22,7 @@ class Cell:
         self.yields, self.residual, self.qa, self.spill, self.cup_bias = list(yields), residual, qa, spill, cup_bias
         self.grip = grip or (lambda req, n: True)
         self.in_scoop = self.in_cup = 0.0
-        self.n = {'grip': 0, 'carry': 0, 'scoop': 0, 'weigh_scoop': 0}
+        self.n = {'grip': 0, 'carry': 0, 'scoop': 0, 'weigh_scoop': 0, 'return_material': 0}
         self.invalid_left = invalid_first
 
     def __call__(self, req):
@@ -44,6 +44,10 @@ class Cell:
             self.in_cup += moved
             self.in_scoop -= moved
             return {}
+        if k == 'return_material':
+            self.n[k] += 1
+            self.in_scoop = 0.0
+            return {'success': True}
         if k == 'weigh_scoop':
             self.n['weigh_scoop'] += 1
             if self.invalid_left > 0:
@@ -86,9 +90,9 @@ def test_happy_path_six_steps():
     assert trace[1] == ('PICK_CONTAINER', 'carry') and ('VERIFY', 'weigh') in trace and trace[-1] == ('FINISH', 'carry')
 
 
-def test_prepour_check_prevents_overfill():
-    """퍼낸 양(130) 이 목표(100) 보다 많으면 붓기 전 계량이 fraction 을 줄여 초과를 막는다 — 1차 폐루프."""
-    cell = Cell(yields=[130, 50], residual=0.0)
+def test_oversize_scoop_returns_to_material_before_rescoop():
+    """퍼낸 양(130)이 목표+허용오차(105)를 넘으면 약통에 붓지 않고 반환한다."""
+    cell = Cell(yields=[130, 100, 50], residual=0.0)
     fsm = _fsm()
     fractions = []
     orig = cell.__call__
@@ -96,9 +100,11 @@ def test_prepour_check_prevents_overfill():
         if req['kind'] == 'pour':
             fractions.append(req['fraction'])
         return orig(req)
-    run(fsm, spy)
+    trace = run(fsm, spy)
     assert fsm.state == 'DONE' and not fsm.deviations
-    assert abs(fractions[0] - 100 / 130) < 1e-6 and abs(fsm.results[0].actual_g - 100) < 1e-6
+    assert [k for s, k in trace if s == 'RETURN_MATERIAL'] == ['return_material']
+    assert fractions and all(f == 1.0 for f in fractions)
+    assert fsm.results[0].attempts == 2 and abs(fsm.results[0].actual_g - 100) < 1e-6
 
 
 def test_under_then_correction_accumulates():
@@ -111,14 +117,35 @@ def test_under_then_correction_accumulates():
     assert kinds_for(trace, 'SCOOP').count('scoop') == 3 and not fsm.deviations
 
 
-def test_overfill_goes_to_qa_and_discard_returns_scoop_first():
-    cell = Cell(yields=[130, 50], spill=True, qa='DISCARDED')   # 붓기가 fraction 을 무시 → 128 g 투입 → OVER
+def test_repeated_oversize_returns_then_times_out_without_pour():
+    """반환을 세 번 성공해도 적정 스쿱이 안 나오면 재투입하지 않고 QA로 멈춘다."""
+    cell = Cell(yields=[130, 130, 130], qa='DISCARDED')
     fsm = _fsm()
     trace = run(fsm, cell)
-    assert fsm.deviations[0]['kind'] == 'OVERFILL' and fsm.deviations[0]['step'] == 'WEIGH_RESIDUAL'
+    assert fsm.deviations[0]['kind'] == 'TIMEOUT' and fsm.deviations[0]['step'] == 'RETURN_MATERIAL'
     assert fsm.state == 'DISCARDED'
+    assert not any(k == 'pour' for _, k in trace)
+    assert [k for s, k in trace if s == 'RETURN_MATERIAL'] == ['return_material'] * 3
     # 스쿱을 든 채 일탈 → 스쿱 반납(move, grip open) 후 용기째 폐기함
     assert [k for s, k in trace if s == 'DISCARDED'] == ['move', 'grip', 'carry']
+
+
+def test_return_failure_goes_safe_without_retry_or_repour():
+    """반환 실패 뒤에는 held material 이력을 믿을 수 없으므로 즉시 ERROR 안전 경로다."""
+    cell = Cell(yields=[130])
+    fsm = _fsm()
+    req, trace = fsm.start(), []
+    while req['kind'] != 'return_material':
+        trace.append((fsm.state, req['kind']))
+        req = fsm.on_result(req, cell(req))
+
+    safe = fsm.on_result(req, {'success': False, 'message': '반환 자세 미티칭'})
+    assert safe == {'kind': 'safe', 'then': None, 'reason': 'RECOVERY'}
+    assert fsm.state == 'ERROR' and fsm.mode == 'ERROR'
+    assert fsm.deviations[-1]['kind'] == 'FORCE_LIMIT'
+    assert fsm.deviations[-1]['step'] == 'RETURN_MATERIAL'
+    assert fsm.deviations[-1]['action'] == 'FORCED'
+    assert not any(k == 'pour' for _, k in trace)
 
 
 def test_verify_규격이탈은_BATCH_OUT_OF_SPEC():
@@ -181,3 +208,18 @@ def test_material_empty_refill_resumes_scoop():
     kinds = [d['kind'] for d in fsm.deviations]
     assert kinds == ['SCOOP_EMPTY'] * 4 and fsm.deviations[-1]['action'] == 'REFILL'
     assert ('PAUSED', 'wait_interlock') in trace and fsm.state == 'DONE' and len(fsm.results) == 2
+
+
+def test_prepour_boundary_uses_original_target_tolerance_after_prior_delivery():
+    fsm = _fsm()
+    req = fsm.start()
+    cell = Cell(yields=[100])
+    while fsm.state != 'WEIGH_SCOOP':
+        req = fsm.on_result(req, cell(req))
+    fsm.cur.actual_g = 60.0
+    # 남은 40 g + 전체 목표 100 g의 5% = 45 g. 남은 양의 5%가 아니다.
+    for amount, expected in [(45.0, 'pour'), (45.01, 'return_material')]:
+        fsm.state = 'WEIGH_SCOOP'
+        result = fsm.on_result(req, {'valid': True, 'gross_g': SCOOP_TARE + amount})
+        assert result['kind'] == expected
+        assert fsm.cur.actual_g == 60.0

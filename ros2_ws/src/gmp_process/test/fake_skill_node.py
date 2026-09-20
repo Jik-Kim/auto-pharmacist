@@ -15,7 +15,7 @@ from rclpy.action import ActionServer
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 
-from gmp_interfaces.action import MoveToStation, Pour, Scoop, WeighContainer, WeighHeld
+from gmp_interfaces.action import MoveToStation, Pour, ReturnMaterial, Scoop, WeighContainer, WeighHeld
 from gmp_interfaces.msg import WeightReading
 from gmp_interfaces.srv import MeasureForce, SafePose, SetGripper
 
@@ -45,6 +45,7 @@ class FakeSkillNode(Node):
         ActionServer(self, MoveToStation, 'move_to_station', self._move, callback_group=self.cb)
         ActionServer(self, Scoop, 'scoop', self._scoop, callback_group=self.cb)
         ActionServer(self, Pour, 'pour', self._pour, callback_group=self.cb)
+        ActionServer(self, ReturnMaterial, 'return_material', self._return_material, callback_group=self.cb)
         ActionServer(self, WeighContainer, 'weigh_container', self._weigh_cup, callback_group=self.cb)
         ActionServer(self, WeighHeld, 'weigh_held', self._weigh_held, callback_group=self.cb)
         self.create_service(SetGripper, 'set_gripper', self._set_gripper, callback_group=self.cb)
@@ -70,9 +71,9 @@ class FakeSkillNode(Node):
         self.fail[name] = left - 1
         return True
 
-    def _reading(self, gross: float, tare: float, subject: str) -> WeightReading:
+    def _reading(self, gross: float, tare: float, subject: str, station: str = 'workbench') -> WeightReading:
         m = WeightReading(gross_g=float(gross), tare_g=float(tare), net_g=float(gross - tare),
-                          std_g=0.4, samples=20, valid=True, station='workbench', subject=subject)
+                          std_g=0.4, samples=20, valid=True, station=station, subject=subject)
         m.header.stamp = self.get_clock().now().to_msg()
         return m
 
@@ -122,6 +123,17 @@ class FakeSkillNode(Node):
         gh.succeed()
         return Pour.Result(success=True)
 
+    def _return_material(self, gh):
+        with self.lock:
+            self.calls.append(f'return_material:{gh.request.material_id}')
+            if self._fails('return_material'):
+                gh.abort()
+                return ReturnMaterial.Result(success=False, message='원료통 반환 경로 실패')
+            if self.held:
+                self.content[self.held] = 0.0
+        gh.succeed()
+        return ReturnMaterial.Result(success=True)
+
     def _weigh_cup(self, gh):
         with self.lock:
             self.calls.append('weigh_container')
@@ -137,8 +149,10 @@ class FakeSkillNode(Node):
                 gh.abort()
                 return WeighHeld.Result(success=False, message='그리퍼가 비어 있다')
             gross = SCOOP_MASS_G + self.content.get(self.held, 0.0)
+            suffix = self.held.rsplit('_', 1)[-1]
+            station = f'material_{suffix}'
         gh.succeed()
-        return WeighHeld.Result(success=True, reading=self._reading(gross, gh.request.tare_g, 'scoop'))
+        return WeighHeld.Result(success=True, reading=self._reading(gross, gh.request.tare_g, 'scoop', station))
 
     # ── Service ──────────────────────────────────────────────────────
     def _set_gripper(self, req, res):

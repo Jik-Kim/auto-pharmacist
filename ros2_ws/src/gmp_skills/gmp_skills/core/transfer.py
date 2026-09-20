@@ -56,9 +56,13 @@ class TransferRoute:
     exit_posx: tuple = ()
     exit_posj: tuple = ()
     waypoints_posj: tuple = ()
+    source_at_posx: tuple = ()
+    source_above_posx: tuple = ()
+    start_from: str = 'at_or_above'
+    arrival: str = 'above'
 
 
-def parse_routes(rows, stations):
+def parse_routes(rows, stations, approach_mm=60.0):
     if not isinstance(rows, list):
         raise ValueError('transfers는 목록이어야 한다')
     routes = {}
@@ -74,15 +78,36 @@ def parse_routes(rows, stations):
         enabled, payload = row.get('enabled'), row.get('payload')
         if type(enabled) is not bool or payload not in ('empty', 'cup'):
             raise ValueError(f'{key}: enabled(bool)와 payload(empty/cup)가 필요하다')
-        values = {}
-        if enabled:
-            for name in ('start_at_posj', 'start_above_posj', 'exit_posx', 'exit_posj'):
+        if row.get('source_pose_key', 'posx') != 'posx':
+            raise ValueError(f'{key}: 출발 기준은 station.posx로 통합해야 한다')
+        source = stations[src]
+        start_from, arrival = row.get('start_from', 'at_or_above'), row.get('arrival', 'above')
+        if start_from not in ('at_or_above', 'above') or arrival not in ('above', 'at'):
+            raise ValueError(f'{key}: start_from/arrival 설정을 확인해야 한다')
+        values = {'source_at_posx': tuple(source.offset_z(0)),
+                  'source_above_posx': tuple(source.above(approach_mm)),
+                  'start_from': start_from, 'arrival': arrival}
+        if 'exit_offset_mm' in row:
+            if row.get('exit_posx') is not None:
+                raise ValueError(f'{key}: exit_offset_mm와 절대 exit_posx는 동시에 지정할 수 없다')
+            values['exit_posx'] = tuple(source.offset_z(row['exit_offset_mm']))
+        elif row.get('exit_posx') is None:
+            exit_key = 'exit_mm'
+            if exit_key in source.extra:
+                values['exit_posx'] = tuple(source.exit())
+        for name in ('start_at_posj', 'start_above_posj', 'exit_posj', 'exit_posx'):
+            if name in values:
+                continue
+            if row.get(name) is not None:
                 values[name] = vector6(row.get(name), f'{key}.{name}')
-            points = row.get('waypoints_posj')
-            if not isinstance(points, list) or not points:
-                raise ValueError(f'{key}: 도착 ABOVE 관절각을 포함한 waypoints_posj가 필요하다')
-            values['waypoints_posj'] = tuple(vector6(p, 'waypoint') for p in points)
-            if not pose_matches(values['exit_posx'], stations[src].posx, float('inf'), 0.001):
+            elif enabled and not (name == 'start_at_posj' and start_from == 'above'):
+                raise ValueError(f'{key}.{name}: 티칭값이 필요하다')
+        points = row.get('waypoints_posj', [])
+        if not isinstance(points, list) or (enabled and not points):
+            raise ValueError(f'{key}: 도착 {arrival.upper()} 관절각을 포함한 waypoints_posj가 필요하다')
+        values['waypoints_posj'] = tuple(vector6(p, 'waypoint') for p in points)
+        if values.get('exit_posx'):
+            if not pose_matches(values['exit_posx'], values['source_at_posx'], float('inf'), 0.001):
                 raise ValueError(f'{key}: 직선 이탈 중 출발 자세를 유지해야 한다')
         routes[key] = TransferRoute(src, dst, payload, enabled, **values)
     return routes
@@ -94,8 +119,13 @@ def validate_start(route, anchor, actual_pose, actual_joints, payload,
         raise ValueError(f'{route.source} → {route.destination}: 미티칭/비활성 이송 경로')
     if anchor is None or anchor.station != route.source or anchor.approach not in (0, 1):
         raise ValueError('출발 위치 이력이 불확실하다. 출발점을 다시 확인해야 한다')
+    if route.start_from == 'above' and anchor.approach != 0:
+        raise ValueError('이 경로는 출발 ABOVE에서만 시작한다. 놓기 후 직선 후퇴가 필요하다')
     if payload != route.payload:
         raise ValueError(f'이송 파지 조건 불일치: 필요={route.payload}, 현재={payload}')
+    source_pose = route.source_above_posx if anchor.approach == 0 else route.source_at_posx
+    if not pose_matches(actual_pose, source_pose, xyz_mm, rotation_deg):
+        raise ValueError('현재 위치가 이송 기준 파지/작업점과 다르다')
     if (not pose_matches(actual_pose, anchor.pose, xyz_mm, rotation_deg)
             or not joints_match(actual_joints, anchor.joints, joint_deg)):
         raise ValueError('출발 자세가 마지막 도착 상태와 다르다. 수동 이동 여부를 확인해야 한다')

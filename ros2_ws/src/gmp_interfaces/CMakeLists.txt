@@ -25,6 +25,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/MoveToStation.action"
   "action/Scoop.action"
   "action/Pour.action"
+  "action/ReturnMaterial.action"
   "action/WeighContainer.action"
   "action/WeighHeld.action"
   "action/RunBatch.action"
