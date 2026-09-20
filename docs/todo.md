@@ -5,18 +5,18 @@
 
 <!-- STATS:BEGIN -->
 
-**전체 31/78 완료** (████████░░░░░░░░░░░░)  ·  기준 09/19
+**전체 35/82 완료** (█████████░░░░░░░░░░░)  ·  기준 09/20
 
 | 파트 | 완료 | 진행 | 지난 마감 |
 |---|---|---|---|
 | gmp_interfaces [조장] | 4/7 | `██████░░░░` | **3** |
 | gmp_skills [A 스킬] | 6/18 | `███░░░░░░░` | **9** |
-| gmp_dosing [B 도징] | 0/7 | `░░░░░░░░░░` | **5** |
-| gmp_process [C 공정] | 11/21 | `█████░░░░░` | **2** |
-| gmp_hmi [D HMI·기록] | 7/16 | `████░░░░░░` | **2** |
+| gmp_dosing [B 도징] | 2/10 | `██░░░░░░░░` | **4** |
+| gmp_process [C 공정] | 12/22 | `█████░░░░░` | **1** |
+| gmp_hmi [D HMI·기록] | 8/16 | `█████░░░░░` | **2** |
 | gmp_bringup [조장] | 3/9 | `███░░░░░░░` | **4** |
 
-**마감이 지난 항목 25건**
+**마감이 지난 항목 23건**
 
 - `9/18` gmp_interfaces — 계약 v1.2 팀 채널 공지 — 위 항목 중 공지만 남았다 (WeighHeld 신설·Deviation.kind 3종 추가)
 - `9/17` gmp_interfaces — G1 결과로 도징 단위 확정 → RecipeItem.tol_pct 기본값·레시피 yaml 갱신 (SOT D-08)
@@ -33,20 +33,14 @@
 - `9/16` gmp_dosing — core/scale.py: WeightModel — 힘/작업물무게 → g, 영점(tare) 저장·적용, σ 계산, valid 판정
 - `9/16` gmp_dosing — core/dosing.py: decide(target_g, actual_g, tol_pct, attempts, history) …
 - `9/17` gmp_dosing — test/test_dosing.py: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ…
-- `9/17` gmp_dosing — G1 σ 로 scale.min_resolvable_g 갱신, 30 g / 100 g 단위 확정 (조장과)
 - `9/18` gmp_dosing — 스쿱 1회 퍼올림량 실측 → dosing.scoop_nominal_g (보정 투입 fraction 계산 근거)
-- `9/18` gmp_process — [추가 7] NUDGE 전이: RUNNING→PAUSED(NUDGE), 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 …
 - `9/18` gmp_process — [9/18 확정] 회수·넛지 운영 — 운영 방식은 SOT D-23 으로 확정. 남은 미정 3건: (a) 가득참 판단은 카운트(비…
 - `9/17` gmp_hmi — [연동 대기 — 9/18 확인] 가상 모드에서 주문 → 상태 → QA 승인 → 이력 조회 한 바퀴 — HMI 시험 공정 검증은 …
-- `9/18` gmp_hmi — [9/18 확정] 회수 확인 버튼 — QA 가 패스박스·폐기함 비운 뒤 누르면 카운터 리셋 + HMI_* audit 기록 (누가…
+- `9/19` gmp_hmi — [추가 7] HMI: PAUSED 사유(NUDGE/REFILL) 표시, 이벤트 타임라인에 NUDGE
 - `9/16` gmp_bringup — tools/env.sh 세 워크스페이스 source
 - `9/17` gmp_bringup — 가상 모드에서 4노드 기동 확인, ros2 node list/rqt_graph 캡처
 - `9/18` gmp_bringup — [9/18 확정] common.yaml 에 회수 용량 추가 — passbox_done.capacity·reject_bin.cap…
 - `9/18` gmp_bringup — common.yaml 에 qa.decision_timeout_s·interlock.timeout_s 추가 — docs/inter…
-
-**오늘 마감 1건**
-
-- gmp_hmi — [추가 7] HMI: PAUSED 사유(NUDGE/REFILL) 표시, 이벤트 타임라인에 NUDGE
 
 > 이 표는 `python3 tools/todo_stats.py` 가 체크박스를 세어 다시 쓴다. 손으로 고치지 않는다.
 
@@ -86,9 +80,12 @@
 - [ ] `core/scale.py`: `WeightModel` — 힘/작업물무게 → g, 영점(tare) 저장·적용, σ 계산, `valid` 판정 · 마감 9/16
 - [ ] `core/dosing.py`: `decide(target_g, actual_g, tol_pct, attempts, history) → Decision(action, fraction)` — `OK/UNDER/OVER/TIMEOUT`, 보정 투입 시 `fraction` 축소 규칙 · 마감 9/16
 - [ ] `test/test_dosing.py`: 경계값(±tol 정확히), 3회 재시도 후 TIMEOUT, OVER 즉시 일탈, 분해능 σ 가 tol 보다 클 때 `valid=false` · 마감 9/17
-- [ ] G1 σ 로 `scale.min_resolvable_g` 갱신, 30 g / 100 g 단위 확정 (조장과) · 마감 9/17
+- [x] G1 σ 로 `scale.min_resolvable_g` 갱신 — **9/18 3σ = 18.0 g → 19**, `max_std_g 5`, tool_force `offset_g 260.2`. CSV·`core/calib.py`·`config/scale_reference.yaml` 로 재현 가능 (PR #22, C 가 이어서) · 마감 9/17
+- [ ] **[G1 후속]** 판정 근거 확정 (Q-11) — 원료별 ±5 g 는 3σ 18 g 로 못 가른다. 제안: 합격 판정은 VERIFY ①, 스쿱 계량은 붓기 비율용. 조장 확인 후 레시피 `tol_pct`·FSM 판정 위치 반영 · 마감 9/21
+- [ ] **[G1 후속]** skill_node `measure_force` 표본 간격 — 9/19 확인: 0.82 s 간격이면 중복 0 %·3σ 12.6, 0.05 s 면 43 % 중복·3σ 18. `period_s`(현재 0.05 고정) 를 `scale.period_s` 파라미터로 빼고 ≥ 0.5 s 로 (A 와). 그 뒤 `min_resolvable_g` 19 → 14 · 마감 9/21
+- [x] **[G1 후속]** `get_workpiece_weight` 경로 측정 — 9/19 두 경로 동시 측정. **tool_force 확정, workpiece 탈락** (reset 이 안 먹어 잔류 오차가 값을 지배). `common.yaml` method/gain/offset/max_std_g 반영, SOT D-07 · 마감 9/19
 - [ ] 스쿱 1회 퍼올림량 실측 → `dosing.scoop_nominal_g` (보정 투입 fraction 계산 근거) · 마감 9/18
-- [ ] 보정 계수: 실제 저울 vs 로봇 측정 5점 비교 → `scale.gain`/`scale.offset` · 마감 9/21
+- [ ] 보정 계수: 실제 저울 vs 로봇 측정 다중 무게 → `scale.gain`/`scale.offset` — **9/19 두 점(32·132 g) 으로 gain 0.886·offset 247.1 반영**. 3점째(≈86 g)로 직선 확인만 남음 · 마감 9/21
 
 ## gmp_process [C 공정]
 - [x] `core/recipe.py`: yaml → `RecipeSpec` 변환, 필수 필드·원료 중복·양수 검증 + `test_recipe.py` 25건 (`Recipe` msg 변환은 계층 원칙상 `nodes/` 가 한다 / **순서는 검증 대상이 아니다** — 계약 1절 "순서 위반은 일탈이 아니라 버그") · 마감 9/16
@@ -103,7 +100,8 @@
 - [ ] 일탈 카탈로그(`core/deviation.py`): kind 별 자동 복구 규칙(재시도 상한·보충 요청·QA 요청) · 마감 9/21
 - [x] 스테이션 물리 배치·테이프 표시 (하드웨어) — **9/18 완료**. 좌표 실측(G3)과 SOT D-24 등록이 이제 가능하다 · 마감 9/17
 - [ ] 고의 장애 주입 T6 (a)(b)(c) 재현 · 마감 9/22
-- [ ] **[추가 7] NUDGE 전이**: `RUNNING→PAUSED(NUDGE)`, 다음 NUDGE 로 이전 요청 재개 (인터락 재개 로직 재사용) + 테스트 · 마감 9/18
+- [x] **[추가 7] NUDGE 전이**: `event` 구독 → 토글 → 루프 게이트. 인터락과 **게이트 하나**로 합쳤다 — 둘 다 걸리면 둘 다 풀려야 간다. 정지는 **그 자리에 서는 것**(안전 자세 아님)이고, 로봇 동작 요청 **앞**에서만 잡는다(`wait_qa`·`wait_interlock` 앞에서는 안 잡는다 — 판정을 못 받고 서 버린다). 테스트 6건. **9/19 리뷰 반영**: 세트 끝 `NUDGE_WAIT` — 반송(passbox_done·reject_bin) 뒤 `nudge_wait` 로 이동해 NUDGE 대기, 그 뒤 DONE/DISCARDED. 대기 중 주문 거부, 이벤트 `SET_DONE`/`SET_NEXT`. 테스트 +4 · 마감 9/18
+- [ ] **[추가 7] NUDGE 실물 확인** — 가상은 `scale.simulated` 라 `skill_node` 가 `CellEvent(NUDGE)` 를 내지 않는다 (`safety.nudge_enabled and not scale.simulated`). 임계 8 N 검증과 함께 **G1 때** 한다 · 마감 9/21 (A 와)
 - [ ] **[추가 1] 폭 지문**: `PICK_SCOOP`·`PICK_CONTAINER` 의 `SetGripper` 결과 폭이 원료별 기대 폭(±margin) 과 다르면 `Deviation(WRONG_TOOL)` → QA · 마감 9/21 (A 와)
 - [ ] **[추가 3] 재기동 이어하기**: 기동 시 DB 의 미완료 배치 조회 → 상태·원료 인덱스·tare 복원 → 용기 재계량 후 재개. 시연: 실행 중 Ctrl-C → 재실행 · 마감 9/22 (D 와)
 - [x] **[9/18 확정]** 배치 변경 반영 → **SOT D-24 로 등록 완료**. 판 450×450, 기준 원점 [X:0, Y:45], 로봇 좌측 28 cm, 중앙 300×300 배치 불가, 넛지 대기 위치 신설, 원료·스쿱은 판 바깥 아래. **스테이션 매핑 3건은 Q-12 로 분리** · 마감 9/21
@@ -122,7 +120,7 @@
 - [x] 다른 기기(폰·노트북)에서 HMI 접속 확인 — 9/18 휴대폰에서 `http://172.24.0.3:5002` 접속 성공 (ROS 통신 시험 서버) · 마감 9/18
 - [x] process_node 가 `BATCH_START` 이벤트에 product 를 싣게 C 와 합의 — **C 측 구현 완료 (9/18)**. `CellEvent(code='BATCH_START', text=product, batch_id=...)` 로 나간다 · 마감 9/18
 - [x] **[I-009]** `hmi_web_node.py` 의 `InterlockRequest.ENTER` 참조가 `AttributeError` 였다 — 계약 상수가 응답 절에 있었다. 상수를 요청 절로 옮기고 `InterlockRequest.Request.ENTER` 로 고쳤다 (9/18, C 가 처리) · 마감 9/18
-- [ ] **[9/18 확정]** 회수 확인 버튼 — QA 가 패스박스·폐기함 비운 뒤 누르면 카운터 리셋 + `HMI_*` audit 기록 (누가 언제 회수했는지) · 마감 9/18
+- [x] **[9/18 구현]** 회수 확인 버튼 — QA가 패스박스·폐기함을 모두 비웠음을 확인한 뒤 `HMI_COLLECTION_CONFIRMED` 감사 기록(작업자·시각)을 남김. C 적재 카운터 초기화 연동은 별도 TODO · 마감 9/18
 - [ ] 배치 중단 버튼 — `RunBatch` cancel 호출 + `HMI_*` audit (C 의 cancel 콜백과 짝) · 마감 9/21
 - [ ] 계량 그래프에 목표선·허용 오차 밴드, 배치 클릭 → `/batch/<id>` 상세 · 마감 9/21
 - [ ] **[추가 3] 재기동 이어하기**: `db.py` 에 미완료 배치·마지막 상태 조회 API, `record_node` 가 상태 전이마다 저장 · 마감 9/21 (C 와)

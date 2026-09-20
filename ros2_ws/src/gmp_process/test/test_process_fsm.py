@@ -87,7 +87,9 @@ def test_happy_path_six_steps():
     seq = [s for s, k in trace]
     i = seq.index('PICK_SCOOP')
     assert seq[i + 2:i + 8] == ['SCOOP_TARE', 'SCOOP', 'WEIGH_SCOOP', 'POUR', 'WEIGH_RESIDUAL', 'RETURN_SCOOP']
-    assert trace[1] == ('PICK_CONTAINER', 'carry') and ('VERIFY', 'weigh') in trace and trace[-1] == ('FINISH', 'carry')
+    assert trace[1] == ('PICK_CONTAINER', 'carry') and ('VERIFY', 'weigh') in trace
+    # 세트 끝: passbox_done 반송 → nudge_wait 이동 → NUDGE 대기 → DONE (D-23·D-24)
+    assert trace[-3:] == [('FINISH', 'carry'), ('NUDGE_WAIT', 'move'), ('NUDGE_WAIT', 'wait_nudge')]
 
 
 def test_oversize_scoop_returns_to_material_before_rescoop():
@@ -124,10 +126,15 @@ def test_repeated_oversize_returns_then_times_out_without_pour():
     trace = run(fsm, cell)
     assert fsm.deviations[0]['kind'] == 'TIMEOUT' and fsm.deviations[0]['step'] == 'RETURN_MATERIAL'
     assert fsm.state == 'DISCARDED'
+<<<<<<< HEAD
     assert not any(k == 'pour' for _, k in trace)
     assert [k for s, k in trace if s == 'RETURN_MATERIAL'] == ['return_material'] * 3
     # 스쿱을 든 채 일탈 → 스쿱 반납(move, grip open) 후 용기째 폐기함
+=======
+    # 스쿱을 든 채 일탈 → 스쿱 반납(move, grip open) 후 용기째 폐기함 → 폐기도 세트의 끝이라 nudge_wait 에서 대기
+>>>>>>> 78f68ee7c37e8939c8cf7042dbdbf2f335f777e4
     assert [k for s, k in trace if s == 'DISCARDED'] == ['move', 'grip', 'carry']
+    assert trace[-2:] == [('NUDGE_WAIT', 'move'), ('NUDGE_WAIT', 'wait_nudge')]
 
 
 def test_return_failure_goes_safe_without_retry_or_repour():
@@ -156,7 +163,7 @@ def test_verify_규격이탈은_BATCH_OUT_OF_SPEC():
     trace = run(fsm, cell)
     assert fsm.deviations == [{'kind': 'BATCH_OUT_OF_SPEC', 'step': 'VERIFY', 'count': 1, 'action': 'QA',
                                'detail': '', 'material_id': 'B'}]
-    assert fsm.state == 'DONE' and trace[-1] == ('FINISH', 'carry')     # QA 승인 → 그대로 완료품
+    assert fsm.state == 'DONE' and ('FINISH', 'carry') in trace          # QA 승인 → 그대로 완료품
 
 
 def test_verify_계측불일치는_VERIFY_MISMATCH():
@@ -210,6 +217,7 @@ def test_material_empty_refill_resumes_scoop():
     assert ('PAUSED', 'wait_interlock') in trace and fsm.state == 'DONE' and len(fsm.results) == 2
 
 
+<<<<<<< HEAD
 def test_prepour_boundary_uses_original_target_tolerance_after_prior_delivery():
     fsm = _fsm()
     req = fsm.start()
@@ -223,3 +231,18 @@ def test_prepour_boundary_uses_original_target_tolerance_after_prior_delivery():
         result = fsm.on_result(req, {'valid': True, 'gross_g': SCOOP_TARE + amount})
         assert result['kind'] == expected
         assert fsm.cur.actual_g == 60.0
+=======
+def test_set_end_parks_at_nudge_wait_and_mode_blocks_orders():
+    """세트 끝 — 반송 뒤 nudge_wait 로 이동하는 동안 RUNNING, 서서 기다릴 때 PAUSED(주문 거부), NUDGE 뒤 DONE."""
+    fsm = _fsm()
+    cell = Cell(yields=[100, 50])
+    req, seen = fsm.start(), []
+    while req:
+        if req['kind'] == 'move' and req.get('station') == 'nudge_wait':
+            seen.append(('move', fsm.state, fsm.mode))
+        if req['kind'] == 'wait_nudge':
+            seen.append(('wait', fsm.state, fsm.mode))
+        req = fsm.on_result(req, cell(req))
+    assert seen == [('move', 'NUDGE_WAIT', 'RUNNING'), ('wait', 'NUDGE_WAIT', 'PAUSED')]
+    assert (fsm.state, fsm.mode) == ('DONE', 'DONE') and len(fsm.results) == 2
+>>>>>>> 78f68ee7c37e8939c8cf7042dbdbf2f335f777e4

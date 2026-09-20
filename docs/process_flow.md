@@ -45,7 +45,7 @@
 | Service | `qa_decision` | `QaDecision` (deviation_id, decision, operator_id) | HMI (셀 밖 QA) | DEVIATION 상태일 때 승인/폐기 | 대기 중인 `deviation_id`와 다르거나 DEVIATION이 아니면 거부. `operator_id`는 Deviation에 옮겨 재발행 |
 | Service | `interlock` | `InterlockRequest` (ENTER=1 / EXIT=2, reason) | HMI | 사람 반입 전/후 | **ENTER**: 진행 중 스킬을 멈추고 `SafePose` 성공 후에야 `granted=true` (TODO). **EXIT**: `_interlock_exit.set()` → 루프 재개 |
 | Action | `run_batch` | `RunBatch` (Recipe → result, feedback CellState) | CLI·시험용 | `submit_order` 와 같은 일을 Action 으로 | 골격에 아직 없음. 우선순위 낮음 — HMI 는 Service 를 쓴다 |
-| Topic (구독) | `event` | `CellEvent` code=`NUDGE` | skill_node | 사람이 로봇을 건드림 (D-21) | 루프 게이트: 다음 요청 전에 PAUSED 로 멈추고, 두 번째 NUDGE 로 재개 (추가 기능 7) |
+| Topic (구독) | `event` | `CellEvent` code=`NUDGE` | skill_node | 사람이 로봇을 건드림 (D-21) | 콜백은 토글만. 루프 게이트가 **다음 로봇 동작 전에** PAUSED 로 멈추고, 두 번째 NUDGE 로 재개 (추가 기능 7). `safety.nudge_enabled=false` 면 무시. 우리가 내는 event 도 같이 들어오므로 `code` 로 거른다 |
 
 ### 나가는 것 (process_node 가 발행) — record_node 가 전부 DB 에 쓰고, HMI 가 화면에 띄운다
 
@@ -116,7 +116,8 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
                                                                                                                       ├─ OVER ──────▶ RETURN_MATERIAL(material_id) → SCOOP 재시도
    계량 무효(valid=false): 각 계량 상태에서 같은 요청 재시도 ≤2, 3회째 WEIGH_INVALID → DEVIATION                       └─ 4회째 UNDER ▶ DEVIATION(TIMEOUT)
 
- RETURN_SCOOP ──마지막 원료였음──▶ VERIFY ──weigh(용기를 들어) · ① 규격 OK · ② 계측 일치──▶ FINISH ──carry(workbench→passbox_done)──▶ DONE
+ RETURN_SCOOP ──마지막 원료였음──▶ VERIFY ──weigh(용기를 들어) · ① 규격 OK · ② 계측 일치──▶ FINISH ──carry(workbench→passbox_done)──▶ NUDGE_WAIT ──move(nudge_wait) · wait_nudge(사람이 건드림)──▶ DONE
+                                     (폐기도 같다: DISCARDED ──carry(→reject_bin)──▶ NUDGE_WAIT ──▶ DISCARDED)
                                      ├─ ① |net − Σtarget| > Σ(target×tol) ─▶ DEVIATION(BATCH_OUT_OF_SPEC) ──APPROVED──▶ FINISH
                                      └─ ② |net − Σ투입량| > min_resolvable_g ─▶ DEVIATION(VERIFY_MISMATCH) ──APPROVED──▶ FINISH
 
@@ -143,11 +144,12 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 | `WEIGH_RESIDUAL` | `weigh_scoop` → gross, valid | `residual = gross − scoop_tare`, **`actual += scooped − residual`** (실제 투입량 누적). `decide(target, actual, tol, attempts, True, invalid, cfg)` → DONE / SCOOP(fraction 힌트) / DEVIATION(kind). 무효 ≤2 재계량 | DONE→`move(scoop_N)` · SCOOP→`scoop(attempt+1)` · DEVIATION→`wait_qa` | `weight` · **`scoop_cycle`** · `dispense_result` (DONE·DEVIATION 시) · `deviation` |
 | `RETURN_SCOOP` | `move` / `grip(open)` | idx+1. 남았으면 다음 원료, 없으면 VERIFY | `move(scoop_N)` → `grip(open)` → `move(scoop_N)`(다음) 또는 `weigh(workbench, tare)` | `state` |
 | `VERIFY` | `weigh` → net, valid | **용기를 들어** 순량 계량 (그리퍼 비어 있음). ① `\|net − Σspec.target\| > Σ(target×tol)` → BATCH_OUT_OF_SPEC → QA(폐기 권고) ② `\|net − Σresults.actual\| > min_resolvable_g` → VERIFY_MISMATCH → QA. 무효 ≤2 재계량 | `carry(workbench→passbox_done)` | `weight` · `deviation` |
-| `FINISH` | `carry` → grip_inferred | 실패 → GRIP_FAIL 재시도 | 없음 (None = 끝) | `event BATCH_END`, `state DONE` |
+| `FINISH` | `carry` → grip_inferred | 실패 → GRIP_FAIL 재시도 | `move(nudge_wait)` | — |
+| `NUDGE_WAIT` | `move(nudge_wait)` → 도착 · `wait_nudge` → 사람이 건드림 | **세트 경계 (D-23)** — 반송 뒤 nudge_wait 로 물러나 서서 기다린다. 이동 중 RUNNING, 대기 중 **PAUSED**(주문 거부 · HMI 는 note 로 사유). `safety.nudge_enabled=false` 면 대기 없이 통과. 이 대기의 NUDGE 는 정지 토글이 아니라 「다음 세트」 신호 | `wait_nudge` → None (끝: DONE 또는 DISCARDED) | `event SET_DONE`(대기 진입) · `SET_NEXT`(건드림) · `BATCH_END`, `state DONE` |
 | `DEVIATION` | `wait_qa` → decision | APPROVED → (원료 일탈) 결과에 남기고 RETURN_SCOOP / (VERIFY) FINISH. DISCARDED → 스쿱 든 채면 먼저 반납 → 용기째 폐기 | `move(scoop_N)` / `carry(workbench→passbox_done)` / `carry(workbench→reject_bin)` | `deviation` 재발행(decision·operator_id 채움) |
 | `PAUSED` | `wait_interlock` → {} | `_resume` 요청을 그대로 다시 실행 | `_resume` | `event INTERLOCK_ENTER/EXIT`, `state PAUSED` |
 | `ERROR` | `safe(then=None)` | 종료 | None | `event INTERVENTION_FORCED`, `state ERROR` |
-| `DISCARDED` | `move` / `grip(open)` / `carry` | 스쿱 반납 후 용기 폐기, 종료 | `grip(open)` → `carry(workbench→reject_bin)` → None | `event BATCH_END`, `state DONE`(mode) |
+| `DISCARDED` | `move` / `grip(open)` / `carry` | 스쿱 반납 후 용기 폐기 → 폐기도 세트의 끝이라 `NUDGE_WAIT` 로 | `grip(open)` → `carry(workbench→reject_bin)` → `move(nudge_wait)` | 종료 상태는 `DISCARDED` 로 남는다 (record_node 가 본다) |
 
 ## 5. 일탈 정책표 (`core/deviation.py` — 바꾸려면 여기만)
 
@@ -180,17 +182,35 @@ _srv_qa:                             _execute({'kind':'wait_qa'}):
   _qa_decision = 'APPROVED'/...   ──▶  _qa.wait()          ← 여기서 멈춰 있음
   _qa.set()                            return {'decision': _qa_decision}
 
-_srv_interlock(ENTER):               (스킬 실행 중이면) Action cancel → safe_pose → granted=true   ← TODO
+_srv_interlock(ENTER):               _pause = True → safe_pose (취소는 skill_node 가)
+  _pause = True                   ──▶  게이트가 EXIT 까지 잡는다
 _srv_interlock(EXIT):                _execute({'kind':'wait_interlock'}):
   _interlock_exit.set()          ──▶  _interlock_exit.wait() → return {}
 
-event 구독(NUDGE):                   루프 맨 위 게이트:
-  _nudge.set() / 토글               ──▶ if paused: state=PAUSED 발행, 두 번째 NUDGE 까지 wait
+event 구독(NUDGE):                   _gate() — 로봇 동작 요청 **앞**에서만
+  _nudge_paused 토글               ──▶  while _pause_reason(): 0.1 s 폴링
+                                        (mode=PAUSED·note 발행, 두 번째 NUDGE 로 풀림)
 ```
+
+**정지는 게이트 하나로 본다** (9/18). NUDGE(D-21)와 인터락 ENTER 는 이유만 다르고 "지금 다음 동작을 시작하면
+안 된다"는 같은 뜻이라, `_pause_reason()` 이 비지 않는 동안 `_gate()` 가 잡아 둔다. 둘 다 걸려 있으면 **둘 다**
+풀려야 간다 — NUDGE 로 세워 놓고 인터락으로 들어왔다면 다시 건드리고 EXIT 도 눌러야 움직인다.
+
+**게이트를 폴링으로 돌리는 이유**: 깨우는 신호가 둘(두 번째 NUDGE, EXIT)이다. `threading.Event` 하나로 받으면
+스킬이 도는 동안 정지·재개가 **다 지나간** 경우에 신호가 남아 **다음** 정지를 즉시 풀어 버린다. 불린을 0.1 s 로
+들여다보면 남는 신호가 없다.
+
+**게이트를 두는 자리**: `wait_qa`·`wait_interlock`·**`safe`** 앞에는 두지 않는다 (`GATE_BYPASS`). `safe` 는 "사람이 곧 들어오니 물러나라" 는 이동이라 NUDGE·인터락 정지보다 우선한다 — 안 그러면 NUDGE 로 세워 둔 로봇이 원료 소진에도 스쿱을 든 채 서서 두 번째 nudge 를 기다린다. 정지를 잡는 자리는 **다음 요청 앞 하나**뿐이다 — 스킬 결과 직후에 잡으면 FSM 이 `safe` 를 내야 하는 상황(원료 소진·강제 개입)에서도 결정을 못 하고 서 버린다. **EXIT 는 기다리는 쪽이 있을 때만 받는다** — `_pause`(ENTER) 또는 `_refill_waiting`(REFILL 대기). mode==PAUSED 로 가르면 NUDGE 정지 중에 눌린 EXIT 가 신호로 남아 다음 보충 대기가 보충 없이 풀린다. REFILL 대기가 EXIT 를 소비할 때 `_pause` 도 같이 내린다 — 대기 중에 ENTER 가 또 왔어도 EXIT 는 한 번이다.
+
+**세트 끝의 NUDGE 는 정지가 아니다 (9/19, PR #23 리뷰 반영)**: FSM 이 `NUDGE_WAIT` 에서 `wait_nudge` 를 내면 노드는 `_nudge_waiting` 을 세우고 `_nudge_go` 를 기다린다. 그동안 들어온 NUDGE 는 `_on_event` 가 토글하지 않고 `_nudge_go` 를 세운다 — 로봇은 이미 서 있으니 「정지」 는 뜻이 없고, 이 접촉은 「다음 세트」 다. 대기에 들어갈 때 `_nudge_paused` 를 지운다 (nudge_wait 로 가는 동안의 접촉이 남아 다음 배치 첫 동작을 막지 않게). 인터락 ENTER 는 이 대기 중에도 `safe_pose` 를 실제로 부른다 — nudge_wait 는 안전 자세가 아니다.
+
+**사람 대기 앞에 게이트를 두지 않는 이유**: `wait_qa`·`wait_interlock` **앞에는 두지 않는다**. 그 요청들은 로봇을 움직이지 않으니
+멈출 것이 없고, 거기서 잡으면 QA 판정을 받기도 전에 서 버린다 — 그리고 판정 대기 중에는 mode 를 PAUSED 로
+올릴 수 없으므로(아래 ②) 사람은 왜 섰는지도 못 본다. 그 요청들 뒤의 정지는 그다음 로봇 동작 요청 앞에서 잡는다.
 
 ENTER 가 어려운 이유: 루프가 블로킹 Action 을 기다리는 중일 수 있다. **구현 (9/18)** — ENTER 는 `_pause` 를 세우고 곧바로 `safe_pose` 를 부른다. 취소는 process 가 아니라 **skill_node 가** 한다 (`SafePose` 계약: 대기 중인 Job 은 버리고 진행 중 Job 에 cancel 플래그). 그래서 진행 중이던 스킬은 `success=false` 로 돌아오고, 루프는 `_pause` 가 서 있으면 그 실패를 **취소로 읽어** EXIT 를 기다렸다가 **같은 요청을 처음부터 다시** 부른다 (부분 실행은 버린다 — `carry` 중간이면 접근점부터 다시). 취소가 안 걸리고 스킬이 그냥 끝났으면 **다음 요청 전에** 멈춘다.
 
-**ENTER 가 오는 순간의 상태별 규칙 (9/18 리뷰 반영)** — ① RUNNING: 위 그대로, mode 를 PAUSED 로 올린다. ② DEVIATION(QA 대기): mode 를 **덮지 않는다** — `_srv_qa` 가 `mode==DEVIATION` 만 받으므로 덮으면 QA 가 영영 거부되고 루프는 QA 만 기다리는 교착이 된다. `note` 로 알리고, 판정이 오면 `_execute` 가 `_pause` 를 보고 EXIT 까지 멈춘다. ③ 이미 PAUSED(REFILL 대기·앞선 ENTER): `safe_pose` 를 다시 부르지 않고 `granted=true, '이미 대기 중'` — 다시 부르면 `_interlock_exit` 가 지워져 EXIT 를 두 번 눌러야 풀린다. 판정값은 APPROVED·DISCARDED 만 받고 그 외는 거부한다(0 을 폐기로 읽지 않는다). FORCED 로 끝난 일탈은 `AUTO_RECOVERED` 가 아니라 `Deviation.FORCED`(계약 v1.2.1, PR #19) 로 나간다 — 그 계약 전 빌드에서는 `PENDING`+detail `FORCED` 폴백. 어느 쪽이든 자동 복구율 분자에서 빠진다.
+**ENTER 가 오는 순간의 상태별 규칙 (9/18 리뷰 반영)** — ① RUNNING: 위 그대로, mode 를 PAUSED 로 올린다. ② **판정 대기 중인 일탈이 있으면 mode 를 덮지 않는다** — `_srv_qa` 가 `mode==DEVIATION` 만 받으므로 덮으면 QA 가 영영 거부되고 루프는 QA 만 기다리는 교착이 된다. `note` 로 알리고, 판정이 오면 `_execute` 가 `_pause` 를 보고 EXIT 까지 멈춘다. 이 규칙은 NUDGE 정지에도 똑같이 적용된다. ③ 이미 PAUSED(REFILL 대기·앞선 ENTER): `safe_pose` 를 다시 부르지 않고 `granted=true, '이미 대기 중'` — 다시 부르면 `_interlock_exit` 가 지워져 EXIT 를 두 번 눌러야 풀린다. **단 NUDGE 정지는 여기 해당하지 않는다** — PAUSED 지만 로봇은 그 자리에 선 것이라 안전 자세가 아니다. 사람이 들어오려면 `safe_pose` 를 실제로 불러야 한다. 판정값은 APPROVED·DISCARDED 만 받고 그 외는 거부한다(0 을 폐기로 읽지 않는다). FORCED 로 끝난 일탈은 `AUTO_RECOVERED` 가 아니라 `Deviation.FORCED`(계약 v1.2.1, PR #19) 로 나간다 — 그 계약 전 빌드에서는 `PENDING`+detail `FORCED` 폴백. 어느 쪽이든 자동 복구율 분자에서 빠진다.
 
 `_pause` 를 **루프에서만 내리는 것**이 핵심이다. EXIT 핸들러에서 내리면, 취소된 스킬이 아직 돌아오지 않은 사이에 플래그가 풀려 그 실패가 **진짜 실패로 읽히고 FORCE_LIMIT 일탈이 찍힌다** (9/18 실제로 그렇게 났다 — 인터락을 걸었다 푸는 것만으로 일탈이 하나 쌓였다). EXIT 는 이벤트만 세우고, 내리는 것은 대기에서 깨어난 루프가 한다.
 
@@ -208,7 +228,7 @@ ENTER 가 어려운 이유: 루프가 블로킹 Action 을 기다리는 중일 �
 | 3 | 발행 6종 — `weight`·`scoop_cycle`·`dispense_result`·`deviation`(+QA 후 재발행)·`event`·`state` | `_drain()` 한 곳에서 FSM 의 `results`/`deviations` 길이 변화를 보고 발행 | `test_batch_runs_to_completion` | ✅ 9/18 |
 | 4 | `_srv_interlock` ENTER — `safe_pose` → granted, 루프는 `SkillCancelled` 로 받아 EXIT 까지 PAUSED | `_srv_interlock`·`_execute` | 6절 그림. **실물 확인은 남았다** | ✅ 9/18 (실물 미확인) |
 | 5 | `batch_id` 형식 `B-YYYYMMDD-NNN`, 모르는 원료는 주문 단계 거부 | `_srv_submit`·`StationMap.check` | `test_rejects_unknown_material` | ✅ 9/18 |
-| 6 | **[추가 7]** NUDGE 게이트 (`event` 구독, 토글, PAUSED 표시) | `_run_loop` | skill_node 가 NUDGE 를 가짜로 쏘면 멈추고 다시 쏘면 가는지 | 9/18 |
+| 6 | **[추가 7]** NUDGE 게이트 (`event` 구독, 토글, PAUSED 표시) | `_on_event`·`_pause_reason`·`_gate` | `test_process_node.py` NUDGE 6건 (가짜 skill_node 가 `CellEvent(NUDGE)` 를 쏜다). **실물 확인은 G1 과 함께** — 가상은 `scale.simulated` 라 skill_node 가 NUDGE 를 내지 않는다 | ✅ 9/18 |
 | 7 | **[추가 1]** WRONG_TOOL — `grip` 결과 폭 검사 (기대 폭은 `stations.yaml` 의 `expected_scoop_width_mm`, 이미 `StationMap.widths` 로 읽고 있다) + RULES 추가 | `process_fsm`, `deviation.py` | 테스트: 폭 불일치 → DEVIATION | 9/21 |
 | 8 | **[추가 3]** 재기동 이어하기 — 기동 시 D 의 DB API 로 미완료 배치 조회 → FSM 을 `state/idx/tare_g/results` 로 복원 → 용기 재계량 → 재개 | `ProcessNode.__init__`, `ProcessFSM.restore()` | 실행 중 Ctrl-C → 재실행 → 이어서 DONE | 9/22 |
 | 9 | 고의 장애 T6 (a)(b)(c) 가상·실물 재현 | — | `deviation` 3종이 DB 에 남는지 | 9/22 |
@@ -237,5 +257,7 @@ python3 -m pytest ros2_ws/src/gmp_process/test/test_process_node.py -q
 - `deviation` 은 TRANSIENT_LOCAL 이라 HMI 가 늦게 붙어도 최근 10건을 받는다. QA 판정 후 **같은 `deviation_id` 로 재발행**해야 record_node 가 upsert 한다.
 - `state` 는 0.5 s 타이머가 계속 쏘므로, 전이 직후 한 번 더 쏘는 `_pub_state()` 는 지연을 줄이는 용도다. 빼도 동작은 한다.
 - 스킬 실패(`success=false`·서버 없음·시간 초과)는 **FORCE_LIMIT 일탈**이 된다 — 노드가 `fsm.skill_failed(req, 사유)` 로 넘기고, RULES `(1, RETRY, FORCED)` 가 **1회 재시도 후 ERROR** 로 끊는다. 카운터는 (원료, 스텝, kind) 별이라 다른 스텝에서 또 실패하면 거기서 다시 1회 준다. 예외는 `safe` 요청 자체의 실패 — 더 물러설 곳이 없으니 바로 ERROR 로 끝낸다.
+- **NUDGE 는 안전 자세로 보내지 않는다.** 그 자리에 선다 — 사람이 툭 건드려 세운 것이지 들어오겠다는 뜻이 아니다 (D-21). 스쿱을 든 채로도 선다. 사람이 **들어오려면** 인터락 ENTER 를 따로 눌러야 하고, 그때 `safe_pose` 가 나간다.
+- **NUDGE 는 스킬 중간을 끊지 않는다.** 게이트는 요청 **사이**에 있다. 블로킹 `movel` 은 취소가 안 되고(I-004), 애초에 그 구간에서는 skill_node 가 NUDGE 를 감지하지도 않는다 (D-21) — 감지되는 자리는 유휴·계량 settle·붓기 대기다.
 - **인터락이 끊은 실패는 실패가 아니다.** `_pause` 가 서 있으면 같은 `success=false` 를 취소로 읽어 EXIT 까지 기다렸다가 같은 요청을 다시 부른다. 이 구분이 없으면 인터락을 걸 때마다 FORCE_LIMIT 일탈이 쌓인다 — 그리고 `_pause` 를 EXIT 핸들러에서 내리면 구분이 있어도 똑같이 쌓인다 (6절).
 - `ScoopCycle` 의 **6축 wrench 통계는 아직 못 채운다** — `WeighHeld`/`WeighContainer` 가 `WeightReading` 만 돌려주기 때문(I-008). 0 으로 두면 학습에서 진짜 0 과 구분되지 않으므로 `*_wrench_valid=false` 로 남긴다.

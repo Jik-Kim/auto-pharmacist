@@ -257,6 +257,26 @@ def test_auth_rbac_csrf_actor_and_revocation(app_db, node):
     assert PASSWORD not in node.admin_store.path.read_text()
 
 
+def test_collection_confirmation_is_qa_only_and_audited(app_db, node):
+    app, _ = app_db
+    admin = app.test_client(); admin_token = login(admin)
+    assert post(admin, admin_token, '/users', dict(username='qa', password=PASSWORD, role='qa')).status_code == 201
+    qa = app.test_client(); qa_token = login(qa, 'qa')
+    assert post(qa, qa_token, '/collection-confirm', {'passbox_done_empty': True}).status_code == 400
+    assert post(qa, qa_token, '/collection-confirm', {
+        'passbox_done_empty': True, 'reject_bin_empty': True,
+    }).json['ok'] is True
+    event = node.published[-1]
+    assert event.code == 'HMI_COLLECTION_CONFIRMED'
+    assert event.batch_id == '' and event.text.startswith('qa ')
+    assert post(admin, admin_token, '/users', dict(username='op', password='operator-pass', role='operator')).status_code == 201
+    operator = app.test_client()
+    operator_token = login(operator, 'op', 'operator-pass')
+    assert post(operator, operator_token, '/collection-confirm', {
+        'passbox_done_empty': True, 'reject_bin_empty': True,
+    }).status_code == 403
+
+
 def test_password_and_disabled_user_invalidate_sessions(app_db):
     app, _ = app_db
     admin = app.test_client(); token = login(admin)

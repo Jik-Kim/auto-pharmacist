@@ -28,6 +28,9 @@
 외력·작업물무게 분해능 미측정 · 심각도 상 · A + B · 등록 9/16
 - **내용·재현**: 툴 1.320 kg 에서 30 g(0.3 N) 변화를 JTS 기반 추정으로 가를 수 있는지 아무도 재지 않았다. `get_workpiece_weight` 와 `get_tool_force` 둘 다 같은 센서에서 나온다.
 - **조치·남은 것**: 9/17 오전 G1 (`docs/demo_run_procedure.md` 1절). σ 를 `docs/SOT.md` D-08 에 적고 도징 단위를 정한다.
+- **9/18 G1 결과 (tool_force, 스쿱+원료 총 133 g (빈 스쿱 32 g))**: 회차 평균 σ 6.0 g · 3σ 18.0 g → `min_resolvable_g 19`, `max_std_g 5`, `offset_g 260.2`(tool_force 전용, gain 1 임시). 원시 CSV·재계산 모듈을 `gmp_dosing/calibration/`·`core/calib.py` 에 넣었다 (PR #22, C 가 이어서). 판정 근거는 Q-11 로.
+- **9/19 재측정 (C, `calibration/measure_g1.py`, 두 경로 동시)**: 32 g·132 g 각 3세트×30회. tool_force 3σ **12.6 g** (표본 간격 0.82 s 로 독립), 두 점 gain 0.886·offset 247.1 → `common.yaml` method tool_force·gain·offset·max_std_g 10 반영. **workpiece 탈락** — reset 이 success 인데 빈 그리퍼 869 g, 무게를 올리면 값이 내려감 (D-07 확정). 실물 첫 PC 에 `pymodbus` 가 없어 그리퍼 드라이버가 죽었던 것도 이날 발견 (T0 에 추가).
+- **남은 것**: (a) skill_node `measure_force` 의 표본 간격 0.05 s 는 중복 표본 — `period_s` 파라미터로 빼고 센서 갱신 주기 이상으로 (A). 그 뒤 `min_resolvable_g` 19 → 14 (b) 3점째(≈86 g)로 gain 직선 확인 (9/21). (a) 전까지 **열림** 유지.
 
 ### I-002
 드라이버가 `grip` 비트를 토픽으로 내지 않는다 · 중 · A · 9/16
