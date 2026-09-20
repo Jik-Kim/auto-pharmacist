@@ -230,12 +230,15 @@ def _why(proc):
 def test_qa_rejects_wrong_deviation_id_then_approves(cell):
     """QA 판정은 **대기 중인 그 일탈**에만 붙는다. 승인하면 같은 deviation_id 로 재발행한다."""
     proc, fake, col = cell
-    fake.transfer = 2.0                          # 부으면 퍼낸 양의 2배가 들어간다 → 과투입
+    # 붓을 때 스쿱 투입량의 2배가 약통에 들어간다(흘림·편향 모사). 스쿱 계량(WEIGH_SCOOP·WEIGH_RESIDUAL)은
+    # 정상으로 보이므로 배치 끝 VERIFY ① 이 BATCH_OUT_OF_SPEC 으로 잡는다 (D-22 ①). 깊이 계약(v1.5) 뒤로는
+    # 정상 스쿱 경로에서 OVERFILL 이 나지 않는다 — 스쿱량이 남은 양+허용오차를 넘으면 붓기 전에 반환하기 때문.
+    fake.transfer = 2.0
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), proc.fsm.state
 
     dev = proc._pending_dev()
-    assert dev.kind == Deviation.OVERFILL and dev.requires_decision
+    assert dev.kind == Deviation.BATCH_OUT_OF_SPEC and dev.requires_decision
     assert dev.deviation_id.startswith('D-B-')
 
     bad = _qa(col, 'D-없는-배치-9', Deviation.APPROVED)
@@ -243,13 +246,7 @@ def test_qa_rejects_wrong_deviation_id_then_approves(cell):
 
     ok = _qa(col, dev.deviation_id, Deviation.APPROVED)
     assert ok.accepted
-
-    # 과투입을 승인했으니 배치 끝 VERIFY 에서 규격 이탈로 한 번 더 묻는다 (D-22 ①) — 그것도 승인한다
-    assert _wait_mode(proc, 'DEVIATION')
-    second = proc._pending_dev()
-    assert second.kind == Deviation.BATCH_OUT_OF_SPEC
-    assert _qa(col, second.deviation_id, Deviation.APPROVED).accepted
-    assert _wait_done(proc) == 'DONE'
+    assert _wait_done(proc) == 'DONE', _why(proc)
 
     same = [d for d in col.devs if d.deviation_id == dev.deviation_id]
     assert len(same) == 2, '판정 후 같은 ID 로 재발행해야 record 가 upsert 한다'
@@ -257,11 +254,18 @@ def test_qa_rejects_wrong_deviation_id_then_approves(cell):
 
 
 def test_qa_discard_sends_the_cup_to_reject_bin(cell):
-    """폐기 판정이면 스쿱을 먼저 반납하고 용기째 폐기함으로 간다 (_qa_step 분기)."""
+    """폐기 판정이면 스쿱을 먼저 반납하고 용기째 폐기함으로 간다 (_qa_step 분기).
+
+    일탈은 붓기 **전**에 나야 한다 — 스쿱을 쥔 채 폐기로 들어가야 "스쿱 먼저 반납"이 시험되고, 아직 아무
+    원료도 넣지 않았으니 분주 결과가 없어야 한다. scoop_gain 을 크게 주면 min_fraction 깊이로도 남은 양을
+    넘겨 반환만 반복하다 TIMEOUT 으로 QA 대기에 들어간다.
+    """
     proc, fake, col = cell
-    fake.transfer = 2.0
+    fake.scoop_gain = 4.0
     _submit(col, [('A', 10.0, 5.0)])
-    assert _wait_mode(proc, 'DEVIATION')
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    assert proc._pending_dev().kind == Deviation.TIMEOUT and proc.fsm.state == 'DEVIATION'
+    assert fake.held, '스쿱을 쥔 채 QA 를 기다려야 한다'
 
     _qa(col, proc._pending_dev().deviation_id, Deviation.DISCARDED)
     assert _wait_done(proc) == 'DONE'
@@ -347,9 +351,7 @@ def test_enter_during_qa_wait_keeps_qa_open(cell):
     assert _wait_mode(proc, 'PAUSED'), f'판정 뒤에는 사람이 나올 때까지(EXIT) 멈춘다 — {_why(proc)}'
     assert _lock(col, InterlockRequest.Request.EXIT).granted
 
-    # 과투입 승인 → VERIFY 규격 이탈도 승인 → 완주
-    assert _wait_mode(proc, 'DEVIATION')
-    assert _qa(col, proc._pending_dev().deviation_id, Deviation.APPROVED).accepted
+    # VERIFY ① 규격 이탈(transfer=2.0)을 승인했으니 남은 것은 완주다
     assert _wait_done(proc) == 'DONE', f'{proc.fsm.state} / {proc.note}'
 
 
@@ -517,9 +519,7 @@ def test_nudge_while_qa_pending_keeps_qa_open(cell):
 
     assert _wait_mode(proc, 'PAUSED'), f'판정 뒤에는 NUDGE 정지가 드러난다 — {_why(proc)}'
     fake.nudge()
-    assert _wait_mode(proc, 'DEVIATION')          # VERIFY 규격 이탈
-    assert _qa(col, proc._pending_dev().deviation_id, Deviation.APPROVED).accepted
-    assert _wait_done(proc) == 'DONE', proc.note
+    assert _wait_done(proc) == 'DONE', proc.note   # 일탈은 VERIFY ① 한 건 — 승인했으니 완주
 
 
 def test_nudge_and_interlock_both_must_clear(cell):
@@ -669,7 +669,7 @@ def test_discarded_batch_also_parks_at_nudge_wait(cell):
     """폐기도 세트의 끝 — reject_bin 뒤 nudge_wait 에서 기다리고, NUDGE 뒤 상태는 DISCARDED 로 남는다 (record_node 가 본다)."""
     proc, fake, col = cell
     fake.attendant = False
-    fake.transfer = 2.0                            # 과투입 → OVERFILL → QA
+    fake.transfer = 2.0                            # 약통에 2배 → VERIFY ① BATCH_OUT_OF_SPEC → QA
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), _why(proc)
     dev = proc._pending_dev()
@@ -694,3 +694,97 @@ def test_enter_during_nudge_wait_goes_to_safe_pose(cell):
     assert _lock(col, InterlockRequest.Request.EXIT).granted
     fake.nudge()
     assert _wait_done(proc) == 'DONE', _why(proc)
+
+
+def _call(col, srv_type, name, request, timeout=10.0):
+    cli = col.create_client(srv_type, name)
+    assert cli.wait_for_service(timeout_sec=5.0), f'{name} 서버가 없다'
+    fut = cli.call_async(request)
+    t0 = time.time()
+    while not fut.done() and time.time() - t0 < timeout:
+        time.sleep(0.02)
+    assert fut.done(), f'{name} 응답 없음'
+    return fut.result()
+
+
+def _recover(col, **kwargs):
+    from gmp_interfaces.srv import RecoverSafety
+    args = {'request_id': 'r1', 'operator_id': 'op', 'expected_state': 5, 'operator_confirmed': True}
+    args.update(kwargs)
+    return _call(col, RecoverSafety, 'request_safety_recovery', RecoverSafety.Request(**args))
+
+
+def test_safety_stop_blocks_new_submission(cell):
+    """로봇 안전 정지 중에는 배치를 시작하지 않는다 (docs/interfaces.md 8절)."""
+    proc, fake, col = cell
+    fake.safety_stop('joint limit', robot_state=5)
+    assert _wait_until(lambda: proc._safety_stop), '이벤트를 못 받았다'
+    r = _submit(col, [('A', 100.0, 5.0)])
+    assert not r.accepted and 'joint limit' in r.message, r.message
+    assert proc.fsm is None, '배치가 시작되지 않아야 한다'
+
+
+def test_safety_stop_skips_force_limit_retry(cell):
+    """안전 정지 중 스킬 실패는 FORCE_LIMIT 재시도 없이 바로 ERROR (재시도해도 skill_node 가 다시 거부할 뿐이다).
+
+    일반 실패(test_skill_failure_becomes_force_limit_then_error)는 같은 요청을 한 번 더 부르고
+    FORCE_LIMIT 일탈 2건을 남긴다 — 안전 정지는 재시도도, 일탈 기록도 남기지 않고 바로 끝낸다.
+    """
+    proc, fake, col = cell
+    fake.delay['move'] = 0.2            # 안전 정지 이벤트가 들어갈 틈을 만든다
+    fake.fail['move'] = 99
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: fake.calls), '첫 move 가 시작되지 않았다'
+    fake.safety_stop('external torque')
+    assert _wait_until(lambda: proc._safety_stop), '이벤트를 못 받았다'
+    assert _wait_done(proc) == 'ERROR', _why(proc)
+    assert not proc.fsm.deviations, proc.fsm.deviations
+
+
+def test_safety_stop_during_qa_wait_ends_batch(cell):
+    """QA 판정을 기다리는 중에 안전 정지가 오면 판정을 기다리지 않고 끝낸다."""
+    proc, fake, col = cell
+    fake.transfer = 2.0                              # 과투입 → OVERFILL → QA 대기
+    _submit(col, [('A', 10.0, 5.0)])
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    fake.safety_stop('collision while paused')
+    assert _wait_done(proc) == 'ERROR', _why(proc)
+
+
+def test_safety_recovery_success_unblocks_submission_not_resume(cell):
+    """복구 성공(수동 조치 불필요)은 새 주문만 받는다 — 끝난 배치를 되살리지 않는다."""
+    proc, fake, col = cell
+    fake.safety_stop('collision')
+    assert _wait_until(lambda: proc._safety_stop), '이벤트를 못 받았다'
+    fake.safety_recovery(success=True, manual_required=False, robot_state=1, message='복구 확인')
+    assert _wait_until(lambda: not proc._safety_stop), '차단이 안 풀렸다'
+    r = _submit(col, [('A', 100.0, 5.0)])
+    assert r.accepted, r.message                                               # 새 주문은 받는다
+    assert _wait_until(lambda: proc.fsm and proc.fsm.mode == 'RUNNING'), _why(proc)   # 배치가 실제로 돈다
+
+
+def test_safety_recovery_manual_required_keeps_block(cell):
+    """복구 모드 진입만 한 결과(manual_required)는 차단을 유지한다 — 새 요청이 또 필요하다."""
+    proc, fake, col = cell
+    fake.safety_stop('joint limit')
+    assert _wait_until(lambda: proc._safety_stop), '이벤트를 못 받았다'
+    fake.safety_recovery(success=False, manual_required=True, robot_state=8, message='복구 모드 진입')
+    time.sleep(0.3)
+    assert proc._safety_stop, '수동 조치가 필요하면 차단을 유지해야 한다'
+
+
+def test_request_safety_recovery_relays_to_skill(cell):
+    """HMI → 여기 → skill_node/recover_safety 중계 (docs/interfaces.md 8절)."""
+    proc, fake, col = cell
+    fake.recover_result = (True, False, 1, '로봇 복구 확인')
+    r = _recover(col, request_id='r7')
+    assert r.success and not r.manual_required and r.robot_state == 1
+    assert any(c == 'recover:r7' for c in fake.calls)
+
+
+def test_request_safety_recovery_rejects_missing_fields_without_calling_skill(cell):
+    """작업자 확인 없는 요청은 skill_node 를 부르지도 않고 거부한다."""
+    proc, fake, col = cell
+    r = _recover(col, request_id='', operator_confirmed=True)
+    assert not r.success and r.manual_required
+    assert not any(c.startswith('recover:') for c in fake.calls)

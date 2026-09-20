@@ -7,6 +7,8 @@ A 의 `skill_node` 와 **같은 이름·같은 계약**의 서버 8개를 세우
 이것으로 확인하는 것은 **process_node 가 계약대로 부르고 계약대로 해석하는가** 하나다.
 힘제어·티칭·실제 분해능은 여기서 검증되지 않는다 — 그건 G1·G4 실측의 몫이다.
 """
+import json
+import math
 import threading
 import time
 
@@ -17,12 +19,13 @@ from rclpy.node import Node
 
 from gmp_interfaces.action import MoveToStation, Pour, ReturnMaterial, Scoop, WeighContainer, WeighHeld
 from gmp_interfaces.msg import CellEvent, WeightReading
-from gmp_interfaces.srv import MeasureForce, SafePose, SetGripper
+from gmp_interfaces.srv import MeasureForce, RecoverSafety, SafePose, SetGripper
 
 SCOOP_MASS_G = 45.0        # 빈 스쿱
 CUP_MASS_G = 120.0         # 빈 약통
 NOMINAL_SCOOP_G = 40.0     # 1회 퍼올림 (dosing.scoop_nominal_g 와 맞춘다)
 TRANSFER = 0.95            # 부을 때 실제로 옮겨 가는 비율 — 나머지는 스쿱 잔량이 된다
+MIN_DEPTH_FRACTION = 0.15  # dosing.min_fraction 과 맞춘다 (계약 v1.5 유효 범위 하한)
 
 
 class FakeSkillNode(Node):
@@ -39,10 +42,14 @@ class FakeSkillNode(Node):
         self.fail = {}                          # 스킬 이름 → 앞으로 실패시킬 횟수 (실패 경로 시험용)
         self.empty = 0                          # 앞으로 몇 번 contact_detected=false 로 답할지 (원료 소진 시험용)
         self.delay = {}                         # 스킬 이름 → 응답 전 대기 [s] (인터락 끼어들기 시험용)
-        self.transfer = TRANSFER                # 붓기 전달률. 1 을 넘기면 과투입을 만들 수 있다
+        self.transfer = TRANSFER                # 붓기 전달률. 1 을 넘기면 약통에 스쿱 투입량보다 많이 들어간다
+                                                #   → 스쿱 계량으로는 안 잡히고 VERIFY ① BATCH_OUT_OF_SPEC 이 잡는다
+        self.scoop_gain = 1.0                   # 깊이당 퍼올림 배율. 크게 주면 min_fraction 으로도 남은 양을 넘겨
+                                                #   반환만 반복하다 붓기 전에 TIMEOUT 이 난다 (붓기 전 일탈 시험용)
         self.cancelled = False                  # safe_pose 가 세운다 — 진행 중 스킬 1건이 실패로 끝난다
         self.attendant = True                   # 세트 끝 NUDGE_WAIT 에서 사람이 건드려 준다 (D-23). 대기 자체를 시험하면 False
         self._attend_stop = threading.Event()
+        self.recover_result = (True, False, 1, 'ok')   # recover_safety 응답 — 테스트가 덮어쓴다 (v1.4)
 
         # 진짜 skill_node 처럼 event 로 알린다 — NUDGE 는 여기로 나간다 (D-21)
         self.pub_event = self.create_publisher(CellEvent, 'event', 100)
@@ -56,6 +63,7 @@ class FakeSkillNode(Node):
         self.create_service(SetGripper, 'set_gripper', self._set_gripper, callback_group=self.cb)
         self.create_service(MeasureForce, 'measure_force', self._measure, callback_group=self.cb)
         self.create_service(SafePose, 'safe_pose', self._safe, callback_group=self.cb)
+        self.create_service(RecoverSafety, 'recover_safety', self._recover, callback_group=self.cb)
 
     def attend(self, proc):
         """반자동 운전의 사람 — process 가 nudge_wait 에서 기다리면 잠시 뒤 건드린다."""
@@ -80,6 +88,24 @@ class FakeSkillNode(Node):
         self.pub_event.publish(m)
         with self.lock:
             self.calls.append('nudge')
+
+    def safety_stop(self, reason='vendor alarm', robot_state=5):
+        """A 가 SAFE_STOP 류를 감지했다고 알린다 (v1.4, docs/interfaces.md 8절)."""
+        m = CellEvent(level=CellEvent.ERROR, code='ROBOT_SAFETY_STOP',
+                     text=json.dumps({'robot_state': robot_state, 'reason': reason}, ensure_ascii=False))
+        m.header.stamp = self.get_clock().now().to_msg()
+        self.pub_event.publish(m)
+
+    def safety_recovery(self, success, manual_required, robot_state=1, message='',
+                        request_id='r1', operator_id='op'):
+        """A 의 복구 결과를 알린다 (v1.4). 배치 소유자가 아니라 batch_id 는 비운다."""
+        level = CellEvent.INFO if success else CellEvent.WARN
+        m = CellEvent(level=level, code='ROBOT_SAFETY_RECOVERY', text=json.dumps(
+            {'request_id': request_id, 'operator_id': operator_id, 'success': success,
+             'manual_required': manual_required, 'robot_state': robot_state, 'message': message},
+            ensure_ascii=False))
+        m.header.stamp = self.get_clock().now().to_msg()
+        self.pub_event.publish(m)
 
     def _hold(self, name: str):
         """이 스킬이 도는 데 걸리는 시간. 스킬 **중간**에 사람이 끼어드는 상황을 만든다.
@@ -128,7 +154,13 @@ class FakeSkillNode(Node):
 
     def _scoop(self, gh):
         with self.lock:
-            self.calls.append(f'scoop:{gh.request.material_id}:{gh.request.attempt}')
+            self.calls.append(f'scoop:{gh.request.material_id}:{gh.request.attempt}'
+                              f':{gh.request.depth_fraction:.3f}')
+        depth = float(gh.request.depth_fraction)
+        # 계약 v1.5 — 범위 밖 깊이는 이동 전에 거부한다. 실제 Z 변환은 A 가 실물 뒤 확정한다.
+        if not math.isfinite(depth) or not MIN_DEPTH_FRACTION <= depth <= 1.0:
+            gh.abort()
+            return Scoop.Result(success=False, message=f'담그기 깊이 비율 범위 밖: {depth}')
         self._hold('scoop')
         with self.lock:
             if self._take_cancel():
@@ -142,7 +174,9 @@ class FakeSkillNode(Node):
                 gh.succeed()
                 return Scoop.Result(success=True, contact_detected=False)
             if self.held:
-                self.content[self.held] = self.content.get(self.held, 0.0) + NOMINAL_SCOOP_G
+                # 깊이 비율만큼 퍼올린다 — 계약 v1.5 의 depth_fraction 이 실제로 쓰이는 지점
+                self.content[self.held] = (self.content.get(self.held, 0.0)
+                                           + NOMINAL_SCOOP_G * depth * self.scoop_gain)
         gh.succeed()
         return Scoop.Result(success=True, contact_detected=True, max_contact_force_n=7.2,
                             insertion_depth_mm=21.0)
@@ -232,4 +266,10 @@ class FakeSkillNode(Node):
             self.calls.append(f'safe:{req.reason}')
             self.cancelled = True        # 진행 중 스킬 1건을 실패로 끝낸다 (skill_node 와 같은 규칙)
         res.success = True
+        return res
+
+    def _recover(self, req, res):
+        with self.lock:
+            self.calls.append(f'recover:{req.request_id}')
+        res.success, res.manual_required, res.robot_state, res.message = self.recover_result
         return res
