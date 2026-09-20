@@ -20,7 +20,7 @@ def _start(context):
     if scenario not in ('normal', 'overfill', 'verify_mismatch', 'wrong_tool'):
         raise ValueError('scenario는 normal/overfill/verify_mismatch/wrong_tool이어야 합니다.')
     if not os.environ.get('GMP_HMI_ADMIN_PASSWORD'):
-        raise ValueError('시험 관리자 비밀번호를 GMP_HMI_ADMIN_PASSWORD 환경변수에 설정하세요 (12자 이상).')
+        raise ValueError('시험 관리자 비밀번호를 GMP_HMI_ADMIN_PASSWORD 환경변수에 설정하세요 (10자 이상).')
     initial = yaml.safe_load(LaunchConfiguration('test_initial_g').perform(context))
     if (not isinstance(initial, list) or len(initial) != 3 or
             any(type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1000 for value in initial)):

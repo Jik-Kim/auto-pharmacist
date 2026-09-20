@@ -1,6 +1,7 @@
 """웹 HMI — Flask(메인 스레드) + rclpy 노드(executor 스레드). Kn1 mro_fleet 의 monitor_web_app / fleet_ui_commands 패턴.
 
-  브라우저 → /order /qa /interlock (POST) → ROS 서비스 (submit_order / qa_decision / interlock)
+  브라우저 → /order (POST) → ROS 액션 run_batch
+  브라우저 → /qa /interlock (POST) → ROS 서비스 (qa_decision / interlock)
   브라우저 ← /status (0.5 s 폴링) ← 구독 스냅샷 (state · weight · dispense_result · deviation · gripper_state)
   브라우저 ← /history /batch/<id> /kpi /audit ← SQLite (읽기만 — 쓰는 쪽은 record_node)
 
@@ -27,13 +28,20 @@ import time
 from pathlib import Path
 
 import rclpy
+from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from ament_index_python.packages import get_package_share_directory
 
+from gmp_interfaces.action import RunBatch
 from gmp_interfaces.msg import CellEvent, CellState, Deviation, DispenseResult, GripperState, Recipe, RecipeItem, WeightReading, ScoopCycle
-from gmp_interfaces.srv import InterlockRequest, QaDecision, SubmitOrder
+from gmp_interfaces.srv import InterlockRequest, QaDecision
+try:
+    from gmp_interfaces.srv import RecoverSafety
+except ImportError:
+    RecoverSafety = None  # 최신 계약 빌드 전에는 복구를 차단한다.
+from gmp_hmi.core.safety_recovery import SafetyRecovery
 from gmp_hmi.core.db import DECISIONS, KINDS, VERDICTS, CellDB
 from gmp_hmi.core.session_inventory import SessionInventory
 from gmp_hmi.core.trial_inventory import validate_trial_snapshot
@@ -50,6 +58,15 @@ LEVELS = {0: 'INFO', 1: 'WARN', 2: 'ERROR'}
 
 class CommandUnavailable(RuntimeError):
     pass
+
+
+class BatchSubmission:
+    """HTTP 주문 응답에 필요한 RunBatch Goal 접수 결과."""
+
+    def __init__(self, accepted=False, batch_id='', message=''):
+        self.accepted = accepted
+        self.batch_id = batch_id
+        self.message = message
 
 
 def command_number(value):
@@ -112,6 +129,7 @@ class HmiRosNode(Node):
         self.declare_parameter('port', 5000)
         self.declare_parameter('admin_store_path', '~/.config/gmp_hmi/admin.json')
         self.declare_parameter('ui_stale_after_s', 3.0)  # 화면 관측 신선도, 물리 안전 판단 아님
+        self.declare_parameter('recovery_response_timeout_s', 15.0)
         self.declare_parameter('inventory_material_ids', ['A', 'B', 'C'])
         self.declare_parameter('inventory_capacity_g', [0.0, 0.0, 0.0])
         self.declare_parameter('inventory_initial_g', [-1.0, -1.0, -1.0])
@@ -141,6 +159,7 @@ class HmiRosNode(Node):
         self.active_recipe = None
         self.active_recipe_batch_id = ''
         self.lock = threading.Lock()
+        self.safety_recovery = SafetyRecovery()
         self.snap = {'state': {}, 'gripper': {}, 'weights': [], 'results': [], 'deviations': {}, 'events': [], 'scoop_cycles': []}
         self.create_subscription(CellState, 'state', self._on_state, LATCHED)
         self.create_subscription(WeightReading, 'weight', self._on_weight, 20)
@@ -149,9 +168,10 @@ class HmiRosNode(Node):
         self.create_subscription(GripperState, 'gripper_state', self._on_grip, QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
         self.create_subscription(ScoopCycle, 'scoop_cycle', self._on_cycle, 50)
         self.create_subscription(CellEvent, 'event', self._on_event, 100)
-        self.cli_order = self.create_client(SubmitOrder, 'submit_order')
+        self.act_batch = ActionClient(self, RunBatch, 'run_batch')
         self.cli_qa = self.create_client(QaDecision, 'qa_decision')
         self.cli_lock = self.create_client(InterlockRequest, 'interlock')
+        self.cli_recovery = self.create_client(RecoverSafety, 'request_safety_recovery') if RecoverSafety else None
         self.pub_event = self.create_publisher(CellEvent, 'event', 100)
         if self.test_inventory_enabled:
             from std_msgs.msg import String
@@ -230,7 +250,7 @@ class HmiRosNode(Node):
             raise ValueError('시험 높이를 주입할 원료 A/B/C 중 하나를 지정하세요')
         if type(height_pct) not in (int, float) or not math.isfinite(height_pct) or not 0 <= height_pct <= 100:
             raise ValueError('원료 높이는 0~100 사이의 유한한 숫자여야 합니다')
-        self._guard_command(self.cli_order)
+        self._guard_action(self.act_batch)
         from std_msgs.msg import String
         self.pub_test_height.publish(String(data=json.dumps(dict(material_id=material_id, height_pct=height_pct), allow_nan=False)))
         self.audit('TEST_HEIGHT', actor, f'test_only material_id={material_id} height_pct={height_pct:g}')
@@ -320,6 +340,27 @@ class HmiRosNode(Node):
 
     def _on_event(self, m):
         with self.lock:
+            if m.code == 'ROBOT_SAFETY_STOP':
+                try:
+                    detail = json.loads(m.text)
+                except (ValueError, TypeError):
+                    detail = {}
+                self.safety_recovery.stop(detail if isinstance(detail, dict) else {})
+                self.entry_granted = None
+                self._pending_entry = None
+            elif m.code == 'ROBOT_SAFETY_RECOVERY':
+                try:
+                    detail = json.loads(m.text)
+                except (ValueError, TypeError):
+                    detail = None
+                request = self.safety_recovery.request
+                if isinstance(detail, dict):
+                    # 다른 요청/이전 정지의 성공으로 현재 정지를 해제하지 않는다.
+                    if (request and detail.get('request_id') == request['request_id']
+                            and detail.get('operator_id') == request['operator_id']):
+                        self.safety_recovery.finish(request, detail)
+                    else:
+                        self.snap['external_safety_recovery'] = detail
             self._received('event')
             self.snap['events'].append(dict(t=self._t(m.header), level=LEVELS.get(m.level, '?'),
                 code=m.code, text=m.text, batch_id=m.batch_id))
@@ -363,6 +404,57 @@ class HmiRosNode(Node):
                       batch_id=batch_id)
         m.header.stamp = self.get_clock().now().to_msg()
         self.pub_event.publish(m)
+
+    def recover_safety(self, actor, expected_state, confirmed, generation, request_id=None):
+        if not self.cli_recovery:
+            raise CommandUnavailable('RecoverSafety 계약 미설치: 최신 main 병합 및 인터페이스 빌드가 필요합니다')
+        self._guard_command(self.cli_recovery)
+        with self.lock:
+            request = (self.safety_recovery.retry(actor, request_id) if request_id else
+                       self.safety_recovery.begin(actor, expected_state, confirmed,
+                                                 self.snap['state'].get('batch_id', ''), generation))
+            self.entry_granted = None
+            self._pending_entry = None
+        self.audit('SAFETY_RECOVERY_REQUEST', actor, json.dumps(request, ensure_ascii=False), request['batch_id'])
+        req = RecoverSafety.Request(**{key: request[key] for key in (
+            'request_id', 'operator_id', 'expected_state', 'operator_confirmed')})
+
+        def complete(result, outcome):
+            with self.lock:
+                applied = self.safety_recovery.finish(request, result)
+            self.audit('SAFETY_RECOVERY_RESULT', actor, json.dumps(dict(
+                request_id=request['request_id'], result=result, outcome=outcome,
+                applied_to_current_stop=applied), ensure_ascii=False), request['batch_id'])
+
+        def expire():
+            with self.lock:
+                current = self.safety_recovery.request
+                waiting = (current and current['request_id'] == request['request_id']
+                           and self.safety_recovery.phase == 'pending')
+                if waiting:
+                    self.safety_recovery.finish(request, None)
+            if waiting:
+                self.audit('SAFETY_RECOVERY_TIMEOUT', actor, request['request_id'], request['batch_id'])
+
+        try:
+            future = self.cli_recovery.call_async(req)
+        except Exception:
+            complete(None, 'send_error')
+            return request['request_id']
+        timer = threading.Timer(max(1.0, float(self.get_parameter('recovery_response_timeout_s').value)), expire)
+        timer.daemon = True
+        def done(fut):
+            timer.cancel()
+            try:
+                response = fut.result()
+                result = {key: getattr(response, key) for key in (
+                    'success', 'manual_required', 'robot_state', 'message')}
+            except Exception:
+                result = None
+            complete(result, 'response' if result is not None else 'response_error')
+        timer.start()
+        future.add_done_callback(done)
+        return request['request_id']
 
     def _recipe_paths(self):
         directory = self.get_parameter('recipes_dir').value
@@ -410,6 +502,7 @@ class HmiRosNode(Node):
         now = time.monotonic()
         with self.lock:
             data = copy.deepcopy(self.snap)
+            data['safety_recovery'] = self.safety_recovery.snapshot()
             ages = {key: None if value is None else max(0.0, now - value)
                     for key, value in self.received.items()}
             counts = dict(self.received_counts)
@@ -443,8 +536,9 @@ class HmiRosNode(Node):
                 item.update(height_pct=None, height_low_latched=False, refill_ready=False)
         data['diagnostics'] = {
             'namespace': self.get_namespace(),
-            'services': {'submit_order': bool(self.cli_order.service_is_ready()),
-                         'qa_decision': bool(self.cli_qa.service_is_ready()),
+            'actions': {'run_batch': bool(self.act_batch.server_is_ready())},
+            'services': {'qa_decision': bool(self.cli_qa.service_is_ready()),
+                         'request_safety_recovery': bool(self.cli_recovery and self.cli_recovery.service_is_ready()),
                          'interlock': bool(self.cli_lock.service_is_ready())},
             'topics': {key: {'age_s': ages[key], 'count': counts[key]} for key in TOPICS}}
         if self.test_inventory_enabled:
@@ -457,8 +551,10 @@ class HmiRosNode(Node):
         return json_finite(data)
 
     def submit(self, name, actor):
-        self._guard_command(self.cli_order)
+        self._guard_action(self.act_batch)
         with self.lock:
+            if self.safety_recovery.active:
+                raise CommandUnavailable('안전정지 복구가 확인되지 않아 새 주문을 차단했습니다')
             state = self.snap['state']
             if state.get('mode') == 'DONE' and state.get('step') not in ('DONE', 'DISCARDED'):
                 raise CommandUnavailable('물리적 완료 확인 대기: 공정의 최종 DONE 또는 DISCARDED 수신 후 주문하세요')
@@ -478,11 +574,12 @@ class HmiRosNode(Node):
             if missing:
                 self.audit('ORDER_REJECTED', actor, '시험 원료 부족 ' + ','.join(missing), batch_id='')
                 raise ValueError('시험 원료 부족/미등록: ' + ', '.join(missing) + ' · 만충 보충 후 주문하세요')
-        r = Recipe(product=spec.product or name)
+        batch_id = 'HMI-' + secrets.token_hex(6).upper()
+        r = Recipe(batch_id=batch_id, product=spec.product or name)
         r.header.stamp = self.get_clock().now().to_msg()
         for it in spec.items:
             r.items.append(RecipeItem(material_id=it.material_id, target_g=it.target_g, tol_pct=it.tol_pct))
-        res = self._call(self.cli_order, SubmitOrder.Request(recipe=r))
+        res = self._send_batch_goal(RunBatch.Goal(recipe=r), batch_id)
         if res and res.accepted and res.batch_id:
             with self.lock:
                 self.active_recipe = detail
@@ -490,6 +587,56 @@ class HmiRosNode(Node):
         self.audit('ORDER', actor, f'{name} → {res.batch_id if res else "no-response"} accepted={bool(res and res.accepted)}',
                    batch_id=res.batch_id if res and res.accepted else '')
         return res
+
+    def _guard_action(self, client):
+        with self.lock:
+            received = self.received['state']
+            threshold = self.local_settings['ui_stale_after_s']
+        if received is None or time.monotonic() - received > threshold:
+            raise CommandUnavailable('공정 상태 수신이 지연되어 요청을 차단했습니다. 연결을 확인하세요')
+        if not client.server_is_ready():
+            raise CommandUnavailable('RunBatch 액션 서버가 연결되지 않아 요청을 차단했습니다')
+
+    def _send_batch_goal(self, goal, batch_id, timeout_s=3.0):
+        """긴 RunBatch 완료를 HTTP에서 기다리지 않고 Goal 접수까지만 확인한다."""
+        if not self.act_batch.wait_for_server(timeout_sec=1.0):
+            return None
+        done = threading.Event()
+        holder = {}
+        try:
+            future = self.act_batch.send_goal_async(goal, feedback_callback=self._on_batch_feedback)
+        except Exception as exc:
+            self.get_logger().warning(f'RunBatch Goal 전송 실패: {exc}')
+            return None
+        future.add_done_callback(lambda value: (holder.update(goal=value), done.set()))
+        if not done.wait(timeout_s) or future.cancelled() or future.exception():
+            return None
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            return BatchSubmission(False, batch_id, 'RunBatch Goal이 거부되었습니다')
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(self._on_batch_result)
+        return BatchSubmission(True, batch_id, 'RunBatch Goal 접수 완료')
+
+    def _on_batch_feedback(self, message):
+        feedback = message.feedback
+        state = feedback.state
+        with self.lock:
+            self.snap['run_batch'] = {
+                'status': 'RUNNING', 'batch_id': state.batch_id,
+                'step': state.step, 'item_index': state.item_index,
+                'last_result': ros_payload(feedback.last_result)}
+
+    def _on_batch_result(self, future):
+        try:
+            result = future.result().result
+            data = {'status': 'FINISHED', 'success': bool(result.success),
+                    'items_done': int(result.items_done), 'deviations': int(result.deviations),
+                    'result': result.result, 'message': result.message}
+        except Exception as exc:
+            data = {'status': 'ERROR', 'success': False, 'message': str(exc)}
+        with self.lock:
+            self.snap['run_batch'] = data
 
     def qa(self, batch_id, deviation_id, decision, actor):
         self._guard_command(self.cli_qa)
@@ -510,6 +657,9 @@ class HmiRosNode(Node):
         return res
 
     def interlock(self, request, reason, actor):
+        with self.lock:
+            if self.safety_recovery.active:
+                raise CommandUnavailable('안전정지 복구는 인터락 ENTER/EXIT로 대신할 수 없습니다')
         self._guard_command(self.cli_lock)
         request = command_number(request)
         if request not in (getattr(InterlockRequest.Request, 'ENTER', 1), getattr(InterlockRequest.Request, 'EXIT', 2)):
@@ -736,6 +886,19 @@ def build_app(node: HmiRosNode, db: CellDB, admin_store=None):
             body['granted'] = bool(res.granted)
         return jsonify(body)
 
+    @app.post('/recover')
+    @requires('operator', 'admin')
+    def recover():
+        data = payload()
+        if not command_lock.acquire(blocking=False):
+            return jsonify(ok=False, message='다른 공정 요청 처리 중'), 409
+        try:
+            request_id = node.recover_safety(g.user['username'], data.get('expected_state'),
+                                             data.get('operator_confirmed'), data.get('generation'), data.get('request_id'))
+        finally:
+            command_lock.release()
+        return jsonify(ok=True, request_id=request_id, message='복구 요청 접수 · 결과는 상태창에서 확인하세요. 배치 재개 아님'), 202
+
     @app.post('/order')
     @requires('operator', 'admin')
     def order():
@@ -777,7 +940,7 @@ def build_app(node: HmiRosNode, db: CellDB, admin_store=None):
         data = payload()
         if data.get('passbox_done_empty') is not True or data.get('reject_bin_empty') is not True:
             raise ValueError('완성품 패스박스와 폐기함을 모두 비웠음을 확인하세요')
-        # 적재 카운터의 권위자는 아직 C 공정이다. HMI는 사람의 회수 확인만 감사 기록으로 남긴다.
+        # 적재 카운터의 권위자는 C 공정이다. HMI는 사람의 회수 확인만 감사 기록으로 남긴다.
         node.audit('COLLECTION_CONFIRMED', g.user['username'],
                    'passbox_done_empty=true reject_bin_empty=true counter_reset=not_connected', batch_id='')
         return jsonify(ok=True, message='회수 확인을 기록했습니다. 공정 적재 카운터 초기화 연동은 아직 준비 중입니다.')

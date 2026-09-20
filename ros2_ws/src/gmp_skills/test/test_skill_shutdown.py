@@ -19,6 +19,7 @@ def worker_node(monkeypatch):
     node.mode = 'virtual'
     node._safety_latched = False
     node._safety_reason = ''
+    node._safety_session = 'test-skill-session'
     node._ready = True
     node._cleanup_error = ''
     node.shutdown_timeout_s = 1

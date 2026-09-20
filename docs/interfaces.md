@@ -12,6 +12,10 @@
 
 정의 원본은 `ros2_ws/src/gmp_interfaces`. 이 문서는 의도·규칙·확정 값을 설명한다.
 
+> **v1.6 제안 (PR 리뷰 대상, 미확정):** 안전복구 시작에 따른 정지와 실제 새 알람을 구분한다.
+> 기존 `CellEvent.text` JSON에 상관관계를 추가한다. ROS 메시지 필드와 `RecoverSafety.srv`는 변경하지 않는다.
+> A/C/D가 함께 적용해야 하며 아래 8절 보완을 영향 담당이 리뷰한다.
+
 > 확정 계약 기준은 v1.3까지다. v1.4 추가분은 초안이며, 계약 확정은 실물 검증 완료를 의미하지 않는다.
 > **변경 절차:** 계약을 바꿔야 하면 **먼저 팀 채널에 알리고**, `gmp_interfaces` 와 이 문서를 **같은 커밋에서** 고친다. 리뷰는 영향받는 담당 전원, 최소 2명 승인 (PM 없음 — AGENTS 교차검수).
 
@@ -244,6 +248,11 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 ### 이벤트 및 C/D 담당 인계
 
 - A `CellEvent(ERROR, code='ROBOT_SAFETY_STOP')`, `text`는 JSON `{robot_state, reason}`. 기존 event 경로 사용. C는 ERROR 및 새 주문 차단으로 연결하고 일반 FORCE_LIMIT 1회 재시도에서 제외한다.
+  - **v1.6 제안:** `origin`, `safety_session`(A 기동별 고유 ID), `safety_revision`(세션 내 증가 정수)을 추가한다.
+  - 복구 요청 자체의 재잠금에는 `origin="recovery_request"`, 요청의 `request_id`·`operator_id`를 붙인다. 실제 알람은 `robot_alarm`, 상태 감시는 `state_monitor`이며 복구 ID를 붙이지 않는다. 같은 내용의 반복 알람도 정지 번호를 올려 발행한다.
+  - D는 현재 요청 ID·작업자가 모두 일치하는 복구 시작에만 요청을 유지한다. 시작 자체는 해제 근거가 아니다. 실제/불명 정지는 요청을 무효화하며, 늦은 시작/성공으로 되살리지 않는다. 성공 응답 뒤 도착한 같은 요청의 시작은 완료 상태를 덮지 않는다.
+  - C는 모든 정지에서 차단한다. 복구 시작의 세션·정지 번호·요청 ID·작업자가 모두 일치하고 `success=true`, `manual_required=false`, `robot_state=1`인 결과만 차단 해제에 사용한다. 새 알람·불명 이벤트·이전 기동 세션 결과는 해제 근거가 아니다. 구버전 A의 상관관계 없는 결과도 차단 해제에 쓰지 않는다.
+  - A는 정지 변경·이벤트 발행을 직렬화하고, 복구 큐 대기 중/명령 직전/완료 직후 새 정지가 생겼으면 성공으로 처리하지 않는다.
 - A `CellEvent(INFO/WARN, code='ROBOT_SAFETY_RECOVERY')`, `text`는 JSON `{request_id, operator_id, success, manual_required, robot_state, message}`. 동일 요청 재전송은 명령/이벤트를 반복하지 않는다. A는 배치를 소유하지 않아 `batch_id`는 빈 문자열이다.
 - C `process_node._on_event`, `_srv_submit`, 실행 루프 — **구현 완료(9/20)**: `ROBOT_SAFETY_STOP` 이 `_safety_stop` 플래그를 세우면 새 주문을 거부하고, QA·인터락·NUDGE 대기를 깨워 배치를 FORCE_LIMIT 재시도 없이 바로 ERROR 로 끝낸다(일탈 기록도 남기지 않는다). `ROBOT_SAFETY_RECOVERY` 가 `success` 이고 `manual_required` 가 아닐 때만 플래그를 내린다 — 끝난 배치는 되살리지 않고 새 주문부터 받는다. "`_srv_submit` 의 ERROR 허용 수정" 은 `mode=='ERROR'` 전체 차단이 아니라 이 플래그로 좁혔다: 일반 실패도 `mode='ERROR'` 로 끝나므로 전체를 막으면 새 주문을 영영 못 받는다.
 - D `hmi_web_node.py`, `static/hmi.js`, `templates/index.html`: 인증된 작업자·요청 ID·기대 상태·조치 확인을 C에 전달하는 버튼/POST 추가, 복구 진행/수동 조치/실패 표시. HMI 감사 이벤트에 현재 배치·작업자·요청 ID·결과를 기록한다. HMI가 ROS 클라이언트 권한까지 인증하는 것은 아니므로 접근 통제는 배포 설정에도 달려 있다.

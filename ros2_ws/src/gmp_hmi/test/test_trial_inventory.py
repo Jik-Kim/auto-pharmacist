@@ -69,7 +69,7 @@ def test_backend_insufficient_inventory_never_calls_ros(node,backend):
     inv=ledger();inv.reserve({'A':450.0},'prior');inv.consume('A',450.0);inv.release()
     enable(node,inv.snapshot(True))
     with pytest.raises(ValueError,match='원료 부족'):node.submit('demo_batch','operator')
-    assert node.cli_order.calls==[]
+    assert node.act_batch.calls==[]
     assert node.published[-1].code=='HMI_ORDER_REJECTED'
 
 
@@ -79,7 +79,7 @@ def test_backend_stale_and_malformed_inventory_fail_closed(node,backend):
     assert node.snapshot()['inventory']['fresh'] is False
     node._on_test_inventory(SimpleNamespace(data='{broken'))
     with pytest.raises(backend.CommandUnavailable):node.submit('demo_batch','operator')
-    assert node.cli_order.calls==[]
+    assert node.act_batch.calls==[]
 
 
 def test_old_inventory_revision_does_not_revert_consumption(node):
@@ -101,7 +101,7 @@ def test_http_shortage_rejects_even_if_button_bypassed(app_db,node):
     enable(node,inv.snapshot(True))
     result=post(client,token,'/order',{'recipe':'demo_batch'})
     assert result.status_code==400 and result.json['ok'] is False
-    assert node.cli_order.calls==[]
+    assert node.act_batch.calls==[]
 
 
 def test_http_refill_permission_and_csrf(app_db,node):
@@ -160,7 +160,7 @@ def test_snapshot_must_preserve_height_latch_and_block_list():
 def test_production_submit_delegates_to_process_without_trial_inventory(node,backend):
     node._on_state(state('',0))
     assert node.submit('demo_batch','operator').accepted
-    assert len(node.cli_order.calls)==1
+    assert len(node.act_batch.calls)==1
     inv=node.snapshot()['inventory']
     assert inv['order_allowed'] is True and inv['enforced'] is False
     assert inv['refill_supported'] is False
@@ -170,7 +170,7 @@ def test_hmi_height_blocks_even_unused_material(node,tmp_path):
     (tmp_path/'only-b.yaml').write_text('product: B\nitems:\n  - {material_id: B, target_g: 40, tol_pct: 5}\n')
     inv=ledger();inv.report_height('C',10);enable(node,inv.snapshot(True))
     with pytest.raises(ValueError,match='높이 부족'):node.submit('only-b','operator')
-    assert node.cli_order.calls==[]
+    assert node.act_batch.calls==[]
     inv.refill('C');node._on_test_inventory(SimpleNamespace(data=json.dumps(inv.snapshot(True))))
     assert node.submit('only-b','operator').accepted
 

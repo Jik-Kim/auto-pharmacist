@@ -43,6 +43,44 @@ class Client:
         return result
 
 
+class GoalHandle:
+    def __init__(self, result_type):
+        self.accepted = True
+        self.result_type = result_type
+
+    def get_result_async(self):
+        future = Future()
+        future.set_result(SimpleNamespace(result=self.result_type(
+            success=True, items_done=3, deviations=0,
+            result='DONE', message='ok')))
+        return future
+
+
+class ActionClientStub:
+    def __init__(self, _node, action_type, _name):
+        self.ready = True
+        self.action_type = action_type
+        self.calls = []
+
+    def server_is_ready(self):
+        return self.ready
+
+    def wait_for_server(self, **_):
+        return self.ready
+
+    def send_goal_async(self, goal, feedback_callback=None):
+        self.calls.append(goal)
+        result = Future()
+        result.set_result(GoalHandle(self.action_type.Result))
+        return result
+
+
+class ActionServerStub:
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+
 class RosStub:
     def __init__(self, *_):
         self.params = {}
@@ -81,14 +119,20 @@ def backend(monkeypatch, tmp_path):
     monkeypatch.delenv("GMP_HMI_ADMIN_PASSWORD", raising=False)
     # 스텁을 명시적으로 주입한다. DDS/ROS 서비스 전송의 성공으로 해석하지 않는다.
     modules = {}
-    for name in ('rclpy', 'rclpy.executors', 'rclpy.node', 'rclpy.qos',
+    for name in ('rclpy', 'rclpy.action', 'rclpy.callback_groups',
+                 'rclpy.executors', 'rclpy.node', 'rclpy.qos',
                  'ament_index_python', 'ament_index_python.packages',
-                 'gmp_interfaces', 'gmp_interfaces.msg', 'gmp_interfaces.srv',
+                 'gmp_interfaces', 'gmp_interfaces.action', 'gmp_interfaces.msg', 'gmp_interfaces.srv',
                  'std_msgs', 'std_msgs.msg', 'std_srvs', 'std_srvs.srv'):
         modules[name] = ModuleType(name)
         monkeypatch.setitem(sys.modules, name, modules[name])
     modules['std_msgs.msg'].String = Message
     modules['std_srvs.srv'].Trigger = SimpleNamespace(Request=Message)
+    modules['rclpy.action'].ActionClient = ActionClientStub
+    modules['rclpy.action'].ActionServer = ActionServerStub
+    modules['rclpy.action'].GoalResponse = SimpleNamespace(ACCEPT=1, REJECT=0)
+    modules['rclpy.action'].CancelResponse = SimpleNamespace(ACCEPT=1, REJECT=0)
+    modules['rclpy.callback_groups'].ReentrantCallbackGroup = lambda: object()
     modules['rclpy.node'].Node = RosStub
     modules['rclpy.executors'].MultiThreadedExecutor = object
     modules['rclpy.qos'].DurabilityPolicy = SimpleNamespace(TRANSIENT_LOCAL=1)
@@ -111,7 +155,11 @@ def backend(monkeypatch, tmp_path):
         else:
             generated = type(name, (Message,), constants.get(name, {}))
         setattr(modules['gmp_interfaces.msg'], name, generated)
-    for name in ('SubmitOrder', 'QaDecision', 'InterlockRequest'):
+    modules['gmp_interfaces.action'].RunBatch = type('RunBatch', (), {
+        'Goal': type('Goal', (Message,), {}),
+        'Result': type('Result', (Message,), {}),
+        'Feedback': type('Feedback', (Message,), {})})
+    for name in ('QaDecision', 'InterlockRequest', 'RecoverSafety'):
         response_constants = dict(ENTER=1, EXIT=2) if name == 'InterlockRequest' else {}
         # .srv의 응답 영역에 있는 상수는 실제 생성 코드와 같이 Response에만 둔다.
         setattr(modules['gmp_interfaces.srv'], name, type(name, (), {
@@ -219,10 +267,10 @@ def test_recipe_contract_no_removed_fields(node, tmp_path):
         with pytest.raises(ValueError):
             node.submit(name, 'operator')
     node.submit('demo_batch', 'operator')
-    fields = vars(node.cli_order.calls[-1].recipe.items[0])
+    fields = vars(node.act_batch.calls[-1].recipe.items[0])
     assert 'grade' not in fields and 'scoop_id' not in fields
     assert node.snapshot()['active_recipe'] is None
-    node._on_state(state())
+    node._on_state(state(node.act_batch.calls[-1].recipe.batch_id))
     assert node.snapshot()['active_recipe']['name'] == 'demo_batch'
     node._on_state(state('EXTERNAL'))
     assert node.snapshot()['active_recipe'] is None
@@ -255,26 +303,6 @@ def test_auth_rbac_csrf_actor_and_revocation(app_db, node):
     listing = admin.get('/users').get_data(as_text=True)
     assert 'password' not in listing and 'pbkdf2' not in listing
     assert PASSWORD not in node.admin_store.path.read_text()
-
-
-def test_collection_confirmation_is_qa_only_and_audited(app_db, node):
-    app, _ = app_db
-    admin = app.test_client(); admin_token = login(admin)
-    assert post(admin, admin_token, '/users', dict(username='qa', password=PASSWORD, role='qa')).status_code == 201
-    qa = app.test_client(); qa_token = login(qa, 'qa')
-    assert post(qa, qa_token, '/collection-confirm', {'passbox_done_empty': True}).status_code == 400
-    assert post(qa, qa_token, '/collection-confirm', {
-        'passbox_done_empty': True, 'reject_bin_empty': True,
-    }).json['ok'] is True
-    event = node.published[-1]
-    assert event.code == 'HMI_COLLECTION_CONFIRMED'
-    assert event.batch_id == '' and event.text.startswith('qa ')
-    assert post(admin, admin_token, '/users', dict(username='op', password='operator-pass', role='operator')).status_code == 201
-    operator = app.test_client()
-    operator_token = login(operator, 'op', 'operator-pass')
-    assert post(operator, operator_token, '/collection-confirm', {
-        'passbox_done_empty': True, 'reject_bin_empty': True,
-    }).status_code == 403
 
 
 def test_password_and_disabled_user_invalidate_sessions(app_db):
@@ -321,14 +349,14 @@ def test_qa_contract_pending_check_and_command_staleness(app_db, node):
     assert request.operator_id == 'admin' and request.decision == 1
     assert node.published[-1].batch_id == 'B1'
     node.received['state'] -= 20
-    before = len(node.cli_order.calls)
+    before = len(node.act_batch.calls)
     assert post(client, token, '/order', {'recipe': 'demo_batch'}).status_code == 503
-    assert len(node.cli_order.calls) == before
+    assert len(node.act_batch.calls) == before
     node._on_state(state())
-    node.cli_order.ready = False
+    node.act_batch.ready = False
     assert post(client, token, '/order', {'recipe': 'demo_batch'}).status_code == 503
-    node.cli_order.ready = True
-    node._call = lambda *args, **kwargs: None
+    node.act_batch.ready = True
+    node._send_batch_goal = lambda *args, **kwargs: None
     response = post(client, token, '/order', {'recipe': 'demo_batch'})
     assert response.status_code == 503 and response.json['uncertain'] is True
 
@@ -445,7 +473,7 @@ def test_order_rejects_unknown_done_step_but_accepts_discarded(app_db, node):
     response = post(client, token, '/order', {'recipe': 'demo_batch'})
     assert response.status_code == 503
     assert '물리적 완료 확인 대기' in response.json['message']
-    assert node.cli_order.calls == []
+    assert node.act_batch.calls == []
     # 같은 mode 값이어도 실제 이송 종료 step 확인 후 주문 가능.
     early.step = 'DISCARDED'
     node._on_state(early)

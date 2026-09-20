@@ -19,6 +19,7 @@ import signal
 import math
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 
 import rclpy
@@ -130,6 +131,7 @@ class SkillNode(Node):
         self._safety_latched = False
         self._safety_reason = ''
         self._safety_revision = 0
+        self._safety_session = uuid.uuid4().hex
         self._last_robot_state = -1
         self._last_state_poll = float('-inf')
         self._configured = False
@@ -244,11 +246,11 @@ class SkillNode(Node):
             time.sleep(min(0.1, max(0.0, end_s - self._now_s())))
 
     # ── 워커: 로봇 명령은 여기서만 ──────────────────────────────────────
-    def _latch_safety(self, reason, *, alarm=False):
+    def _latch_safety(self, reason, *, alarm=False, recovery_request=None):
         # 콜백은 상태만 저장한다. 정지·복구 명령은 워커에서만 실행한다.
         with self._job_lock:
             changed = not self._safety_latched or reason != self._safety_reason
-            if changed or alarm:
+            if changed or alarm or recovery_request is not None:
                 self._safety_revision += 1
             self._safety_latched = True
             self._safety_reason = reason
@@ -259,9 +261,18 @@ class SkillNode(Node):
             if self._current and self._current.kind != 'startup':
                 self._current.cancel = True
             self._drain_jobs_locked(f'SAFETY_STOP: {reason}')
-        if changed:
-            self.event('ERROR', 'ROBOT_SAFETY_STOP', json.dumps(
-                {'robot_state': self._last_robot_state, 'reason': reason}, ensure_ascii=False))
+            # 상태 변경과 발행을 직렬화한다. 실제 알람에는 복구 요청 상관관계를 붙이지 않는다.
+            if changed or alarm or recovery_request is not None:
+                detail = dict(robot_state=self._last_robot_state, reason=reason,
+                              origin='robot_alarm' if alarm else 'state_monitor',
+                              safety_session=self._safety_session,
+                              safety_revision=self._safety_revision)
+                if recovery_request is not None:
+                    detail.update(origin='recovery_request',
+                                  request_id=recovery_request.request_id,
+                                  operator_id=recovery_request.operator_id)
+                self.event('ERROR', 'ROBOT_SAFETY_STOP', json.dumps(detail, ensure_ascii=False))
+            return self._safety_revision
 
     def _poll_safety(self, force=False):
         if self.mode == 'virtual':
@@ -287,7 +298,9 @@ class SkillNode(Node):
         args = job.args
         if self.mode == 'virtual':
             return False, True, -1, '가상 모드의 안전 복구는 실물 복구 성공으로 처리하지 않습니다'
-        revision = self._safety_revision
+        revision = args.get('safety_revision', self._safety_revision)
+        if revision != self._safety_revision:
+            return False, True, self._last_robot_state, '복구 대기 중 새 정지 발생. 차단 유지'
         state = self.arm.robot_state()
         self._last_robot_state = state
         if state != args['expected_state']:
@@ -373,18 +386,24 @@ class SkillNode(Node):
         if owner:
             try:
                 # 복구 요청 자체도 동작 차단을 먼저 설정한다. 자동 리셋된 상태도 명시 확인한다.
-                self._latch_safety('HMI 안전 복구 요청')
+                revision = self._latch_safety('HMI 안전 복구 요청', recovery_request=req)
                 job = self._submit('recover', operator_id=req.operator_id,
+                                   safety_revision=revision,
                                    expected_state=req.expected_state,
                                    operator_confirmed=req.operator_confirmed)
                 result = job.result if not job.error and job.result else (
                     False, True, self._last_robot_state, job.error or '복구 결과 없음')
-                entry['result'] = result
-                entry['revision'] = self._safety_revision
-                self.event('INFO' if result[0] else 'WARN', 'ROBOT_SAFETY_RECOVERY', json.dumps(
-                    {'request_id': req.request_id, 'operator_id': req.operator_id,
-                     'success': result[0], 'manual_required': result[1],
-                     'robot_state': result[2], 'message': result[3]}, ensure_ascii=False))
+                with self._job_lock:
+                    if result[0] and self._safety_latched:
+                        result = False, True, self._last_robot_state, '복구 직후 새 정지 발생. 차단 유지'
+                    entry['result'] = result
+                    entry['revision'] = self._safety_revision
+                    self.event('INFO' if result[0] else 'WARN', 'ROBOT_SAFETY_RECOVERY', json.dumps(
+                        {'request_id': req.request_id, 'operator_id': req.operator_id,
+                         'safety_session': self._safety_session,
+                         'safety_revision': self._safety_revision,
+                         'success': result[0], 'manual_required': result[1],
+                         'robot_state': result[2], 'message': result[3]}, ensure_ascii=False))
             finally:
                 entry.setdefault('result', (False, True, -1, '복구 처리 실패'))
                 entry.setdefault('revision', self._safety_revision)

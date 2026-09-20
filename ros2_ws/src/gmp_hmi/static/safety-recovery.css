@@ -1,0 +1,22 @@
+/* 복구창 전용. 운전/기록 화면의 레이아웃은 변경하지 않는다. */
+#recoveryDialog{box-sizing:border-box;width:min(580px,calc(100vw - 32px));max-width:none;max-height:calc(100dvh - 32px);margin:auto;padding:24px;border:1px solid #d6e0ef;border-radius:14px;background:#fff;color:#18314f;box-shadow:0 24px 80px #10253e40;overflow:auto;font-size:14px;line-height:1.6}
+#recoveryDialog::backdrop{background:#14284088}
+#recoveryDialog h2{font-size:21px;margin:0 0 4px}
+#recoveryDialog p{margin:8px 0}
+#recoveryDialog .recovery-intro,#recoveryDialog .recovery-help{color:#526580;font-size:12px}
+#recoveryDialog .recovery-summary{margin:18px 0 12px;padding:12px 14px;border:1px solid #dce5f1;border-radius:8px;background:#f4f7fc;overflow-wrap:anywhere}
+#recoveryDialog .recovery-summary p{font-size:13px;white-space:pre-line}
+#recoveryDialog .recovery-summary small{font-size:11px;color:#526580}
+#recoveryDialog .recovery-warning{padding:12px 14px;border-left:3px solid #d58b19;border-radius:4px;background:#fff7e7;color:#75470c;font-size:12px}
+#recoveryDialog #recoveryForm{margin-top:18px}
+#recoveryDialog label{font-size:13px;margin:0 0 6px}
+#recoveryDialog select{width:100%;min-width:0;height:auto;min-height:42px;margin:0;font-size:13px}
+#recoveryDialog .recovery-confirm{display:flex;align-items:flex-start;gap:10px;padding:12px;margin:16px 0;background:#f4f7fc;border:1px solid #dce5f1;border-radius:7px;cursor:pointer}
+#recoveryDialog #recoveryConfirmed{flex:0 0 18px;width:18px;height:18px;min-height:18px;margin:2px 0 0;padding:0;accent-color:#1957ed}
+#recoveryDialog .recovery-blocked{padding:10px 14px;margin:12px 0;border:1px solid #efd29a;border-radius:7px;background:#fff9ee;color:#805415;font-size:12px}
+#recoveryDialog .recovery-blocked[hidden]{display:none}
+#recoveryDialog ul{margin:5px 0 0;padding-left:18px}
+#recoveryDialog button{width:100%;min-height:42px;font-size:13px;margin-top:8px}
+#recoveryDialog button:focus-visible,#recoveryDialog select:focus-visible,#recoveryDialog input:focus-visible{outline:3px solid #739fff;outline-offset:2px}
+#recoveryDialog #recoveryMsg:empty{display:none}
+@media(max-width:600px){#recoveryDialog{padding:18px;width:calc(100vw - 24px);max-height:calc(100dvh - 24px)}}

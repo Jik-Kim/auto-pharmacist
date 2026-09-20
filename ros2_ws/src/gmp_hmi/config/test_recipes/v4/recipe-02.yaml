@@ -1,7 +1,7 @@
 # 시연용 제형. C는 사용하지 않으므로 items에 넣지 않는다 (0 g 항목 금지).
 # 1회 평균 40 g / 원료별 최대 3회 기준. 80 g는 약 2회+보정 여유.
 # 허용 오차는 기존 5% 유지. 실물 계량 정밀도는 별도 검증한다.
-product: "시험 제형 B — A 중심형"
+product: "레시피 2"
 items:
   - {material_id: A, target_g: 80.0, tol_pct: 5.0}
   - {material_id: B, target_g: 40.0, tol_pct: 5.0}

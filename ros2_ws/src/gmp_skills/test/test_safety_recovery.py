@@ -1,5 +1,6 @@
 """실제 복구·모션 호출 없이 상태 전이와 차단을 검증한다."""
 import threading
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -143,6 +144,37 @@ def test_same_id_with_different_payload_rejected(recovery):
                           expected_state=5, operator_confirmed=True)
     assert not node._srv_recover(req, SimpleNamespace()).success
     assert node.controls == []
+
+
+def test_start_event_carries_request_but_actual_alarm_does_not(recovery):
+    node, _, _ = recovery
+    events = []
+    node.event = lambda level, code, text: events.append((code, json.loads(text)))
+    node._worker_thread.start()
+    req = SimpleNamespace(request_id='r1', operator_id='operator', expected_state=5, operator_confirmed=True)
+    try:
+        assert node._srv_recover(req, SimpleNamespace()).success
+        start, done = events[:2]
+        assert start[0] == 'ROBOT_SAFETY_STOP'
+        assert start[1]['origin'] == 'recovery_request'
+        assert start[1]['request_id'] == done[1]['request_id'] == 'r1'
+        assert start[1]['safety_revision'] == done[1]['safety_revision']
+        assert start[1]['safety_session'] == done[1]['safety_session']
+        node._latch_safety('alarm', alarm=True)
+        node._latch_safety('alarm', alarm=True)
+        assert events[-1][1]['origin'] == 'robot_alarm'
+        assert 'request_id' not in events[-1][1]
+        assert events[-1][1]['safety_revision'] > events[-2][1]['safety_revision']
+    finally:
+        node.shutdown()
+
+
+def test_new_alarm_before_worker_starts_rejects_recovery(recovery):
+    node, job, _ = recovery
+    job.args['safety_revision'] = node._safety_revision
+    node._latch_safety('new alarm', alarm=True)
+    assert node._do_recover(job)[0] is False
+    assert not node.controls
 
 
 def test_new_alarm_before_control_dispatch_sends_nothing(recovery):

@@ -36,9 +36,9 @@ class HttpSource {
  batchUrl(id){return '/batch/'+encodeURIComponent(id)+'/download'}
 }
 const RECIPES=[
- {name:'recipe-01',product:'시험 제형 A — 기본형',items:[['A',40],['B',40],['C',40]]},
- {name:'recipe-02',product:'시험 제형 B — A 중심형',items:[['A',80],['B',40]]},
- {name:'recipe-03',product:'시험 제형 C — C 중심형',items:[['A',40],['B',40],['C',80]]},
+ {name:'recipe-01',product:'레시피 1',items:[['A',40],['B',40],['C',40]]},
+ {name:'recipe-02',product:'레시피 2',items:[['A',80],['B',40]]},
+ {name:'recipe-03',product:'레시피 3',items:[['A',40],['B',40],['C',80]]},
 ].map(r=>({...r,total_g:r.items.reduce((sum,item)=>sum+item[1],0),items:r.items.map(([material_id,target_g])=>({material_id,target_g,tol_pct:5}))}));
 const RECIPE=RECIPES[0];
 class DemoSource {
@@ -126,7 +126,7 @@ class DemoSource {
   this.record(this.user.username,'HMI_DEMO_REFILL',materialId,`${before}g → ${i.capacity_g}g, 개별 만충 확인`);
   return {ok:true,message:`원료 ${materialId}만 ${i.capacity_g}g·100%로 반영했습니다.${this.state.mode==='PAUSED'?' PAUSED 유지 · 다른 부족 해소 후 EXIT로 재개하세요.':''}`};
  }
- async status(){this.advance();const age=this.scenario==='offline'?30:0;this.state.t=now()-age;return copy({state:this.state,active_recipe:this.activeRecipe,inventory:this.inventoryStatus(),results:this.results,weights:this.weights,deviations:this.pending,scoop_cycles:this.scoopCycles,events:this.current?.events||[],gripper:{width_mm:32.4,grip:this.state.mode==='RUNNING',backend:'virtual',force_n:20,busy:false},freshness:{state_age_s:age,gripper_age_s:age,stale_after_s:this.localSettings.ui_stale_after_s},diagnostics:{namespace:'/cell',services:{submit_order:true,qa_decision:true,interlock:true},topics:Object.fromEntries(['state','weight','gripper','dispense_result','deviation','scoop_cycle','event'].map(k=>[k,{age_s:age,count:k==='dispense_result'?this.results.length:k==='deviation'?this.pending.length:1}]))},now:now()});}
+ async status(){this.advance();const age=this.scenario==='offline'?30:0;this.state.t=now()-age;return copy({state:this.state,active_recipe:this.activeRecipe,inventory:this.inventoryStatus(),results:this.results,weights:this.weights,deviations:this.pending,scoop_cycles:this.scoopCycles,events:this.current?.events||[],gripper:{width_mm:32.4,grip:this.state.mode==='RUNNING',backend:'virtual',force_n:20,busy:false},freshness:{state_age_s:age,gripper_age_s:age,stale_after_s:this.localSettings.ui_stale_after_s},diagnostics:{namespace:'/cell',actions:{run_batch:true},services:{qa_decision:true,interlock:true},topics:Object.fromEntries(['state','weight','gripper','dispense_result','deviation','scoop_cycle','event'].map(k=>[k,{age_s:age,count:k==='dispense_result'?this.results.length:k==='deviation'?this.pending.length:1}]))},now:now()});}
  async history(filter={}){this.advance();return copy(this.filteredBatches(filter).map(b=>({...b,n_items:b.items.length,n_dev:b.deviations.length,cycle_s:b.finished_at===null?null:b.finished_at-b.started_at})));}
  async batch(id){this.advance();const b=this.batches.find(x=>x.batch_id===id);if(!b)throw Error('배치 없음');return copy(b);}
  async audit(filter={}){return copy(this.auditRows.filter(r=>this.matches(r,filter)&&(!filter.actor||r.actor.includes(filter.actor))&&(!filter.action||r.action.includes(filter.action))));}
@@ -143,7 +143,7 @@ class DemoSource {
  async logout(){return this.session();}
  setRole(role){this.user={username:'DEMO-'+role.toUpperCase(),role,active:true};}
  async users(){if(this.user.role!=='admin')throw Error('관리자 권한이 필요합니다.');return copy(this.demoUsers);}
- async saveUser(name,data){if(this.user.role!=='admin')throw Error('관리자 권한이 필요합니다.');const username=name||data.username;if(!/^[A-Za-z0-9_.-]{1,64}$/.test(username))throw Error('계정 이름은 영문·숫자·밑줄·점·하이픈 1~64자입니다.');const existing=this.demoUsers.find(u=>u.username===username);if(!name&&existing)throw Error('이미 존재하는 계정입니다.');if(!name&&((data.password||'').length<12||(data.password||'').length>128))throw Error('비밀번호는 12~128자로 입력하세요.');const user={username,role:data.role,active:data.active};if(existing)Object.assign(existing,user);else this.demoUsers.push(user);this.record(this.user.username,'HMI_USER_UPDATE',username,'데모 계정 변경');return {ok:true,message:'데모 메모리에 반영했습니다. 실제 계정은 생성되지 않습니다.'};}
+ async saveUser(name,data){if(this.user.role!=='admin')throw Error('관리자 권한이 필요합니다.');const username=name||data.username;if(!/^[A-Za-z0-9_.-]{1,64}$/.test(username))throw Error('계정 이름은 영문·숫자·밑줄·점·하이픈 1~64자입니다.');const existing=this.demoUsers.find(u=>u.username===username);if(!name&&existing)throw Error('이미 존재하는 계정입니다.');if(!name&&((data.password||'').length<10||(data.password||'').length>128))throw Error('비밀번호는 10~128자로 입력하세요.');const user={username,role:data.role,active:data.active};if(existing)Object.assign(existing,user);else this.demoUsers.push(user);this.record(this.user.username,'HMI_USER_UPDATE',username,'데모 계정 변경');return {ok:true,message:'데모 메모리에 반영했습니다. 실제 계정은 생성되지 않습니다.'};}
  async settings(){return copy(this.localSettings);}
  async saveSettings(data){
   if(this.user.role!=='admin')throw Error('관리자 권한이 필요합니다.');

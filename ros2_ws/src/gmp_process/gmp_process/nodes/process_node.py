@@ -20,6 +20,7 @@ manual_required 아님)도 배치 재개를 뜻하지 않는다 — 새 주문�
 import json
 import threading
 import time
+from gmp_process.core.safety_events import SafetyEvents
 from datetime import datetime
 
 import rclpy
@@ -137,6 +138,8 @@ class ProcessNode(Node):
         # 로봇 안전 정지(v1.4) — skill_node 의 CellEvent(ERROR, ROBOT_SAFETY_STOP) 가 세운다. 새 주문·대기·
         # FORCE_LIMIT 재시도를 전부 막는다. 복구 성공 이벤트가 내린다 — 배치 재개는 아니다(새 주문만 받는다)
         self._safety_stop = False
+        self._safety_events = SafetyEvents()
+        self._safety_event_lock = threading.Lock()
         self._safety_stop_reason = ''
         self._stop = threading.Event()   # 종료 요청 — 무한 대기(QA·인터락)를 깨운다
         self._thread = None
@@ -193,9 +196,12 @@ class ProcessNode(Node):
             data = json.loads(msg.text) if msg.text else {}
         except (TypeError, ValueError):
             data = {}
+        data = data if isinstance(data, dict) else {}
         reason = data.get('reason') or msg.text or '로봇 안전 정지'
-        self._safety_stop = True
-        self._safety_stop_reason = reason
+        with self._safety_event_lock:
+            self._safety_events.stop(data)
+            self._safety_stop = True
+            self._safety_stop_reason = reason
         self.get_logger().warning(f'[SAFETY_STOP] 새 주문·재시도 차단: {reason}')
 
     def _on_safety_recovery(self, msg):
@@ -208,10 +214,11 @@ class ProcessNode(Node):
             data = json.loads(msg.text) if msg.text else {}
         except (TypeError, ValueError):
             data = {}
-        if not data.get('success') or data.get('manual_required'):
-            return
-        self._safety_stop = False
-        self._safety_stop_reason = ''
+        with self._safety_event_lock:
+            if not isinstance(data, dict) or not self._safety_events.accepts(data):
+                return
+            self._safety_stop = False
+            self._safety_stop_reason = ''
         self.get_logger().info('[SAFETY_STOP] 로봇 복구 확인 — 배치 재개 아님, 새 주문부터 받는다')
 
     def _pause_reason(self) -> str:
