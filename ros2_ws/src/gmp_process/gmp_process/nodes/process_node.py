@@ -714,6 +714,15 @@ def main(args=None):
         pass
     finally:
         node.shutdown()          # 실행 루프를 먼저 세운다 — 죽은 노드로 발행하지 않게
+        # ex.spin() 이 멈춘 뒤라 더 이상 응답을 받을 수 없다 — SafePose 응답을 기다리려면 직접 한 번 더 spin.
+        # skill_node 의 _do_safe 가 compliance_off() 를 먼저 부르므로, 로봇이 Scoop 중 힘제어를 켠 채
+        # 이 프로세스만 죽는 경우를 막는다. 같은 SIGINT 로 skill_node 도 동시에 죽고 있으면 이것만으론
+        # 못 막는다 — 그 쪽 종료 훅은 gmp_skills 담당(A) 몫 (docs/todo.md, 9/21).
+        try:
+            fut = node.srv['safe'].call_async(SafePose.Request(reason='SHUTDOWN'))
+            rclpy.spin_until_future_complete(node, fut, timeout_sec=5.0)
+        except Exception:  # noqa: BLE001 — 종료 경로, 여기서 또 막히면 안 된다
+            pass
         node.destroy_node(); rclpy.shutdown()
 
 
