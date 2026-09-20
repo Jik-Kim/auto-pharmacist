@@ -71,6 +71,15 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 - **필수 추가 티칭:** 원료 A/B/C 각각 `return_start_posx`와 `return_end_posx`. 현재 null이며 두 좌표가 모두 유효하지 않으면 이동 전 거부한다. 반환 경로·원료 낙하·간섭은 사용자 검증 대상이다.
 - 계약 v1.3은 팀 공유를 확인하고 구현했으며 영향 담당 최소 2명 승인 전까지 초안이다. 코드 검증은 단위 테스트까지만 수행한다.
 
+## 계량 표본 간격 (9/20 사용자 승인)
+
+- `common.yaml: scale.period_s=0.82`를 MeasureForce·WeighHeld·WeighContainer의 실제 계량 호출에 적용한다. 기동과 계량 요청 시 유한한 양수인지 검사한다.
+- 값은 **표본 읽기 시작 간격의 하한**이다. 센서 호출이 길면 실제 간격도 늘어난다. 0.82초는 9/19 독립 표본 실측에 근거한 시험값이며 동일 성능을 보장하는 값은 아니다.
+- 표본 사이 대기는 같은 DSR 워커에서 0.1초 간격으로 외력을 관측한다. 넛지 관측값은 계량 평균·표준편차 표본에 합치지 않는다. 블로킹 장치 호출 동안의 관측 지연은 남는다.
+- 20표본이면 표본 시작 구간만 약 15.58초이며 정착·장치 호출 시간이 추가된다. 마지막 표본 뒤 불필요한 간격 대기는 생략한다.
+- 개발 검증: 서브에이전트 교차검토 및 관련 단위 테스트 60건 통과. 가상·실물 검증은 미수행이다.
+- `min_resolvable_g=19`, gain·offset·표본 수는 유지한다. 새 설정으로 실물 재측정 후 B와 분해능 14 g 적용 여부를 판단한다. B의 `scale_reference.yaml`은 과거 측정 근거로 유지하며 후속 갱신을 인계한다.
+
 ## 확정 노드·토픽
 
 **`docs/interfaces.md` 계약 v1.2 (9/18 확정 — `WeighHeld` Action, `Deviation.kind` 3종 추가로 I-007 해소)** 과 `ros2_ws/src/gmp_interfaces`가 변경 원본이다. `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id` 삭제, `SetGripper`, `ScoopCycle`은 1차 승인 상태이며 최소 2명 승인 전에는 확정하지 않는다.

@@ -463,3 +463,41 @@ def test_return_uses_taught_path_and_restores_start(monkeypatch):
         node, skill_node.Job('return_material', {'material_id': 'A'})) is True
     assert [pose for pose, _ in moves] == [start, end, start]
     assert holds == [(0.5, 'return_material')]
+
+
+@pytest.mark.parametrize('period', [0, -1, float('nan'), float('inf')])
+def test_scale_period_rejects_invalid_parameter(monkeypatch, period):
+    module = _load_skill_node(monkeypatch)
+    node = SimpleNamespace(get_parameter=lambda _: SimpleNamespace(value=period))
+    with pytest.raises(ValueError, match='scale.period_s'):
+        module.SkillNode._scale_period_s(node)
+
+
+@pytest.mark.parametrize('entry', ['service', 'tool_force', 'workpiece', 'simulated'])
+def test_sampling_parameter_reaches_all_measurement_paths(monkeypatch, entry):
+    module = _load_skill_node(monkeypatch)
+    calls = []
+    params = {'scale.period_s': 0.82, 'scale.samples': 3, 'scale.settle_s': 0.2,
+              'scale.method': 'workpiece' if entry == 'workpiece' else 'tool_force',
+              'scale.simulated': entry == 'simulated', 'scale.gain': 1,
+              'scale.offset_g': 0, 'scale.min_resolvable_g': 19,
+              'scale.max_std_g': 10, 'scale.fz_sign': -1}
+    node = SimpleNamespace(
+        get_parameter=lambda name: SimpleNamespace(value=params[name]),
+        _observe_force=lambda _: None,
+        get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=lambda: None)),
+        arm=SimpleNamespace(
+            measure_force=lambda *a, **kw: (calls.append((a, kw)) or ([0]*6, 2, 0, True)),
+            measure_workpiece=lambda *a, **kw: (calls.append((a, kw)) or (2, 0, True))))
+    node._scale_period_s = lambda: module.SkillNode._scale_period_s(node)
+    monkeypatch.setattr(module, 'ScaleConfig', lambda **kw: kw)
+    monkeypatch.setattr(module, 'WeightModel', lambda _: SimpleNamespace(
+        set_tare=lambda _: None, reading=lambda mean, std, valid: (mean, 0, mean, std, valid)))
+    if entry == 'service':
+        module.SkillNode._do_measure(node, module.Job('measure', {'samples': 3, 'settle_s': 0.2}))
+    else:
+        module.SkillNode._measure_weight_reading(node, 0, 'scoop')
+    if entry == 'simulated':
+        assert calls == []
+    else:
+        assert calls == [((3, 0.2), {'period_s': 0.82, 'observer': node._observe_force})]
