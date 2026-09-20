@@ -346,3 +346,21 @@ def test_recovery_service_timeout_cancels_future(monkeypatch):
 def test_backdrive_command_is_never_dispatched():
     with pytest.raises(ValueError):
         _arm().recover_control(6, 1.0, lambda operation: operation())
+
+
+@pytest.mark.parametrize('ready', [True, False])
+def test_robot_state_waits_for_wrapper_client_before_query(ready):
+    arm = _arm()
+    calls = []
+    arm.R = types.SimpleNamespace(
+        _ros2_get_robot_state=types.SimpleNamespace(
+            wait_for_service=lambda **kw: calls.append(('wait', kw)) or ready),
+        get_robot_state=lambda: calls.append(('query', {})) or 1)
+    if ready:
+        assert arm.robot_state() == 1
+        assert calls[1][0] == 'query'
+    else:
+        with pytest.raises(TimeoutError):
+            arm.robot_state()
+        assert len(calls) == 1
+    assert calls[0] == ('wait', {'timeout_sec': arm.startup_timeout_s})

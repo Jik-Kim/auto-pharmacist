@@ -56,6 +56,7 @@ def _load_skill_node(monkeypatch):
         'sensor_msgs': _module('sensor_msgs'),
         'sensor_msgs.msg': _module('sensor_msgs.msg', JointState=Message),
         'onrobot_rg_msgs': _module('onrobot_rg_msgs'),
+        'onrobot_rg_msgs.msg': _module('onrobot_rg_msgs.msg', OnRobotRGInput=Message),
         'onrobot_rg_msgs.srv': _module('onrobot_rg_msgs.srv', SetCommand=Service),
         'gmp_interfaces': _module('gmp_interfaces'),
         'gmp_interfaces.action': _module(
