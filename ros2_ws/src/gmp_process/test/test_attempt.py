@@ -25,10 +25,24 @@ def test_negative_raw_difference_folds_to_zero_but_readings_survive():
     assert a.post_pour.net_g > a.pre_pour.net_g
 
 
+def test_returned_scoop_is_never_counted_as_delivered():
+    """원료통 반환 전후 계량값이 있어도 약통 투입량은 0 g 이다."""
+    a = _a(pre_pour=r(40.0), post_pour=r(0.0), scoop_tare=r(0.0), outcome='RETURNED')
+    assert a.delivered_g() == 0.0
+    assert not a.is_valid()
+
+
 def test_missing_reading_is_not_learning_material():
     a = _a(pre_pour=r(40.0), outcome='COMPLETE', scoop_tare=r(0.0))     # post_pour 없음
     assert a.delivered_g() == 0.0
     assert not a.is_valid()
+
+
+def test_failed_attempt_without_prepour_has_safe_pose_id():
+    """SCOOP_EMPTY처럼 pre_pour가 없는 기록도 pose 직렬화에서 예외가 나면 안 된다."""
+    a = _a(scoop_tare=Reading(station='material_1', valid=True), outcome='SCOOP_EMPTY')
+    assert a.weigh_pose_id() == 'material_1'
+    assert _a(outcome='SCOOP_EMPTY').weigh_pose_id() == 'unknown'
 
 
 def test_invalid_reading_or_failed_outcome_is_not_valid():

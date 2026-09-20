@@ -5,7 +5,7 @@ import pytest
 from gmp_skills.adapters.rg2_gripper import Rg2Gripper, joint_to_width_mm, width_mm_to_joint
 
 
-@pytest.mark.parametrize('width_mm', [0.0, 15.5, 28.0, 38.5, 100.0])
+@pytest.mark.parametrize('width_mm', [0.0, 15.5, 18.0, 28.0, 100.0])
 def test_width_joint_round_trip(width_mm):
     assert joint_to_width_mm(width_mm_to_joint(width_mm)) == pytest.approx(width_mm, abs=0.01)
 
@@ -20,8 +20,8 @@ def test_modbus_width_is_tenth_mm_integer():
 def test_virtual_width_is_joint_angle_string():
     sent = []
     g = Rg2Gripper('virtual', lambda command: sent.append(command) or True)
-    assert not g.move(38.5, timeout_s=0.0)
-    assert float(sent[0]) == pytest.approx(width_mm_to_joint(38.5), abs=0.0001)
+    assert not g.move(28.0, timeout_s=0.0)
+    assert float(sent[0]) == pytest.approx(width_mm_to_joint(28.0), abs=0.0001)
 
 
 def test_grip_inference_and_slip_latch():

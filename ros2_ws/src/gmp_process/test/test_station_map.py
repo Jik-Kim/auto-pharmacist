@@ -31,6 +31,9 @@ def test_duplicate_material_is_a_teaching_mistake():
 
 def test_check_rejects_before_the_batch_starts():
     m = StationMap.from_data({'stations': {'scoop_1': {'material_id': 'A'}}})
+    with pytest.raises(KeyError, match='원료통'):
+        m.check(['A'])
+    m.materials['A'] = 'material_1'
     m.check(['A'])
     with pytest.raises(KeyError):
         m.check(['A', 'B'])

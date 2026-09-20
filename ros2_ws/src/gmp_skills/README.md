@@ -10,6 +10,7 @@ nodes/skill_node.py       rclpy 노드(ns cell) — Action/Service 서버, gripp
 adapters/dsr_arm.py       DR_init 노드(ns dsr01) 소유. DSR_ROBOT2 블로킹 함수 래핑. 워커 스레드에서만 부른다
 adapters/rg2_gripper.py   /onrobot/sendCommand + 폭 피드백. 백엔드 modbus | dio | virtual
 core/stations.py          stations.yaml 파싱, 접근점 계산 (ROS 비의존)
+core/transfer.py          관절 이송 티칭값·출발 관절 구성·파지 조건·ZYZ 자세 검증 (ROS 비의존)
 ```
 
 ## 불변식
@@ -17,6 +18,7 @@ core/stations.py          stations.yaml 파싱, 접근점 계산 (ROS 비의존)
 - `DsrArm` 메서드는 **워커 스레드에서만** 부른다. 콜백에서 부르면 멈춘다 (D-02).
 - 힘제어 진입/해제는 짝이다. `Scoop` 의 `finally` 에 `release_force(); release_compliance_ctrl()`.
 - 좌표를 코드에 적지 않는다 — `stations.yaml`.
+- 실물은 `stations.yaml: transfers`에 등록한 이송을 미티칭/비활성일 때 거부한다. 가상 모드는 기존 직선 이동을 사용하고 보호 목적지 제한을 적용하지 않는다. 티칭 목록과 공정 담당 인계는 [관절 이송 안내](../../../docs/setup.md#관절-이송-티칭인계)를 따른다.
 - `SafePose` 는 어떤 상태에서도 받아들인다. 큐를 비우고 현재 Job 에 취소 플래그를 세운 뒤 안전 자세로 간다.
 
 ## 실물 첫날 게이트

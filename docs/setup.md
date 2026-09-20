@@ -29,15 +29,35 @@ source ~/auto-pharmacist/tools/env.sh      # ROS_DOMAIN_ID=70 설정 + /opt/ros 
 
 | 모드 | 명령 | 되는 것 / 안 되는 것 |
 |---|---|---|
-| virtual | `ros2 launch gmp_bringup cell.launch.py mode:=virtual` | 이동·시퀀스·HMI·기록 전부. **힘·무게·파지력은 없다** (`scale.simulated:=true` 자동). HMI: http://localhost:5000 |
+| virtual | `ros2 launch gmp_bringup cell.launch.py mode:=virtual` | 이동·시퀀스·RViz·HMI·기록 전부. **힘·무게·파지력은 없다** (`scale.simulated:=true` 자동). RViz를 끄려면 `gui:=false`. HMI: http://localhost:5000 |
 | real | `ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100` | 전부. **처음 띄울 때는 `vel_scale:=0.2`** |
 
-노드만 따로: `ros2 run gmp_skills skill_node --ros-args -r __ns:=/cell -p mode:=virtual` 처럼 네임스페이스를 **반드시** 붙인다.
+전체 브링업은 벤더 컨트롤러를 먼저 활성화한 뒤 약 12초 후 셀 노드를 시작한다. 터미널에
+`[SELF_CHECK] OK`와 `[ACTION_SERVERS_READY]`가 출력된 뒤 `ros2 action list -t`로 확인한다.
+에뮬레이터 네트워크 생성으로 Jazzy `ros2cli`의 기존 daemon handle이 무효화되는 문제를 막기 위해
+11초 시점에 daemon을 종료한 뒤 바로 다시 시작한다. CLI를 처음 실행할 때 daemon 생성과 DDS discovery를
+기다리지 않도록 브링업 과정에서 미리 준비한다.
+
+벤더 브링업을 먼저 실행한 뒤 `skill_node`만 띄울 때는 전용 런치가 공통 파라미터와 위치 YAML을 자동으로 넘긴다.
+기본값은 실물 모드와 첫 기동 속도 `0.2`다.
+
+```bash
+ros2 launch gmp_bringup skill.launch.py
+```
+
+속도를 바꿀 때만 `vel_scale:=0.1`처럼 덧붙인다.
 
 ## 단위 테스트 (로봇 없이)
 
 ```bash
 cd ~/auto-pharmacist/ros2_ws/src && python3 -m pytest gmp_dosing gmp_process -q
+```
+
+관절 이송을 포함한 스킬 단위 테스트는 저장소 루트에서 실행한다.
+가상·실물 검증은 사용자가 수행한다. 개발 검증은 아래 단위 테스트로 한정한다.
+
+```bash
+PYTHONPATH=ros2_ws/src/gmp_skills python3 -m pytest ros2_ws/src/gmp_skills/test -q
 ```
 
 ## 확인 명령
@@ -47,6 +67,71 @@ ros2 topic echo /cell/state --once
 ros2 service call /cell/measure_force gmp_interfaces/srv/MeasureForce "{samples: 20, settle_s: 1.0}"
 ros2 action send_goal /cell/move_to_station gmp_interfaces/action/MoveToStation "{station_id: safe, approach: 1}"
 ```
+
+## 관절 이송 티칭·인계
+
+9/19 변경은 단위 테스트까지만 개발자가 검증한다. **가상·실물 검증은 사용자가 수행한다.**
+현재 `stations.yaml: transfers`의 두 경로는 `enabled: false`다. **가상 모드는 활성 여부·관절 속도와 무관하게 기존 `amovel` 직선 이동을 사용**하며 보호 목적지 진입 제한도 적용하지 않는다.
+**실물 모드는** 미티칭·비활성 경로와 보호 목적지의 임의 출발 진입을 거부한다. 따라서 실물 FINISH 반송은 티칭·설정·검증 뒤에 가능하다.
+기존 ROS Action 필드(`station_id`, `approach`, `vel_scale`)는 그대로다.
+
+### 필요한 티칭
+
+모든 posx는 등록된 `GripperDA_v1` TCP의 BASE 좌표이며, posj는 6축 실제 관절각이다.
+관절점만 임의 계산해 채우지 말고 해당 TCP·툴을 적용한 상태에서 함께 기록한다.
+
+| 구간 | 반드시 기록할 값 | 확인할 조건 |
+|---|---|---|
+| 원료 반환 | A/B/C 각각 `return_start_posx`·`return_end_posx` | 미티칭 null이면 이동 전에 거부. 원료가 같은 원료통에 떨어지는 위치·기울기와 왕복 간섭 확인 |
+| `workbench → passbox_done` | 출발 파지 AT·ABOVE·EXIT 관절각 및 목적지 ABOVE 관절각 반영 완료 | 직접 관절 이송의 기울기·흘림·간섭 확인 후 필요할 때만 중간 관절점 추가 |
+| `passbox_done → nudge_wait` | passbox_done ABOVE·EXIT 및 nudge_wait AT 관절각 반영 완료. **추가 필수 티칭값 없음** | 놓기 후 ABOVE 후퇴 완료 상태에서 EXIT로 직선 이탈하고 nudge_wait AT로 관절 직접 도착. 간섭 검증은 사용자 담당 |
+
+- ABOVE·EXIT는 기준점에 **BASE Z 상대 높이**를 더해 계산한다. XYZ/자세 절대값은 중복 저장하지 않는다.
+  - workbench 파지: `posx` 기준 `approach_mm: 100`, `exit_mm: 200` → Z=200/300.
+  - passbox_empty·passbox_done·reject_bin: AT Z=100, `approach_mm: 50`, `exit_mm: 150` → Z=150/250.
+  - 스쿱·원료·계량의 높이는 바꾸지 않는다. **nudge_wait ABOVE는 사용하지 않는다.**
+  workbench는 AT/ABOVE→EXIT를 확인한다. passbox_done은 놓기 후 AT→ABOVE 후퇴를 먼저 완료하고,
+  넛지 이송에서는 ABOVE→EXIT만 수행한다. AT에서 넛지로 바로 요청하면 이동 없이 거부한다.
+  기존 절대 `exit_posx` 경로도 읽지만, 이번 두 경로는 스테이션의 상대 높이로 계산한다.
+- `waypoints_posj` 마지막 점은 `arrival: above`이면 목적지 ABOVE, `arrival: at`이면 목적지 AT다.
+  관절 이동 후 실제 TCP의 위치·자세를 해당 도착점과 대조한다. nudge_wait는 제공된 AT 관절각을
+  YAML 별칭으로 참조하므로 중복 입력하지 않는다.
+  비활성 경로에도 입력된 티칭값은 보존한다. 미입력 값은 임의 관절각으로 채우지 않는다.
+- 기존 `arrival: above` 경로는 `approach: 0`이면 ABOVE에서 끝나고, `approach: 1`이면 AT까지 직선 접근한다.
+  넛지의 `arrival: at` 경로는 **`approach: 1`만 허용**하며 최종 직선 접근 없이 관절 이동으로 끝난다.
+  `approach: 0` 요청을 AT로 바꿔 처리하지 않고 거부한다.
+- `robot.transfer_joint_vel_deg_s`·`robot.transfer_joint_acc_deg_s2`는 현재 0이다.
+  사용자가 검증할 양수 값을 설정해야 한다. Action `vel_scale`을 곱해 적용하며,
+  직선 이동의 `robot.vel`·`robot.acc`와는 별개다.
+- 출발 AT/ABOVE에서 확인된 관절 구성과 마지막 도착 상태가 맞아야 한다.
+  티칭 도중 수동 이동하거나 노드를 재시작한 뒤에는 이전 위치·파지 이력을 재사용하지 않는다.
+  정상적인 MoveToStation 도착과 SetGripper 성공 이력을 다시 쌓아야 한다.
+  nudge 경로만 먼저 검증할 때는 수동으로 티칭된 passbox_done **ABOVE**에 놓고,
+  그 위치의 MoveToStation(`station_id: passbox_done, approach: 0`)을 요청하면 위치·관절각 일치 시 **움직이지 않고** 출발 이력을
+  확립한다. 이때 nudge 경로는 티칭값을 채워 활성화한 상태여야 하며, 이후 SetGripper
+  열기 성공과 실제 열림 폭을 확인해야 한다. 위치가 다르면 자동 이동 없이 거부한다.
+  빈 그리퍼는 성공한 열기 이력, 약통은 약통 스테이션 AT에서 성공한 파지 이력이 필요하다.
+  파지 피드백은 각 이동 구간 전후에 확인한다. 이는 이동 중 연속 파지 감시를 대체하지 않는다.
+- 취소·실패 뒤에는 이송을 바로 재시도하지 않는다. 상태를 확인하고 출발 위치·파지 이력을
+  다시 확립한다. SafePose는 위치 복귀일 뿐, 그리퍼가 비었다는 증거로 사용하지 않는다.
+- 단위 테스트의 좌표는 가짜 입력이다. 실물 좌표나 검증된 관절 경로로 재사용하지 않는다.
+
+### 공정 연결 및 후속 인계
+
+스테이션 티칭과 `stations.yaml` 관리는 조장·A 담당이다. process는 `station_id`·`approach` 계약만 사용하며, 파지 좌표 연결은 C 담당 작업이 아니다.
+
+- `_carry()`와 용기 계량은 동일한 `workbench.posx`를 AT로 사용한다. 용기 계량은 ABOVE(Z=200), 스쿱 계량은 대응 `material_N.posx`다.
+- 초과 스쿱 반환·재시도와 투입량 기록 분리는 공정 패키지에 함께 반영했다. 새 `ReturnMaterial` Action이 있으므로 사용자는 가상·실물 검증 전에 인터페이스와 호출 패키지를 다시 빌드해야 한다.
+- 원료 A/B/C마다 반환 시작·종료 자세 2개씩 **총 6개 posx**가 필요하다. `material_N.return_start_posx/return_end_posx`에 입력한다. 붓기 자세를 임의 계산하지 않은 이유는 원료통 위치·입구·스쿱 기울기에 따라 낙하 지점과 간섭이 달라지기 때문이다.
+- HMI 담당 인계: 새 `RETURN_MATERIAL` 상태 표시명 및 outcome 5/6 표시를 연결한다. 기존 record_node는 숫자 outcome과 전체 원본을 저장하므로 DB 스키마 변경은 없다.
+- `process_fsm.py:FINISH`는 현재 DONE으로 끝난다. 약통 놓기·이탈 완료 후
+  `nudge_wait` AT(`approach: 1`) 요청을 추가하는 자동 전이는 C 담당 후속 작업이다.
+  `_carry()`의 passbox_done AT→ABOVE 후퇴 순서를 유지해야 하며, AT 관절각을 추가할 필요는 없다.
+- 기존 빈통 운반·스쿱 반납·폐기 경로는 이번 두 경로에 포함되지 않는다.
+  보호 대상 목적지로 진입하는 추가 경로는 따로 티칭·등록해야 한다.
+
+개발 완료 범위는 이송 실행·거부 조건·단위 테스트이며, 자동 공정 완료와 무흘림·무간섭은
+위 인계 및 사용자 가상·실물 검증을 완료한 뒤에만 확인할 수 있다.
 
 ## 빌드 트러블슈팅 (9/16 실제 발생분)
 

@@ -30,7 +30,7 @@ kind: move | grip | carry | scoop | pour | weigh | weigh_scoop | measure | safe 
 """
 from dataclasses import dataclass, field
 
-from gmp_dosing.core.dosing import decide, pour_fraction
+from gmp_dosing.core.dosing import decide
 from gmp_process.core.deviation import policy
 
 
@@ -78,7 +78,10 @@ class ProcessFSM:
 
     # ── 요청 생성 ─────────────────────────────────────────────────────
     def _weigh_scoop(self) -> dict:
-        return {'kind': 'weigh_scoop', 'station': 'workbench', 'tare_g': self.cur.scoop_tare_g}
+        # 스쿱 계량은 원료통 위의 해당 material_N 자세에서 수행한다. 실제 위치 선택은
+        # held scoop material context 를 아는 skill_node 가 하며, 이 값은 기록·검증용이다.
+        return {'kind': 'weigh_scoop', 'station': 'material', 'material_id': self.cur.material_id,
+                'tare_g': self.cur.scoop_tare_g}
 
     def _weigh_cup(self, tare_g: float) -> dict:
         return {'kind': 'weigh', 'station': 'workbench', 'tare_g': tare_g}
@@ -87,6 +90,15 @@ class ProcessFSM:
         self.cur.attempts += 1
         return {'kind': 'scoop', 'material_id': self.cur.material_id, 'attempt': self.cur.attempts,
                 'fraction': fraction}                 # 담그기 깊이 힌트일 뿐 — 붓기 비율은 WEIGH_SCOOP 가 정한다
+
+    def _return_material(self) -> dict:
+        """초과 스쿱을 약통에 붓지 않고 원래 원료통으로 되돌린다."""
+        return {'kind': 'return_material', 'material_id': self.cur.material_id,
+                'attempt': self.cur.attempts, 'scooped_g': self.cur.scooped_g}
+
+    def _scoop_allowance_g(self) -> float:
+        """남은 목표량에 허용하는 스쿱량 여유. 원래 목표량 기준의 절대 허용오차다."""
+        return self.cur.target_g * self.cur.tol_pct / 100.0
 
     def _carry(self, src: str, dst: str) -> dict:
         return {'kind': 'carry', 'src': src, 'dst': dst, 'slot': self.slot, 'target': 'cup'}
@@ -154,9 +166,23 @@ class ProcessFSM:
             if r is not None:
                 return r
             self.cur.scooped_g = max(0.0, res.get('gross_g', 0.0) - self.cur.scoop_tare_g)
-            need = self.cur.target_g - self.cur.actual_g
+            remaining = max(0.0, self.cur.target_g - self.cur.actual_g)
+            # 스쿱량이 남은 목표량과 절대 허용오차의 합보다 크면 부분 투입으로 맞추지 않는다.
+            # 원료통에 되돌린 뒤 다시 스쿱해야 실제 투입량과 반환량이 섞이지 않는다.
+            if self.cur.scooped_g > remaining + self._scoop_allowance_g():
+                self.state = 'RETURN_MATERIAL'
+                return self._return_material()
             self.state = 'POUR'
-            return {'kind': 'pour', 'station': 'workbench', 'fraction': pour_fraction(need, self.cur.scooped_g, self.dosing_cfg)}
+            return {'kind': 'pour', 'station': 'workbench', 'fraction': 1.0}
+        if k == 'return_material' and st == 'RETURN_MATERIAL':
+            if not res.get('success', False):
+                return self._return_failed(res.get('message', '원료통 반환 실패'))
+            # 반환이 끝난 스쿱만 다시 쓸 수 있다. 마지막 허용 시도도 일단 반환해 원료와
+            # 약통 투입량을 분리한 뒤 TIMEOUT 일탈로 멈춘다.
+            if self.cur.attempts >= self.dosing_cfg.max_attempts:
+                return self._deviate('TIMEOUT', 'RETURN_MATERIAL')
+            self.state = 'SCOOP'
+            return self._scoop()
         if k == 'pour' and st == 'POUR':
             self.state = 'WEIGH_RESIDUAL'
             return self._weigh_scoop()                 # 붓기 후 — 스쿱 잔량
@@ -253,7 +279,21 @@ class ProcessFSM:
         RULES 상 1회 RETRY 후 FORCED(ERROR) 라 무한 재시도가 되지 않는다. 카운터는
         (원료, 스텝, kind) 별이므로 다른 스텝에서 또 실패하면 거기서 다시 1회 준다.
         """
+        if self.state == 'RETURN_MATERIAL' and req.get('kind') == 'return_material':
+            # skill_node 는 반환 실패 때 held material 이력을 무효화한다. 같은 반환 Action 을
+            # 자동 재시도하면 원료통·스쿱의 대응을 보장할 수 없으므로 즉시 안전 경로로 끝낸다.
+            return self._return_failed(detail or '원료통 반환 실패')
         return self._deviate('FORCE_LIMIT', self.state, retry=req, detail=detail)
+
+    def _return_failed(self, detail: str):
+        """반환 스킬 실패는 재시도·재투입하지 않고 RETURN_FAILED 기록 후 안전 자세로 간다."""
+        key = (self.idx, 'RETURN_MATERIAL', 'FORCE_LIMIT')
+        self._counts[key] = self._counts.get(key, 0) + 1
+        self.deviations.append({'kind': 'FORCE_LIMIT', 'step': 'RETURN_MATERIAL',
+                                'count': self._counts[key], 'action': 'FORCED', 'detail': detail,
+                                'material_id': getattr(self, 'cur', None) and self.cur.material_id})
+        self.state, self.mode = 'ERROR', 'ERROR'
+        return {'kind': 'safe', 'then': None, 'reason': 'RECOVERY'}
 
     def _deviate(self, kind: str, step: str, retry: dict | None = None, detail: str = ''):
         key = (self.idx, step, kind)

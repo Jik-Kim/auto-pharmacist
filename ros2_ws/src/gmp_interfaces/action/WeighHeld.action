@@ -2,8 +2,9 @@
 # SCOOP_TARE(빈 스쿱) · WEIGH_SCOOP(붓기 전) · WEIGH_RESIDUAL(붓기 후) 세 단계가 이 요청 하나를 쓴다.
 # 차이는 process 가 결과를 어디에 담느냐뿐이다.
 #
-# 계량 후 계량 자세에 머문다 (원위치 복귀 없음, 9/18 확정) — WEIGH_SCOOP 다음은 workbench 에서 붓기,
-# WEIGH_RESIDUAL 다음은 스쿱 반납이라 되돌아갈 이유가 없다. 원료 1종당 3회 × 3종 = 9회 왕복을 줄인다.
+# 성공한 전용 스쿱 파지 이력의 material_id에 대응하는 material_N.posx에서 계량한다.
+# 빈 스쿱·붓기 전·후 모두 같은 자세를 쓰고, 측정 후 해당 위치에 머문다.
+# 원료 파지 이력이 불명확하면 실패한다. material_N.measure_posx는 재고 접촉 자세로 별개다.
 float32 tare_g              # process 가 아는 풍량(빈 스쿱 무게). 0 이면 gross 만 채운다
 ---
 WeightReading reading

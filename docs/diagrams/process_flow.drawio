@@ -4,7 +4,7 @@
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="c2" value="gmp_process — process_node 입출력 (계약 v1.2 · 9/18 확정 · ns /cell)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;fontColor=#161B2A;fontSize=18;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="c2" value="gmp_process — process_node 입출력 (계약 v1.3 · 반환 Action · ns /cell)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;fontColor=#161B2A;fontSize=18;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="40" y="20" width="1860" height="40" as="geometry" />
         </mxCell>
         <mxCell id="c3" value="hmi_web_node (D)&lt;br&gt;&lt;br&gt;웹 HMI · Flask :5000&lt;br&gt;&lt;br&gt;주문 제출&lt;br&gt;QA 승인 / 폐기&lt;br&gt;인터락 ENTER / EXIT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -28,7 +28,7 @@
         <mxCell id="c9" value="dict 요청 ↔ dict 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c6" target="c7">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c10" value="skill_node (A)&lt;br&gt;&lt;br&gt;로봇을 만지는 유일한 노드&lt;br&gt;DSR 워커 스레드 1개 — 직렬&lt;br&gt;&lt;br&gt;Action 서버 5&lt;br&gt;  move_to_station · scoop · pour&lt;br&gt;  weigh_container · weigh_held [v1.2]&lt;br&gt;Service 서버 3&lt;br&gt;  set_gripper · measure_force · safe_pose&lt;br&gt;&lt;br&gt;발행: gripper_state · event(NUDGE)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="c10" value="skill_node (A)&lt;br&gt;&lt;br&gt;로봇을 만지는 유일한 노드&lt;br&gt;DSR 워커 스레드 1개 — 직렬&lt;br&gt;&lt;br&gt;Action 서버 6&lt;br&gt;  move_to_station · scoop · pour&lt;br&gt;  weigh_container · weigh_held · return_material&lt;br&gt;Service 서버 3&lt;br&gt;  set_gripper · measure_force · safe_pose&lt;br&gt;&lt;br&gt;발행: gripper_state · event(NUDGE)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="1580" y="100" width="320" height="560" as="geometry" />
         </mxCell>
         <mxCell id="c11" value="record_node (D) — SQLite 단일 기록자        hmi_web_node (D) — 화면 표시&lt;br&gt;&lt;br&gt;구독: state · weight · scoop_cycle · dispense_result · deviation · event" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -52,7 +52,7 @@
         <mxCell id="c17" value="Action scoop&lt;br&gt;material_id, attempt&lt;br&gt;→ contact, max force, insertion depth" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.22;exitDx=0;exitDy=0;entryX=0;entryY=0.22;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10">
           <mxGeometry x="0" y="-24" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c18" value="Action pour&lt;br&gt;fraction → success (목적지: 고정 workbench)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.34;exitDx=0;exitDy=0;entryX=0;entryY=0.34;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10">
+        <mxCell id="c18" value="Action pour&lt;br&gt;fraction=1 → success (workbench start→end)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.34;exitDx=0;exitDy=0;entryX=0;entryY=0.34;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10">
           <mxGeometry x="0" y="-18" relative="1" as="geometry" />
         </mxCell>
         <mxCell id="c19" value="Action WeighContainer (고정 workbench 용기 들어, 그리퍼 비어야) · WeighHeld (든 채로, v1.2)&lt;br&gt;tare_g → reading: gross / net / std / valid / subject" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.46;exitDx=0;exitDy=0;entryX=0;entryY=0.46;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c10">
@@ -126,8 +126,11 @@
         <mxCell id="c9" value="SCOOP&lt;br&gt;req: scoop(material, attempt)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="600" y="400" width="190" height="72" as="geometry" />
         </mxCell>
-        <mxCell id="c10" value="WEIGH_SCOOP&lt;br&gt;req: weigh_scoop — 붓기 전&lt;br&gt;퍼낸 양 → 붓기 비율" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="c10" value="WEIGH_SCOOP&lt;br&gt;req: weigh_scoop(material_N.posx) — 붓기 전&lt;br&gt;초과면 RETURN_MATERIAL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="880" y="400" width="190" height="72" as="geometry" />
+        </mxCell>
+        <mxCell id="return_material_state" value="RETURN_MATERIAL&lt;br&gt;req: return_material(material_id)&lt;br&gt;좌표 미티칭이면 즉시 실패" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="880" y="960" width="190" height="72" as="geometry" />
         </mxCell>
         <mxCell id="c11" value="POUR&lt;br&gt;req: pour(fraction)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="1160" y="400" width="190" height="72" as="geometry" />
@@ -188,10 +191,26 @@
         <mxCell id="c28" value="contact_detected=true" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c9" target="c10">
           <mxGeometry x="0" y="16" relative="1" as="geometry" />
         </mxCell>
+<<<<<<< HEAD
+        <mxCell id="c28" value="scooped ≤ max(0, need)+target×tol%&lt;br&gt;초과면 return_material, 아니면 pour(fraction=1)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c10" target="c11">
+          <mxGeometry x="0" y="22" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="return_material_over" value="OVER → return_material(material_id)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c10" target="return_material_state">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="return_material_retry" value="반환 성공 · attempts&lt;max → 같은 원료 재스쿱" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="return_material_state" target="c9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="return_material_fail" value="반환 실패/미티칭 → safe → ERROR" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="return_material_state" target="c17">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c29" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c11" target="c12">
+=======
         <mxCell id="c29" value="scooped = gross − tare&lt;br&gt;fraction = min(1, 부족량/scooped)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c10" target="c11">
           <mxGeometry x="0" y="22" relative="1" as="geometry" />
         </mxCell>
         <mxCell id="c30" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c11" target="c12">
+>>>>>>> 78f68ee7c37e8939c8cf7042dbdbf2f335f777e4
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="c31" value="OK (|err| ≤ tol) · actual += scooped − residual → dispense_result 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.7;entryDx=0;entryDy=0;" edge="1" parent="1" source="c12" target="c13">
@@ -720,7 +739,7 @@
         <mxCell id="c52" value="WEIGH_SCOOP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="810" y="1200" width="200" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="c53" value="WeighHeld act [v1.2] (붓기 전, 든 채)&lt;br&gt;→ gross, valid" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c53" value="WeighHeld act (material_N.posx, 붓기 전, 든 채)&lt;br&gt;→ gross, valid · 초과면 반환" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1090" y="1200" width="360" height="46" as="geometry" />
         </mxCell>
         <mxCell id="c54" value="호출 → 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c52" target="c53">
@@ -746,7 +765,7 @@
         <mxCell id="c59" value="POUR" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="810" y="1350" width="200" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="c60" value="Pour act&lt;br&gt;fraction → success (고정 workbench)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c60" value="Pour act&lt;br&gt;fraction=1 · workbench start→end" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1090" y="1350" width="360" height="46" as="geometry" />
         </mxCell>
         <mxCell id="c61" value="호출 → 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c59" target="c60">
@@ -761,7 +780,7 @@
         <mxCell id="c64" value="WEIGH_RESIDUAL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="810" y="1500" width="200" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="c65" value="WeighHeld act [v1.2] (붓기 후, 든 채)&lt;br&gt;→ gross, valid" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c65" value="WeighHeld act (material_N.posx, 붓기 후, 든 채)&lt;br&gt;→ gross, valid" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1090" y="1500" width="360" height="46" as="geometry" />
         </mxCell>
         <mxCell id="c66" value="호출 → 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c64" target="c65">
@@ -946,6 +965,9 @@
         <mxCell id="c119" value="topic 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c115" target="c118">
           <mxGeometry x="0" y="-10" relative="1" as="geometry" />
         </mxCell>
+<<<<<<< HEAD
+        <mxCell id="c120" value="읽는 법   왼쪽 = 나가는 토픽(D record_node 가 SQLite 에 씀, HMI 는 DB 를 읽는다) · 가운데 왼쪽 = HMI 가 부르는 서비스(들어옴) · 오른쪽 = process 가 부르는 A 스킬(요청 → 결과) · 맨 오른쪽 = B 라이브러리 함수(같은 프로세스 안, 토픽 없음)&lt;br&gt;WeighHeld · ReturnMaterial · ScoopCycle RETURNED/RETURN_FAILED · VERIFY_MISMATCH · BATCH_OUT_OF_SPEC · WRONG_TOOL 은 계약 v1.3. state 는 전 상태에서 2 Hz + 전이 직후 발행. 모든 발행은 /cell/ 아래, QoS 는 docs/interfaces.md 3절.&lt;br&gt;이 페이지의 상자 문구는 docs/process_flow.md 1·2·4절과 같은 내용이다 — 바뀌면 tools/make_process_drawio.py 를 고쳐 다시 생성한다" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+=======
         <mxCell id="c120" value="DISCARDED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="810" y="3000" width="200" height="50" as="geometry" />
         </mxCell>
@@ -962,6 +984,7 @@
           <mxGeometry x="0" y="-10" relative="1" as="geometry" />
         </mxCell>
         <mxCell id="c125" value="읽는 법   왼쪽 = 나가는 토픽(D record_node 가 SQLite 에 씀, HMI 는 DB 를 읽는다) · 가운데 왼쪽 = HMI 가 부르는 서비스(들어옴) · 오른쪽 = process 가 부르는 A 스킬(요청 → 결과) · 맨 오른쪽 = B 라이브러리 함수(같은 프로세스 안, 토픽 없음)&lt;br&gt;WeighHeld · VERIFY_MISMATCH · BATCH_OUT_OF_SPEC · WRONG_TOOL 은 계약 v1.2 (9/18 확정, I-007 해소). state 는 전 상태에서 2 Hz + 전이 직후 발행. 모든 발행은 /cell/ 아래, QoS 는 docs/interfaces.md 3절.&lt;br&gt;이 페이지의 상자 문구는 docs/process_flow.md 1·2·4절과 같은 내용이다 — 바뀌면 tools/make_process_drawio.py 를 고쳐 다시 생성한다" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+>>>>>>> 78f68ee7c37e8939c8cf7042dbdbf2f335f777e4
           <mxGeometry x="40" y="3020" width="1820" height="90" as="geometry" />
         </mxCell>
       </root>

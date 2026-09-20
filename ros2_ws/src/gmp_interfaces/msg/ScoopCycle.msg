@@ -12,10 +12,10 @@ gmp_interfaces/WeightReading scoop_tare # 빈 스쿱 기준 측정
 gmp_interfaces/WeightReading pre_pour   # scoop_tare와 같은 자세·파지·영점의 붓기 전 측정
 gmp_interfaces/WeightReading post_pour  # scoop_tare와 같은 자세·파지·영점의 붓기 후 측정
 float32 commanded_pour_fraction # Pour 에 전달한 명령 비율 [0~1]
-float32 delivered_g             # max(0, pre_pour.net_g - post_pour.net_g) [g]. 음수 원시차는 두 reading으로 보존
+float32 delivered_g             # RETURNED/RETURN_FAILED는 0, 그 외 max(0, pre_pour.net_g - post_pour.net_g) [g]. 음수 원시차는 두 reading으로 보존
 
 uint8 weigh_method              # 스쿱 계량 방식. 아래 상수
-string weigh_pose_id            # 고정 계량 자세 ID (보통 "workbench")
+string weigh_pose_id            # 고정 계량 자세 ID (해당 "material_N")
 string tool_name                # 컨트롤러에 적용한 tool 등록명
 string tcp_name                 # 컨트롤러에 적용한 TCP 등록명
 
@@ -59,3 +59,5 @@ uint8 SCOOP_EMPTY=1
 uint8 WEIGH_INVALID=2
 uint8 POUR_FAILED=3
 uint8 ABORTED=4
+uint8 RETURNED=5                 # 원료통 반환 동작 완료. 투입량 0, valid=false
+uint8 RETURN_FAILED=6            # 원료통 반환 실패. 투입량 0, valid=false

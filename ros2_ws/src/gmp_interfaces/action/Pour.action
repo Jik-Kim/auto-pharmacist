@@ -1,5 +1,5 @@
-# 고정 칭량 위치의 용기에 붓기. 목적지는 skill 설정의 workbench 스테이션이다
-float32 fraction        # 1.0 전량 / 0.0~1.0 일부 (기울임 각으로 근사)
+# workbench.pour_start_posx → pour_end_posx로 이동하며 용기에 전량 붓기
+float32 fraction        # 1.0 전량만 지원. 다른 값은 이동 전에 거부
 ---
 bool success
 string message

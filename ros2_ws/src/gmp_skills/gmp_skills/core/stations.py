@@ -4,9 +4,11 @@ yaml 형식 (gmp_bringup/params/stations.yaml):
   frame: base | user            # D-15 판 좌표계를 쓰면 user
   approach_mm: 60.0             # 작업점 위 접근 높이 (z+)
   stations:
-    workbench: {posx: [x, y, z, a, b, c], note: "작업·계량 구역 — 계량 자세. 영점도 여기서"}
+    workbench: {posx: [x, y, z, a, b, c], note: "용기 파지 AT — 용기 계량은 ABOVE"}
 """
 from dataclasses import dataclass, field
+import math
+from gmp_skills.core.transfer import parse_routes, vector6
 
 
 @dataclass
@@ -16,11 +18,20 @@ class Station:
     note: str = ''
     extra: dict = field(default_factory=dict)
 
-    def above(self, approach_mm: float) -> list:
-        """작업점 위 접근점. z 만 올린다 — 툴 z 가 아래를 보는 자세를 전제한다 (계량·스쿱 모두)."""
-        p = list(self.posx)
-        p[2] = p[2] + approach_mm
+    def offset_z(self, height_mm: float) -> list:
+        """기준 자세에서 BASE Z 상대 높이를 적용한다. TOOL 방향과 무관하다."""
+        if (isinstance(height_mm, bool) or not isinstance(height_mm, (int, float))
+                or not math.isfinite(height_mm) or height_mm < 0):
+            raise ValueError('BASE Z 높이는 유한한 0 이상 숫자여야 한다')
+        p = list(vector6(self.posx, 'posx'))
+        p[2] += height_mm
         return p
+
+    def above(self, approach_mm: float) -> list:
+        return self.offset_z(self.extra.get('approach_mm', approach_mm))
+
+    def exit(self) -> list:
+        return self.offset_z(self.extra.get('exit_mm'))
 
 
 class StationTable:
@@ -31,6 +42,8 @@ class StationTable:
         self.approach_mm = float(data.get('approach_mm', 60.0))
         self.stations = {}
         for sid, body in (data.get('stations') or {}).items():
+            if any(k in body for k in ('pick_posx', 'pick_approach_mm', 'pick_exit_mm')):
+                raise ValueError('파지 좌표는 posx와 approach_mm/exit_mm로 통합해야 한다')
             posx = body.get('posx')
             if posx is None or len(posx) != 6:
                 raise ValueError(f'stations.yaml: {sid} 의 posx 는 6개여야 한다')
@@ -38,9 +51,13 @@ class StationTable:
                 raise ValueError(f'stations.yaml: {sid} 의 posj 는 6개여야 한다')
             self.stations[sid] = Station(sid, [float(v) for v in posx], body.get('note', ''),
                                          {k: v for k, v in body.items() if k not in ('posx', 'note')})
+            for key in ('approach_mm', 'exit_mm'):
+                if key in body:
+                    self.stations[sid].offset_z(body[key])
         missing = [s for s in self.REQUIRED if s not in self.stations]
         if missing:
             raise ValueError(f'stations.yaml: 필수 스테이션 없음 {missing}')
+        self.transfers = parse_routes(data.get('transfers', []), self.stations, self.approach_mm)
 
     def get(self, station_id: str) -> Station:
         if station_id not in self.stations:
@@ -48,9 +65,13 @@ class StationTable:
         return self.stations[station_id]
 
     def for_material(self, material_id: str) -> Station:
-        matches = [s for s in self.stations.values() if s.extra.get('material_id') == material_id]
+        # material_N과 scoop_N은 같은 material_id를 공유한다. 원료통을 찾는 이 메서드가
+        # 스쿱 거치대까지 함께 세면 항상 2개가 되어 Scoop이 시작도 못 한다.
+        matches = [s for s in self.stations.values()
+                   if s.station_id.startswith('material_')
+                   and s.extra.get('material_id') == material_id]
         if len(matches) != 1:
-            raise KeyError(f'material_id {material_id!r} 스테이션은 1개여야 한다: {len(matches)}개')
+            raise KeyError(f'material_id {material_id!r} 원료 스테이션은 1개여야 한다: {len(matches)}개')
         return matches[0]
 
     @classmethod
