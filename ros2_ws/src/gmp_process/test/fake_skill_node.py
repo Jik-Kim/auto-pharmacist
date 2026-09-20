@@ -8,6 +8,7 @@ A 의 `skill_node` 와 **같은 이름·같은 계약**의 서버 8개를 세우
 힘제어·티칭·실제 분해능은 여기서 검증되지 않는다 — 그건 G1·G4 실측의 몫이다.
 """
 import json
+import math
 import threading
 import time
 
@@ -24,6 +25,7 @@ SCOOP_MASS_G = 45.0        # 빈 스쿱
 CUP_MASS_G = 120.0         # 빈 약통
 NOMINAL_SCOOP_G = 40.0     # 1회 퍼올림 (dosing.scoop_nominal_g 와 맞춘다)
 TRANSFER = 0.95            # 부을 때 실제로 옮겨 가는 비율 — 나머지는 스쿱 잔량이 된다
+MIN_DEPTH_FRACTION = 0.15  # dosing.min_fraction 과 맞춘다 (계약 v1.5 유효 범위 하한)
 
 
 class FakeSkillNode(Node):
@@ -40,7 +42,10 @@ class FakeSkillNode(Node):
         self.fail = {}                          # 스킬 이름 → 앞으로 실패시킬 횟수 (실패 경로 시험용)
         self.empty = 0                          # 앞으로 몇 번 contact_detected=false 로 답할지 (원료 소진 시험용)
         self.delay = {}                         # 스킬 이름 → 응답 전 대기 [s] (인터락 끼어들기 시험용)
-        self.transfer = TRANSFER                # 붓기 전달률. 1 을 넘기면 과투입을 만들 수 있다
+        self.transfer = TRANSFER                # 붓기 전달률. 1 을 넘기면 약통에 스쿱 투입량보다 많이 들어간다
+                                                #   → 스쿱 계량으로는 안 잡히고 VERIFY ① BATCH_OUT_OF_SPEC 이 잡는다
+        self.scoop_gain = 1.0                   # 깊이당 퍼올림 배율. 크게 주면 min_fraction 으로도 남은 양을 넘겨
+                                                #   반환만 반복하다 붓기 전에 TIMEOUT 이 난다 (붓기 전 일탈 시험용)
         self.cancelled = False                  # safe_pose 가 세운다 — 진행 중 스킬 1건이 실패로 끝난다
         self.attendant = True                   # 세트 끝 NUDGE_WAIT 에서 사람이 건드려 준다 (D-23). 대기 자체를 시험하면 False
         self._attend_stop = threading.Event()
@@ -149,7 +154,13 @@ class FakeSkillNode(Node):
 
     def _scoop(self, gh):
         with self.lock:
-            self.calls.append(f'scoop:{gh.request.material_id}:{gh.request.attempt}')
+            self.calls.append(f'scoop:{gh.request.material_id}:{gh.request.attempt}'
+                              f':{gh.request.depth_fraction:.3f}')
+        depth = float(gh.request.depth_fraction)
+        # 계약 v1.5 — 범위 밖 깊이는 이동 전에 거부한다. 실제 Z 변환은 A 가 실물 뒤 확정한다.
+        if not math.isfinite(depth) or not MIN_DEPTH_FRACTION <= depth <= 1.0:
+            gh.abort()
+            return Scoop.Result(success=False, message=f'담그기 깊이 비율 범위 밖: {depth}')
         self._hold('scoop')
         with self.lock:
             if self._take_cancel():
@@ -163,7 +174,9 @@ class FakeSkillNode(Node):
                 gh.succeed()
                 return Scoop.Result(success=True, contact_detected=False)
             if self.held:
-                self.content[self.held] = self.content.get(self.held, 0.0) + NOMINAL_SCOOP_G
+                # 깊이 비율만큼 퍼올린다 — 계약 v1.5 의 depth_fraction 이 실제로 쓰이는 지점
+                self.content[self.held] = (self.content.get(self.held, 0.0)
+                                           + NOMINAL_SCOOP_G * depth * self.scoop_gain)
         gh.succeed()
         return Scoop.Result(success=True, contact_detected=True, max_contact_force_n=7.2,
                             insertion_depth_mm=21.0)

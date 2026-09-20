@@ -230,12 +230,15 @@ def _why(proc):
 def test_qa_rejects_wrong_deviation_id_then_approves(cell):
     """QA 판정은 **대기 중인 그 일탈**에만 붙는다. 승인하면 같은 deviation_id 로 재발행한다."""
     proc, fake, col = cell
-    fake.transfer = 2.0                          # 부으면 퍼낸 양의 2배가 들어간다 → 과투입
+    # 붓을 때 스쿱 투입량의 2배가 약통에 들어간다(흘림·편향 모사). 스쿱 계량(WEIGH_SCOOP·WEIGH_RESIDUAL)은
+    # 정상으로 보이므로 배치 끝 VERIFY ① 이 BATCH_OUT_OF_SPEC 으로 잡는다 (D-22 ①). 깊이 계약(v1.5) 뒤로는
+    # 정상 스쿱 경로에서 OVERFILL 이 나지 않는다 — 스쿱량이 남은 양+허용오차를 넘으면 붓기 전에 반환하기 때문.
+    fake.transfer = 2.0
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), proc.fsm.state
 
     dev = proc._pending_dev()
-    assert dev.kind == Deviation.OVERFILL and dev.requires_decision
+    assert dev.kind == Deviation.BATCH_OUT_OF_SPEC and dev.requires_decision
     assert dev.deviation_id.startswith('D-B-')
 
     bad = _qa(col, 'D-없는-배치-9', Deviation.APPROVED)
@@ -243,13 +246,7 @@ def test_qa_rejects_wrong_deviation_id_then_approves(cell):
 
     ok = _qa(col, dev.deviation_id, Deviation.APPROVED)
     assert ok.accepted
-
-    # 과투입을 승인했으니 배치 끝 VERIFY 에서 규격 이탈로 한 번 더 묻는다 (D-22 ①) — 그것도 승인한다
-    assert _wait_mode(proc, 'DEVIATION')
-    second = proc._pending_dev()
-    assert second.kind == Deviation.BATCH_OUT_OF_SPEC
-    assert _qa(col, second.deviation_id, Deviation.APPROVED).accepted
-    assert _wait_done(proc) == 'DONE'
+    assert _wait_done(proc) == 'DONE', _why(proc)
 
     same = [d for d in col.devs if d.deviation_id == dev.deviation_id]
     assert len(same) == 2, '판정 후 같은 ID 로 재발행해야 record 가 upsert 한다'
@@ -257,11 +254,18 @@ def test_qa_rejects_wrong_deviation_id_then_approves(cell):
 
 
 def test_qa_discard_sends_the_cup_to_reject_bin(cell):
-    """폐기 판정이면 스쿱을 먼저 반납하고 용기째 폐기함으로 간다 (_qa_step 분기)."""
+    """폐기 판정이면 스쿱을 먼저 반납하고 용기째 폐기함으로 간다 (_qa_step 분기).
+
+    일탈은 붓기 **전**에 나야 한다 — 스쿱을 쥔 채 폐기로 들어가야 "스쿱 먼저 반납"이 시험되고, 아직 아무
+    원료도 넣지 않았으니 분주 결과가 없어야 한다. scoop_gain 을 크게 주면 min_fraction 깊이로도 남은 양을
+    넘겨 반환만 반복하다 TIMEOUT 으로 QA 대기에 들어간다.
+    """
     proc, fake, col = cell
-    fake.transfer = 2.0
+    fake.scoop_gain = 4.0
     _submit(col, [('A', 10.0, 5.0)])
-    assert _wait_mode(proc, 'DEVIATION')
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    assert proc._pending_dev().kind == Deviation.TIMEOUT and proc.fsm.state == 'DEVIATION'
+    assert fake.held, '스쿱을 쥔 채 QA 를 기다려야 한다'
 
     _qa(col, proc._pending_dev().deviation_id, Deviation.DISCARDED)
     assert _wait_done(proc) == 'DONE'
@@ -347,9 +351,7 @@ def test_enter_during_qa_wait_keeps_qa_open(cell):
     assert _wait_mode(proc, 'PAUSED'), f'판정 뒤에는 사람이 나올 때까지(EXIT) 멈춘다 — {_why(proc)}'
     assert _lock(col, InterlockRequest.Request.EXIT).granted
 
-    # 과투입 승인 → VERIFY 규격 이탈도 승인 → 완주
-    assert _wait_mode(proc, 'DEVIATION')
-    assert _qa(col, proc._pending_dev().deviation_id, Deviation.APPROVED).accepted
+    # VERIFY ① 규격 이탈(transfer=2.0)을 승인했으니 남은 것은 완주다
     assert _wait_done(proc) == 'DONE', f'{proc.fsm.state} / {proc.note}'
 
 
@@ -517,9 +519,7 @@ def test_nudge_while_qa_pending_keeps_qa_open(cell):
 
     assert _wait_mode(proc, 'PAUSED'), f'판정 뒤에는 NUDGE 정지가 드러난다 — {_why(proc)}'
     fake.nudge()
-    assert _wait_mode(proc, 'DEVIATION')          # VERIFY 규격 이탈
-    assert _qa(col, proc._pending_dev().deviation_id, Deviation.APPROVED).accepted
-    assert _wait_done(proc) == 'DONE', proc.note
+    assert _wait_done(proc) == 'DONE', proc.note   # 일탈은 VERIFY ① 한 건 — 승인했으니 완주
 
 
 def test_nudge_and_interlock_both_must_clear(cell):
@@ -669,7 +669,7 @@ def test_discarded_batch_also_parks_at_nudge_wait(cell):
     """폐기도 세트의 끝 — reject_bin 뒤 nudge_wait 에서 기다리고, NUDGE 뒤 상태는 DISCARDED 로 남는다 (record_node 가 본다)."""
     proc, fake, col = cell
     fake.attendant = False
-    fake.transfer = 2.0                            # 과투입 → OVERFILL → QA
+    fake.transfer = 2.0                            # 약통에 2배 → VERIFY ① BATCH_OUT_OF_SPEC → QA
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), _why(proc)
     dev = proc._pending_dev()
