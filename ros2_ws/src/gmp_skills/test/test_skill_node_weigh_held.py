@@ -52,6 +52,7 @@ def _load_skill_node(monkeypatch):
             QoSProfile=lambda **_: None,
             ReliabilityPolicy=SimpleNamespace(BEST_EFFORT=1),
         ),
+        'dsr_msgs2.msg': _module('dsr_msgs2.msg', RobotError=Message),
         'sensor_msgs': _module('sensor_msgs'),
         'sensor_msgs.msg': _module('sensor_msgs.msg', JointState=Message),
         'onrobot_rg_msgs': _module('onrobot_rg_msgs'),
@@ -74,6 +75,7 @@ def _load_skill_node(monkeypatch):
         ),
         'gmp_interfaces.srv': _module(
             'gmp_interfaces.srv',
+            RecoverSafety=Service,
             MeasureForce=Service,
             SafePose=Service,
             SetGripper=Service,

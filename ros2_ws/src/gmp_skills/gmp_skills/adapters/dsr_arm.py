@@ -37,8 +37,11 @@ class DsrArm:
         setattr(DR_init, '__dsr__node', self.node)
         import DSR_ROBOT2 as R   # DR_init 이후에 import (두산 튜토리얼 Caution)
         from DR_common2 import posx, posj
-        from dsr_msgs2.srv import MoveStop
+        from dsr_msgs2.srv import MoveStop, SetRobotControl
         self.R, self.posx, self.posj = R, posx, posj
+        self._SetRobotControl = SetRobotControl
+        self._robot_control_cli = self.node.create_client(
+            SetRobotControl, 'dsr_controller2/system/set_robot_control')
         self._MoveStop = MoveStop
         self._move_stop_cli = self.node.create_client(
             MoveStop, 'dsr_controller2/motion/move_stop')
@@ -121,6 +124,10 @@ class DsrArm:
                                   acc=self.acc * vel_scale))
 
     def movel(self, x6, vel_scale=1.0):
+        # 스킬 내부 이동도 같은 워커의 취소 플래그로 감시한다.
+        cancel = getattr(self, 'cancel_requested', None)
+        if cancel is not None:
+            return self.movel_cancellable(x6, vel_scale, cancel, self.motion_timeout_s)
         return self._require_ok(
             'movel', self.R.movel(self.posx(*x6), vel=self.vel * vel_scale,
                                   acc=self.acc * vel_scale, ref=self.R.DR_BASE,
@@ -148,6 +155,35 @@ class DsrArm:
             'amove_periodic',
             self.R.amove_periodic(amp, period, atime=atime, repeat=repeat,
                                   ref=self.R.DR_TOOL if ref_tool else self.R.DR_BASE))
+
+    def robot_state(self):
+        state = self.R.get_robot_state()
+        if not isinstance(state, int) or state < 0:
+            raise RuntimeError(f'로봇 상태 조회 실패: {state!r}')
+        return state
+
+    def recover_control(self, control, timeout_s, dispatch):
+        """D-01 승인 예외. 워커에서 기존 ROS 서비스 호출, 상태 확인은 호출자 책임."""
+        if control not in (2, 3, 4, 5, 7):
+            raise ValueError('허용하지 않은 복구 명령')
+        if not self._robot_control_cli.wait_for_service(timeout_sec=timeout_s):
+            raise RuntimeError('system/set_robot_control service is unavailable')
+        # 서비스 대기 중 새 알람이 왔다면 복구 설정/명령 전송을 중단한다.
+        dispatch(lambda: None)
+        # 안전 정지 해제 후 DRL 프로그램을 자동 재개하지 않는다.
+        if control == 2:
+            self._require_ok('set_safe_stop_reset_type', self.R.set_safe_stop_reset_type(0))
+        req = self._SetRobotControl.Request()
+        req.robot_control = control
+        future = dispatch(lambda: self._robot_control_cli.call_async(req))
+        rclpy.spin_until_future_complete(self.node, future, timeout_sec=timeout_s)
+        if not future.done():
+            future.cancel()
+            raise TimeoutError('안전 복구 명령 응답 시간 초과. 상태 확인 후 새 요청 필요')
+        response = future.result()
+        if response is None or not response.success:
+            raise RuntimeError('안전 복구 명령 거부')
+        # 벤더는 항상 success=true를 반환할 수 있어 이것만으로 성공 처리하지 않는다.
 
     def motion_state(self):
         return self.R.check_motion()
@@ -320,9 +356,9 @@ class DsrArm:
     def compliance_off(self):
         R = self.R
         try:
-            R.release_force()
+            self._require_ok('release_force', R.release_force())
         finally:
-            R.release_compliance_ctrl()
+            self._require_ok('release_compliance_ctrl', R.release_compliance_ctrl())
 
     # ── IO (dio 그리퍼 백엔드) ───────────────────────────────────────────
     def dout(self, idx: int, on: bool):

@@ -317,6 +317,13 @@ def test_failed_release_cannot_start_empty_route(setup):
 
 def test_worker_clears_anchor_when_cancel_arrives_during_final_record(setup, monkeypatch):
     node, job, module = setup
+    node._poll_safety = lambda **_: None
+    node._safety_latched = False
+    node._safety_reason = ''
+    node._stopping = threading.Event()
+    node._worker_stopped = threading.Event()
+    node.arm.stop_motion = lambda: None
+    node.arm.compliance_off = lambda: None
     node._job_lock = threading.Lock()
     node._q = queue.Queue()
     node._q.put(job)
@@ -339,6 +346,13 @@ def test_worker_clears_anchor_when_cancel_arrives_during_final_record(setup, mon
 @pytest.mark.parametrize('kind', ['scoop', 'pour', 'weigh', 'weigh_held', 'safe'])
 def test_other_motion_skills_invalidate_previous_anchor(setup, monkeypatch, kind):
     node, _, module = setup
+    node._poll_safety = lambda **_: None
+    node._safety_latched = False
+    node._safety_reason = ''
+    node._stopping = threading.Event()
+    node._worker_stopped = threading.Event()
+    node.arm.stop_motion = lambda: None
+    node.arm.compliance_off = lambda: None
     node._job_lock = threading.Lock()
     node._q = queue.Queue()
     job = module.Job(kind, {})

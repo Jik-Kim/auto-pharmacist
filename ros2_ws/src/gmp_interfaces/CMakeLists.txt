@@ -22,6 +22,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SetGripper.srv"
   "srv/MeasureForce.srv"
   "srv/SafePose.srv"
+  "srv/RecoverSafety.srv"
   "action/MoveToStation.action"
   "action/Scoop.action"
   "action/Pour.action"

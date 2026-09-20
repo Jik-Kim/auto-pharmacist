@@ -1,0 +1,14 @@
+# HMI → process → skill. 실제 복구 요청, 배치 재개/자세 이동은 하지 않는다.
+# request_id는 기동 세션 내 고유. 재전송은 같은 전체 요청을 사용한다.
+string request_id
+string operator_id
+# 요청자가 확인한 컨트롤러 상태. 상태가 바뀌면 명령 없이 실패한다.
+int32 expected_state
+# 작업자가 원인 제거·복구 가능 조건을 확인했음. RECOVERY에서는 자세 교정 확인 포함.
+bool operator_confirmed
+---
+# 실제 STANDBY 확인 및 A 동작 차단 해제 성공. 배치 재개 성공을 뜻하지 않는다.
+bool success
+bool manual_required
+int32 robot_state
+string message
