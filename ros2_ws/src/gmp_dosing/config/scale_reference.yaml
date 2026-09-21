@@ -190,8 +190,15 @@ tool_force_calibration:
         · process_node:83,96 선언·ScaleConfig 전달 제거 ................ C
         · process_fsm:27,289,291 ② 수식·주석 교체 ..................... C
         · make_process_drawio.py:130,253 의 ② 표기 교체 ................ C
+        · process_flow.drawio:223,863 **재생성** (스크립트와 같은 커밋) .. C
+        · test_process_fsm.py:14,17,200,209,212,219 ② 3건 재설계 ....... C
+        · process_flow.md:122,146,168 ② 수식 교체 ..................... C
+        · architecture.md:54 ② 수식 교체 .............................. 팀장
+        · demo_run_procedure.md:28 G1 행 ............................. B
+        · SOT.md D-22·Q-11 — **새 결정 항목** (아래 ⚠️) ................ 조장
         · scale.py 의 ScaleConfig 필드·resolvable() 는 유지 ............ B
         · scale_reference.yaml·calibration/README.md 에 측정 기록으로 보존 . B
+        (todo.md·issues.md 도 이 이름을 쓰지만 9/21 동결 문서라 손대지 않는다)
       ⚠️ 순서를 어기면 **기동이 아니라 배치 도중에** 터진다. C 는 "기동 시점" 이라 했는데 실제로는 더 늦다:
          skill_node 는 automatically_declare_parameters_from_overrides=True(:64) 라 이 파라미터가
          common.yaml 에만 존재하고, 읽는 자리도 생성자가 아니라 _measure_weight_reading(:911) 이다.
@@ -199,6 +206,13 @@ tool_force_calibration:
          _do_weigh(:952 용기) 또는 _do_weigh_held(:989 스쿱) — 에서 ParameterNotDeclaredException 이 난다.
          이미 시료를 퍼담은 뒤에 터지므로 실물 피해가 있다. **common.yaml 에서 빼는 건 skill_node 수정 뒤다.**
          process_node 는 :83 에 기본값 선언이 있어 안 죽는다. 대신 조용히 19.0 을 계속 쓴다 — 더 나쁘다.
+      ⚠️ **② 수식 교체는 구현 과제가 아니라 조장 결정 갱신이다.** SOT Q-11 이 9/19 조장 확정으로
+         "VERIFY 허용 차 min_resolvable_g 19" 를 못 박았고, D-22 도 ②를 그 이름으로 적고 있다.
+         임계를 k·σ·√(2n+2) 로 바꾸는 건 그 확정을 대신하는 일이라 **SOT 에 새 항목이 서야 머지할 수 있다.**
+         SOT 는 결정 기록이므로 D-22·Q-11 본문을 고쳐 덮지 않는다 — 새 항목이 옛 결정을 갱신하는 형태다.
+      ⚠️ demo_run_procedure.md:28 은 ② 와 무관하게 **지금 이미 낡았다** — G1 행이 폐기된 9/18·9/19 값
+         (3σ 18.0 / 12.6, min_resolvable_g 19)을 그대로 적고 있고 절차도 6세트×30회×10표본이다.
+         재영점(9/21)으로 무효가 된 숫자라 ② 를 기다릴 이유가 없다. B 가 따로 올린다.
 
     ownership: |
       process_fsm 수식·ItemRun.cycles 는 C, 파라미터 추가·min_resolvable_g 제거는 조장, σ 측정은 B.
