@@ -122,7 +122,14 @@ def test_rezero_csv_reproduces_reference_and_defaults():
 
 
 def test_resolvable_covers_every_recipe():
-    """9/21 실측 분해능으로 레시피 A·B·C 를 전부 판정할 수 있어야 한다 — C 는 경계다."""
+    """9/21 실측 분해능으로 레시피 A·B·C 를 전부 판정할 수 있어야 한다 — C 는 경계다.
+
+    ⚠️ resolvable() 은 **런타임에서 호출되지 않는다** (호출처는 이 파일뿐, 9/21 전수 확인).
+    "이 저울로 그 목표를 가를 수 있는가" 라는 물리적 사실을 고정하는 테스트이지, 코드가 그렇게
+    판정한다는 뜻이 아니다. 실제 합격 판정은 verdict_of() 가 분해능과 무관하게 한다.
+    min_resolvable_g 의 유일한 런타임 용도는 process_fsm 의 VERIFY ② 이고 성격이 다르다 —
+    config/scale_reference.yaml 의 verify_mismatch 절 참조.
+    """
     import pathlib
     import yaml
     root = pathlib.Path(__file__).resolve().parent.parent
