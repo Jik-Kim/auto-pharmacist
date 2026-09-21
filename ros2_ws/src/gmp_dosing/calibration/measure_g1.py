@@ -6,19 +6,20 @@
 열기·닫기) 를 켜면 터미널 하나로 끝난다. 둘 다 켜기 전에 로봇 주변을 비운다.
 **보정값은 반드시 실제 weigh_held 가 재는 자세(`material_1/2/3`)에서 잰다** — `workbench`는 자세(orientation)가
 달라(`skill_node._do_weigh_held`가 이동하는 `material_N.posx` 참고) tool_force 의 JTS 기반 편향이 안 옮겨간다.
-출력 CSV 는 calibration/g1_scoop133g_tool_force.csv 와 같은 열에 `작업물무게_kgf`·`시각_s` 를 더한 것이라
+자세마다 편향이 다르므로 **한 세션은 한 자세로 끝낸다** — 2026-09-21 재작업은 `material_1` 기준이다.
+출력 CSV 는 폐기한 9/18 파일과 같은 열에 `작업물무게_kgf`·`시각_s` 를 더한 것이라
 core/calib.py 가 `--method tool_force` / `--method workpiece` 로 두 경로를 같은 방법으로 비교한다.
 
 준비 (터미널 1): `source tools/env.sh && ros2 launch m0609_rg2_bringup new_bringup.launch.py mode:=real host:=192.168.1.100`
   — 로봇 컨트롤러 + OnRobot 그리퍼 드라이버. cell.launch.py 는 쓰지 않는다 (skill_node 가 로봇을 움직인다).
-실행 (터미널 2):
-  source tools/env.sh && python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py --actual-g 133 --object scoop \\
-      --goto-station material_3 --gripper --sets 6 --trials 30 --samples 10 --period 0.1 --out records/g1_both_$(date +%m%d).csv
-
-두 무게를 한 파일에 (9/19 확정 — 빈 스쿱 6세트 → 원료 담고 6세트, gain 의 두 점이 된다):
-  1회차  --actual-g 32  --out records/g1_both_0919.csv                 (빈 스쿱, 영점 포함)
-  2회차  --actual-g <저울값> --out records/g1_both_0919.csv --no-reset   (같은 파일에 이어 쓴다. 영점은 세션 1회)
-  요약   python3 -m gmp_dosing.core.calib records/g1_both_0919.csv --method workpiece   → 무게별 σ + gain·offset 직선
+실행 (터미널 2) — 2026-09-21 영점 재작업은 **material_1 에서 페이즈당 5회**로 짧게 끊어 돈다.
+절차·확인 항목·결과표는 같은 폴더의 README.md 에 있다 (9/18·19 측정 근거는 폐기됨).
+  페이즈 1  --actual-g 32 --goto-station material_1 --gripper --sets 1 --trials 5 --samples 10 --period 0.1 \\
+              --out records/g1_rezero_0921_material1.csv            (빈 스쿱, 영점 포함)
+  페이즈 2+ --actual-g <저울값> --gripper --no-reset --sets 1 --trials 5 --samples 10 --period 0.1 \\
+              --out records/g1_rezero_0921_material1.csv            (같은 파일에 이어 쓴다. 영점은 세션 1회, 자세 유지)
+  요약      python3 -m gmp_dosing.core.calib records/g1_rezero_0921_material1.csv --method tool_force
+무게는 3점 이상 떠야 gain 직선의 잔차가 의미를 가진다 (fit_gain 이 2점이면 경고한다).
 
 절차 (프롬프트가 안내한다):
   1. 빈 그리퍼로 계량 자세 → Enter → reset_workpiece_weight (세션 1회, 매뉴얼 5.1.2)
