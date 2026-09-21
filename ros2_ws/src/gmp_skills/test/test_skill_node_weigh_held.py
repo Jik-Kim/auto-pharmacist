@@ -540,3 +540,47 @@ def test_return_cancel_during_joint_move_skips_hold_and_restore(monkeypatch):
         module.SkillNode._do_return_material(node, job)
     assert len(moves) == 1
     assert holds == []
+
+
+@pytest.mark.parametrize('outcome', ['success', 'cancel', 'failure', 'hold_failure'])
+def test_return_joint_attempt_blocks_followup_scoop_before_any_motion(monkeypatch, outcome):
+    module = _load_skill_node(monkeypatch)
+    station = SimpleNamespace(station_id='material_1', extra={
+        'return_start_posx': [1.0] * 6, 'return_end_posj': [2.0] * 6})
+    node, moves, _ = _held_scoop_node(module, station)
+    job = module.Job('return_material', {'material_id': 'A'})
+    def joint_move(target, scale, cancelled, timeout):
+        assert node._return_rescoop_blocked
+        moves.append((list(target), scale))
+        if outcome == 'cancel':
+            job.cancel = True
+            raise RuntimeError('cancelled')
+        if outcome == 'failure':
+            raise RuntimeError('joint failure')
+    node.arm.movej_cancellable = joint_move
+    if outcome == 'hold_failure':
+        def fail_hold(*args):
+            raise RuntimeError('hold failure')
+        node._wait_with_nudge = fail_hold
+    if outcome == 'success':
+        assert module.SkillNode._do_return_material(node, job)
+    else:
+        with pytest.raises(RuntimeError):
+            module.SkillNode._do_return_material(node, job)
+    before = list(moves)
+    for material_id in ('A', 'B'):
+        with pytest.raises(RuntimeError, match='재스쿱 연결 경로 미구현'):
+            module.SkillNode._do_scoop(node, module.Job('scoop', {'material_id': material_id}))
+    assert moves == before
+
+
+def test_return_rejected_before_motion_does_not_set_rescoop_guard(monkeypatch):
+    module = _load_skill_node(monkeypatch)
+    station = SimpleNamespace(station_id='material_1', extra={
+        'return_start_posx': [1.0] * 6, 'return_end_posj': None})
+    node, moves, _ = _held_scoop_node(module, station)
+    node._return_rescoop_blocked = False
+    with pytest.raises(ValueError):
+        module.SkillNode._do_return_material(node, module.Job('return_material', {'material_id': 'A'}))
+    assert not node._return_rescoop_blocked
+    assert moves == []

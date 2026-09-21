@@ -124,7 +124,7 @@ ros2 action send_goal /cell/move_to_station gmp_interfaces/action/MoveToStation 
 - 초과 스쿱 반환·재시도와 투입량 기록 분리는 공정 패키지에 함께 반영했다. 새 `ReturnMaterial` Action이 있으므로 사용자는 가상·실물 검증 전에 인터페이스와 호출 패키지를 다시 빌드해야 한다.
 - 9/21 원료 A/B/C 반환 시작 posx·끝 posx/posj 입력 완료. 끝 이동은 `return_end_posj` 관절 이동(취소·도착 확인 포함)을 사용하고 시작점으로 복귀하지 않는다. 끝 posx는 참고용이다. 관절 보간 중 스쿱 궤적·낙하·간섭 검증은 별도다.
 - TODO([A]): 반환 끝→재스쿱 경로는 스쿱 모션 구현 시 함께 연결한다. 현재 기본 Scoop 접근을 이 경로의 검증으로 간주하지 않는다.
-- C/D 인계: 반환 성공은 끝 자세에서 완료되며 RETURN 피드백을 내지 않는다. interfaces.md의 기존 왕복 설명은 팀 공유 후 정정한다. 메시지 필드 변경은 없다.
+- C/D 인계: 반환 성공은 끝 자세에서 완료되며 RETURN 피드백을 내지 않는다. interfaces.md의 반환 동작 설명은 v1.5.1로 정정했다. 메시지 필드 변경은 없다.
 - HMI 담당 인계: 새 `RETURN_MATERIAL` 상태 표시명 및 outcome 5/6 표시를 연결한다. 기존 record_node는 숫자 outcome과 전체 원본을 저장하므로 DB 스키마 변경은 없다.
 - `process_fsm.py:FINISH`는 약통을 `passbox_done`에 놓고 ABOVE로 후퇴한 뒤 `NUDGE_WAIT`로 전이한다.
   이어서 `nudge_wait` AT(`approach: 1`)로 이동해 NUDGE를 기다리고, 그 신호 뒤 DONE으로 끝난다.
@@ -179,3 +179,9 @@ ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=0.2
 벤더 comModbusTcp의 `busy` 키는 이름과 달리 register 268의 원시 상태 워드다.
 확장은 이 워드를 그대로 사용하고 인접 register를 grip/safety로 읽는 벤더 dict 필드는 무시한다.
 근거는 같은 벤더의 `_baseOnRobotRG.getStatus()` 원시 `status[10] → gsta` 매핑이다.
+
+### 반환 경로 실물 확인 (9/21)
+
+- 반환 끝 관절 이동 시도 이후에는 성공·취소·실패 모두 후속 Scoop이 이동 전에 거부된다. SafePose·파지 변경으로 해제하지 않는다. 반환→재스쿱 경로 구현 전까지 자동 연속 운용은 불가하다.
+- 첫 실물 이동에서 원료 ABOVE→반환 시작(Z=170, Y=-340) 직선 진입이 원료통 테두리와 간섭하지 않는지 확인한다. 끝 관절 이동의 스쿱 궤적·낙하도 확인한다.
+- 9/21 posx는 사용자 제공값이며 기존 관절각은 유지했다. 넛지·작업대·Pass Box의 posx/posj 일치는 실물 확인 대상이다.

@@ -5,6 +5,8 @@
 #
 # frame: base  → posx 는 로봇 베이스 좌표 [x, y, z, a, b, c] mm·deg
 # frame: user  → D-15 판 좌표계 (set_user_cart_coord). 판 3점 티칭 후 전환
+# 9/21 posx는 사용자 제공값 그대로이며 자동 반올림하지 않았다.
+# 기존 taught_at_posj·이송 관절각은 유지했다. 갱신 posx와 일치는 실물 확인 대기다.
 frame: base
 approach_mm: 60.0          # 작업점 위 접근 높이
 stations:

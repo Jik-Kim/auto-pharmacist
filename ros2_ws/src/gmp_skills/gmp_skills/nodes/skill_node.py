@@ -82,6 +82,7 @@ class SkillNode(Node):
         for value in (self.pose_xyz_tolerance, self.pose_rotation_tolerance, self.joint_tolerance):
             if not math.isfinite(value) or value <= 0:
                 raise ValueError('도착·출발 검증 허용오차는 유한한 양수여야 한다')
+        self._return_rescoop_blocked = False  # 연결 경로 구현 전에는 반환 후 재스쿱 금지
         self._pending_scoop_extract = False
         self._scoop_extract_uncertain = False
         self.arm = DsrArm(g('robot.id'), g('robot.model'), self.mode, float(g('robot.vel')), float(g('robot.acc')),
@@ -780,6 +781,8 @@ class SkillNode(Node):
         return list(pose)
 
     def _do_scoop(self, job: Job):
+        if getattr(self, '_return_rescoop_blocked', False):
+            raise RuntimeError('반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
         self._require_scoop_extracted()
         SkillNode._require_held_scoop(self, job.args['material_id'])
         p = self.get_parameter
@@ -869,6 +872,9 @@ class SkillNode(Node):
         if job.cancel:
             raise RuntimeError('cancelled')
         job.feedback and job.feedback('TILT')
+        # 실패·취소도 기울어진 자세일 수 있어 성공 여부와 무관하게 유지한다.
+        # SafePose·파지 변경으로 해제하지 않는다. 연결 경로 구현 시 해제 조건을 정한다.
+        self._return_rescoop_blocked = True
         # 손목 특이점을 지나는 직선 보간 대신 티칭한 관절각으로 이동한다.
         self.arm.movej_cancellable(end, self.vel_scale, lambda: job.cancel, self.motion_timeout_s)
         if job.cancel:
