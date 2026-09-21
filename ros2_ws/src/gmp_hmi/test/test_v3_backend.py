@@ -317,34 +317,6 @@ def test_password_and_disabled_user_invalidate_sessions(app_db):
     assert second.get('/status').status_code == 401
 
 
-def test_collection_confirmation_waits_for_process_reset(app_db, node):
-    app, _ = app_db
-    qa = app.test_client()
-    token = login(qa)
-
-    denied = post(qa, token, '/collection-confirm', {'passbox_done_empty': True,
-                                                      'reject_bin_empty': False})
-    assert denied.status_code == 400
-
-    accepted = post(qa, token, '/collection-confirm', {'passbox_done_empty': True,
-                                                        'reject_bin_empty': True,
-                                                        'actor': 'spoofed'})
-    assert accepted.json['ok']
-    assert node.published[-1].code == 'HMI_COLLECTION_CONFIRMED'
-    assert node.published[-1].text.startswith('admin ')
-    assert 'spoofed' not in node.published[-1].text
-    assert node.snapshot()['collection']['phase'] == 'reset_pending'
-
-    node._on_event(Message(code='COLLECTION_REQUIRED', text='passbox_done 가득참 (1/1)',
-                           level=0, batch_id=''))
-    assert node.snapshot()['collection']['phase'] == 'required'
-    node._on_event(Message(code='COLLECTION_RESET', text='회수 확인(admin) — 적재 카운터 초기화',
-                           level=0, batch_id=''))
-    snapshot = node.snapshot()
-    assert snapshot['collection']['phase'] == 'available'
-    assert snapshot['integration']['collection']['connected'] is True
-
-
 def test_new_weight_subject_scoop_cycle_and_unavailable_telemetry(node):
     node._on_state(state())
     weight = Message(net_g=50, gross_g=65, tare_g=15, std_g=.2, valid=True,

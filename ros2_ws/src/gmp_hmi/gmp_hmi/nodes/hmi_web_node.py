@@ -167,13 +167,7 @@ class HmiRosNode(Node):
         self._batch_actor = ''
         self.lock = threading.Lock()
         self.safety_recovery = SafetyRecovery()
-        self.snap = {
-            'state': {}, 'gripper': {}, 'weights': [], 'results': [], 'deviations': {},
-            'events': [], 'scoop_cycles': [],
-            # C의 적재 카운터가 내는 이벤트를 관측해 화면에 표시한다. C가 권위자이고,
-            # HMI 재기동으로 이 관측값을 잃으면 임의로 "비어 있음"이라고 판단하지 않는다.
-            'collection': {'phase': 'unobserved', 'message': 'C 적재 카운터 신호 수신 대기'},
-        }
+        self.snap = {'state': {}, 'gripper': {}, 'weights': [], 'results': [], 'deviations': {}, 'events': [], 'scoop_cycles': []}
         self.create_subscription(CellState, 'state', self._on_state, LATCHED)
         self.create_subscription(WeightReading, 'weight', self._on_weight, 20)
         self.create_subscription(DispenseResult, 'dispense_result', self._on_result, 50)
@@ -386,16 +380,6 @@ class HmiRosNode(Node):
                         self.safety_recovery.finish(request, detail)
                     else:
                         self.snap['external_safety_recovery'] = detail
-            elif m.code == 'COLLECTION_REQUIRED':
-                self.snap['collection'] = {
-                    'phase': 'required', 'message': m.text or '적재 칸이 가득 차 회수가 필요합니다.',
-                    't': self._t(m.header),
-                }
-            elif m.code == 'COLLECTION_RESET':
-                self.snap['collection'] = {
-                    'phase': 'available', 'message': m.text or '회수 확인 후 적재 카운터가 초기화되었습니다.',
-                    't': self._t(m.header),
-                }
             self._received('event')
             self.snap['events'].append(dict(t=self._t(m.header), level=LEVELS.get(m.level, '?'),
                 code=m.code, text=m.text, batch_id=m.batch_id))
@@ -439,21 +423,6 @@ class HmiRosNode(Node):
                       batch_id=batch_id)
         m.header.stamp = self.get_clock().now().to_msg()
         self.pub_event.publish(m)
-
-    def confirm_collection(self, actor):
-        """QA의 회수 확인을 C에 전달한다.
-
-        이 메서드는 HMI가 물리 칸이나 C의 카운터를 직접 바꾸지 않음을 보장한다.
-        `COLLECTION_RESET`을 관측하기 전에는 다음 주문을 이 화면에서 보류한다.
-        """
-        with self.lock:
-            self.snap['collection'] = {
-                'phase': 'reset_pending',
-                'message': '회수 확인을 C에 전달했습니다. 적재 카운터 초기화 응답을 기다립니다.',
-                't': self.get_clock().now().nanoseconds / 1e9,
-            }
-        self.audit('COLLECTION_CONFIRMED', actor,
-                   'passbox_done_empty=true reject_bin_empty=true', batch_id='')
 
     def recover_safety(self, actor, expected_state, confirmed, generation, request_id=None):
         if not self.cli_recovery:
@@ -599,13 +568,9 @@ class HmiRosNode(Node):
             data['diagnostics']['topics']['test_inventory'] = {'age_s': data['inventory']['age_s']}
         data['deviations'] = list(data['deviations'].values())
         data['target_band'] = target_band(data.get('active_recipe'), data['state'].get('batch_id'))
-        collection = data.get('collection', {})
         data['integration'] = {
             'inventory': {'connected': False, 'message': '운영 재고·보충 계약 미정 · 표시값은 HMI 추정입니다'},
-            'collection': {
-                'connected': collection.get('phase') in ('required', 'available'),
-                'message': collection.get('message', 'C 적재 카운터 신호 수신 대기'),
-            },
+            'collection': {'connected': False, 'message': '회수 확인 기록만 지원 · C 적재 카운터 초기화 미연결'},
             'restart': {'connected': False, 'message': '미완료 기록 조회만 지원 · C 재기동 재개 계약 미정'}}
         data['now'] = self.get_clock().now().nanoseconds / 1e9
         return json_finite(data)
@@ -1106,8 +1071,10 @@ def build_app(node: HmiRosNode, db: CellDB, admin_store=None):
         data = payload()
         if data.get('passbox_done_empty') is not True or data.get('reject_bin_empty') is not True:
             raise ValueError('완성품 패스박스와 폐기함을 모두 비웠음을 확인하세요')
-        node.confirm_collection(g.user['username'])
-        return jsonify(ok=True, message='회수 확인을 C에 전달했습니다. 적재 카운터 초기화 응답을 기다리세요.')
+        # 적재 카운터의 권위자는 C 공정이다. HMI는 사람의 회수 확인만 감사 기록으로 남긴다.
+        node.audit('COLLECTION_CONFIRMED', g.user['username'],
+                   'passbox_done_empty=true reject_bin_empty=true counter_reset=not_connected', batch_id='')
+        return jsonify(ok=True, message='회수 확인을 기록했습니다. 공정 적재 카운터 초기화 연동은 아직 준비 중입니다.')
 
     @app.post('/interlock')
     @requires('operator', 'admin')
