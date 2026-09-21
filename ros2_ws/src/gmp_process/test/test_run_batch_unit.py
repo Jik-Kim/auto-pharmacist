@@ -310,3 +310,49 @@ def test_final_record_failure_returns_error_and_blocks_orders(node):
     r=node._execute_batch(h)
     assert r.result=='ERROR' and h.terminal=='aborted' and node._execution_uncertain
     assert node._goal_batch(Message(recipe=recipe('NEXT')))==0
+
+
+def test_nudge_wait_rejection_preserves_operator_instruction(node):
+    node.fsm = NS(mode='PAUSED', state='NUDGE_WAIT')
+    reply = node._srv_submit(Message(recipe=recipe()), Message())
+    assert not reply.accepted
+    assert reply.message == '세트 완료 — 로봇을 건드리면 다음 주문을 받는다 (NUDGE_WAIT)'
+
+
+def test_idle_pause_reason_is_published_and_cleared(node):
+    node._nudge_paused = True
+    node._pub_state()
+    assert '다시 건드리면' in node.published['state'][-1].note
+    assert node._goal_batch(Message(recipe=recipe())) == 0
+    node._nudge_paused = False
+    node._pub_state()
+    assert 'NUDGE 일시 정지' not in node.published['state'][-1].note
+    node._pause = True
+    node._pub_state()
+    assert 'EXIT' in node.published['state'][-1].note
+
+
+def test_generated_date_id_skips_explicit_used_id(node):
+    node._used_batch_ids.add('B-19700101-001')
+    with node._order_lock:
+        node._reserve_batch(recipe(''))
+    assert node._reserved_recipe[1] == 'B-19700101-002'
+
+
+def test_refill_exit_between_safe_and_wait_is_not_lost(node):
+    node.fsm = NS(mode='PAUSED', state='PAUSED')
+    assert node._dispatch({'kind': 'safe', 'reason': 'REFILL', 'then': 'wait_interlock'})['success']
+    assert node._refill_waiting
+    enter = node._srv_interlock(Message(request=0, reason='REFILL'), Message())
+    assert enter.granted and enter.message.startswith('이미')
+    assert node._srv_interlock(Message(request=1, reason='REFILL'), Message()).granted
+    assert node._interlock_exit.is_set()
+    node._dispatch({'kind': 'wait_interlock'})
+    assert not node._refill_waiting and not node._interlock_exit.is_set()
+
+
+def test_refill_enter_does_not_grant_on_paused_mode_alone(node):
+    node.fsm = NS(mode='PAUSED', state='PAUSED')
+    node.params['server_wait_s'] = 0.01
+    reply = node._srv_interlock(Message(request=0, reason='REFILL'), Message())
+    assert not reply.granted

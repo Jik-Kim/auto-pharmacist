@@ -17,7 +17,7 @@
 `gmp_interfaces/action/RunBatch.action`의 메시지 정의는 변경하지 않았다.
 
 - Goal: 기존 레시피 검증·스테이션 매핑 확인. 실행 중·수락 예약 중·정지 중·종료 미확인 시 거부.
-  빈 batch_id는 UUID로 생성하며, 같은 프로세스 세션에서 사용한 batch_id의 재주문은 거부한다.
+  빈 batch_id는 ROS clock의 UTC 날짜로 B-YYYYMMDD-NNN 형식을 생성하며, 같은 프로세스 세션에서 사용한 batch_id의 재주문은 거부한다.
   ID 중복 검사는 재시작을 넘겨 영속화하지 않는다. HMI는 매 주문 새 ID를 생성해야 한다.
 - Feedback: 기존 2 Hz/전이 상태와 현재 배치의 마지막 DispenseResult. 첫 결과 전에는 기본 빈 메시지.
 - Result: DONE만 success=true. DISCARDED는 처리 완료(action SUCCEEDED), success=false.
@@ -40,7 +40,8 @@
 각 사례 뒤 종료한다. 운영 `/cell`이나 로봇 드라이버를 호출하지 않는다.
 
 ```bash
-cd ~/auto-pharmacist-hmi-check
+# 복제 위치가 다르면 본인의 저장소 경로를 사용한다.
+cd ~/auto-pharmacist
 source /opt/ros/jazzy/setup.bash
 source ros2_ws/install/setup.bash
 export ROS_DOMAIN_ID=88
@@ -59,7 +60,8 @@ A 담당 PC 또는 공정 담당 PC에서 C를 **한 개만** 실행한다. 기�
 있으므로 그것을 실행했다면 아래 명령을 추가 실행하지 않는다. HMI+record_node만 켠 상태라면:
 
 ```bash
-cd ~/auto-pharmacist-hmi-check
+# 복제 위치가 다르면 본인의 저장소 경로를 사용한다.
+cd ~/auto-pharmacist
 source /opt/ros/jazzy/setup.bash
 source ros2_ws/install/setup.bash
 export ROS_DOMAIN_ID=70
@@ -73,3 +75,12 @@ ros2 run gmp_process process_node --ros-args \
 다른 동일 환경 터미널에서 `ros2 action info /cell/run_batch`로 서버 1개를 확인한다.
 HMI 5000의 기존 RunBatch 클라이언트가 연결된다. A 스킬 서버가 준비되기 전에는 주문하지 않는다.
 실물 첫 주문·취소는 A/C 담당과 현재 TCP·티칭·원료·용기 상태를 확인하고 진행한다.
+
+### PR #163 리뷰 확인 사항
+
+- NUDGE_WAIT 주문 거부는 세트 완료 및 다음 넛지 안내를 유지한다. 유휴 NUDGE/ENTER 잠금 사유도 CellState.note에 표시한다.
+- 스킬 시간 초과 후 `_execution_uncertain`은 유지한다. `cancel_late`는 취소를 요청할 뿐 물리 정지나 최종 결과를 확인하지 않으므로 차단 해제 근거로 쓰지 않는다.
+- `skill_timeout_s`는 A와 실물 계량·이동 최장 시간을 확인한 뒤 정한다. 이 PR은 기존 90초를 임의로 늘리지 않는다.
+- 자동 배치 ID는 날짜형으로 복원한다. 날짜는 기록과 동일한 ROS clock을 UTC로 변환하며, 재시작 간 중복 방지는 보장하지 않는다. HMI가 전달하는 배치 ID는 유지한다.
+- RunBatch 실행 콜백이 대기하는 동안 다른 콜백을 처리할 수 있도록 운영 executor는 6개 스레드를 사용한다.
+- DDS 테스트 종료 시 보고된 Destroyable 예외는 아직 재현·해결 확인 전이며 기능 검사 통과와 구분한다.

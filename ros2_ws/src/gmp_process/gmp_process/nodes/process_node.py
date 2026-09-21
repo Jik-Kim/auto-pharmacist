@@ -23,7 +23,7 @@ import threading
 import time
 from gmp_process.core.safety_events import SafetyEvents
 from copy import deepcopy
-from uuid import uuid4
+from datetime import datetime, timezone
 
 import rclpy
 from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalResponse
@@ -170,6 +170,7 @@ class ProcessNode(Node):
         self._batch_done = threading.Event()
         self._batch_outcome = ''
         self._last_result = DispenseResult()
+        self._seq = 0
         self._used_batch_ids = set()  # 이 프로세스 세션 내 중복 ID 금지
         self._execution_uncertain = False  # 스킬 응답 유실 후 새 주문으로 겹쳐 실행하지 않는다
         self.batch_server = ActionServer(
@@ -337,6 +338,8 @@ class ProcessNode(Node):
             raise ValueError('이전 스킬 종료 미확인 — 현장 확인 및 노드 재기동 필요')
         if (self._reserved or (self._thread and self._thread.is_alive()) or
                 (self.fsm and self.fsm.mode in ('RUNNING', 'PAUSED', 'DEVIATION'))):
+            if self.fsm and self.fsm.state == 'NUDGE_WAIT':
+                raise ValueError('세트 완료 — 로봇을 건드리면 다음 주문을 받는다 (NUDGE_WAIT)')
             raise ValueError('기존 배치 실행 / 종료 처리 중')
         if self._pause or self._nudge_paused:
             raise ValueError('구역 진입 / 일시 정지 중에는 새 주문을 받지 않습니다')
@@ -346,7 +349,15 @@ class ProcessNode(Node):
         self.smap.check([i.material_id for i in spec.items])
         if len(spec.items) > 255:
             raise ValueError('RunBatch 완료 원료 수(uint8)를 초과하는 레시피')
-        batch_id = recipe.batch_id.strip() or 'B-' + uuid4().hex.upper()
+        batch_id = recipe.batch_id.strip()
+        if not batch_id:
+            # 기록과 같은 ROS clock 사용. 자동 ID의 중복 방지는 기동 세션 범위다.
+            day = datetime.fromtimestamp(self._now(), timezone.utc).strftime('%Y%m%d')
+            while True:
+                self._seq += 1
+                batch_id = f'B-{day}-{self._seq:03d}'
+                if batch_id not in self._used_batch_ids:
+                    break
         if batch_id in self._used_batch_ids:
             raise ValueError('이 세션에서 이미 사용한 batch_id')
         self._reserved_recipe = (spec, batch_id)
@@ -493,6 +504,19 @@ class ProcessNode(Node):
                 # _interlock_exit 를 다시 지우면 EXIT 를 두 번 눌러야 풀린다 — 멱등하게 받는다.
                 # NUDGE 정지는 PAUSED 지만 **그 자리에 선 것**이라 안전 자세가 아니다 → 여기 걸리면 안 된다.
                 # 세트 끝 NUDGE_WAIT 도 같다 — nudge_wait 스테이션이지 안전 자세가 아니다
+                if not self._pause and not self._refill_waiting:
+                    # FSM의 PAUSED는 SafePose 완료보다 먼저 보일 수 있다.
+                    # 안전 자세 성공과 EXIT 수신 준비가 확인되기 전에는 진입 허가하지 않는다.
+                    deadline = time.monotonic() + float(self.p('server_wait_s'))
+                    while not self._refill_waiting and time.monotonic() < deadline:
+                        if self._stop.is_set() or self._safety_stop or self._batch_cancel.is_set():
+                            break
+                        if not self.fsm or self.fsm.mode != 'PAUSED':
+                            break
+                        time.sleep(0.01)
+                    if not self._refill_waiting:
+                        res.granted, res.message = False, '안전 자세 완료 미확인 — 진입 불가'
+                        return res
                 res.granted, res.message = True, '이미 대기 중 (안전 자세)'
                 return res
             # 진행 중인 스킬을 취소하는 것은 skill_node 다 (SafePose 계약: 대기 Job 은 버리고 진행 Job 에 cancel).
@@ -722,6 +746,9 @@ class ProcessNode(Node):
             return {'valid': bool(r.valid), 'fz_mean_n': float(r.fz_mean_n), 'fz_std_n': float(r.fz_std_n)}
         if k == 'safe':
             r = self._call_srv('safe', SafePose.Request(reason=req.get('reason', '')))
+            if r.success and req.get('then') == 'wait_interlock':
+                # 성공 후 즉시 EXIT를 받을 준비를 한다. 다음 dispatch까지의 틈에도 유지한다.
+                self._refill_waiting = True
             return {'success': bool(r.success)}
         if k == 'move':
             self._move(self._station_of(req),
@@ -1029,6 +1056,13 @@ class ProcessNode(Node):
             m.mode = getattr(CellState, self.fsm.mode, CellState.IDLE)
             m.step, m.item_index, m.batch_id = self.fsm.state, min(255, self.fsm.idx), self.batch_id
         m.station, m.note = self.station, self.note
+        # 실행 루프가 없는 유휴 상태에서도 주문 차단 사유를 HMI에 전달한다.
+        idle = not self._reserved and not (self._thread and self._thread.is_alive())
+        if idle and not self._safety_stop and not self._execution_uncertain:
+            if self._pause:
+                m.note = '구역 진입 요청 유지 — 인터락 EXIT 확인 후 새 주문 가능'
+            elif self._nudge_paused:
+                m.note = 'NUDGE 일시 정지 — 다시 건드리면 해제, 이후 새 주문 가능'
         self.pub_state.publish(m)
         handle = getattr(self, '_batch_handle', None)
         if handle is not None and handle.is_active and not self._batch_done.is_set():
@@ -1042,7 +1076,7 @@ class ProcessNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = ProcessNode()
-    ex = MultiThreadedExecutor(num_threads=4)
+    ex = MultiThreadedExecutor(num_threads=6)
     ex.add_node(node)
     try:
         ex.spin()
