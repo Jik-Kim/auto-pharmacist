@@ -73,6 +73,35 @@ STATES = {0: 'INITIALIZING', 1: 'STANDBY', 2: 'MOVING', 3: 'SAFE_OFF', 4: 'TEACH
           6: 'EMERGENCY_STOP', 7: 'HOMMING', 8: 'RECOVERY', 9: 'SAFE_STOP2', 10: 'SAFE_OFF2'}
 
 
+def wait_controller(arm, rclpy, timeout_s: float):
+    """컨트롤러가 실제로 응답하는지 먼저 확인한다 — **없으면 조용히 멈춘다.**
+
+    DSR_ROBOT2 의 설정·조회 함수는 wait_for_service 없이 call_async 부터 하고
+    spin_until_future_complete 로 기다린다. 컨트롤러 활성화 전에 부르면 future 가 끝나지 않아
+    아무 출력 없이 영원히 선다 (gmp_skills/adapters/dsr_arm.py 의 initialize 주석과 같은 사유).
+    dsr_arm.initialize() 는 move_stop 서비스로 이 확인을 하지만 여기서는 setup_tool 을 직접 부르므로
+    그 확인이 빠져 있었다 — 브링업을 띄우자마자 실행하면 걸린다 (9/21 실제로 걸렸다).
+
+    wait_for_service 는 '그래프에 광고됐다' 까지만 보므로, 타임아웃을 걸고 한 번 실제로 부른다.
+    """
+    from dsr_msgs2.srv import GetRobotMode
+    t0 = time.monotonic()
+    cli = arm.node.create_client(GetRobotMode, 'dsr_controller2/system/get_robot_mode')
+    if not cli.wait_for_service(timeout_sec=timeout_s):
+        raise TimeoutError(
+            f'{timeout_s:.0f} s 안에 dsr_controller2/system/get_robot_mode 가 안 보인다 — '
+            '브링업(new_bringup.launch.py mode:=real)이 떠 있는지, ROS_DOMAIN_ID 가 같은지 확인 '
+            '(source tools/env.sh 하면 70)')
+    left = max(5.0, timeout_s - (time.monotonic() - t0))
+    fut = cli.call_async(GetRobotMode.Request())
+    rclpy.spin_until_future_complete(arm.node, fut, timeout_sec=left)
+    if fut.result() is None:
+        raise TimeoutError(
+            '컨트롤러가 응답하지 않는다 — 서비스는 떴지만 dsr_controller2 가 아직 active 가 아니거나 '
+            '로봇 연결이 끊겼다. `ros2 control list_controllers -c /dsr01/controller_manager` 로 active 확인 후 다시')
+    print(f'    컨트롤러 준비 확인 ({time.monotonic() - t0:.1f} s)')
+
+
 def setup_tool(arm, tool: str, tcp: str, need_motion: bool):
     """initialize() 대신 — 상태를 먼저 보여 주고, 이미 선택된 툴·TCP 면 set 을 건너뛴다.
     workpiece 추정은 컨트롤러에 등록된 툴 무게가 전제라 툴이 맞는지가 핵심이다 (T0: 펜던트에서 tool_weight / GripperDA_v1 선택)."""
@@ -201,6 +230,8 @@ def main(argv=None):
     ap.add_argument('--offset-mm', default='', metavar='DX,DY,DZ',
                     help='--goto-station 좌표에 더할 [mm] — 실물 위치가 바뀌었는데 stations.yaml 이 '
                          '아직 반영 전(PR 대기)일 때 임시 보정. 예: 100,0,0')
+    ap.add_argument('--controller-timeout', type=float, default=30.0, metavar='SEC',
+                    help='dsr_controller2 응답 대기 한도 [s]. 브링업 직후엔 컨트롤러 활성화에 시간이 걸린다')
     ap.add_argument('--gripper', action='store_true', help='/onrobot/sendCommand 로 세트마다 열기·닫기')
     ap.add_argument('--grip-width-mm', type=float, default=None, help='닫을 때 목표 폭 [mm]. 없으면 완전 닫기(c)')
     a = ap.parse_args(argv)
@@ -210,6 +241,7 @@ def main(argv=None):
     rid, model, vel, acc, tool, tcp = robot_params()
     rclpy.init()
     arm = DsrArm(rid, model, 'real', vel, acc, tool, tcp)
+    wait_controller(arm, rclpy, a.controller_timeout)
     setup_tool(arm, tool, tcp, bool(a.goto_station))
     grip = Gripper(rclpy) if a.gripper else None
     close_cmd = f'{int(round(a.grip_width_mm * 10))}' if a.grip_width_mm else 'c'

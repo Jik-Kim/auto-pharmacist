@@ -59,6 +59,23 @@ python3 -m gmp_dosing.core.calib records/g1_rezero_0921_material1.csv --method t
 `--period 0.1` 인데 실제 간격이 0.8 초쯤 되는 것은 `get_workpiece_weight` 호출이 0.7 초 걸리기 때문이다.
 그 덕에 표본이 독립이 된다 — **`--no-workpiece` 로 빼려면 `--period` 를 0.9 이상으로 직접 올려야 한다.**
 
+## 걸리면 여기부터
+
+**아무 출력 없이 멈춘다** (`_robot_id` / `_robot_model` / `_srv_name_prefix` / `_topic_name_prefix` 네 줄만 찍히고 정지)
+— 브링업을 띄우자마자 실행해서 `dsr_controller2` 가 아직 활성화되기 전이다. `DSR_ROBOT2` 의 조회·설정 함수는
+`wait_for_service` 없이 `call_async` 부터 하고 기다리므로, 컨트롤러가 없으면 future 가 끝나지 않고 조용히 선다.
+Ctrl-C 로 끄고 컨트롤러가 뜬 뒤 다시 실행한다. 확인:
+
+```
+ros2 control list_controllers -c /dsr01/controller_manager     # dsr_controller2 가 active 여야 한다
+```
+
+2026-09-21 에 실제로 걸려서 `measure_g1.py` 에 준비 확인(`wait_controller`)을 넣었다 — 이제는 30초 기다린 뒤
+무엇이 문제인지 말하고 끝난다(`--controller-timeout` 으로 조절). 멈춰 있으면 그 버전이 아닌 것이다.
+
+**`The passed service type is invalid`** — `ros2 service call` 을 쓸 때 `dsr_msgs2` 가 안 잡힌 것이다.
+`source tools/env.sh` 로 ws_dsr 언더레이까지 올린다 (`ROS_DOMAIN_ID=70` 도 여기서 설정된다).
+
 ## 페이즈마다 확인할 것
 
 - **빈 그리퍼 기준값이 0 근처인가** — 아니면 등록 툴 무게·CoG 가 실제와 다르다. 영점이 여기서 이미 틀어진다.
