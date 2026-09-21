@@ -1,6 +1,7 @@
 """공정 노드 — ProcessFSM 의 요청을 스킬 Action/Service 로 실행하고 결과를 돌려준다.
 
-입력  submit_order · qa_decision · interlock · request_safety_recovery (Service 서버)
+입력  run_batch (Action 서버: 기존 FSM 실행·피드백·취소)
+      submit_order · qa_decision · interlock · request_safety_recovery (Service 서버)
       event 구독 (skill_node 의 NUDGE·ROBOT_SAFETY_STOP·ROBOT_SAFETY_RECOVERY, D-21·v1.4)
       스킬 Action 클라이언트 move_to_station·scoop·pour·weigh_container·weigh_held
       스킬 Service 클라이언트 set_gripper·measure_force·safe_pose·recover_safety
@@ -21,16 +22,17 @@ import json
 import threading
 import time
 from gmp_process.core.safety_events import SafetyEvents
-from datetime import datetime
+from copy import deepcopy
+from uuid import uuid4
 
 import rclpy
-from rclpy.action import ActionClient
+from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 
-from gmp_interfaces.action import MoveToStation, Pour, ReturnMaterial, Scoop, WeighContainer, WeighHeld
+from gmp_interfaces.action import MoveToStation, Pour, ReturnMaterial, RunBatch, Scoop, WeighContainer, WeighHeld
 from gmp_interfaces.msg import (CellEvent, CellState, Deviation, DispenseResult, ScoopCycle,
                                 WeightReading)
 from gmp_interfaces.srv import (InterlockRequest, MeasureForce, QaDecision, RecoverSafety, SafePose,
@@ -59,6 +61,14 @@ DEV_TO_OUTCOME = {'SCOOP_EMPTY': 'SCOOP_EMPTY', 'MATERIAL_EMPTY': 'SCOOP_EMPTY',
 
 class SkillError(RuntimeError):
     """스킬을 부를 수 없거나(서버 없음·시간 초과) 서버가 abort 한 것. 배치를 ERROR 로 끝낸다."""
+
+
+class BatchCancelled(RuntimeError):
+    """다음 동작 금지. 실행 중 스킬의 종료 확인 뒤 배치를 ABORTED 로 닫는다."""
+
+
+class BatchSafetyStopped(RuntimeError):
+    """복구 이벤트가 빨리 와도 이미 중단된 배치를 재개하지 않는다."""
 
 
 class ProcessNode(Node):
@@ -125,7 +135,6 @@ class ProcessNode(Node):
         self.batch_id = ''
         self.station = ''            # 마지막으로 도착한 스테이션 — CellState.station
         self.note = ''
-        self._seq = 0                # 배치 일련번호 (B-YYYYMMDD-NNN)
         self._qa = threading.Event(); self._qa_decision = None; self._qa_operator = ''
         self._interlock_exit = threading.Event()
         self._pause = False          # 인터락 ENTER 가 세운다. **루프만 내린다** — EXIT 핸들러가 내리면
@@ -151,6 +160,22 @@ class ProcessNode(Node):
         self._grip_width = 0.0                    # 마지막 SetGripper 정지 폭 (ScoopCycle 용)
         self._try_no: dict = {}                   # 원료 → ScoopCycle 시도 번호 (빈 스쿱 재시도도 센다)
         self._item_t0 = 0.0
+        # 서비스와 Action은 같은 실행 슬롯을 사용한다. goal 수락과 execute 사이도 예약한다.
+        self._order_lock = threading.RLock()
+        self._reserved = False
+        self._reserved_recipe = None
+        self._batch_handle = None
+        self._batch_cancel = threading.Event()
+        self._batch_safety_stop = threading.Event()
+        self._batch_done = threading.Event()
+        self._batch_outcome = ''
+        self._last_result = DispenseResult()
+        self._used_batch_ids = set()  # 이 프로세스 세션 내 중복 ID 금지
+        self._execution_uncertain = False  # 스킬 응답 유실 후 새 주문으로 겹쳐 실행하지 않는다
+        self.batch_server = ActionServer(
+            self, RunBatch, 'run_batch', self._execute_batch,
+            goal_callback=self._goal_batch, cancel_callback=self._cancel_batch,
+            handle_accepted_callback=self._accept_batch, callback_group=self.cb)
 
     # ── 공용 ─────────────────────────────────────────────────────────
     def _now(self) -> float:
@@ -198,9 +223,11 @@ class ProcessNode(Node):
             data = {}
         data = data if isinstance(data, dict) else {}
         reason = data.get('reason') or msg.text or '로봇 안전 정지'
-        with self._safety_event_lock:
+        with self._order_lock, self._safety_event_lock:
             self._safety_events.stop(data)
             self._safety_stop = True
+            if getattr(self, '_reserved', False):
+                self._batch_safety_stop.set()
             self._safety_stop_reason = reason
         self.get_logger().warning(f'[SAFETY_STOP] 새 주문·재시도 차단: {reason}')
 
@@ -239,6 +266,7 @@ class ProcessNode(Node):
         폴링으로 기다린다 — 깨우는 신호가 둘(두 번째 NUDGE, 인터락 EXIT)이라 Event 하나로는
         「스킬 도는 동안 정지·재개가 다 지나간」 경우에 신호가 남아 다음 정지를 즉시 풀어 버린다.
         """
+        self._check_batch_interrupt()
         reason = self._pause_reason()
         if not reason:
             return
@@ -254,6 +282,7 @@ class ProcessNode(Node):
         self._pub_state()
         self.event('WARN', 'PAUSE', self.note)
         while self._pause_reason():
+            self._check_batch_interrupt()
             if self._pause and self._interlock_exit.is_set():
                 # EXIT 를 여기서 소비한다 — _pause 를 내리는 곳은 언제나 루프다 (핸들러가 내리면
                 # 취소된 스킬이 돌아오기 전에 풀려 그 실패가 진짜 실패로 읽힌다)
@@ -271,11 +300,14 @@ class ProcessNode(Node):
 
     def _await(self, ev: threading.Event, what: str):
         """사람을 기다리는 대기(QA·인터락)는 상한이 없다 (D-23 반자동). 종료 요청·안전 정지가 깨운다."""
+        self._check_batch_interrupt()
         while not ev.wait(0.2):
+            self._check_batch_interrupt()
             if self._safety_stop:
                 raise SkillError(f'{what} 대기 중 SAFETY_STOP: {self._safety_stop_reason}')
             if self._stop.is_set() or not rclpy.ok():
                 raise SkillError(f'{what} 대기 중 종료')
+        self._check_batch_interrupt()
         return True
 
     def _wait(self, fut, timeout: float, what: str):
@@ -286,37 +318,132 @@ class ProcessNode(Node):
             raise SkillError(f'{what} 응답 없음 ({timeout:.0f}s)')
         return fut.result()
 
-    # ── 서비스 ───────────────────────────────────────────────────────
-    def _srv_submit(self, req, res):
+    # ── RunBatch / SubmitOrder 공통 접수 ──────────────────────────────
+    def _check_batch_interrupt(self):
+        if self._batch_safety_stop.is_set() or self._safety_stop:
+            raise BatchSafetyStopped('SAFETY_STOP: ' + self._safety_stop_reason)
+        if self._batch_cancel.is_set():
+            raise BatchCancelled('RunBatch 취소 요청 — 자동 재개 없음')
+        if self._stop.is_set() or not rclpy.ok():
+            raise BatchCancelled('공정 노드 종료 — 자동 재개 없음')
+
+    def _reserve_batch(self, recipe):
+        """_order_lock 안에서 호출. 검증 실패 시 슬롯·현재 배치를 변경하지 않는다."""
+        if self._stop.is_set() or not rclpy.ok():
+            raise ValueError('공정 노드 종료 중')
         if self._safety_stop:
-            # 로봇 안전 정지 중에는 기존 배치를 재실행하지도, 새 배치를 받지도 않는다 — 복구 확인
-            # (ROBOT_SAFETY_RECOVERY, success·manual_required 아님) 뒤에만 새 주문을 받는다.
-            res.accepted = False
-            res.message = f'로봇 안전 정지 — 복구 필요: {self._safety_stop_reason}'
-            return res
-        if self.fsm and self.fsm.mode in ('RUNNING', 'PAUSED', 'DEVIATION'):
-            res.accepted = False
-            res.message = ('세트 완료 — 로봇을 건드리면 다음 주문을 받는다 (NUDGE_WAIT)' if self.fsm.state == 'NUDGE_WAIT'
-                           else f'실행 중 ({self.fsm.state})')
-            return res
-        # 검증은 core/recipe.parse 단일 출처 — 필수 필드·중복 원료·양수·유한값. HMI 가 yaml 을 읽을 때와 같은 규칙이다.
-        # target_g=0 이 통과하면 verdict_of 의 나눗셈에서 죽고, tol 이 NaN 이면 판정이 늘 실패한다
-        try:
-            spec = parse_recipe({'product': req.recipe.product,
-                                 'items': [{'material_id': i.material_id, 'target_g': i.target_g, 'tol_pct': i.tol_pct}
-                                           for i in req.recipe.items]})
-            self.smap.check([i.material_id for i in spec.items])   # 배치 중간에 서는 것보다 주문 거부가 낫다
-        except (ValueError, KeyError) as e:
-            res.accepted, res.message = False, str(e).strip("'")
-            return res
-        self._seq += 1
-        self.batch_id = req.recipe.batch_id or f'B-{datetime.now():%Y%m%d}-{self._seq:03d}'
+            raise ValueError('로봇 안전 정지 — 복구 필요: ' + self._safety_stop_reason)
+        if self._execution_uncertain:
+            raise ValueError('이전 스킬 종료 미확인 — 현장 확인 및 노드 재기동 필요')
+        if (self._reserved or (self._thread and self._thread.is_alive()) or
+                (self.fsm and self.fsm.mode in ('RUNNING', 'PAUSED', 'DEVIATION'))):
+            raise ValueError('기존 배치 실행 / 종료 처리 중')
+        if self._pause or self._nudge_paused:
+            raise ValueError('구역 진입 / 일시 정지 중에는 새 주문을 받지 않습니다')
+        spec = parse_recipe({'product': recipe.product,
+                             'items': [{'material_id': i.material_id, 'target_g': i.target_g,
+                                        'tol_pct': i.tol_pct} for i in recipe.items]})
+        self.smap.check([i.material_id for i in spec.items])
+        if len(spec.items) > 255:
+            raise ValueError('RunBatch 완료 원료 수(uint8)를 초과하는 레시피')
+        batch_id = recipe.batch_id.strip() or 'B-' + uuid4().hex.upper()
+        if batch_id in self._used_batch_ids:
+            raise ValueError('이 세션에서 이미 사용한 batch_id')
+        self._reserved_recipe = (spec, batch_id)
+        self._interlock_exit.clear()
+        self._batch_cancel.clear()
+        self._batch_safety_stop.clear()
+        self._batch_done.clear()
+        self._batch_outcome = ''
+        self._reserved = True
+
+    def _start_reserved_batch(self):
+        spec, self.batch_id = self._reserved_recipe
+        self._used_batch_ids.add(self.batch_id)
         self._reset_batch()
+        self._last_result = DispenseResult()
         self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale)
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name='process-run')
         self._thread.start()
-        res.accepted, res.batch_id, res.message = True, self.batch_id, 'accepted'
-        return res
+
+    def _goal_batch(self, request):
+        with self._order_lock:
+            try:
+                self._reserve_batch(request.recipe)
+            except (ValueError, KeyError) as e:
+                self.get_logger().warning(f'RunBatch 거부: {e}')
+                return GoalResponse.REJECT
+            return GoalResponse.ACCEPT
+
+    def _accept_batch(self, handle):
+        with self._order_lock:
+            self._batch_handle = handle
+        # rclpy execute callback이 시작한 뒤 worker를 시작한다.
+        # 수락 직후 cancel이 와도 _batch_cancel을 초기화하지 않는다.
+        handle.execute()
+
+    def _cancel_batch(self, handle):
+        with self._order_lock:
+            if (handle is not self._batch_handle or self._batch_done.is_set() or
+                    not self._reserved):
+                return CancelResponse.REJECT
+            self._batch_cancel.set()
+            return CancelResponse.ACCEPT
+
+    def _execute_batch(self, handle):
+        try:
+            with self._order_lock:
+                self._start_reserved_batch()
+            self._thread.join()  # 스킬 응답 / 기록 최종 발행까지 슬롯을 유지한다
+            if not self._batch_done.is_set():
+                raise RuntimeError('배치 루프 최종 기록 완료를 확인하지 못했습니다')
+            with self._order_lock:
+                outcome = self._batch_outcome or 'ERROR'
+                result = RunBatch.Result(
+                    success=outcome == 'DONE', items_done=min(255, len(self.fsm.results)),
+                    deviations=min(255, len(self.fsm.deviations)), result=outcome,
+                    message=self.note or outcome)
+                if outcome == 'ABORTED' and self._batch_cancel.is_set():
+                    # cancel_callback 응답 뒤 rclpy가 CANCELING으로 전이할 틈을 준다.
+                    deadline = time.monotonic() + float(self.p('server_wait_s'))
+                    while handle.is_active and not handle.is_cancel_requested and time.monotonic() < deadline:
+                        time.sleep(0.01)
+                if outcome == 'ABORTED' and handle.is_cancel_requested:
+                    handle.canceled()
+                elif outcome in ('DONE', 'DISCARDED'):
+                    handle.succeed()  # DISCARDED는 완료된 실행이며 result.success는 false
+                else:
+                    handle.abort()
+                return result
+        except Exception as e:
+            self._execution_uncertain = True
+            self.get_logger().error(f'RunBatch 종료 실패: {e}')
+            if handle.is_active:
+                handle.abort()
+            return RunBatch.Result(success=False, result='ERROR', message=str(e))
+        finally:
+            with self._order_lock:
+                self._batch_handle = None
+                self._reserved = False
+                self._reserved_recipe = None
+
+    def _srv_submit(self, req, res):
+        with self._order_lock:
+            try:
+                self._reserve_batch(req.recipe)
+            except (ValueError, KeyError) as e:
+                res.accepted, res.message = False, str(e).strip("'")
+                return res
+            try:
+                self._start_reserved_batch()
+            except Exception as e:
+                self._reserved = False
+                self._reserved_recipe = None
+                self._execution_uncertain = True
+                res.accepted, res.message = False, f'배치 시작 실패: {e}'
+                return res
+            res.accepted, res.batch_id, res.message = True, self.batch_id, 'accepted'
+            return res
 
     def _reset_batch(self):
         self.scale.tare_g = 0.0
@@ -325,8 +452,7 @@ class ProcessNode(Node):
         self._attempt = self._scoop_tare = None
         self._try_no = {}
         self._qa.clear(); self._qa_decision = None; self._qa_operator = ''
-        self._interlock_exit.clear(); self._pause = False   # 지난 배치의 EXIT 가 새 배치로 새지 않게
-        self._nudge_paused = False
+        # 예약 후 들어온 ENTER/NUDGE/EXIT를 지우지 않는다. 이전 EXIT는 예약 때 지운다.
         self._refill_waiting = False
 
     def _pending_dev(self) -> Deviation | None:
@@ -429,19 +555,69 @@ class ProcessNode(Node):
 
     # ── 스킬 호출 ─────────────────────────────────────────────────────
     def _call_srv(self, key: str, request):
+        if key not in ('safe', 'recover'):
+            self._check_batch_interrupt()
         cli = self.srv[key]
         if not cli.wait_for_service(timeout_sec=float(self.p('server_wait_s'))):
             raise SkillError(f'{key} 서비스 없음')
-        return self._wait(cli.call_async(request), float(self.p('skill_timeout_s')), key)
+        if key not in ('safe', 'recover'):
+            self._check_batch_interrupt()
+        try:
+            return self._wait(cli.call_async(request), float(self.p('skill_timeout_s')), key)
+        except Exception as e:
+            if key != 'recover':
+                self._execution_uncertain = True
+            raise SkillError(f'{key} 응답 미확인: {e}') from e
 
     def _call_act(self, key: str, goal):
+        self._check_batch_interrupt()
         cli = self.act[key]
         if not cli.wait_for_server(timeout_sec=float(self.p('server_wait_s'))):
             raise SkillError(f'{key} 액션 서버 없음')
-        gh = self._wait(cli.send_goal_async(goal), float(self.p('server_wait_s')), f'{key} goal')
-        if not gh.accepted:
-            raise SkillError(f'{key} 목표 거부')
-        return self._wait(gh.get_result_async(), float(self.p('skill_timeout_s')), key).result
+        self._check_batch_interrupt()
+        # 늦게 수락된 스킬도 놓치지 않는다. timeout이면 다음 주문을 막는다.
+        def cancel_late(future):
+            try:
+                gh = future.result()
+                if gh.accepted and (self._execution_uncertain or self._batch_cancel.is_set() or
+                                    self._batch_safety_stop.is_set() or self._stop.is_set()):
+                    gh.cancel_goal_async()
+            except Exception as e:
+                self.get_logger().warning(f'{key} 늦은 Goal 취소 실패: {e}')
+        pending = cli.send_goal_async(goal)
+        pending.add_done_callback(cancel_late)
+        gh = None
+        try:
+            gh = self._wait(pending, float(self.p('server_wait_s')), f'{key} goal')
+            if not gh.accepted:
+                raise SkillError(f'{key} 목표 거부')
+            future = gh.get_result_async()
+            deadline = time.monotonic() + float(self.p('skill_timeout_s'))
+            canceled = False
+            while not future.done():
+                if not canceled and (self._batch_cancel.is_set() or self._batch_safety_stop.is_set()
+                                     or self._stop.is_set()):
+                    gh.cancel_goal_async()
+                    canceled = True
+                if time.monotonic() >= deadline:
+                    gh.cancel_goal_async()
+                    self._execution_uncertain = True
+                    raise SkillError(f'{key} 종료 미확인 (시간 초과)')
+                time.sleep(0.02)
+            result = future.result().result
+            self._check_batch_interrupt()
+            return result
+        except SkillError:
+            if gh is None:
+                self._execution_uncertain = True
+                if pending.done():
+                    cancel_late(pending)
+            raise
+        except (BatchCancelled, BatchSafetyStopped):
+            raise
+        except Exception as e:
+            self._execution_uncertain = True
+            raise SkillError(f'{key} 통신 종료 미확인: {e}') from e
 
     def _check(self, key: str, ok: bool, message: str):
         if not ok:
@@ -486,10 +662,12 @@ class ProcessNode(Node):
         상황(원료 소진·강제 개입)에서도 결정을 못 하고 서 버린다.
         """
         while True:
+            self._check_batch_interrupt()
             try:
                 res = self._dispatch(req)
             except SkillError as e:
-                if not self._pause:
+                self._check_batch_interrupt()
+                if self._execution_uncertain or not self._pause:
                     raise                          # 진짜 실패 — 루프가 FORCE_LIMIT 으로 보낸다
                 self._gate(f'스킬 중단: {e}')
                 continue                           # 같은 요청을 다시
@@ -605,11 +783,13 @@ class ProcessNode(Node):
     # ── 실행 루프 ─────────────────────────────────────────────────────
     def _run_loop(self):
         fsm = self.fsm
-        self.event('INFO', 'BATCH_START', fsm.spec.product)
-        self._pub_state()
         try:
+            self.event('INFO', 'BATCH_START', fsm.spec.product)
+            self._pub_state()
+            self._check_batch_interrupt()
             req = fsm.start()
             while req is not None and rclpy.ok() and not self._stop.is_set():
+                self._check_batch_interrupt()
                 step = fsm.state
                 if req['kind'] not in GATE_BYPASS:
                     # 다음 **로봇 동작**을 시작하기 전에 멈춘다 — 정지를 잡는 자리는 여기 하나뿐이다.
@@ -625,25 +805,62 @@ class ProcessNode(Node):
                     # 안전 자세까지 실패하면 더 물러설 곳이 없으니 거기서 멈춘다. 로봇 안전 정지(v1.4)는
                     # 재시도해도 다시 거부될 뿐이고 사람 개입(RecoverSafety)이 필요하므로 FORCE_LIMIT 을
                     # 거치지 않고 바로 ERROR 로 끝낸다 (docs/interfaces.md 8절 — 일반 재시도 경로와 분리).
-                    if req['kind'] == 'safe' or self._safety_stop:
+                    self._check_batch_interrupt()
+                    if req['kind'] == 'safe' or self._safety_stop or self._execution_uncertain:
                         self._fail(f'안전 정지: {e}' if self._safety_stop else f'안전 자세 실패: {e}')
                         break
                     self.event('WARN', 'SKILL_FAIL', f'{step} {req["kind"]}: {e}')
                     req = fsm.skill_failed(req, str(e))
                     self._drain()
                     continue
+                self._check_batch_interrupt()
                 nxt = fsm.on_result(req, res)
                 self._after(step, req, res)
                 self._drain()
                 self.event('INFO', 'STEP', f'{step} → {fsm.state}')
                 req = nxt
+            self._check_batch_interrupt()
+        except BatchCancelled as e:
+            self.note = str(e)
+            fsm.state, fsm.mode = 'ABORTED', 'ERROR'
+            self.event('WARN', 'BATCH_CANCELLED', self.note)
+        except BatchSafetyStopped as e:
+            self.note = str(e)
+            fsm.state, fsm.mode = 'ERROR', 'ERROR'
+            self.event('ERROR', 'BATCH_SAFETY_STOP', self.note)
         except Exception as e:                       # 전이표 밖 등 — 조용히 죽지 않는다
             self._fail(f'{type(e).__name__}: {e}')
         finally:
-            self._close_attempt('ABORTED')
-            self._drain()
-            self._pub_state()
-            self.event('INFO', 'BATCH_END', f'{fsm.mode} / {fsm.state}')
+            try:
+                # cancel/안전정지가 마지막 결과와 경합해도 완료 판정 전 다시 검사한다.
+                with self._order_lock:
+                    if self._execution_uncertain:
+                        fsm.state, fsm.mode = 'ERROR', 'ERROR'
+                        self.note = '스킬 종료 미확인 — 현장 확인 및 노드 재기동 필요'
+                    elif self._batch_safety_stop.is_set():
+                        fsm.state, fsm.mode = 'ERROR', 'ERROR'
+                        self.note = 'SAFETY_STOP — 배치 자동 재개 없음'
+                    elif self._batch_cancel.is_set() and not self._execution_uncertain:
+                        fsm.state, fsm.mode = 'ABORTED', 'ERROR'
+                        self.note = 'RunBatch 취소 — 배치 자동 재개 없음'
+                    self._batch_outcome = (fsm.state if fsm.state in ('DONE', 'DISCARDED', 'ABORTED')
+                                           else 'ERROR')
+                    self._close_attempt('ABORTED')
+                    self._drain()
+                    self.event('INFO', 'BATCH_END', f'{fsm.mode} / {fsm.state}')
+                    self._batch_done.set()
+            except Exception as e:
+                self._execution_uncertain = True
+                self._batch_outcome = 'ERROR'
+                fsm.state, fsm.mode = 'ERROR', 'ERROR'
+                self.note = f'배치 종료 기록 실패: {e}'
+                self.get_logger().error(self.note)
+                self._batch_done.set()
+            finally:
+                with self._order_lock:
+                    if self._batch_handle is None:  # SubmitOrder의 슬롯도 루프 종료까지 유지
+                        self._reserved = False
+                        self._reserved_recipe = None
 
     def _fail(self, message: str):
         self.note = message
@@ -755,6 +972,7 @@ class ProcessNode(Node):
         m.attempts = min(255, int(r.attempts))
         m.duration_s = max(0.0, self._now() - self._item_t0) if self._item_t0 else 0.0
         self._item_t0 = 0.0
+        self._last_result = deepcopy(m)
         self.pub_result.publish(m)
 
     def _close_attempt(self, outcome: str):
@@ -812,6 +1030,13 @@ class ProcessNode(Node):
             m.step, m.item_index, m.batch_id = self.fsm.state, min(255, self.fsm.idx), self.batch_id
         m.station, m.note = self.station, self.note
         self.pub_state.publish(m)
+        handle = getattr(self, '_batch_handle', None)
+        if handle is not None and handle.is_active and not self._batch_done.is_set():
+            try:
+                handle.publish_feedback(RunBatch.Feedback(state=m, last_result=deepcopy(self._last_result)))
+            except Exception as e:
+                # 연결이 끊긴 HMI로의 피드백 실패가 공정 재실행을 유발하지 않게 한다.
+                self.get_logger().warning(f'RunBatch 피드백 전송 실패: {e}')
 
 
 def main(args=None):
