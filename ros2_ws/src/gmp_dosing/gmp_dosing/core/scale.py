@@ -6,7 +6,12 @@
 
 보정값의 근거는 calibration/*.csv 와 core/calib.py 가 재현한다. config/scale_reference.yaml 이 그 요약이다.
 2026-09-21 영점 재작업으로 전부 다시 쟀다 (material_3 자세, 운영 조건 samples 20).
-⚠️ 이 값은 **자세에 딸린다** — material_1·2 에서는 회차 평균 σ 가 5~9배 크다 (calibration/README.md).
+⚠️ **아래 기본값은 아직 운영에 적용되지 않은 제안값이다.** 런타임 단일 출처인 common.yaml 의 scale.* 과
+   process_node 의 declare_parameter 기본값은 폐기된 9/19 값(gain 0.8859·offset 247.091·19.0·10.0) 그대로다.
+   process_node 가 항상 파라미터를 넘기므로 ScaleConfig() 기본값은 런타임에 쓰이지 않는다 — 동작 변화 없음.
+⚠️ 이 값은 **자세에 딸린다** — material_1·2 에서는 회차 평균 σ 가 5~9배 크고, 거기서는 max_std_g 가
+   8 이든 10 이든 계량이 거의 전부 valid=false 다 (실측 valid: material_1 0/15, material_2 1~2/15,
+   material_3 15/15). **계량 자세를 조장·A 가 정한 뒤 common.yaml 을 갱신해야 하는 이유다.**
 """
 from dataclasses import dataclass
 
