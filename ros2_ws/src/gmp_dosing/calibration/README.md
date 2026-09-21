@@ -59,6 +59,9 @@ source tools/env.sh && python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py 
 python3 -m gmp_dosing.core.calib records/g1_rezero_0921_material1.csv --method tool_force
 ```
 
+측정이 끝나면 **`[끝]` 프롬프트에서 스쿱을 받치고 Enter** 를 눌러야 그리퍼가 열린다. 바로 열면
+원료가 담긴 스쿱을 떨어뜨린다. Ctrl-C 로 건너뛰면 물체를 문 채로 끝나니 다음 실행 전에 손으로 뺀다.
+
 `--period 0.1` 인데 실제 간격이 0.8 초쯤 되는 것은 `get_workpiece_weight` 호출이 0.7 초 걸리기 때문이다.
 그 덕에 표본이 독립이 된다 — **`--no-workpiece` 로 빼려면 `--period` 를 0.9 이상으로 직접 올려야 한다.**
 

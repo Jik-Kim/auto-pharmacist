@@ -25,6 +25,7 @@ core/calib.py 가 `--method tool_force` / `--method workpiece` 로 두 경로를
   1. 빈 그리퍼로 계량 자세 → Enter → reset_workpiece_weight (세션 1회, 매뉴얼 5.1.2)
   2. 세트마다: 물체를 잡고 계량 자세에서 정지 → Enter → trials × samples 읽기.
      세트 사이에 물체를 **놓았다 다시 잡는다** — 운영에서 매 계량이 새 파지라, 그 흐름을 σ 에 넣기 위해서다.
+  3. 끝나면 스쿱을 받치고 Enter → 그리퍼를 연다. 받치기 전에 열면 원료를 쏟는다.
 --period 는 표본 간격[s]. 9/18 데이터는 표본 43 % 가 앞 값 반복이었다 — 센서 갱신보다 짧았다는 뜻.
 calib.py 가 `시각_s` 로 값이 바뀌는 간격의 중앙값을 알려 주니, 그보다 길게 잡는다.
 """
@@ -167,11 +168,7 @@ def probe(arm, grip, close_cmd, sec: float, actual_g: float):
     except KeyboardInterrupt:
         print('\nprobe 종료')
     finally:
-        if grip:
-            try:
-                grip.send('o')
-            except Exception as e:      # noqa: BLE001
-                print(f'    그리퍼 열기 실패: {e}')
+        release_gripper(grip)
         rclpy.shutdown()
     return 0
 
@@ -204,6 +201,26 @@ class Gripper:
         if r is None or not r.success:
             raise RuntimeError(f'그리퍼 명령 {command!r} 실패: {getattr(r, "message", "응답 없음")}')
         time.sleep(1.0)                    # 기구 동작 대기
+
+
+def release_gripper(grip):
+    """측정 끝에 그리퍼를 연다 — **사람이 받칠 때까지 기다린다.**
+
+    바로 열면 원료가 담긴 스쿱을 떨어뜨려 쏟는다 (9/21 사용자 요청으로 Enter 대기로 바꿨다).
+    Ctrl-C 나 EOF 로 건너뛰면 물체를 문 채로 끝나므로, 다음 실행 전에 손으로 빼야 한다.
+    """
+    if not grip:
+        return
+    try:
+        input('\n[끝] 스쿱을 받치고 → Enter (그리퍼를 연다. 건너뛰려면 Ctrl-C — 문 채로 남는다) ')
+    except (KeyboardInterrupt, EOFError):
+        print('\n    ⚠ 그리퍼를 열지 않고 끝낸다 — 물체가 물린 채로 남아 있다')
+        return
+    try:
+        grip.send('o')
+        print('    그리퍼 열림')
+    except Exception as e:      # noqa: BLE001
+        print(f'    그리퍼 열기 실패: {e}')
 
 
 def main(argv=None):
@@ -308,11 +325,7 @@ def main(argv=None):
         print('\n중단 — 지금까지 기록은 남는다')
     finally:
         f.close()
-        if grip:
-            try:
-                grip.send('o')             # 물체를 든 채 끝내지 않는다
-            except Exception as e:         # noqa: BLE001
-                print(f'    그리퍼 열기 실패: {e}')
+        release_gripper(grip)              # 물체를 든 채 끝내지 않는다 — 단 사람이 받친 뒤에 연다
         rclpy.shutdown()
     print(f'\n저장: {out}\n요약: python3 -m gmp_dosing.core.calib {out} --method workpiece   (tool_force 도 같은 파일로)')
     return 0
