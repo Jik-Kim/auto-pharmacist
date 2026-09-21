@@ -69,7 +69,7 @@ def test_shipped_routes_preserve_teaching_but_remain_disabled():
     assert cup.exit_posx == (423, 93, 300, 90, -90, -90)
     assert cup.waypoints_posj[-1] == (9.34, 33.50, 119.09, 10.64, -63.01, 85.03)
     empty = table.transfers[('passbox_done', 'nudge_wait')]
-    assert empty.exit_posx == (716.64, 71.32, 250, 180, -90, -90)
+    assert empty.exit_posx == (717.0, 71.32, 250, 180, -90, -90)
     assert not empty.start_at_posj
     assert empty.start_from == 'above' and empty.arrival == 'at'
     assert empty.waypoints_posj == ((14.57, 35.24, 63.40, -0.12, 81.36, 104.70),)

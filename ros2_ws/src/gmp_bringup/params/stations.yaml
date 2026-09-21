@@ -1,29 +1,32 @@
-# 스테이션 좌표 — 단일 출처 (SOT D-09·D-24). 9/19 BASE 기준 실측값을 반영했다.
+# 스테이션 좌표 — 단일 출처 (SOT D-09·D-24). 9/21 BASE 기준 사용자 티칭값을 반영했다.
 # safe.posx는 아직 자리표시자다. 원료 반환 start/end는 미티칭이면 이동 전에 거부한다.
+# return_end_posx는 티칭 참고값이며 반환 끝 이동은 return_end_posj 관절각을 사용한다.
 # 실물 첫 이동은 반드시 vel_scale 0.2로 검증한다.
 #
 # frame: base  → posx 는 로봇 베이스 좌표 [x, y, z, a, b, c] mm·deg
 # frame: user  → D-15 판 좌표계 (set_user_cart_coord). 판 3점 티칭 후 전환
+# 9/21 posx는 사용자 제공값 그대로이며 자동 반올림하지 않았다.
+# 기존 taught_at_posj·이송 관절각은 유지했다. 갱신 posx와 일치는 실물 확인 대기다.
 frame: base
 approach_mm: 60.0          # 작업점 위 접근 높이
 stations:
   safe:        {posx: [300.0, 0.0, 450.0, 0.0, 180.0, 0.0], posj: [0.0, 0.0, 90.0, 0.0, 90.0, 0.0], note: "안전 자세 — 초기 특이점에서 movej로 진입. 판 위 모든 물체보다 높게"}
-  workbench:   {posx: [423.0, 93.0, 100.0, 90.0, -90.0, -90.0], approach_mm: 100.0, exit_mm: 200.0, pour_start_posx: [420.02, 220.0, 233.15, 90.0, 180.0, -90.0], pour_end_posx: [420.0, 160.0, 315.0, 90.0, 130.0, -90.0], note: "posx는 용기 파지 AT, 용기 계량은 ABOVE. pour_start/end_posx는 스쿱 붓기 시작/종료 자세"}
-  material_1:  {posx: [400.0, -298.0, 200.0, 90.0, -180.0, -90.0], return_start_posx: null, return_end_posx: null, measure_posx: [400.0, -333.79, 120.0, 90.0, 160.06, -90.0], note: "원료통 A. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세", material_id: "A", expected_scoop_width_mm: 15.5}
-  material_2:  {posx: [495.0, -298.0, 200.0, 90.0, -180.0, -90.0], return_start_posx: null, return_end_posx: null, measure_posx: [495.0, -333.79, 120.0, 90.0, 160.06, -90.0], note: "원료통 B. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세", material_id: "B", expected_scoop_width_mm: 18.0}
-  material_3:  {posx: [593.0, -298.0, 200.0, 90.0, -180.0, -90.0], return_start_posx: null, return_end_posx: null, measure_posx: [593.0, -333.79, 120.0, 90.0, 160.06, -90.0], note: "원료통 C. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세", material_id: "C", expected_scoop_width_mm: 28.0}
+  workbench:   {posx: [423.0, 93.0, 100.0, 90.0, -90.0, -90.0], approach_mm: 100.0, exit_mm: 200.0, pour_start_posx: [420.0, 220.0, 233.0, 90.0, 180.0, -90.0], pour_end_posx: [420.0, 160.0, 315.0, 90.0, 130.0, -90.0], note: "posx는 용기 파지 AT, 용기 계량은 ABOVE. pour_start/end_posx는 스쿱 붓기 시작/종료 자세"}
+  material_1:  {posx: [344.0, -298.0, 200.0, 90.0, -180.0, -90.0], return_start_posx: [344.0, -340.0, 170.0, 90.0, -180.0, -90.0], return_end_posx: [344.0, -259.0, 204.0, 90.0, 154.29, -90.0], return_end_posj: [-50.28, 23.28, 68.27, 16.9, 107.97, -227.68], measure_posx: [344.0, -334.0, 120.0, 90.0, 160.0, -90.0], note: "원료통 A. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세", material_id: "A", expected_scoop_width_mm: 15.5}
+  material_2:  {posx: [439.0, -298.0, 200.0, 90.0, -180.0, -90.0], return_start_posx: [439.0, -340.0, 170.0, 90.0, -180.0, -90.0], return_end_posx: [439.0, -259.0, 204.0, 90.0, 154.29, -90.0], return_end_posj: [-43.22, 33.92, 51.96, 19.73, 111.13, -218.69], measure_posx: [439.0, -334.0, 120.0, 90.0, 160.0, -90.0], note: "원료통 B. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세", material_id: "B", expected_scoop_width_mm: 18.0}
+  material_3:  {posx: [537.0, -298.0, 200.0, 90.0, -180.0, -90.0], return_start_posx: [537.0, -340.0, 170.0, 90.0, -180.0, -90.0], return_end_posx: [537.0, -259.0, 204.0, 90.0, 154.29, -90.0], return_end_posj: [-37.45, 51.25, 21.33, 23.64, 121.39, -207.39], measure_posx: [537.0, -334.0, 120.0, 90.0, 160.0, -90.0], note: "원료통 C. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세", material_id: "C", expected_scoop_width_mm: 28.0}
   # 전용 스쿱은 각 원료통 아래에 둔다 (9/18 확정) — 거치대 한 곳(scoop_rack)은 폐지했다.
   # 이동 거리가 줄고, 스쿱 3개를 한 곳에 모으지 않으므로 교차오염 경로도 끊긴다.
   # FSM 은 material_id 만 넘기고, process_node 가 여기서 짝(material_id 일치)을 찾아 MoveToStation(scoop_N) 을 부른다.
-  scoop_1:     {posx: [400.0, -298.0, 50.0, 90.0, -180.0, -90.0], note: "원료 A 전용 스쿱 (material_1 아래)", material_id: "A"}
-  scoop_2:     {posx: [495.0, -298.0, 50.0, 90.0, -180.0, -90.0], note: "원료 B 전용 스쿱 (material_2 아래)", material_id: "B"}
-  scoop_3:     {posx: [593.0, -298.0, 50.0, 90.0, -180.0, -90.0], note: "원료 C 전용 스쿱 (material_3 아래)", material_id: "C"}
+  scoop_1:     {posx: [344.0, -298.0, 50.0, 90.0, -180.0, -90.0], note: "원료 A 전용 스쿱 (material_1 아래)", material_id: "A"}
+  scoop_2:     {posx: [439.0, -298.0, 50.0, 90.0, -180.0, -90.0], note: "원료 B 전용 스쿱 (material_2 아래)", material_id: "B"}
+  scoop_3:     {posx: [537.0, -298.0, 50.0, 90.0, -180.0, -90.0], note: "원료 C 전용 스쿱 (material_3 아래)", material_id: "C"}
   # Pass Box 두 칸 (D-24, 9/18) — 무균실이라 사람은 Pass Box 로만 주고받는다 (D-23).
   # 판 위에 별도 매거진·트레이는 없다. 로봇이 빈통 칸에서 꺼내 쓰고 완성품 칸에 넣는다.
-  passbox_empty: {posx: [717.41, -70.37, 100.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, note: "Pass Box 「빈통」 칸 — 빈 약통을 여기서 꺼낸다 (구 magazine)", slots: 1}
-  passbox_done:  {posx: [716.64, 71.32, 100.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, note: "Pass Box 「완성품」 칸 — 완료품을 여기 넣는다 (구 output_tray). QA 가 회수", slots: 1}
-  nudge_wait:    {posx: [578.66, 157.79, 84.6, 45.0, 180.0, 135.0], taught_at_posj: &nudge_wait_at [14.57, 35.24, 63.40, -0.12, 81.36, 104.70], note: "넛지 대기 위치 (D-24) — 세트 완료 후 여기서 사람이 건드리기를 기다린다. safe 와 별개"}
-  reject_bin:    {posx: [717.41, -220.0, 100.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, note: "폐기 위치"}
+  passbox_empty: {posx: [717.0, -70.37, 100.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, note: "Pass Box 「빈통」 칸 — 빈 약통을 여기서 꺼낸다 (구 magazine)", slots: 1}
+  passbox_done:  {posx: [717.0, 71.32, 100.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, note: "Pass Box 「완성품」 칸 — 완료품을 여기 넣는다 (구 output_tray). QA 가 회수", slots: 1}
+  nudge_wait:    {posx: [578.0, 157.0, 84.0, 45.0, 180.0, 135.0], taught_at_posj: &nudge_wait_at [14.57, 35.24, 63.40, -0.12, 81.36, 104.70], note: "넛지 대기 위치 (D-24) — 세트 완료 후 여기서 사람이 건드리기를 기다린다. safe 와 별개"}
+  reject_bin:    {posx: [717.0, -220.0, 100.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, note: "폐기 위치"}
 
 # 실물: 등록된 경로는 미티칭/비활성일 때 기존 amovel로 우회하지 않고 거부한다.
 # 가상: 등록 여부·활성 여부와 무관하게 기존 amovel 직선 이동을 사용한다.

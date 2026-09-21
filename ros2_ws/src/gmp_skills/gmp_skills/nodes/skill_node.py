@@ -82,6 +82,7 @@ class SkillNode(Node):
         for value in (self.pose_xyz_tolerance, self.pose_rotation_tolerance, self.joint_tolerance):
             if not math.isfinite(value) or value <= 0:
                 raise ValueError('도착·출발 검증 허용오차는 유한한 양수여야 한다')
+        self._return_rescoop_blocked = False  # 연결 경로 구현 전에는 반환 후 재스쿱 금지
         self._pending_scoop_extract = False
         self._scoop_extract_uncertain = False
         self.arm = DsrArm(g('robot.id'), g('robot.model'), self.mode, float(g('robot.vel')), float(g('robot.acc')),
@@ -780,6 +781,8 @@ class SkillNode(Node):
         return list(pose)
 
     def _do_scoop(self, job: Job):
+        if getattr(self, '_return_rescoop_blocked', False):
+            raise RuntimeError('반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
         self._require_scoop_extracted()
         SkillNode._require_held_scoop(self, job.args['material_id'])
         p = self.get_parameter
@@ -861,28 +864,27 @@ class SkillNode(Node):
         station = self.stations.for_material(material_id)
         # 두 자세를 모두 검증한 뒤에만 첫 이동을 시작한다. 미티칭이면 현재 자세를 유지한다.
         start = SkillNode._pose_from_extra(station, 'return_start_posx')
-        end = SkillNode._pose_from_extra(station, 'return_end_posx')
+        end = SkillNode._pose_from_extra(station, 'return_end_posj')
         if job.cancel:
             raise RuntimeError('cancelled')
         job.feedback and job.feedback('APPROACH')
         self.arm.movel(start, self.vel_scale)
         if job.cancel:
             raise RuntimeError('cancelled')
-        completed = False
-        try:
-            job.feedback and job.feedback('TILT')
-            self.arm.movel(end, self.vel_scale)
-            if job.cancel:
-                raise RuntimeError('cancelled')
-            job.feedback and job.feedback('HOLD')
-            self._wait_with_nudge(float(self.get_parameter('pour.hold_s').value), job)
-            if job.cancel:
-                raise RuntimeError('cancelled')
-            completed = True
-        finally:
-            if completed and not job.cancel:
-                job.feedback and job.feedback('RETURN')
-                self.arm.movel(start, self.vel_scale)
+        job.feedback and job.feedback('TILT')
+        # 실패·취소도 기울어진 자세일 수 있어 성공 여부와 무관하게 유지한다.
+        # SafePose·파지 변경으로 해제하지 않는다. 연결 경로 구현 시 해제 조건을 정한다.
+        self._return_rescoop_blocked = True
+        # 손목 특이점을 지나는 직선 보간 대신 티칭한 관절각으로 이동한다.
+        self.arm.movej_cancellable(end, self.vel_scale, lambda: job.cancel, self.motion_timeout_s)
+        if job.cancel:
+            raise RuntimeError('cancelled')
+        job.feedback and job.feedback('HOLD')
+        self._wait_with_nudge(float(self.get_parameter('pour.hold_s').value), job)
+        if job.cancel:
+            raise RuntimeError('cancelled')
+        # TODO([A]): 반환 끝 → 재스쿱 연결은 스쿱 모션 구현 시 함께 티칭·검증한다.
+        # 시작 자세로 돌아가지 않고 반환 끝 자세에서 종료한다.
         return True
 
     def _measure_weight_reading(self, tare_g: float, subject: str,

@@ -1,4 +1,4 @@
-# Interfaces — 계약 v1.5 초안 (2026-09-20)
+# Interfaces — 계약 v1.5.1 초안 (2026-09-21)
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
@@ -9,6 +9,8 @@
 > **v1.4 (9/20 사용자 전달 팀 합의·A 구현):** HMI→C→A 안전 정지 복구 경로를 추가한다. 아래 서비스 필드·이벤트·C/D 연동 상세는 영향 담당 검토 대상이다. 로봇 복구 성공은 배치 재개를 의미하지 않는다.
 
 > **v1.5 (9/20 팀 합의·A 승인):** `Scoop` Goal 에 `float32 depth_fraction`(담그기 깊이 비율)을 추가한다. 유효 범위는 `dosing.min_fraction` 이상 `1.0` 이하이고 범위 밖이면 이동 전에 거부한다. `attempt` 는 재시도 번호(기록용)로만 쓴다. v1.3 에서 `Pour.fraction` 을 1.0 으로 고정하면서 한 스쿱보다 작은 양을 넣을 수단이 사라졌고, 그 결과 남은 목표량이 스쿱 한 번보다 작아지면 반환만 반복하다 `TIMEOUT` 으로 끝났다. **`depth_fraction` → 실제 Z 좌표 변환식·보정값은 실물 scoop 시험 뒤 확정한다 (`TODO([A])`)** — 이번 판은 계약과 전달 경로까지다. 필드 추가라 메시지 해시가 바뀌므로 `gmp_interfaces` 재빌드가 필요하다.
+
+> **v1.5.1 (9/21 반환 동작 설명 정정·사용자 승인):** ReturnMaterial은 끝 관절 자세에서 종료하며 RETURN 피드백을 내지 않는다. 검증된 재스쿱 연결 전까지 후속 Scoop을 차단한다. 메시지 필드·전송 형식은 변경하지 않는다.
 
 정의 원본은 `ros2_ws/src/gmp_interfaces`. 이 문서는 의도·규칙·확정 값을 설명한다.
 
@@ -44,7 +46,7 @@
 | `action/MoveToStation` | 스테이션 이동 (`ABOVE` 접근점 / `AT` 작업점) | 좌표는 `stations.yaml` 단일 출처 |
 | `action/Scoop` | 원료통에서 퍼올리기 | Goal `depth_fraction`(v1.5)이 담그기 깊이 비율. Feedback은 단계·접촉력·삽입 깊이, Result는 최종 접촉 여부·최대 힘·깊이 |
 | `action/Pour` | workbench의 용기에 전량 붓기 (`fraction=1.0`만 허용) | 목적지는 skill 설정의 `workbench`; `target_station`은 제거 |
-| `action/ReturnMaterial` | 전용 스쿱 원료를 동일 원료통에 반환 | `/cell/return_material`. 반환 자세 미티칭·파지 원료 불일치 시 이동 전에 실패 |
+| `action/ReturnMaterial` | 전용 스쿱 원료를 동일 원료통에 반환 | `/cell/return_material`. 시작 posx·끝 posj 미티칭 또는 파지 원료 불일치 시 이동 전에 실패. 끝 자세 유지, 후속 Scoop은 연결 경로 구현 전까지 차단 |
 | `action/WeighContainer` | 고정 `workbench`의 용기를 들어 계량하고 내려놓기 (복합 스킬) | `container_station`은 제거. 결과는 `WeightReading`. **그리퍼가 비어 있어야 한다** — TARE 와 배치 끝 VERIFY 에서만 (D-22) |
 | **`action/WeighHeld`** (v1.2) | **들고 있는 전용 스쿱을 대응 `material_N.posx`로** 가져가 재기 — 파지·내려놓기 없음 | D-22 의 `SCOOP_TARE`·`WEIGH_SCOOP`·`WEIGH_RESIDUAL` 세 단계가 **이 요청 하나**를 쓴다 (차이는 process 가 결과를 어디에 담느냐뿐). **계량 후 계량 자세에 머문다**(복귀 없음) · **빈 그리퍼면 `success=false`**. phase 는 `LIFT`/`SETTLE`/`MEASURE` — `WeighContainer` 와 달리 `GRIP`·`PLACE` 가 없어 `mode` 필드로 합치지 않았다 (9/18 확정, I-007) |
 | `action/RunBatch` | HMI/CLI → process. 배치 실행 | 피드백 `CellState` + 마지막 `DispenseResult` |
@@ -114,7 +116,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `MoveToStation` | process → skill | Goal `station_id`, `approach`(`ABOVE/AT`), `vel_scale`; Result `success`, `message`, 실제 `reached`; Feedback `phase` |
 | `Scoop` | process → skill | Goal `material_id`, `attempt`; Result `success`, 최종 `contact_detected`, `max_contact_force_n`, `insertion_depth_mm`, `message`; Feedback `phase`, 현재 접촉 여부·힘·삽입 깊이 |
 | `Pour` | process → skill | Goal `fraction=1.0`(그 외 이동 전 거부); Result `success`, `message`; Feedback `phase`. 목적지는 skill 설정의 고정 `workbench`이다 |
-| `ReturnMaterial` | process → skill | Goal `material_id`; Result `success`, `message`; Feedback `phase`(`APPROACH/TILT/HOLD/RETURN`). 동일 원료의 `return_start_posx → return_end_posx → return_start_posx`. 반환 동작 완료는 완전 배출량의 측정 보증이 아니다 |
+| `ReturnMaterial` | process → skill | Goal `material_id`; Result `success`, `message`; Feedback `phase`(`APPROACH/TILT/HOLD`; `RETURN` 미발행). 동일 원료의 `return_start_posx` 직선 이동 → `return_end_posj` 관절 이동 후 끝 자세에서 종료. 반환 끝 관절 이동 시도부터 후속 Scoop은 연결 경로 구현 전까지 이동 없이 실패한다. 반환 동작 완료는 완전 배출량의 측정 보증이 아니다 |
 | `WeighHeld` | process → skill | Goal `tare_g`; Result `reading`, `success`, `message`; Feedback `phase`. 파지 이력의 원료를 확인해 `material_N.posx`에서 측정. 원료를 알 수 없으면 실패 |
 | `WeighContainer` | process → skill | Goal `tare_g`; Result `reading`, `success`, `message`; Feedback `phase`. 고정 `workbench`의 용기를 들어 측정하고 내려놓는다 |
 | `RunBatch` | HMI/CLI → process | Goal `recipe`; Result `success`, 완료 원료 수, 일탈 수, 종료 `result`, `message`; Feedback `state`, `last_result`. 접수만 하는 `SubmitOrder`와 달리 진행·최종 결과가 필요한 클라이언트용이다 |
