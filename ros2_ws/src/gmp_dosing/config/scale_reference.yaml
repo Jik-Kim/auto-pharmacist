@@ -168,8 +168,23 @@ tool_force_calibration:
         · 용기 계량(TARE·VERIFY) — **workbench 자세의 용기 계량이라 아직 안 쟀다**
       엄밀한 형태는 tol = k·√( Σ_i 2·n_i·σ_i² + σ_tare² + σ_verify² ) 다 (C 지적).
       계량 자세가 통일되면 스쿱 쪽은 단일 σ 가 되지만 **용기 계량 σ 는 별도 측정이 필요하다** — B 소관.
+    after_split: |         # [조장 판단] σ 를 분리하면 min_resolvable_g 는 운영 파라미터가 아니게 된다
+      **σ·k 로 VERIFY ② 를 바꾸면 min_resolvable_g 의 런타임 용도가 0 이 된다** (C 제안, B 검증).
+      지금 값으로 읽히는 곳은 넷인데 실사용은 하나뿐이다:
+        · process_fsm:291 — VERIFY ② 임계. **유일한 실사용**. σ·k 가 이 자리를 대신한다
+        · scale.py:55 — resolvable(). 구 BRD 3.1.3 게이트용인데 그 요구사항이 폐기 확정(위 caveat)
+        · process_node:83,96 — 파라미터 선언·ScaleConfig 전달
+        · skill_node:911 — ScaleConfig 에 넣지만 **reading() 은 max_std_g 만 쓴다. 지금도 무의미하다**
+      → 분리 뒤에는 `common.yaml` 에서 빼고 `scale_reference.yaml`·`calibration/README.md` 에만 두는
+      **측정 기록**이 되는 게 맞다. 이름도 그때 정리된다 — "이 분해능 아래는 못 가른다" 는 뜻인데
+      그 의미로 쓰이던 자리(접수 게이트)가 없어졌으므로 이름이 가리키는 용도가 실제로 사라진 상태다.
+      단 **`ScaleConfig` 필드와 `resolvable()` 은 남긴다** — 분해능 판정표를 계산하고 테스트가 고정하는
+      물리적 사실이라 라이브러리에는 필요하다. 운영 파라미터에서만 빠진다.
+      순서: ① 9/22 σ 측정 → ② σ 파라미터 추가 + VERIFY ② 수식(C) → ③ 그때 min_resolvable_g 제거.
+      **②가 되기 전에는 뺄 수 없다** — 지금은 그 값이 VERIFY ② 임계다.
+
     ownership: |
-      process_fsm 수식·ItemRun.cycles 는 C, 파라미터 추가는 조장, σ 측정은 B.
+      process_fsm 수식·ItemRun.cycles 는 C, 파라미터 추가·min_resolvable_g 제거는 조장, σ 측정은 B.
       C 제안 순서: ① 계량 자세 결정 → ② common.yaml 갱신 → ③ σ 분리 + 동적 임계 구현 → ④ 가상 브링업 실측.
 
   caveats: |
