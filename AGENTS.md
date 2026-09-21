@@ -16,6 +16,7 @@
 - 토픽·메시지·서비스·액션 계약(`gmp_interfaces`, `docs/interfaces.md`)을 바꿀 때는 **팀 채널에 먼저 알리고** 문서와 같이 고친다. 계약은 4명 모두의 전제라 한 사람이 정하지 않는다.
 - 확정되지 않은 파라미터(`[팀 확정 필요]`)를 임의로 결정하지 않는다. 값은 `gmp_bringup/params/*.yaml` 에 두고 코드에 하드코딩하지 않는다.
 - 구현하지 않은 영역은 한글 `TODO([담당])` 로 남긴다.
+- **코드에서 호출·상태·전이를 지우거나 바꾸면 생성 문서도 같은 PR 에서 다시 만든다** — `tools/make_process_drawio.py` → `docs/diagrams/process_flow.drawio` 등. 9/21 에 `set_tare` 를 지우면서 그 호출을 그리는 그림을 구현·1차·최종 검토가 모두 놓쳤다. 리뷰어는 `python3 tools/make_*.py` 재실행 후 `git status docs/diagrams` 가 비는지 본다.
 - 요청하지 않은 `git push`, PR 생성은 하지 않는다.
 
 ## 프로젝트 구조
