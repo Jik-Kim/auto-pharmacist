@@ -14,7 +14,7 @@
                         ▲ Action/Service
                    process_node ── state · weight · scoop_cycle · dispense_result · deviation · event ──▶ record_node ──▶ SQLite(cell.db)
                         ▲ submit_order · qa_decision · interlock · request_safety_recovery (Service)             │ 읽기
-                        ▲ run_batch (Action, 계약 v1.0 — HMI 가 사용. process_node 서버 미구현, 9/21 확정 대기)
+                        ▲ run_batch (Action — HMI 주문 경로. PR #163 로 process_node 서버 추가, 9/21. submit_order 와 같은 예약 슬롯·FSM 공유, 피드백 CellState+마지막 DispenseResult, 취소는 진행 중 스킬 응답 대기 뒤 ABORTED)
                         └──────────────── hmi_web_node (Flask :5000) ◀── 브라우저 (로봇 PC · 셀 밖 QA 기기) ◀───┘
 ```
 
