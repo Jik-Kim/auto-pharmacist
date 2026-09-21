@@ -17,6 +17,7 @@
 - 확정되지 않은 파라미터(`[팀 확정 필요]`)를 임의로 결정하지 않는다. 값은 `gmp_bringup/params/*.yaml` 에 두고 코드에 하드코딩하지 않는다.
 - 구현하지 않은 영역은 한글 `TODO([담당])` 로 남긴다.
 - **코드에서 호출·상태·전이를 지우거나 바꾸면 생성 문서도 같은 PR 에서 다시 만든다** — `tools/make_process_drawio.py` → `docs/diagrams/process_flow.drawio` 등. 9/21 에 `set_tare` 를 지우면서 그 호출을 그리는 그림을 구현·1차·최종 검토가 모두 놓쳤다. 리뷰어는 `python3 tools/make_*.py` 재실행 후 `git status docs/diagrams` 가 비는지 본다.
+- **계약 값의 의미가 바뀌면 그 값을 넘기는 쪽과 받는 쪽의 주석·docstring 을 같이 훑는다.** 9/21 에 `fraction` 이 v1.3→v1.5 로 「붓기 비율」에서 「담그기 깊이」로 바뀌었는데, 넘기는 C(`process_fsm` docstring·`_scoop` 주석)와 받는 B(`dosing.decide()` docstring·`Decision.fraction`·`min_fraction`) 양쪽이 각자 옛 의미를 들고 있었고, 서로 물어본 뒤에야 둘 다 찾았다. 어긋남은 파일 **사이**에 있으므로 한쪽만 보면 못 잡는다.
 - 요청하지 않은 `git push`, PR 생성은 하지 않는다.
 
 ## 프로젝트 구조
