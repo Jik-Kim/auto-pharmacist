@@ -13,9 +13,10 @@ const modes={IDLE:'주문 대기',RUNNING:'운전 중',PAUSED:'일시 정지',DE
 function arrangeOperationColumns(){
  const operation=$('operation'),columns=operation?[...operation.children].filter(el=>el.classList.contains('column')):[];
  if(!operation||operation.dataset.fourColumns==='true'||columns.length!==3)return;
- const [,center]=columns,inventory=$('inventory').closest('section'),results=$('results').closest('section');
- const inventoryColumn=document.createElement('div');inventoryColumn.className='column';
- operation.insertBefore(inventoryColumn,center);inventoryColumn.append(inventory,results);
+ const [,center]=columns,results=$('results')?.closest('section');
+ if(!results)return;
+ const resultsColumn=document.createElement('div');resultsColumn.className='column';
+ operation.insertBefore(resultsColumn,center);resultsColumn.append(results);
  operation.dataset.fourColumns='true';
 }
 arrangeOperationColumns();
@@ -75,8 +76,6 @@ function gate(){
  const inv=snapshot.inventory||{};
  document.querySelectorAll('[data-refill]').forEach(b=>{const item=inv.items?.find(i=>i.material_id===b.dataset.refill);b.disabled=!enabled||!can(['operator'])||!inv.fresh||!inv.can_refill||!item?.refill_ready;});
  if($('refillConfirm').open){const item=inv.items?.find(i=>i.material_id===refillMaterial);$('confirmRefill').disabled=!enabled||!can(['operator'])||!inv.fresh||!inv.can_refill||!item?.refill_ready||!$('confirmFull').checked;}
- $('openCollectionConfirm').disabled=!can(['qa'])||inFlight;
- if($('collectionConfirm').open)$('confirmCollection').disabled=!can(['qa'])||inFlight||!$('confirmPassboxEmpty').checked||!$('confirmRejectBinEmpty').checked;
  $('showStockAlert').hidden=!(heightBlocked().length||(canStartOrder(snapshot.state)&&shortage().length));
  if(source.demo){$('nudgeDemo').hidden=!(snapshot.state?.mode==='PAUSED'&&snapshot.state?.pause_reason==='NUDGE'&&!snapshot.state?.demo_entry_granted);$('nudgeDemo').disabled=!enabled||!can(['operator']);$('injectHeight').disabled=!enabled||!can(['operator']);}
 
@@ -84,8 +83,6 @@ function gate(){
 async function loadRecipe(){const version=++recipeVersion;selectedRecipe=null;$('recipeDetail').textContent='레시피 구성 조회 중';try{const r=await source.recipe($('recipe').value);if(version!==recipeVersion)return;if(!r||r.error)throw Error('레시피 구성을 확인할 수 없습니다.');selectedRecipe=r;$('recipeDetail').innerHTML=`<div class="recipe-title"><span>${escapeHtml(r.product||r.name)}</span><span>총 ${number(r.total_g,0)} g</span></div><div class="recipe-chips">${r.items.map(i=>`<span class="recipe-chip">${escapeHtml(i.material_id)} <b>${number(i.target_g,0)} g</b></span>`).join('')}</div><small>투입 순서 ${r.items.map(i=>escapeHtml(i.material_id)).join(' → ')} · 허용 오차 ${r.items.map(i=>escapeHtml(i.material_id)+' ±'+number(i.tol_pct,1)+'%').join(' / ')}</small>`;}catch(e){if(version===recipeVersion)$('recipeDetail').textContent='레시피 구성 조회 실패 · 선택 파일을 확인하세요.';}renderInventory(snapshot);gate();}
 function renderInventory(s){
  const inv=s.inventory||{mode:'unconfigured',items:[]};
- $('inventoryMode').textContent=inv.mode==='test_process'?(inv.fresh?'시험 공정 재고':'재고 수신 대기'):inv.mode==='demo'?'데모 재고':inv.mode==='session_estimate'?'세션 추정':'미설정';
- $('inventoryMode').className='badge '+(inv.mode==='unconfigured'?'neutral':'info');
  $('inventoryNote').textContent=inv.note||'원료통 기준량과 초기 재고가 설정되면 잔량을 표시합니다.';
  if(inv.mode==='unconfigured'||!inv.items?.length){$('inventory').innerHTML='<div class="inventory-unknown">잔량을 확인할 수 없습니다.<br>초기 재고와 원료통 기준량 설정이 필요합니다.</div>';}
  else{$('inventory').innerHTML=inv.items.map(i=>{
@@ -130,10 +127,6 @@ $('inventory').onclick=e=>{const b=e.target.closest('[data-refill]');if(b)openRe
 $('confirmFull').onchange=gate;
 $('refillConfirmForm').onsubmit=async e=>{e.preventDefault();if($('confirmRefill').disabled)return;const id=refillMaterial;$('refillConfirm').close();$('refillMsg').hidden=false;await command('/test/refill',{material_id:id,confirmed_full:true},'refillMsg');};
 $('cancelRefill').onclick=()=>$('refillConfirm').close();
-$('openCollectionConfirm').onclick=()=>{if(!can(['qa'])||inFlight)return;$('confirmPassboxEmpty').checked=false;$('confirmRejectBinEmpty').checked=false;$('collectionConfirm').showModal();gate();};
-['confirmPassboxEmpty','confirmRejectBinEmpty'].forEach(id=>$(id).onchange=gate);
-$('cancelCollection').onclick=()=>$('collectionConfirm').close();
-$('collectionConfirmForm').onsubmit=async e=>{e.preventDefault();if($('confirmCollection').disabled)return;$('collectionConfirm').close();await command('/collection-confirm',{passbox_done_empty:$('confirmPassboxEmpty').checked,reject_bin_empty:$('confirmRejectBinEmpty').checked},'collectionMsg',false);};
 $('closeStockAlert').onclick=()=>$('stockAlert').close();
 $('showStockAlert').onclick=()=>renderStockAlert(true);
 
@@ -246,7 +239,7 @@ function openUtilityDialog(name){if(!session.authenticated){$('loginOverlay').hi
 document.querySelectorAll('[data-dialog]').forEach(b=>b.onclick=()=>openUtilityDialog(b.dataset.dialog));
 document.querySelectorAll('[data-close-dialog]').forEach(b=>b.onclick=()=>$(b.dataset.closeDialog).close());
 
-function showSession(){if(!session.authenticated){closeUtilityDialogs();for(const id of ['stockAlert','refillConfirm','collectionConfirm'])if($(id).open)$(id).close();}const user=session.user;$('loginOverlay').hidden=session.authenticated||source.demo;$('sessionButton').textContent=session.authenticated?`${user.username} · ${user.role}${source.demo?' · 데모':' · 로그아웃'}`:'로그인';$('adminSession').textContent=source.demo?'데모 권한 미리보기 · 실제 인증/계정 생성 아님':user?user.username+' · '+user.role:'로그인 필요';gate();}
+function showSession(){if(!session.authenticated){closeUtilityDialogs();for(const id of ['stockAlert','refillConfirm'])if($(id).open)$(id).close();}const user=session.user;$('loginOverlay').hidden=session.authenticated||source.demo;$('sessionButton').textContent=session.authenticated?`${user.username} · ${user.role}${source.demo?' · 데모':' · 로그아웃'}`:'로그인';$('adminSession').textContent=source.demo?'데모 권한 미리보기 · 실제 인증/계정 생성 아님':user?user.username+' · '+user.role:'로그인 필요';gate();}
 function handleAuthError(e){if(e.status===401){session={authenticated:false,user:null};fresh=false;showSession();source.session().then(s=>{$('setupNote').hidden=!s.setup_required;}).catch(()=>{});}else if(e.status===403){response('userMsg','관리자 권한이 필요합니다.','error');}}
 async function initialize(){try{session=await source.session();$('setupNote').hidden=!session.setup_required;showSession();if(session.authenticated){await source.catalog();$('recipe').innerHTML=source.recipes.map(r=>{const name=typeof r==='string'?r:r.name,detail=source.recipeCache?.find(x=>x.name===name);return `<option value="${escapeHtml(name)}">${escapeHtml(detail?.product||name)}</option>`;}).join('');await loadRecipe();await refreshRecords();await loadSettings();await refreshAlarms();}}catch(e){response('loginMsg','세션 확인 실패 · '+e.message,'error');$('loginOverlay').hidden=source.demo;}}
 $('loginForm').onsubmit=async e=>{e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;response('loginMsg','로그인 중…');try{session=await source.login(Object.fromEntries(new FormData(e.target)));if(!session.authenticated)throw Error(session.message||'로그인에 실패했습니다.');$('loginPassword').value='';source.recipeCache=null;await initialize();}catch(err){response('loginMsg',err.message,'error');}finally{button.disabled=false;}};
