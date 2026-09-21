@@ -38,6 +38,16 @@ def pour_fraction(need_g: float, scooped_g: float, cfg: DosingConfig) -> float:
 
     초과는 되돌릴 수 없으므로 붓기 전에 막는 것이 유일한 수단이다.
     min_fraction 아래로는 털어내기로 못 맞추니 그 값에서 자른다.
+
+    ⚠️ **운영에서 호출되지 않는다** (2026-09-21 전수 확인, 호출처는 test_dosing.py 뿐).
+    설계가 바뀌었다 — process_fsm 의 WEIGH_SCOOP 은 부분 투입을 하지 않고, 퍼낸 양이
+    `남은 목표량 + _scoop_allowance_g()` 를 넘으면 **전량을 원료통에 되돌린 뒤 다시 푼다**
+    (`RETURN_MATERIAL` → `_rescoop_fraction()`). 붓기는 언제나 fraction 1.0 이다.
+    "실제 투입량과 반환량이 섞이지 않게" 하려는 의도이고 FSM 주석에 그렇게 적혀 있다.
+
+    resolvable() 과는 성격이 다르다 — 그쪽은 아직 안 붙인 **미구현 요구사항**(BRD 3.1.3)이고,
+    이쪽은 **폐기된 설계의 잔재**다. 지울지 부분 투입을 되살릴지는 조장·C 판단이 필요해 남겨 둔다.
+    문서에는 아직 1차 폐루프로 기술돼 있다 — docs/interfaces.md · docs/process_flow.md (조장 소관).
     """
     if scooped_g <= 0.0 or scooped_g <= need_g:
         return 1.0

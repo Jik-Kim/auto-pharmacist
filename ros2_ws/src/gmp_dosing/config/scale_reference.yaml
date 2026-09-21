@@ -22,8 +22,9 @@ tool_force_calibration:
   gain: 1.03                 # 두 측정의 교차 검증 — scoop_1 3점 1.0279(±0.012) · scoop_3 2점 1.0331
   offset_g: 195.0            # 세션마다 ±5 g 움직인다 (190.8~197.4). 아래 offset_is_cancelled 참조
   min_resolvable_g: 5.0      # 운영 조건 실측 3σ 4.01 g + 여유. 레시피 A·B·C 셋 다 판정 가능 (아래 resolvable)
-  max_std_g: 8.0             # ⚠️ [재검토 필요] 스쿱 계량 p95 6.95 g 위로 잡았는데 용기 계량은 p95 9.09
-                             #    → workbench ABOVE 에서 valid 13/15(87 %). 10.0 이면 15/15. cup_sigma 절 참조
+  max_std_g: 8.0             # ⚠️ [재검토 필요 — 9/22 재측정 뒤 확정] 스쿱 계량 p95 6.95 위로 잡은 값인데
+                             #    용기 계량은 p95 9.09 다 → valid 13/15(87 %). 10.0 이면 15/15.
+                             #    subject 별로 쪼개는 안은 max_std_split 절, 측정 근거는 cup_sigma 절 참조
   operating_samples: 20      # 이 분해능은 samples 20(16.4초) 기준이다 — 10 으로 줄이면 3σ 가 10.3 g 으로 나빠진다
 
   basis_2point:              # gain 직선의 근거 — calibration/g1_rezero_0921_m3_2point.csv (표본 10개)
@@ -137,6 +138,27 @@ tool_force_calibration:
         σ_cup 0.98 → tol 20.1 g (② 유효) · σ_cup 4.54 → tol 27.5 g (② 죽음)
       **그리고 max_std_g 8.0 을 다시 봐야 한다** — 용기 계량 p95 9.09 라 valid 13/15(87 %)다.
       TARE·VERIFY 가 valid=false 면 배치가 진행되지 않는다. 10.0 이면 15/15 (폐기 전 값이 공교롭게 맞는다).
+
+    max_std_split: |       # [제안 — B 소관 값, 구현은 A·C] max_std_g 를 subject 별로 쪼갠다
+      스쿱 계량과 용기 계량은 **자세도 하중도 파지 대상도 다르다** — 9/21 실측 p95 가 6.95 vs 9.09 다.
+      하나로 덮으면 반드시 **둘 중 나쁜 쪽에 맞춘 값**이 되고 좋은 쪽에서 불량 계량을 놓친다:
+      현행 10.0 은 용기 p95 9.09 를 덮느라 스쿱 p95 6.95 보다 44 % 헐겁다 (C 지적, 동의).
+      쪼갤 키는 이미 있다 — WeightReading.subject 가 "scoop"(WeighHeld) | "container"(WeighContainer) 를
+      구분한다(gmp_interfaces/msg/WeightReading.msg:10). 새 개념을 만들 필요가 없다.
+      소관: 값·근거는 B, skill_node._measure_weight_reading 의 subject 별 선택은 A,
+            process_fsm 의 _invalid_or·VERIFY 게이트가 그 값을 받는 것은 C, 파라미터 추가는 조장.
+      **9/22 로봇 파지 재측정으로 용기 p95 가 내려갈 수 있으므로 값은 그 뒤에 정한다.**
+
+    tare_has_no_validity_gate: |   # ⚠️ [C 소관 결함 — max_std_g 판단에 직결] C 가 9/21 발견
+      **TARE 스텝에만 계량 유효성 검사가 없다.** process_fsm 에서 _invalid_or() 는 SCOOP_TARE·
+      WEIGH_SCOOP·WEIGH_RESIDUAL 에서만 불리고, VERIFY 는 _verify_invalid 카운터를 따로 쓴다.
+      TARE 는 gross_g 를 그대로 받는다 (self.cur 가 아직 없어 _invalid_or 를 못 부른 것으로 보인다).
+      **그래서 위 "용기 계량 valid 13/15" 의 의미가 갈린다:**
+        · VERIFY 쪽 — 게이트가 있어 재계량하고, max_invalid 2 를 넘으면 WEIGH_INVALID 일탈. 정상 동작.
+        · TARE 쪽  — 13 % 가 **검증 없이 그대로 통과**한다. 무효 tare 는 verify_net_g = gross − tare_g 를
+                     오염시켜 **VERIFY ①(제품 규격)·②(계측 신뢰성) 을 둘 다** 틀리게 만든다.
+      현행 max_std_g 10.0 에서는 용기 계량이 15/15 라 지금 당장은 안 터지고, **8.0 을 적용하면 드러난다.**
+      → max_std_g 를 낮추기 전에 TARE 게이트가 먼저 들어가야 한다. C 가 사용자 확인 후 처리 예정.
 
     missing_sigma: |       # ⚠️ [B 측정 필요] σ 가 하나가 아니다
       위 수식은 모든 계량이 같은 σ 를 갖는다고 가정한다. 실제로는:

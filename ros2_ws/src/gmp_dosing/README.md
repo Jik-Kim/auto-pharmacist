@@ -14,6 +14,26 @@
 값의 단일 출처는 `gmp_bringup/params/common.yaml` 의 `scale.*`·`dosing.*` — `process_node` 가 읽어서 생성자에 넣는다.
 `offset_g` 는 method 에 종속이라 기본값은 0 이고 common.yaml 이 넣는다.
 
+## ⚠️ 문서에만 살아 있는 함수 (2026-09-21 점검)
+
+C 세션이 "함수 호출을 제거할 때 생성 문서까지 훑는 절차가 없다"는 안건을 올리면서 도징 쪽도 보라고
+해 전수 확인했다. `gmp_dosing` 의 공개 함수 중 문서·다이어그램에 박혀 있는 것은 5개이고,
+그중 **둘은 운영 호출처가 없다**:
+
+| 함수 | 운영 호출처 | 문서에 남은 곳 | 성격 |
+|---|---|---|---|
+| `resolvable()` | **없음** | BRD 3.1.3 · FR-01 · SOT · architecture · process_flow · drawio · `make_process_drawio.py` | **미구현 요구사항** — 접수 단계 게이트를 아직 안 붙였다 (C 가 이슈 예정) |
+| `pour_fraction()` | **없음** | `interfaces.md` · `process_flow.md` | **폐기된 설계의 잔재** — 아래 참조 |
+| `decide()` | `process_fsm:257` | — | 정상 |
+| `reading()` | `skill_node:916` | — | 정상 |
+| `set_tare()` | `skill_node:915` | — | 정상 (`process_fsm:197` 쪽은 C 가 제거, PR #179) |
+
+**`pour_fraction()` 이 왜 안 쓰이나** — 설계가 바뀌었다. `process_fsm` 의 WEIGH_SCOOP 은 부분 투입을
+하지 않고, 퍼낸 양이 `남은 목표량 + _scoop_allowance_g()` 를 넘으면 **전량을 원료통에 되돌린 뒤
+다시 푼다**(`RETURN_MATERIAL` → `_rescoop_fraction()`). 붓기는 언제나 fraction 1.0 이다.
+그런데 `docs/interfaces.md`(계약)와 `docs/process_flow.md` 에는 여전히 1차 폐루프로 기술돼 있다.
+**지울지 부분 투입을 되살릴지는 조장·C 판단이 필요해 코드는 남기고 주석만 달았다.**
+
 ## 영점 재작업 완료 (2026-09-21)
 
 9/18·9/19 G1 측정은 **폐기했다** (`records/deprecated/scale_20260921/`). 거기서 나온
