@@ -41,7 +41,7 @@
     gripper:
       backend: modbus               # modbus | dio  (virtual 은 런치가 자동)
       open_width_mm: 100.0           # 운용 열림 폭. 데이터시트의 전체 조절 범위는 0~110 mm
-      scoop_width_mm: 18.0          # 원료별 명령 폭(stations.yaml expected_scoop_width_mm) 미등록 원료의 대체값 (9/21 전환)
+      scoop_search_width_mm: 0.0     # 스쿱 파지 탐색 목표 폭 — 기대 폭(WRONG_TOOL 판정)과 분리, 0 = 완전히 닫힐 때까지 접촉 탐색 (A 리뷰, PR #165)
       scoop_expected_widths_mm: [15.5, 18.0, 28.0]  # A/B/C 스쿱 폭 지문 (9/19 확정)
       scoop_extract_y_mm: 150.0     # 스쿱 파지 후 첫 WeighHeld에서 BASE +Y로 빼는 거리
       fingerprint_tolerance_mm: 1.0 # [실물 정밀도 확인 후 확정] WRONG_TOOL 식별 허용차

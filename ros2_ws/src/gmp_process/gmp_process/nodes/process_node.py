@@ -83,9 +83,10 @@ class ProcessNode(Node):
             ('scale.min_resolvable_g', 19.0), ('scale.max_std_g', 10.0),     # G1 9/19 — common.yaml 과 같은 값
             ('scale.samples', 20), ('scale.settle_s', 1.0),
             ('dosing.max_attempts', 3), ('dosing.scoop_nominal_g', 40.0), ('dosing.min_fraction', 0.15),
-            ('gripper.scoop_width_mm', 18.0), ('gripper.cup_width_mm', 60.0),
+            ('gripper.cup_width_mm', 60.0),
             ('gripper.open_width_mm', 100.0), ('gripper.force_n', 20.0),
             ('gripper.fingerprint_tolerance_mm', 0.0),   # [추가 1] WRONG_TOOL 폭 지문 margin. 0 이면 검사 꺼짐
+            ('gripper.scoop_search_width_mm', 0.0),      # 스쿱 파지 탐색 목표 폭 — 기대 폭과 분리(A 리뷰, PR #165)
             ('skill_timeout_s', 90.0), ('server_wait_s', 20.0), ('grip_timeout_s', 5.0),
             ('safety.nudge_enabled', True),   # skill_node 와 같은 스위치 — 끄면 NUDGE 를 무시한다
         ])
@@ -761,10 +762,11 @@ class ProcessNode(Node):
             if not req.get('close'):
                 width = self.p('gripper.open_width_mm')
             elif req.get('target') == 'scoop':
-                # 원료별 명령 폭 (9/21) — 손잡이 굵기가 원료마다 달라(A/B/C 15.5/18/28) 하나의 값으로
-                # 다 쥘 수 없다. 없는 원료는 기존 단일값으로 물러난다. WRONG_TOOL 판정의 전제조건이기도
-                # 하다 — 더 넓은 목표 폭으로 명령하면 더 가는 손잡이는 닿지도 않고 GRIP_FAIL 로 빠진다.
-                width = self.smap.widths.get(self.fsm.cur.material_id, self.p('gripper.scoop_width_mm'))
+                # 탐색 목표 폭(9/21) — 기대 폭(WRONG_TOOL 판정용)과 분리한다. 기대 폭을 명령폭으로
+                # 쓰면 그보다 더 가는 손잡이는 접촉조차 못 해 GRIP_FAIL 로 빠지고 WRONG_TOOL 판정까지
+                # 가지도 못한다(A 리뷰, PR #165). 원료 상관없이 확실히 더 좁게 명령해 항상 접촉시키고,
+                # 실제로 닿아 멈춘 폭(final_width_mm)을 기대 폭과 비교하는 건 FSM 몫이다.
+                width = self.p('gripper.scoop_search_width_mm')
             else:
                 width = self.p('gripper.cup_width_mm')
             return self._grip(bool(req.get('close')), width)

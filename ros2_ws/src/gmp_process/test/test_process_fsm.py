@@ -236,6 +236,41 @@ def test_wrong_tool_container_width_mismatch_approved_resumes_dosing():
     assert fsm.state == 'DONE' and len(fsm.results) == 2  # 승인 후 평소대로 두 원료 다 담아 완료
 
 
+def test_wrong_tool_skips_check_when_width_feedback_is_negative():
+    """DIO 백엔드는 폭 피드백이 없어 성공해도 final_width_mm=-1 을 돌려준다(grip_inferred 는 DI 로 추론) —
+    정상 파지를 WRONG_TOOL 로 오판하면 안 된다 (A 리뷰, PR #165)."""
+    fp = ToolFingerprint(scoop_widths_mm={'A': 15.5, 'B': 18.0}, tolerance_mm=1.0)
+    cell = Cell(yields=[100, 50], width_mm=-1.0)
+    fsm = _fsm(fingerprint=fp)
+    run(fsm, cell)
+    assert fsm.state == 'DONE' and not fsm.deviations
+
+
+def test_wrong_tool_detects_narrower_actual_width_too():
+    """기대보다 더 가는 손잡이(교차오염의 반대 방향)도 잡는다 — 비교 자체는 방향에 무관하다."""
+    fp = ToolFingerprint(scoop_widths_mm={'A': 15.5, 'B': 18.0}, tolerance_mm=1.0)
+    cell = Cell(yields=[100, 50], width_mm=5.0, qa='DISCARDED')   # 기대(15.5)보다 훨씬 가는 손잡이
+    fsm = _fsm(fingerprint=fp)
+    run(fsm, cell)
+    assert fsm.deviations[0]['kind'] == 'WRONG_TOOL'
+    assert fsm.deviations[0]['detail'] == '폭 5.0mm (기대 15.5±1.0mm)'
+
+
+def test_wrong_tool_scoop_approved_resumes_scooping_not_skip():
+    """PICK_SCOOP 의 WRONG_TOOL 을 승인하면 이 스쿱으로 실제로 퍼서 투입한다 — 원료를 빈 결과로 건너뛰면
+    안 된다 (A 리뷰, PR #165 — 예전엔 빈 ItemRun 을 결과에 남기고 RETURN_SCOOP 로 건너뛰었다)."""
+    fp = ToolFingerprint(scoop_widths_mm={'A': 15.5}, tolerance_mm=1.0)
+    cell = Cell(yields=[100], width_mm=28.0, qa='APPROVED')
+    fsm = _fsm(fingerprint=fp)
+    req = fsm.start()
+    while req['kind'] != 'wait_qa':
+        req = fsm.on_result(req, cell(req))
+    assert fsm.deviations[-1]['kind'] == 'WRONG_TOOL' and fsm.deviations[-1]['step'] == 'PICK_SCOOP'
+    nxt = fsm.on_result(req, cell(req))
+    assert fsm.state == 'SCOOP_TARE' and nxt['kind'] == 'weigh_scoop'
+    assert not fsm.results, '승인 즉시 원료를 건너뛰면 안 된다 — 아직 아무것도 못 퍼냈다'
+
+
 def test_wrong_tool_container_width_mismatch_discarded():
     """QA 가 거부하면 이미 workbench 에 내려놓은 빈 통을 다시 들어 폐기함으로 보낸다(스쿱 반납 단계 없음)."""
     fp = ToolFingerprint(cup_width_mm=60.0, tolerance_mm=1.0)

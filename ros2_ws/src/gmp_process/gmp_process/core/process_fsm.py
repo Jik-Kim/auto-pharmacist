@@ -28,6 +28,7 @@ kind: move | grip | carry | scoop | pour | weigh | weigh_scoop | measure | safe 
 ②만으로는 개별 원료가 전부 같은 방향으로 치우친 경우를 못 잡는다 — 두 값이 함께 낮아 서로 일치하기 때문이다.
 상태 이름은 CellState.step 에 그대로 실린다 (docs/architecture.md 전이표).
 """
+import math
 from dataclasses import dataclass, field
 
 from gmp_dosing.core.dosing import decide
@@ -153,11 +154,17 @@ class ProcessFSM:
 
         정책상 WRONG_TOOL 은 즉시 QA 다(재시도 없음) — 잘못 꽂힌 스쿱·약통을 로봇이 스스로
         고쳐 낄 방법이 없고, 교차오염 의심은 사람 판단이 필요하다.
+
+        폭이 음수·비유한 값이면 검사를 건너뛴다 — DIO 백엔드는 폭 피드백이 없어 성공해도
+        -1 을 돌려준다(grip_inferred 는 DI 핀으로 따로 추론). 이 값을 기대 폭과 비교하면 정상
+        파지가 전부 WRONG_TOOL 로 오판된다 (A 리뷰, PR #165).
         """
         tol = self.fingerprint.tolerance_mm
         if not expected_mm or tol <= 0:
             return None
         actual_mm = float(res.get('final_width_mm', 0.0))
+        if actual_mm < 0 or not math.isfinite(actual_mm):
+            return None
         if abs(actual_mm - expected_mm) > tol:
             return self._deviate('WRONG_TOOL', step,
                                  detail=f'폭 {actual_mm:.1f}mm (기대 {expected_mm:.1f}±{tol:.1f}mm)')
@@ -381,6 +388,13 @@ class ProcessFSM:
             return self._carry('workbench', 'reject_bin')
         holding_scoop = self._qa_step != 'VERIFY'      # VERIFY 는 스쿱을 반납한 뒤라 그리퍼가 비어 있다
         if decision == 'APPROVED':
+            if self._qa_step == 'PICK_SCOOP':
+                # WRONG_TOOL 만 여기로 온다(GRIP_FAIL 은 FORCED 로 빠진다) — 스쿱을 이미 쥔 채다.
+                # 승인은 "이 스쿱으로 계속 진행" 이지 원료를 건너뛰는 게 아니다. 다른 QA 지점과
+                # 달리 아직 아무것도 못 퍼서 결과에 남길 게 없다 — 정상 경로(SCOOP_TARE)로 이어간다
+                # (A 리뷰, PR #165 — 예전엔 빈 ItemRun 을 결과로 남기고 원료를 건너뛰었다).
+                self.state = 'SCOOP_TARE'
+                return self._weigh_scoop()
             if not holding_scoop:                      # 대조 불일치를 QA 가 승인 → 그대로 완료품으로
                 self.state, self.mode = 'FINISH', 'RUNNING'
                 return self._carry('workbench', 'passbox_done')
