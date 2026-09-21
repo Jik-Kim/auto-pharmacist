@@ -1,19 +1,20 @@
 # Architecture
 
-> v1.2 인터페이스는 9/18 확정이다. A 의 계약·서버 변경과 **C 의 `process_node` 적용(9/18)** 은 반영됐고, HMI·record 적용은 `docs/interfaces.md` 8절 인계가 남아 있다. A 의 `weigh_held` 서버는 아직 없다 (마감 9/21).
+> 계약 **v1.5.1 (9/21)** 기준. v1.2 `WeighHeld`·v1.3 `ReturnMaterial`(전량 붓기, 초과는 반환)·v1.5 `Scoop.depth_fraction` 은 A 서버·C `process_node`·D HMI 에 반영됐다. v1.4 안전 복구(`RecoverSafety`, HMI→C→A 중계)는 A·C·D 구현 완료, 계약 확정 대기. **반환 뒤 재스쿱 연결 경로는 미구현**이라 실물 `skill_node` 가 후속 `Scoop` 을 거부한다 (v1.5.1) — 그때까지 반환이 나온 배치는 실물에서 `ERROR` 로 끝난다.
 
 ## 배치 (PC 1대 + 로봇 + 그리퍼)
 
 한 PC 에서 전부 띄운다. 벤더 브링업(`m0609_rg2_bringup new_bringup.launch.py`, ns `dsr01`) 위에 우리 노드 4개(ns `cell`)를 얹는다.
 
 ```text
-[벤더, ns /dsr01]  ros2_control + dsr_controller2 (모션·힘 서비스)   OnRobotRGControllerServer (/onrobot/sendCommand, /onrobot_joint_states)
+[벤더, ns /dsr01]  ros2_control + dsr_controller2 (모션·힘 서비스)   OnRobotRGControllerServer (/onrobot/sendCommand, /onrobot_joint_states) — real 은 `gmp_skills rg2_status_driver` 로 교체해 /onrobot/status(gSTA 비트)도 발행 (`robot.launch.py`, 9/20)
                    └ virtual: DRCF 에뮬레이터(docker) + gripper_virtual_node
 
 [우리, ns /cell]   skill_node ──(DSR_ROBOT2 · /onrobot/*)──▶ 로봇·그리퍼
                         ▲ Action/Service
                    process_node ── state · weight · scoop_cycle · dispense_result · deviation · event ──▶ record_node ──▶ SQLite(cell.db)
-                        ▲ submit_order · qa_decision · interlock (Service)                                       │ 읽기
+                        ▲ submit_order · qa_decision · interlock · request_safety_recovery (Service)             │ 읽기
+                        ▲ run_batch (Action, 계약 v1.0 — HMI 가 사용. process_node 서버 미구현, 9/21 확정 대기)
                         └──────────────── hmi_web_node (Flask :5000) ◀── 브라우저 (로봇 PC · 셀 밖 QA 기기) ◀───┘
 ```
 
@@ -39,19 +40,21 @@
 |---|---|---|---|
 | 1 | `ACCEPTED` | — | `SubmitOrder` 수락, batch_id 발급 |
 | 2 | `SELF_CHECK` | `MeasureForce`(빈 그리퍼) · 툴/TCP 확인 | 실패 → `ERROR` |
-| 3 | `PICK_CONTAINER` | **carry**: `MoveToStation(passbox_empty, slot)` → `SetGripper(close, cup)` → `MoveToStation(workbench)` → `SetGripper(open)` | 사람이 매거진에 넣어 둔 빈 약통을 로봇이 칭량 위치로 가져온다 (D-18). `grip_inferred=false` → `GRIP_FAIL` 재시도 ≤ 3 |
+| 3 | `PICK_CONTAINER` | **carry**: `MoveToStation(passbox_empty, slot)` → `SetGripper(close, cup)` → `MoveToStation(workbench)` → `SetGripper(open)` | 사람이 Pass Box 「빈통」 칸에 넣어 둔 빈 약통을 로봇이 `workbench` 로 가져온다 (D-18·D-24, 매거진 폐지). `grip_inferred=false` → `GRIP_FAIL` 재시도 ≤ 3 |
 | 4 | `TARE` | `WeighContainer(tare_g=0)` | 빈 용기 풍량 기록 |
 | 5 | `PICK_SCOOP` | `MoveToStation(scoop_N)` → `SetGripper(close, scoop_width)` | `grip_inferred=false` → `Deviation(GRIP_FAIL)` 재시도 ≤ 3 |
 | 6 | `SCOOP_TARE` | **`weigh_scoop`**(빈 스쿱, 든 채로) | 스쿱 풍량 — 원료마다 1회 (D-22) |
-| 7 | `SCOOP` | `Scoop(material_id)` | `contact_detected=false` → `SCOOP_EMPTY` → 재시도, 연속 3회 → `MATERIAL_EMPTY` → 인터락 보충 요청 |
-| 8 | `WEIGH_SCOOP` | `weigh_scoop`(붓기 전) | 퍼낸 양 = gross − 스쿱 풍량. **붓기 비율 = min(1, 부족량/퍼낸 양)** — 초과 예방 (1차 폐루프) |
-| 9 | `POUR` | `Pour(fraction)` — 목적지는 고정 `workbench` | |
+| 7 | `SCOOP` | `Scoop(material_id, depth_fraction)` — 깊이 비율은 v1.5, 실제 Z 변환은 A 실물 뒤 | `contact_detected=false` → `SCOOP_EMPTY` → 재시도, 연속 3회 → `MATERIAL_EMPTY` → 인터락 보충 요청 |
+| 8 | `WEIGH_SCOOP` | `weigh_scoop`(붓기 전) | 퍼낸 양 = gross − 스쿱 풍량. **퍼낸 양 > 남은 목표 + target×tol** 이면 8a 반환, 아니면 9 전량 붓기 — 초과 예방 (1차 폐루프, v1.3) |
+| 8a | `RETURN_MATERIAL` | `ReturnMaterial(material_id)` — `return_start_posx` 직선 → `return_end_posj` 관절, 끝 자세 유지 (v1.5.1) | 성공 → 7 재스쿱 (깊이 = 직전 × 남은량/퍼낸 양, 하한 `min_fraction`), returns ≥ `max_attempts` → `Deviation(TIMEOUT)`. 실패 → `safe` 후 `ERROR`. **연결 경로 구현 전까지 실물 skill_node 는 후속 Scoop 을 거부한다** |
+| 9 | `POUR` | `Pour(fraction=1.0)` — 전량 붓기, 목적지는 고정 `workbench` | 부분 붓기·`amove_periodic` 털어내기는 폐기 (v1.3). 초과는 8a 가 막는다 |
 | 10 | `WEIGH_RESIDUAL` | `weigh_scoop`(붓기 후) → `dosing.decide()` | 잔량 = gross − 스쿱 풍량, **투입량 += 퍼낸 양 − 잔량**. 시도 1건을 `ScoopCycle`로 발행. `OK` → 11 / `UNDER` → 7 (보정, ≤3) / `OVER` → `Deviation(OVERFILL, requires_decision)` → `DEVIATION` |
 | 11 | `RETURN_SCOOP` | `MoveToStation(scoop_N)` → `SetGripper(open)` | 원료별 전용 스쿱 반납 — **스쿱은 그 원료통 아래에 둔다** (9/18 확정, `scoop_rack` 폐지). 교차오염 경로를 끊고 이동 거리도 줄인다 |
 | 12 | 다음 원료 → 5 | | |
 | 13 | `VERIFY` | `WeighContainer(tare_g)` — **용기를 들어** 계량 (그리퍼 비어 있음) | **두 가지를 본다** (9/17 조장 합의). ① **제품 판정** `\|net − Σtarget\| > Σ(target×tol)` → `Deviation(BATCH_OUT_OF_SPEC)` → QA (폐기 권고) ② **계측 신뢰성** `\|net − Σ투입량\| > min_resolvable_g` → `Deviation(VERIFY_MISMATCH)` → QA. **①이 규격 판정이다** — 원료가 전부 같은 방향으로 치우치면 net 과 Σ투입량이 함께 낮아 ②로는 안 잡힌다 |
-| 14 | `FINISH` | **carry**: `workbench` → `passbox_done(slot)` … `SafePose` | 완료품을 용기째 Pass Box 「완성품」 칸으로 (D-24) — QA 가 회수한다 (D-23). `DONE` 발행, 기록 종료 |
-| E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료(VERIFY 였으면 FINISH) / DISCARD → 스쿱 반납 → **carry** `workbench` → `reject_bin` → `DISCARDED` |
+| 14 | `FINISH` | **carry**: `workbench` → `passbox_done` → `MoveToStation(nudge_wait)` | 완료품을 용기째 Pass Box 「완성품」 칸으로 (D-24) — QA 가 회수한다 (D-23). 이어 15 |
+| 15 | `NUDGE_WAIT` | `nudge_wait` AT 에서 대기 (mode `PAUSED`, 주문 거부) | **세트 경계 (D-23)** — 사람이 회수하고 로봇을 건드리면(NUDGE, D-21) `DONE`/`DISCARDED` 로 끝나고 다음 주문을 받는다. 폐기도 여기로 온다 |
+| E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료(VERIFY 였으면 FINISH) / DISCARD → 스쿱 반납 → **carry** `workbench` → `reject_bin` → 15 → `DISCARDED` |
 | E | `PAUSED` | `SafePose` | `InterlockRequest(ENTER)` → 안전 자세 도달 후 granted / `EXIT` → 이전 상태 재개 |
 
 **도징 결정은 `gmp_dosing/core/dosing.py` 가 한다** (순수 함수: 목표·실측·이력 → 다음 행동). 상태기계는 그 결정을 스킬 호출로 옮길 뿐이다.

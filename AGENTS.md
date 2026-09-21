@@ -7,7 +7,7 @@
 
 - 작업 전에 `docs/SOT.md` 와 `git status` 를 확인한다. 통신 계약은 `docs/interfaces.md`, 실행 절차는 `docs/setup.md`.
 - 요구사항의 근거는 **규칙 원장 `PROJECT_RULES.md`(R1~R23, 평가 기준 3-8)** 와 BRD(`docs/spec/`). 문서와 코드가 충돌하면 SOT 를 우선하고 충돌 사실을 알린다.
-- 다른 담당의 패키지를 수정하지 않는다. 필요하면 `docs/issues.md` 에 이슈로 남기고 담당에게 알린다.
+- 다른 담당의 패키지를 수정하지 않는다. 필요하면 GitHub Issue 로 남기고 담당에게 알린다.
 - **예외 1건:** `gmp_dosing` 은 라이브러리다. `gmp_process` 가 import 하지만 수정은 도징 담당(B)만 한다.
 
 ## 작업 범위
@@ -75,10 +75,10 @@
 
 ## 이슈 · 진행
 
-- **`docs/issues.md`·`docs/todo.md` 는 조장만 고친다.** 여러 브랜치가 같은 파일(특히 `todo.md` 의 STATS 블록)을 건드리면 병합마다 충돌한다 — 실제로 반복됐다. 다른 담당은 이 두 파일을 직접 커밋하지 않고, 이슈 등록·todo 추가·완료 처리를 조장에게 전달한다(PR 설명·리뷰 코멘트·팀 채널 등). `python3 tools/todo_stats.py` 실행도 조장만.
-- 등록부는 `docs/issues.md` 하나. ID 는 `I-0xx`. **번호를 붙이기 전에 main 을 당긴다.** 원인 하나에 이슈 하나. 상태는 요약표에만, 내용·조치는 상세 절에만.
-- 할 일은 `docs/todo.md` (파일·메서드 기준, 줄 끝 `· 마감 M/D`). 진행률은 손으로 적지 않는다 — `python3 tools/todo_stats.py`.
-- 이슈를 해결로 옮기면 대응하는 todo 도 체크한다. 반대도 마찬가지.
+- **9/21 부터 할 일·이슈의 정본은 GitHub Issues 다** (https://github.com/Jik-Kim/auto-pharmacist/issues). 조장 승인. `docs/todo.md`·`docs/issues.md` 는 9/21 상태로 동결한 스냅샷이며 더 고치지 않는다 — 한 파일을 여러 브랜치가 건드려 병합마다 충돌했고, 조장 혼자 관리하기에도 무거웠다. 115개 항목을 전부 Issue 로 옮겼다(완료 항목은 Closed). `tools/todo_stats.py` 도 더 쓰지 않는다.
+- 라벨: `severity:high/medium/low` · `pkg:gmp_*` · `overdue` · `source:consistency-check`. 원인 하나에 이슈 하나. 코드 PR 은 본문에 `Closes #N` 또는 `Refs #N` 으로 잇는다.
+- 등록·종료는 조장 판단을 거친다. 다른 담당은 발견한 것을 PR 설명·리뷰 코멘트·팀 채널로 조장에게 전달하고, 조장이 판단하면 Issue 가 만들어지거나 닫힌다. 옛 `I-0xx` 번호는 Issue 제목에 남아 있으니 문서에서 `I-0xx` 를 보면 그 제목으로 찾는다.
+- 이슈를 닫을 때 같은 원인의 할 일 Issue 도 함께 닫는다. 반대도 마찬가지.
 
 ## 검증과 완료 보고
 

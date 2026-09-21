@@ -25,6 +25,8 @@ source ~/auto-pharmacist/tools/env.sh      # ROS_DOMAIN_ID=70 설정 + /opt/ros 
 
 `ROS_DOMAIN_ID` 는 **70** 으로 조 전원 동일해야 한다. `.bashrc` 에 다른 값이 있으면 env.sh 가 덮어쓴다.
 
+HMI 첫 기동 때 관리자 계정이 없으면 `GMP_HMI_ADMIN_USER`·`GMP_HMI_ADMIN_PASSWORD` 환경변수로 만든다 — 없으면 로그인할 계정이 없어 HMI 를 쓸 수 없다. 입력 절차와 격리 시험용 `ROS_DOMAIN_ID=88` 은 [demo_run_procedure.md](demo_run_procedure.md) 2절과 `ros2_ws/src/gmp_hmi/README.md` 를 따른다.
+
 ## 실행
 
 | 모드 | 명령 | 되는 것 / 안 되는 것 |
