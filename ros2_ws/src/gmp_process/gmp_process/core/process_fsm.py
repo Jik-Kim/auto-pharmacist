@@ -110,7 +110,8 @@ class ProcessFSM:
             self.cur.attempts += 1
         self.cur.last_fraction = fraction
         return {'kind': 'scoop', 'material_id': self.cur.material_id, 'attempt': self.cur.attempts,
-                'fraction': fraction}                 # 담그기 깊이 힌트일 뿐 — 붓기 비율은 WEIGH_SCOOP 가 정한다
+                'fraction': fraction,                 # 담그기 깊이 힌트일 뿐 — 붓기 비율은 WEIGH_SCOOP 가 정한다
+                'after_return': after_return}         # 반환 직후인가 — 실패 처리를 가른다 (skill_failed)
 
     def _return_material(self) -> dict:
         """초과 스쿱을 약통에 붓지 않고 원래 원료통으로 되돌린다."""
@@ -344,13 +345,20 @@ class ProcessFSM:
             # skill_node 는 반환 실패 때 held material 이력을 무효화한다. 같은 반환 Action 을
             # 자동 재시도하면 원료통·스쿱의 대응을 보장할 수 없으므로 즉시 안전 경로로 끝낸다.
             return self._return_failed(detail or '원료통 반환 실패')
+        if req.get('kind') == 'scoop' and req.get('after_return'):
+            # 실물 skill_node 는 반환 중에 `_return_rescoop_blocked` 를 세우고 이후 Scoop 을 전부
+            # 거부한다 (v1.5.1 · PR #43). 플래그는 풀리지 않으므로 같은 요청을 재시도해도 같은
+            # 이유로 거부된다 — 실패 사유가 무엇이든 반환 직후 스쿱은 재시도가 의미 없다.
+            # FORCE_LIMIT 2건(RETRY→FORCED)을 쌓는 대신 사유를 남기고 한 번에 끝낸다.
+            # A 가 연결 경로(#64)를 구현하면 이 분기는 없어진다.
+            return self._return_failed(f'반환 후 재스쿱 차단 — {detail or "스킬 거부"}', step=self.state)
         return self._deviate('FORCE_LIMIT', self.state, retry=req, detail=detail)
 
-    def _return_failed(self, detail: str):
-        """반환 스킬 실패는 재시도·재투입하지 않고 RETURN_FAILED 기록 후 안전 자세로 간다."""
-        key = (self.idx, 'RETURN_MATERIAL', 'FORCE_LIMIT')
+    def _return_failed(self, detail: str, step: str = 'RETURN_MATERIAL'):
+        """반환·반환 후 재스쿱 실패는 재시도·재투입하지 않고 FORCED 로 기록한 뒤 안전 자세로 간다."""
+        key = (self.idx, step, 'FORCE_LIMIT')
         self._counts[key] = self._counts.get(key, 0) + 1
-        self.deviations.append({'kind': 'FORCE_LIMIT', 'step': 'RETURN_MATERIAL',
+        self.deviations.append({'kind': 'FORCE_LIMIT', 'step': step,
                                 'count': self._counts[key], 'action': 'FORCED', 'detail': detail,
                                 'material_id': getattr(self, 'cur', None) and self.cur.material_id})
         self.state, self.mode = 'ERROR', 'ERROR'

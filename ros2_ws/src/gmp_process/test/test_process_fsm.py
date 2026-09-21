@@ -159,6 +159,40 @@ def test_return_failure_goes_safe_without_retry_or_repour():
     assert not any(k == 'pour' for _, k in trace)
 
 
+def test_rescoop_after_return_fails_once_without_retry():
+    """실물 skill_node 는 반환 중 세운 플래그로 이후 Scoop 을 전부 거부한다 (v1.5.1 · PR #43).
+    플래그가 풀리지 않으니 재시도는 같은 이유로 또 거부된다 — FORCE_LIMIT 2건을 쌓지 말고
+    사유를 남기고 한 번에 끝내야 한다 (연결 경로는 A 몫, #64)."""
+    cell = Cell(yields=[130])
+    fsm = _fsm()
+    req = fsm.start()
+    while not (req['kind'] == 'scoop' and req.get('after_return')):
+        req = fsm.on_result(req, cell(req))
+
+    safe = fsm.skill_failed(req, 'scoop 실패: 반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
+    assert safe == {'kind': 'safe', 'then': None, 'reason': 'RECOVERY'}
+    assert fsm.state == 'ERROR' and fsm.mode == 'ERROR'
+    assert len(fsm.deviations) == 1, fsm.deviations        # 재시도분(2건째)이 없다
+    d = fsm.deviations[-1]
+    assert (d['kind'], d['step'], d['action']) == ('FORCE_LIMIT', 'SCOOP', 'FORCED')
+    assert d['detail'].startswith('반환 후 재스쿱 차단 — '), d['detail']
+    assert '연결 경로 미구현' in d['detail']                # 스킬이 준 진짜 사유도 남는다
+
+
+def test_normal_scoop_failure_still_retries_once():
+    """반환과 무관한 스쿱 실패는 기존대로 1회 재시도한다 — 위 분기가 일반 경로를 삼키면 안 된다."""
+    cell = Cell(yields=[100])
+    fsm = _fsm()
+    req = fsm.start()
+    while req['kind'] != 'scoop':
+        req = fsm.on_result(req, cell(req))
+    assert not req.get('after_return')
+
+    retry = fsm.skill_failed(req, '담그기 중 힘 상한')
+    assert retry == req and fsm.state == 'SCOOP'           # 같은 요청을 한 번 더
+    assert fsm.deviations[-1]['action'] == 'RETRY'
+
+
 def test_verify_규격이탈은_BATCH_OUT_OF_SPEC():
     """① 제품 판정 — 용기 순량이 레시피 총 목표량에서 벗어나면 규격 이탈이다.
     레시피 A 100 + B 50 = 150 g, 허용치 Σ(target×tol) = 7.5 g. 용기에 50 g 이 더 있다."""

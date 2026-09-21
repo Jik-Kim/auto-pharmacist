@@ -429,6 +429,27 @@ def test_scoop_skill_failure_does_not_lose_scoop_cycle(cell):
     assert len(col.cycles) == 1 + sum(r.attempts for r in proc.fsm.results)
 
 
+def test_rescoop_after_return_is_blocked_once_with_a_clear_reason(cell):
+    """실물은 반환 뒤 Scoop 을 전부 거부한다 (v1.5.1 · PR #43, 연결 경로 #64 미구현).
+    재시도해도 같은 이유로 거부되므로 FORCE_LIMIT 2건이 아니라 사유 1건으로 끝나야 한다."""
+    proc, fake, col = cell
+    fake.block_rescoop = True                     # 반환이 성공하면 이후 Scoop 을 실물처럼 거부한다
+    fake.scoop_gain = 4.0                         # 한 번에 목표+허용오차를 넘겨 퍼 → 붓기 전 반환
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_done(proc) == 'ERROR', _why(proc)
+
+    assert any(c.startswith('return_material:') for c in fake.calls), fake.calls
+    after_return = fake.calls[fake.calls.index(
+        next(c for c in fake.calls if c.startswith('return_material:'))) + 1:]
+    assert len([c for c in after_return if c.startswith('scoop:')]) == 1, \
+        f'거부될 걸 알면서 재시도했다: {after_return}'
+
+    devs = [d for d in proc.fsm.deviations if d['step'] == 'SCOOP']
+    assert len(devs) == 1 and devs[0]['action'] == 'FORCED', proc.fsm.deviations
+    assert '반환 후 재스쿱 차단' in devs[0]['detail'] and '연결 경로 미구현' in devs[0]['detail']
+    assert any(c.startswith('safe:') for c in fake.calls)      # 끝에 안전 자세로 간다
+
+
 def test_submit_rejects_invalid_numbers_and_duplicates(cell):
     """주문 검증은 core/recipe.parse 단일 출처 — 0·음수·NaN·중복 원료는 주문에서 거부한다 (리뷰 P2)."""
     proc, fake, col = cell
