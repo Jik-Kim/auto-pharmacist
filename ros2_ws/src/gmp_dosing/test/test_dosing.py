@@ -137,12 +137,23 @@ def test_resolvable_covers_every_recipe():
 def test_offset_cancels_out_in_net_weight():
     """offset 은 세션마다 ±5 g 움직이지만 tare 를 빼는 순간 사라진다 — 판정에 쓰이는 것은 gain 뿐이다.
 
-    scale_reference.yaml 의 offset_is_cancelled 가 말하는 성질을 코드로 고정한다.
+    scale_reference.yaml 의 offset_is_cancelled 가 말하는 성질을, 운영에서 실제로 쓰이는 **두 경로**로 고정한다.
+      (a) reading() 의 net_g — skill_node 가 set_tare 뒤 reading 을 불러 WeightReading.net_g 로 내보낸다
+      (b) gross_g 끼리 빼기 — process_fsm 이 scooped_g·residual_g 를 구하는 방식 (gross − scoop_tare_g)
+    (b) 를 따로 두는 이유: FSM 은 net_g 를 쓰지 않고 두 gross 를 직접 뺀다. 소거가 성립하는 근거가
+    경로마다 다르므로 둘 다 고정해야 한다.
     """
     raw_tare, raw_gross = 1.0, 2.5
-    nets = []
-    for offset in (190.8, 195.0, 197.4):      # 9/21 에 관측된 세션별 범위
+    sessions = (190.8, 195.0, 197.4)          # 9/21 에 관측된 세션별 offset 범위
+    nets_a, nets_b = [], []
+    for offset in sessions:
         m = WeightModel(ScaleConfig(gain=1.03, offset_g=offset))
-        m.set_tare(m.raw_to_g(raw_tare))
-        nets.append(m.reading(raw_gross, 0.0, True)[2])
-    assert max(nets) - min(nets) < 1e-9       # offset 이 6.6 g 달라져도 순량은 같다
+        tare_g = m.raw_to_g(raw_tare)
+        m.set_tare(tare_g)
+        nets_a.append(m.reading(raw_gross, 0.0, True)[2])
+        gross_g = m.reading(raw_gross, 0.0, True)[0]
+        nets_b.append(gross_g - tare_g)       # FSM 방식
+    assert max(nets_a) - min(nets_a) < 1e-9   # offset 이 6.6 g 달라져도 순량은 같다
+    assert max(nets_b) - min(nets_b) < 1e-9
+    assert abs(nets_a[0] - nets_b[0]) < 1e-9  # 두 경로가 같은 값을 준다
+    assert abs(nets_a[0] - (raw_gross - raw_tare) * -1.0 / 9.80665 * 1000 * 1.03) < 1e-9   # 남는 것은 gain 뿐
