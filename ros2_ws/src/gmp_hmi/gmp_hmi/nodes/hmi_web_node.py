@@ -41,6 +41,7 @@ try:
     from gmp_interfaces.srv import RecoverSafety
 except ImportError:
     RecoverSafety = None  # 최신 계약 빌드 전에는 복구를 차단한다.
+from gmp_hmi.core.measurement_context import target_band
 from gmp_hmi.core.safety_recovery import SafetyRecovery
 from gmp_hmi.core.db import DECISIONS, KINDS, VERDICTS, CellDB
 from gmp_hmi.core.session_inventory import SessionInventory
@@ -158,6 +159,11 @@ class HmiRosNode(Node):
         self.received_counts = dict.fromkeys(TOPICS, 0)
         self.active_recipe = None
         self.active_recipe_batch_id = ''
+        self._batch_handle = None
+        self._batch_id = ''
+        self._batch_submission_pending = False
+        self._batch_cancel_state = ''
+        self._batch_actor = ''
         self.lock = threading.Lock()
         self.safety_recovery = SafetyRecovery()
         self.snap = {'state': {}, 'gripper': {}, 'weights': [], 'results': [], 'deviations': {}, 'events': [], 'scoop_cycles': []}
@@ -284,6 +290,9 @@ class HmiRosNode(Node):
     def _on_state(self, m):
         with self.lock:
             now = time.monotonic()
+            old = self.snap['state']
+            if old.get('batch_id') == m.batch_id and self._t(m.header) < old.get('t', -1):
+                return
             previous = self.received['state']
             stale = previous is None or now - previous > self.local_settings['ui_stale_after_s']
             if stale or m.batch_id != self.entry_batch_id:
@@ -301,6 +310,8 @@ class HmiRosNode(Node):
                     self._pending_entry = None
             elif m.mode not in (CellState.PAUSED, CellState.DEVIATION):
                 self.entry_granted = None
+            if old.get('batch_id') != m.batch_id:
+                self.snap['weights'] = []
             self._received('state')
             self.snap['state'] = {'mode': MODES.get(m.mode, '?'), 'step': m.step, 'batch_id': m.batch_id,
                                   'item_index': m.item_index, 'station': m.station, 'note': m.note, 't': self._t(m.header)}
@@ -308,7 +319,13 @@ class HmiRosNode(Node):
     def _on_weight(self, m):
         with self.lock:
             self._received('weight')
-            self.snap['weights'].append({'t': self._t(m.header), 'net_g': m.net_g, 'std_g': m.std_g, 'valid': m.valid,
+            state = self.snap['state']
+            known = (state.get('batch_id') and self.received['state'] is not None and
+                     time.monotonic() - self.received['state'] <= self.local_settings['ui_stale_after_s'] and
+                     self._t(m.header) >= state.get('t', 0))
+            self.snap['weights'].append({'observed_batch_id': state.get('batch_id') if known else None,
+                                         'context_source': 'latest_cell_state' if known else 'unknown',
+                                         't': self._t(m.header), 'net_g': m.net_g, 'std_g': m.std_g, 'valid': m.valid,
                                          'gross_g': m.gross_g, 'tare_g': m.tare_g, 'station': m.station,
                                          'subject': m.subject, 'samples': m.samples})
             del self.snap['weights'][:-100]
@@ -503,6 +520,7 @@ class HmiRosNode(Node):
         with self.lock:
             data = copy.deepcopy(self.snap)
             data['safety_recovery'] = self.safety_recovery.snapshot()
+            data['batch_control'] = self._batch_controls_locked()
             ages = {key: None if value is None else max(0.0, now - value)
                     for key, value in self.received.items()}
             counts = dict(self.received_counts)
@@ -547,6 +565,11 @@ class HmiRosNode(Node):
                 for mid, client in self.cli_test_refill.items()})
             data['diagnostics']['topics']['test_inventory'] = {'age_s': data['inventory']['age_s']}
         data['deviations'] = list(data['deviations'].values())
+        data['target_band'] = target_band(data.get('active_recipe'), data['state'].get('batch_id'))
+        data['integration'] = {
+            'inventory': {'connected': False, 'message': '운영 재고·보충 계약 미정 · 표시값은 HMI 추정입니다'},
+            'collection': {'connected': False, 'message': '회수 확인 기록만 지원 · C 적재 카운터 초기화 미연결'},
+            'restart': {'connected': False, 'message': '미완료 기록 조회만 지원 · C 재기동 재개 계약 미정'}}
         data['now'] = self.get_clock().now().nanoseconds / 1e9
         return json_finite(data)
 
@@ -556,6 +579,10 @@ class HmiRosNode(Node):
             if self.safety_recovery.active:
                 raise CommandUnavailable('안전정지 복구가 확인되지 않아 새 주문을 차단했습니다')
             state = self.snap['state']
+            if self._batch_submission_pending or self._batch_handle is not None:
+                raise CommandUnavailable('이 HMI의 기존 배치 요청이 종료되지 않았습니다. 결과를 확인하세요')
+            if state.get('mode') not in ('IDLE', 'DONE', 'ERROR'):
+                raise CommandUnavailable('진행 중인 배치가 있어 새 주문을 차단했습니다')
             if state.get('mode') == 'DONE' and state.get('step') not in ('DONE', 'DISCARDED'):
                 raise CommandUnavailable('물리적 완료 확인 대기: 공정의 최종 DONE 또는 DISCARDED 수신 후 주문하세요')
         spec, detail = self._recipe(name)
@@ -579,11 +606,7 @@ class HmiRosNode(Node):
         r.header.stamp = self.get_clock().now().to_msg()
         for it in spec.items:
             r.items.append(RecipeItem(material_id=it.material_id, target_g=it.target_g, tol_pct=it.tol_pct))
-        res = self._send_batch_goal(RunBatch.Goal(recipe=r), batch_id)
-        if res and res.accepted and res.batch_id:
-            with self.lock:
-                self.active_recipe = detail
-                self.active_recipe_batch_id = res.batch_id
+        res = self._send_batch_goal(RunBatch.Goal(recipe=r), batch_id, detail=detail, actor=actor)
         self.audit('ORDER', actor, f'{name} → {res.batch_id if res else "no-response"} accepted={bool(res and res.accepted)}',
                    batch_id=res.batch_id if res and res.accepted else '')
         return res
@@ -597,26 +620,111 @@ class HmiRosNode(Node):
         if not client.server_is_ready():
             raise CommandUnavailable('RunBatch 액션 서버가 연결되지 않아 요청을 차단했습니다')
 
-    def _send_batch_goal(self, goal, batch_id, timeout_s=3.0):
-        """긴 RunBatch 완료를 HTTP에서 기다리지 않고 Goal 접수까지만 확인한다."""
+    def _batch_controls_locked(self):
+        state = self.snap['state']
+        current = state.get('batch_id', '')
+        owned = self._batch_handle is not None and current == self._batch_id
+        active = state.get('mode') in ('RUNNING', 'PAUSED', 'DEVIATION')
+        reason = ('중단 요청 처리 중 · 최종 결과 확인 필요' if self._batch_cancel_state else
+                  '이 HMI가 수락받은 진행 중 배치만 중단할 수 있습니다')
+        return dict(batch_id=self._batch_id, can_cancel=bool(owned and active and not self._batch_cancel_state),
+                    cancel_state=self._batch_cancel_state, submitting=self._batch_submission_pending,
+                    reason=reason)
+
+    def _send_batch_goal(self, goal, batch_id, timeout_s=3.0, detail=None, actor=''):
+        """응답이 늦어도 수락 콜백을 유지한다. 무응답 주문을 다시 전송하지 않는다."""
         if not self.act_batch.wait_for_server(timeout_sec=1.0):
             return None
-        done = threading.Event()
-        holder = {}
+        done, holder = threading.Event(), {}
+        with self.lock:
+            self._batch_submission_pending = True
+            self._batch_id, self._batch_cancel_state, self._batch_actor = batch_id, '', actor
+        def accepted(future):
+            try:
+                handle = future.result()
+                if not handle.accepted:
+                    with self.lock:
+                        self._batch_submission_pending = False
+                    holder['response'] = BatchSubmission(False, batch_id, 'RunBatch Goal이 거부되었습니다')
+                    return
+                with self.lock:
+                    self._batch_handle = handle
+                    self._batch_submission_pending = False
+                    if detail:
+                        self.active_recipe = copy.deepcopy(detail)
+                        self.active_recipe_batch_id = batch_id
+                if detail:
+                    self.audit('ORDER_CONTEXT', actor, json.dumps(detail, ensure_ascii=False), batch_id=batch_id)
+                result_future = handle.get_result_async()
+                result_future.add_done_callback(lambda f: self._on_owned_batch_result(f, batch_id, actor))
+                holder['response'] = BatchSubmission(True, batch_id, 'RunBatch Goal 접수 완료')
+            except Exception as exc:
+                # 전송/접수 결과를 모르면 차단 유지. 예외를 거부로 취급하지 않는다.
+                self.get_logger().warning(f'RunBatch 접수 결과 미확인: {exc}')
+            finally:
+                done.set()
         try:
-            future = self.act_batch.send_goal_async(goal, feedback_callback=self._on_batch_feedback)
+            self.act_batch.send_goal_async(goal, feedback_callback=self._on_batch_feedback).add_done_callback(accepted)
         except Exception as exc:
-            self.get_logger().warning(f'RunBatch Goal 전송 실패: {exc}')
+            self.get_logger().warning(f'RunBatch 전송 결과 미확인: {exc}')
             return None
-        future.add_done_callback(lambda value: (holder.update(goal=value), done.set()))
-        if not done.wait(timeout_s) or future.cancelled() or future.exception():
+        done.wait(timeout_s)
+        return holder.get('response')
+
+    def _on_owned_batch_result(self, future, batch_id, actor):
+        try:
+            future.result()  # 예외인 경우 goal 소유권을 버리지 않는다.
+        except Exception:
+            self._on_batch_result(future)
+            return
+        with self.lock:
+            if self._batch_id != batch_id:
+                return
+            self._batch_handle = None
+            self._batch_submission_pending = False
+            self._batch_cancel_state = ''
+        self._on_batch_result(future)
+        result = future.result().result
+        self.audit('BATCH_RESULT', actor, f'result={result.result} success={bool(result.success)}', batch_id=batch_id)
+
+    def cancel_batch(self, batch_id, confirmed, actor, timeout_s=3.0):
+        if confirmed is not True or not isinstance(batch_id, str) or not batch_id:
+            raise ValueError('현재 배치 중단을 명시적으로 확인하세요')
+        self._guard_action(self.act_batch)
+        with self.lock:
+            controls = self._batch_controls_locked()
+            if batch_id != self._batch_id or not controls['can_cancel']:
+                raise CommandUnavailable(controls['reason'])
+            handle = self._batch_handle
+            self._batch_cancel_state = 'pending'
+        self.audit('BATCH_CANCEL_REQUEST', actor, 'RunBatch cancel 요청 · 실제 정지 미확인', batch_id=batch_id)
+        done, holder = threading.Event(), {}
+        def acknowledged(future):
+            try:
+                res = future.result()
+                accepted = (res.return_code == 0 and any(
+                    list(info.goal_id.uuid) == list(handle.goal_id.uuid) for info in res.goals_canceling))
+                with self.lock:
+                    if self._batch_id == batch_id and self._batch_handle is handle:
+                        self._batch_cancel_state = 'accepted' if accepted else ''
+                self.audit('BATCH_CANCEL_RESPONSE', actor, f'accepted={accepted}', batch_id=batch_id)
+                holder['response'] = BatchSubmission(accepted, batch_id,
+                    '취소 접수 · 실제 정지와 배치 종료는 공정 최종 결과를 확인하세요' if accepted else
+                    '공정이 취소를 수락하지 않았습니다. 현재 상태를 확인하세요')
+            except Exception:
+                with self.lock:
+                    if self._batch_id == batch_id and self._batch_handle is handle:
+                        self._batch_cancel_state = 'uncertain'
+            finally:
+                done.set()
+        try:
+            handle.cancel_goal_async().add_done_callback(acknowledged)
+        except Exception:
+            with self.lock:
+                self._batch_cancel_state = 'uncertain'
             return None
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            return BatchSubmission(False, batch_id, 'RunBatch Goal이 거부되었습니다')
-        result_future = goal_handle.get_result_async()
-        result_future.add_done_callback(self._on_batch_result)
-        return BatchSubmission(True, batch_id, 'RunBatch Goal 접수 완료')
+        done.wait(timeout_s)
+        return holder.get('response')
 
     def _on_batch_feedback(self, message):
         feedback = message.feedback
@@ -862,7 +970,28 @@ def build_app(node: HmiRosNode, db: CellDB, admin_store=None):
     @app.get('/status')
     @requires()
     def status():
-        return jsonify(node.snapshot())
+        data = node.snapshot()
+        # 재기동 후에도 같은 배치의 수락 레시피만 복원한다. 공정 동작은 재개하지 않는다.
+        batch_id = data.get('state', {}).get('batch_id')
+        if batch_id and not data.get('active_recipe'):
+            recipe = db.recipe_context(batch_id)
+            data['active_recipe'] = recipe
+            data['target_band'] = target_band(recipe, batch_id)
+        return jsonify(data)
+
+    @app.get('/restart-state')
+    @requires()
+    def restart_state():
+        data = node.snapshot()
+        return jsonify(records=db.restart_records(), live_state=data.get('state', {}),
+                       resume_supported=False,
+                       message='저장된 관측 기록입니다. C 재기동 재개 계약이 없어 로봇을 재개하지 않습니다.')
+
+    @app.post('/batch/cancel')
+    @requires('operator', 'admin')
+    def cancel_batch():
+        data = payload()
+        return command(lambda: node.cancel_batch(data.get('batch_id'), data.get('confirmed'), g.user['username']))
 
     @app.get('/recipes')
     @requires()

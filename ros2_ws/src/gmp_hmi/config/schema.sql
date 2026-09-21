@@ -48,3 +48,14 @@ CREATE INDEX IF NOT EXISTS ix_batches_time ON batches(started_at);
 CREATE INDEX IF NOT EXISTS ix_events_time ON events(t);
 
 -- Deviation.decision: PENDING | APPROVED | DISCARDED | AUTO_RECOVERED | FORCED (v1.2.1)
+
+-- HMI 재접속용 관측 기록. 로봇/공정 재개 명령의 근거가 아니다.
+CREATE TABLE IF NOT EXISTS state_checkpoints (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL,
+  t REAL NOT NULL, mode TEXT NOT NULL, step TEXT NOT NULL,
+  item_index INTEGER NOT NULL, station TEXT, note TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_checkpoint_batch ON state_checkpoints(batch_id,t);
+CREATE TABLE IF NOT EXISTS batch_recipes (
+  batch_id TEXT PRIMARY KEY, t REAL NOT NULL, payload_json TEXT NOT NULL
+);
