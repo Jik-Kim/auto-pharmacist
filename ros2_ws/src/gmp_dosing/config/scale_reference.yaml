@@ -52,6 +52,11 @@ tool_force_calibration:
     같은 구조다. 판정에 실제로 쓰이는 것은 gain 이고 offset_g 는 gross_g 표시·기록용 대략값이다.
     세션 변동의 원인은 파지할 때마다 스쿱 자세가 달라져 무게중심이 옮겨가는 것으로 보인다
     (모멘트로 확인, README 참조).
+    **이 성질은 gmp_process 의 순량 계산 구조에 기대고 있다.** 9/21 C(공정 담당)와 합의 —
+    `scooped_g = gross_g − scoop_tare_g` 구조와 SCOOP_TARE 에서 **그 파지 상태의** 빈 스쿱을
+    tare 로 쓰는 것을 유지하고, 어느 쪽이든 이 경로를 바꿀 일이 생기면 서로 알린다.
+    test_offset_cancels_out_in_net_weight 가 두 경로(FSM 의 gross 빼기, skill_node 의 net_g)를
+    모두 고정한다.
 
   resolvable:                # target × tol% ≥ min_resolvable_g (5.0) — WeightModel.resolvable()
     A_200g_tol5: 10.0        # 가능 (여유 2.0배)
