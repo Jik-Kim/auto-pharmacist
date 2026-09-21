@@ -522,14 +522,32 @@ source tools/env.sh && ros2 control list_controllers -c /dsr01/controller_manage
 ```
 `dsr_controller2 … active` 가 보이면 준비된 것이다.
 
-#### 2. 터미널 2 — 측정 ①: 용기 계량 σ (로봇 파지)
+#### 2. 터미널 2 — 측정 ①: 용기 계량 σ (로봇 파지, **하중 3점**)
+
+**세 번 돌린다.** 명령은 `--actual-g` 와 `--out` 만 다르고 나머지는 같다.
 
 ```
+# ①-a 빈 용기 78 g  — σ_tare
 source tools/env.sh && python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py \
     --actual-g 78 --object container --goto-station workbench --pick-lift-mm 100 \
     --grip-width-mm 60 --gripper --sets 3 --trials 5 --samples 20 --period 0.1 \
     --out records/g1_rezero_0922_workbench_cup_robot.csv
+
+# ①-b 중간 (용기 + 추 ≈200 g 내외, 실제 무게를 저울로 재서 넣는다)
+    --actual-g <실측> ... --out records/g1_rezero_0922_workbench_cup_mid.csv
+
+# ①-c 최대 (용기 + 추 ≈528 g = 78 + 데모 총량 450. 추가 모자라면 가능한 최대치)
+    --actual-g <실측> ... --out records/g1_rezero_0922_workbench_cup_max.csv
 ```
+
+**왜 3점인가** — VERIFY 는 빈 용기가 아니라 **용기 + 원료 450 g** 을 잰다. 예산 식에서 σ_tare(빈 용기)와
+σ_verify(가득 찬 용기)가 같은 무게로 들어가는데, 빈 용기만 재면 σ_verify 는 외삽치가 된다.
+지금 가진 데이터는 32~133 g 범위뿐이고 528 g 은 그 **4배 밖**이다. 그 범위 안에서는 기울기가 거의
+안 보이지만(samples 20: 78 g 0.90 · 133 g 0.83) 밖까지 같다는 근거가 없다.
+두 점만 잡으면 사이가 직선인지 모르는 채 쓰게 되므로 **가운데 한 점을 더 잡아 기울기를 본다.**
+
+**추로 대신해도 된다** — 재는 것은 원료가 아니라 **그 하중에서의 저울 σ** 다. 450 g 어치 추가 없으면
+가능한 최대치로 하고, 기록에 "σ_verify 는 X g 까지만 실측" 을 남긴다.
 
 **9/21 과 다른 점: 용기를 손에 들지 않는다.** `--pick-lift-mm 100` 이 운영 경로를 그대로 따라간다 —
 세트마다 **AT `[423,93,100]` 로 내려가 그리퍼를 열고 → 용기를 그 자리에 놓으면 잡고 → ABOVE `[423,93,200]`
