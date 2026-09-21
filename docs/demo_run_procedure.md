@@ -9,7 +9,7 @@
 | T0 | — | 로봇 전원 · 컴퓨트박스 · 랜선 · 비상정지 해제 · **툴 `tool_weight` / TCP `GripperDA_v1` 선택 확인** · 실물 첫 PC 는 `python3 -c 'import pymodbus'` — 없으면 `sudo apt install python3-pymodbus` (없으면 OnRobot 드라이버가 뜨자마자 죽고 `/onrobot/sendCommand` 가 안 보인다, 9/19) | 티치펜던트 Auto 모드 |
 | T1 | 브링업 | `ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100` | `[skill_node] SELF_CHECK OK` 로그 (툴·TCP·충돌 감도 일치) |
 | T2 | HMI | (T1 에 포함) HMI 창 | 상태 `IDLE`, 그리퍼 폭 표시 |
-| T3 | 사람 | 원료통 3개·스쿱 3개·**빈 약통 3개를 매거진 슬롯 0~2 에 낱개로**·빈 트레이가 **테이프 표시 위치**에 있는지. 이후 용기는 사람이 만지지 않는다 (D-18) | — |
+| T3 | 사람 | 원료통 A·B·C(판 바깥 아래)와 **각 원료통 아래 전용 스쿱 3개**, **빈 약통을 Pass Box 「빈통」 칸(`passbox_empty`, slots 1)** 에 넣었는지. 완성품은 로봇이 Pass Box 「완성품」 칸(`passbox_done`)에 놓고 QA 가 회수한다 (D-23·D-24). 판 위 매거진·트레이·스쿱랙은 없다 (9/18 폐지). 이후 용기는 사람이 만지지 않는다 (D-18) | — |
 | T4 | HMI | 레시피 `demo_batch` 선택 → 주문 제출 | 상태 `RUNNING` |
 | T5 | — | 자율 운전. **손대지 않는다** | 원료 3종 `OK`, `DONE` |
 | T6 | 시연 | 일탈 시나리오: (a) 스쿱을 빼둔 채 시작 → `GRIP_FAIL` 자동 재시도 (b) 원료통 비움 → `MATERIAL_EMPTY` → 인터락 보충 → 재개 (c) 과다 투입 유도 → `OVERFILL` → HMI QA 판정 | 각각 `deviation` 이 뜨고 기록에 남는다 |

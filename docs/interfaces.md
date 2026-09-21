@@ -18,7 +18,7 @@
 > 기존 `CellEvent.text` JSON에 상관관계를 추가한다. ROS 메시지 필드와 `RecoverSafety.srv`는 변경하지 않는다.
 > A/C/D가 함께 적용해야 하며 아래 8절 보완을 영향 담당이 리뷰한다.
 
-> 확정 계약 기준은 v1.3까지다. v1.4 추가분은 초안이며, 계약 확정은 실물 검증 완료를 의미하지 않는다.
+> **상태 요약 (9/21):** 확정 — v1.2·v1.2.1·v1.3·v1.5(9/20 팀 합의·A 승인)·v1.5.1(동작 설명 정정). v1.4 안전 복구는 A·C·D 구현 완료(PR #34·#35·#41)이나 계약 문안은 초안 표기 — 조장 확정 대기. v1.6 은 미확정 제안. 계약 확정은 실물 검증 완료를 의미하지 않는다.
 > **변경 절차:** 계약을 바꿔야 하면 **먼저 팀 채널에 알리고**, `gmp_interfaces` 와 이 문서를 **같은 커밋에서** 고친다. 리뷰는 영향받는 담당 전원, 최소 2명 승인 (PM 없음 — AGENTS 교차검수).
 
 ---
@@ -96,7 +96,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `DispenseResult` | process → HMI·record | `batch_id`·`material_id`, `target_g`·`actual_g`, `error_pct`, `verdict`(`OK/UNDER/OVER`), `attempts`, `duration_s` |
 | `Deviation` | process → HMI·record | `deviation_id`: 판정 대상 ID, 배치·원료 ID, `kind`: 일탈 종류, `detail`: 설명, `requires_decision`: QA 필요 여부, `decision`: 판정, `operator_id`: 판정자 |
 | `CellEvent` | 모든 노드 → record; `NUDGE`는 process도 수신 | `level`: INFO/WARN/ERROR, `code`: 기계 판독용 이벤트 코드, `text`: 사람용 상세, `batch_id`: 관련 배치 |
-| `GripperState` | skill → process·HMI | `width_mm`: 현재 폭, `busy`: 동작 중, `grip_inferred`: 폭 기반 파지 추론, `safety_triggered`: 안전 입력, `force_cmd_n`: 명령 파지력, `backend`: modbus/dio/virtual |
+| `GripperState` | skill → process·HMI | `width_mm`: 현재 폭, `busy`: 동작 중, `grip_inferred`: 파지 판정 — `modbus` 는 드라이버 gSTA grip 비트(9/20 PR #38 `rg2_status_driver`), `virtual`·`dio` 는 폭 추론(필드명은 유지), `safety_triggered`: 안전 상태 비트(modbus)·그 외 false, `force_cmd_n`: 명령 파지력, `backend`: modbus/dio/virtual |
 
 서비스는 요청 후 즉시 단일 응답을 돌려준다.
 
@@ -105,7 +105,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `SubmitOrder` | HMI → process | `recipe` → `accepted`, process가 정한 `batch_id`, `message`. 실행 완료가 아니라 **접수 결과**다 |
 | `QaDecision` | HMI → process | `deviation_id`, `decision`, `operator_id` → `accepted`, `message`. 배치는 해당 `Deviation`에서 확인한다 |
 | `InterlockRequest` | HMI → process | `request`(`ENTER/EXIT`), `reason` → `granted`, `message`. ENTER는 안전 자세 도달 뒤 승인한다 |
-| `SetGripper` | process → skill | `close`, `width_mm`, `force_n`, `timeout_s` → `success`, 실제 정지 폭 `final_width_mm`, 폭 기반 `grip_inferred`, `message` |
+| `SetGripper` | process → skill | `close`, `width_mm`, `force_n`, `timeout_s` → `success`, 실제 정지 폭 `final_width_mm`, `grip_inferred`(modbus 는 grip 비트, 그 외 폭 추론), `message` |
 | `MeasureForce` | process → skill | `samples`, `settle_s` → `force[6]`, `fz_mean_n`, `fz_std_n`, `valid`, `message`. `force`는 `get_tool_force(DR_BASE)`의 tool 외력 wrench `[Fx,Fy,Fz,Mx,My,Mz]`; 앞 3개는 N, 뒤 3개는 N·m이며 관절 토크가 아니다. 작용점은 컨트롤러의 설정 tool/TCP 기준으로 사용하고 실물 G1에서 확인한다 |
 | `SafePose` | process → skill | `reason` → `success`, `message`. 인터락·오류 시 공통 안전 자세로 후퇴한다 |
 
