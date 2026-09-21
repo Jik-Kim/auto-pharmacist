@@ -861,28 +861,24 @@ class SkillNode(Node):
         station = self.stations.for_material(material_id)
         # 두 자세를 모두 검증한 뒤에만 첫 이동을 시작한다. 미티칭이면 현재 자세를 유지한다.
         start = SkillNode._pose_from_extra(station, 'return_start_posx')
-        end = SkillNode._pose_from_extra(station, 'return_end_posx')
+        end = SkillNode._pose_from_extra(station, 'return_end_posj')
         if job.cancel:
             raise RuntimeError('cancelled')
         job.feedback and job.feedback('APPROACH')
         self.arm.movel(start, self.vel_scale)
         if job.cancel:
             raise RuntimeError('cancelled')
-        completed = False
-        try:
-            job.feedback and job.feedback('TILT')
-            self.arm.movel(end, self.vel_scale)
-            if job.cancel:
-                raise RuntimeError('cancelled')
-            job.feedback and job.feedback('HOLD')
-            self._wait_with_nudge(float(self.get_parameter('pour.hold_s').value), job)
-            if job.cancel:
-                raise RuntimeError('cancelled')
-            completed = True
-        finally:
-            if completed and not job.cancel:
-                job.feedback and job.feedback('RETURN')
-                self.arm.movel(start, self.vel_scale)
+        job.feedback and job.feedback('TILT')
+        # 손목 특이점을 지나는 직선 보간 대신 티칭한 관절각으로 이동한다.
+        self.arm.movej_cancellable(end, self.vel_scale, lambda: job.cancel, self.motion_timeout_s)
+        if job.cancel:
+            raise RuntimeError('cancelled')
+        job.feedback and job.feedback('HOLD')
+        self._wait_with_nudge(float(self.get_parameter('pour.hold_s').value), job)
+        if job.cancel:
+            raise RuntimeError('cancelled')
+        # TODO([A]): 반환 끝 → 재스쿱 연결은 스쿱 모션 구현 시 함께 티칭·검증한다.
+        # 시작 자세로 돌아가지 않고 반환 끝 자세에서 종료한다.
         return True
 
     def _measure_weight_reading(self, tare_g: float, subject: str,

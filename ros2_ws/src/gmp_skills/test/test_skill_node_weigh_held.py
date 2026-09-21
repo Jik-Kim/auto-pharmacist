@@ -363,10 +363,12 @@ def _held_scoop_node(skill_node, station):
         gripper=SimpleNamespace(state=lambda _: {'busy': False, 'grip_inferred': True}),
         stations=SimpleNamespace(get=lambda _: station, for_material=lambda _: station),
         arm=SimpleNamespace(movel=lambda target, scale: moves.append((list(target), scale))),
+        motion_timeout_s=30.0,
         vel_scale=0.3,
         get_parameter=lambda _: SimpleNamespace(value=0.5),
         _wait_with_nudge=lambda duration, job: holds.append((duration, job.kind)),
     )
+    node.arm.movej_cancellable = lambda target, scale, cancel, timeout: moves.append((list(target), scale))
     return node, moves, holds
 
 
@@ -406,7 +408,7 @@ def test_cancelled_pour_or_return_never_starts_motion(monkeypatch, kind):
         'pour_start_posx': [1.0] * 6,
         'pour_end_posx': [2.0] * 6,
         'return_start_posx': [3.0] * 6,
-        'return_end_posx': [4.0] * 6,
+        'return_end_posj': [4.0] * 6,
     })
     node, moves, _ = _held_scoop_node(skill_node, station)
     job = skill_node.Job(kind, {'fraction': 1.0} if kind == 'pour' else {'material_id': 'A'}, cancel=True)
@@ -425,7 +427,7 @@ def test_end_move_failure_does_not_issue_restore_motion(monkeypatch, kind):
         'pour_start_posx': [1.0] * 6,
         'pour_end_posx': [2.0] * 6,
         'return_start_posx': [3.0] * 6,
-        'return_end_posx': [4.0] * 6,
+        'return_end_posj': [4.0] * 6,
     })
     node, moves, _ = _held_scoop_node(skill_node, station)
 
@@ -435,6 +437,7 @@ def test_end_move_failure_does_not_issue_restore_motion(monkeypatch, kind):
             raise RuntimeError('end move failed')
 
     node.arm.movel = fail_at_end
+    node.arm.movej_cancellable = lambda target, scale, cancel, timeout: fail_at_end(target, scale)
     job = skill_node.Job(kind, {'fraction': 1.0} if kind == 'pour' else {'material_id': 'A'})
 
     with pytest.raises(RuntimeError, match='end move failed'):
@@ -453,19 +456,23 @@ def test_return_without_taught_poses_is_rejected_before_motion(monkeypatch):
     assert moves == []
 
 
-def test_return_uses_taught_path_and_restores_start(monkeypatch):
+def test_return_uses_joint_end_without_restoring_start(monkeypatch):
     skill_node = _load_skill_node(monkeypatch)
     start = [400.0, -298.0, 240.0, 90.0, -180.0, -90.0]
     end = [400.0, -298.0, 180.0, 90.0, -140.0, -90.0]
     station = SimpleNamespace(station_id='material_1', extra={
-        'return_start_posx': start, 'return_end_posx': end,
+        'return_start_posx': start, 'return_end_posj': end,
     })
     node, moves, holds = _held_scoop_node(skill_node, station)
 
+    joint_moves = []
+    node.arm.movej_cancellable = lambda target, scale, cancel, timeout: (joint_moves.append(list(target)), moves.append((list(target), scale)))
     assert skill_node.SkillNode._do_return_material(
         node, skill_node.Job('return_material', {'material_id': 'A'})) is True
-    assert [pose for pose, _ in moves] == [start, end, start]
+    assert [pose for pose, _ in moves] == [start, end]
     assert holds == [(0.5, 'return_material')]
+
+    assert joint_moves == [end]
 
 
 @pytest.mark.parametrize('period', [0, -1, float('nan'), float('inf')])
@@ -504,3 +511,32 @@ def test_sampling_parameter_reaches_all_measurement_paths(monkeypatch, entry):
         assert calls == []
     else:
         assert calls == [((3, 0.2), {'period_s': 0.82, 'observer': node._observe_force})]
+
+
+@pytest.mark.parametrize('end', [None, [1.0] * 5, [float('nan')] * 6])
+def test_return_invalid_joint_end_rejected_before_approach(monkeypatch, end):
+    skill_node = _load_skill_node(monkeypatch)
+    station = SimpleNamespace(station_id='material_1', extra={
+        'return_start_posx': [1.0] * 6, 'return_end_posj': end})
+    node, moves, _ = _held_scoop_node(skill_node, station)
+    with pytest.raises(ValueError, match='return_end_posj'):
+        skill_node.SkillNode._do_return_material(
+            node, skill_node.Job('return_material', {'material_id': 'A'}))
+    assert moves == []
+
+
+def test_return_cancel_during_joint_move_skips_hold_and_restore(monkeypatch):
+    module = _load_skill_node(monkeypatch)
+    station = SimpleNamespace(station_id='material_1', extra={
+        'return_start_posx': [1.0] * 6, 'return_end_posj': [2.0] * 6})
+    node, moves, holds = _held_scoop_node(module, station)
+    job = module.Job('return_material', {'material_id': 'A'})
+    def cancel_move(target, scale, cancelled, timeout):
+        job.cancel = True
+        assert cancelled()
+        raise RuntimeError('cancelled')
+    node.arm.movej_cancellable = cancel_move
+    with pytest.raises(RuntimeError, match='cancelled'):
+        module.SkillNode._do_return_material(node, job)
+    assert len(moves) == 1
+    assert holds == []
