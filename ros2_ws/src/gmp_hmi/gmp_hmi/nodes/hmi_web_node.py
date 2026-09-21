@@ -42,6 +42,7 @@ try:
 except ImportError:
     RecoverSafety = None  # 최신 계약 빌드 전에는 복구를 차단한다.
 from gmp_hmi.core.measurement_context import target_band
+from gmp_hmi.core.pause_context import pause_reason
 from gmp_hmi.core.safety_recovery import SafetyRecovery
 from gmp_hmi.core.db import DECISIONS, KINDS, VERDICTS, CellDB
 from gmp_hmi.core.session_inventory import SessionInventory
@@ -314,7 +315,8 @@ class HmiRosNode(Node):
                 self.snap['weights'] = []
             self._received('state')
             self.snap['state'] = {'mode': MODES.get(m.mode, '?'), 'step': m.step, 'batch_id': m.batch_id,
-                                  'item_index': m.item_index, 'station': m.station, 'note': m.note, 't': self._t(m.header)}
+                                  'item_index': m.item_index, 'station': m.station, 'note': m.note, 't': self._t(m.header),
+                                  'pause_reason': pause_reason(MODES.get(m.mode, '?'), m.step, m.note)}
 
     def _on_weight(self, m):
         with self.lock:

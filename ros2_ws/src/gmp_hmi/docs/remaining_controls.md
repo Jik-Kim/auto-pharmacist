@@ -35,7 +35,7 @@
 
 HMI의 `integration`과 미연결 문구는 이 상태를 명시한다. 없는 ROS 엔드포인트를 만들거나
 시험 서비스를 운영 네임스페이스에 붙이지 않는다. 회수 버튼은 감사 기록 기능을 그대로 유지한다.
-`todo.md`와 `issues.md`는 조장 관리이므로 수정하지 않는다.
+할 일·이슈의 정본은 GitHub Issues다. `docs/todo.md`와 `docs/issues.md`는 동결된 과거 스냅샷이다.
 
 ## 검증
 
