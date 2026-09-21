@@ -28,10 +28,24 @@ kind: move | grip | carry | scoop | pour | weigh | weigh_scoop | measure | safe 
 ②만으로는 개별 원료가 전부 같은 방향으로 치우친 경우를 못 잡는다 — 두 값이 함께 낮아 서로 일치하기 때문이다.
 상태 이름은 CellState.step 에 그대로 실린다 (docs/architecture.md 전이표).
 """
+import math
 from dataclasses import dataclass, field
 
 from gmp_dosing.core.dosing import decide
 from gmp_process.core.deviation import policy
+
+
+@dataclass
+class ToolFingerprint:
+    """폭 지문 식별 설정 (D-20 추가 1, v1.2) — 스쿱은 원료별 기대 폭, 약통은 전 원료 공통 규격.
+
+    스쿱 폭은 `stations.yaml` 의 `expected_scoop_width_mm` (`StationMap.widths`), 약통 폭은
+    `common.yaml` `gripper.cup_width_mm` 이 그대로 기대값이다 — process_node 가 채워 넘긴다.
+    tolerance_mm ≤ 0 이거나 해당 원료의 기대 폭이 없으면 검사를 건너뛴다(테스트 기본값 = 끔).
+    """
+    scoop_widths_mm: dict = field(default_factory=dict)   # material_id → 기대 스쿱 손잡이 폭 [mm]
+    cup_width_mm: float = 0.0                              # 기대 약통 파지부 폭 [mm]
+    tolerance_mm: float = 0.0                              # ±margin [mm]
 
 
 @dataclass
@@ -55,6 +69,7 @@ class ProcessFSM:
     spec: object                 # RecipeSpec
     dosing_cfg: object           # DosingConfig
     scale: object                # WeightModel
+    fingerprint: ToolFingerprint = field(default_factory=ToolFingerprint)
     state: str = 'IDLE'
     mode: str = 'IDLE'
     idx: int = 0
@@ -134,6 +149,27 @@ class ProcessFSM:
             return self._deviate('WEIGH_INVALID', step)
         return retry
 
+    def _wrong_tool_or(self, res: dict, step: str, expected_mm: float):
+        """폭 지문 불일치 검사 (D-20 추가 1). 기대 폭이 없거나 margin ≤ 0 이면 건너뛴다(None).
+
+        정책상 WRONG_TOOL 은 즉시 QA 다(재시도 없음) — 잘못 꽂힌 스쿱·약통을 로봇이 스스로
+        고쳐 낄 방법이 없고, 교차오염 의심은 사람 판단이 필요하다.
+
+        폭이 음수·비유한 값이면 검사를 건너뛴다 — DIO 백엔드는 폭 피드백이 없어 성공해도
+        -1 을 돌려준다(grip_inferred 는 DI 핀으로 따로 추론). 이 값을 기대 폭과 비교하면 정상
+        파지가 전부 WRONG_TOOL 로 오판된다 (A 리뷰, PR #165).
+        """
+        tol = self.fingerprint.tolerance_mm
+        if not expected_mm or tol <= 0:
+            return None
+        actual_mm = float(res.get('final_width_mm', 0.0))
+        if actual_mm < 0 or not math.isfinite(actual_mm):
+            return None
+        if abs(actual_mm - expected_mm) > tol:
+            return self._deviate('WRONG_TOOL', step,
+                                 detail=f'폭 {actual_mm:.1f}mm (기대 {expected_mm:.1f}±{tol:.1f}mm)')
+        return None
+
     # ── 전이 ─────────────────────────────────────────────────────────
     def on_result(self, req: dict, res: dict):
         k, st = req['kind'], self.state
@@ -150,6 +186,9 @@ class ProcessFSM:
         if k == 'carry' and st == 'PICK_CONTAINER':
             if not res.get('grip_inferred', False):
                 return self._deviate('GRIP_FAIL', 'PICK_CONTAINER', retry=req)
+            dev = self._wrong_tool_or(res, 'PICK_CONTAINER', self.fingerprint.cup_width_mm)
+            if dev is not None:
+                return dev
             self.state = 'TARE'
             return self._weigh_cup(0.0)
         if k == 'weigh' and st == 'TARE':
@@ -163,6 +202,9 @@ class ProcessFSM:
         if k == 'grip' and st == 'PICK_SCOOP':
             if not res.get('grip_inferred', False):
                 return self._deviate('GRIP_FAIL', 'PICK_SCOOP', retry={'kind': 'grip', 'close': True, 'target': 'scoop'})
+            dev = self._wrong_tool_or(res, 'PICK_SCOOP', self.fingerprint.scoop_widths_mm.get(self.cur.material_id))
+            if dev is not None:
+                return dev
             self.state = 'SCOOP_TARE'
             return self._weigh_scoop()                 # 빈 스쿱 무게 — 원료마다 1회
         if k == 'weigh_scoop' and st == 'SCOOP_TARE':
@@ -336,8 +378,23 @@ class ProcessFSM:
         return {'kind': 'safe', 'then': None, 'reason': 'RECOVERY'}
 
     def _after_qa(self, decision: str):
+        if self._qa_step == 'PICK_CONTAINER':
+            # WRONG_TOOL 만 여기서 QA 로 온다(GRIP_FAIL 은 FORCED 로 빠진다) — `self.cur` 가 아직
+            # 없다(TARE 전). carry 는 이미 workbench 에 내려놓고 그리퍼를 연 뒤라 스쿱 반납 단계가 없다.
+            if decision == 'APPROVED':
+                self.state, self.mode = 'TARE', 'RUNNING'
+                return self._weigh_cup(0.0)
+            self.state, self.mode = 'DISCARDED', 'DONE'
+            return self._carry('workbench', 'reject_bin')
         holding_scoop = self._qa_step != 'VERIFY'      # VERIFY 는 스쿱을 반납한 뒤라 그리퍼가 비어 있다
         if decision == 'APPROVED':
+            if self._qa_step == 'PICK_SCOOP':
+                # WRONG_TOOL 만 여기로 온다(GRIP_FAIL 은 FORCED 로 빠진다) — 스쿱을 이미 쥔 채다.
+                # 승인은 "이 스쿱으로 계속 진행" 이지 원료를 건너뛰는 게 아니다. 다른 QA 지점과
+                # 달리 아직 아무것도 못 퍼서 결과에 남길 게 없다 — 정상 경로(SCOOP_TARE)로 이어간다
+                # (A 리뷰, PR #165 — 예전엔 빈 ItemRun 을 결과로 남기고 원료를 건너뛰었다).
+                self.state = 'SCOOP_TARE'
+                return self._weigh_scoop()
             if not holding_scoop:                      # 대조 불일치를 QA 가 승인 → 그대로 완료품으로
                 self.state, self.mode = 'FINISH', 'RUNNING'
                 return self._carry('workbench', 'passbox_done')

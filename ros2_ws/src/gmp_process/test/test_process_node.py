@@ -146,6 +146,22 @@ def test_skill_call_sequence(cell):
     assert subjects.count('scoop') == 1 + 2 * attempts
 
 
+def test_scoop_grip_commands_the_search_width_not_the_expected_width(cell):
+    """스쿱 파지 명령폭은 원료와 무관한 탐색 폭이다 — 기대 폭(WRONG_TOOL 판정용)을 명령폭으로 쓰면
+    그보다 가는 손잡이는 접촉조차 못 해 GRIP_FAIL 로 빠진다 (A 리뷰, PR #165)."""
+    proc, fake, col = cell
+    search = float(proc.p('gripper.scoop_search_width_mm'))
+    cup = float(proc.p('gripper.cup_width_mm'))
+    _submit(col, [('A', 100.0, 5.0), ('C', 50.0, 5.0)])       # 기대 폭이 서로 다른 두 원료 (15.5 / 28)
+    assert _wait_done(proc) == 'DONE', proc.note
+
+    closes = [c for c in fake.calls if c.startswith('grip:close:')]
+    scoop_closes = [c for c in closes if c != f'grip:close:{cup:.0f}']
+    assert scoop_closes, closes
+    assert set(scoop_closes) == {f'grip:close:{search:.0f}'}, \
+        f'원료마다 다른 폭으로 명령하고 있다: {scoop_closes}'
+
+
 def test_rejects_unknown_material(cell):
     """전용 스쿱이 없는 원료는 주문 단계에서 거부한다 — 배치 중간에 서지 않게."""
     proc, fake, col = cell

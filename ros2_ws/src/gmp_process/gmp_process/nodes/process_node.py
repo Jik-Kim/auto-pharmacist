@@ -41,7 +41,7 @@ from gmp_interfaces.srv import (InterlockRequest, MeasureForce, QaDecision, Reco
 from gmp_dosing.core.dosing import DosingConfig
 from gmp_dosing.core.scale import ScaleConfig, WeightModel
 from gmp_process.core.attempt import Attempt, Reading
-from gmp_process.core.process_fsm import ProcessFSM
+from gmp_process.core.process_fsm import ProcessFSM, ToolFingerprint
 from gmp_process.core.recipe import parse as parse_recipe
 from gmp_process.core.station_map import StationMap
 
@@ -83,8 +83,10 @@ class ProcessNode(Node):
             ('scale.min_resolvable_g', 19.0), ('scale.max_std_g', 10.0),     # G1 9/19 — common.yaml 과 같은 값
             ('scale.samples', 20), ('scale.settle_s', 1.0),
             ('dosing.max_attempts', 3), ('dosing.scoop_nominal_g', 40.0), ('dosing.min_fraction', 0.15),
-            ('gripper.scoop_width_mm', 18.0), ('gripper.cup_width_mm', 60.0),
+            ('gripper.cup_width_mm', 60.0),
             ('gripper.open_width_mm', 100.0), ('gripper.force_n', 20.0),
+            ('gripper.fingerprint_tolerance_mm', 0.0),   # [추가 1] WRONG_TOOL 폭 지문 margin. 0 이면 검사 꺼짐
+            ('gripper.scoop_search_width_mm', 0.0),      # 스쿱 파지 탐색 목표 폭 — 기대 폭과 분리(A 리뷰, PR #165)
             ('skill_timeout_s', 90.0), ('server_wait_s', 20.0), ('grip_timeout_s', 5.0),
             ('safety.nudge_enabled', True),   # skill_node 와 같은 스위치 — 끄면 NUDGE 를 무시한다
         ])
@@ -373,7 +375,9 @@ class ProcessNode(Node):
         self._used_batch_ids.add(self.batch_id)
         self._reset_batch()
         self._last_result = DispenseResult()
-        self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale)
+        fingerprint = ToolFingerprint(scoop_widths_mm=self.smap.widths, cup_width_mm=self.p('gripper.cup_width_mm'),
+                                      tolerance_mm=self.p('gripper.fingerprint_tolerance_mm'))
+        self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale, fingerprint=fingerprint)
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name='process-run')
         self._thread.start()
 
@@ -755,8 +759,16 @@ class ProcessNode(Node):
                        MoveToStation.Goal.AT if req.get('approach') == 'AT' else MoveToStation.Goal.ABOVE)
             return {'success': True, 'reached': self.station}
         if k == 'grip':
-            width = (self.p('gripper.scoop_width_mm') if req.get('target') == 'scoop'
-                     else self.p('gripper.cup_width_mm')) if req.get('close') else self.p('gripper.open_width_mm')
+            if not req.get('close'):
+                width = self.p('gripper.open_width_mm')
+            elif req.get('target') == 'scoop':
+                # 탐색 목표 폭(9/21) — 기대 폭(WRONG_TOOL 판정용)과 분리한다. 기대 폭을 명령폭으로
+                # 쓰면 그보다 더 가는 손잡이는 접촉조차 못 해 GRIP_FAIL 로 빠지고 WRONG_TOOL 판정까지
+                # 가지도 못한다(A 리뷰, PR #165). 원료 상관없이 확실히 더 좁게 명령해 항상 접촉시키고,
+                # 실제로 닿아 멈춘 폭(final_width_mm)을 기대 폭과 비교하는 건 FSM 몫이다.
+                width = self.p('gripper.scoop_search_width_mm')
+            else:
+                width = self.p('gripper.cup_width_mm')
             return self._grip(bool(req.get('close')), width)
         if k == 'carry':
             return self._carry(req)
