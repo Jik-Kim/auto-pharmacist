@@ -197,6 +197,9 @@ def main(argv=None):
                          "예: workbench(용기 계량) | material_1/2/3(weigh_held 가 실제로 재는 자세 — "
                          "calibration 은 이 자세로 해야 gain/offset 이 운영과 맞는다)")
     ap.add_argument('--vel-scale', type=float, default=0.2, help='--goto-station 속도 스케일')
+    ap.add_argument('--offset-mm', default='', metavar='DX,DY,DZ',
+                    help='--goto-station 좌표에 더할 [mm] — 실물 위치가 바뀌었는데 stations.yaml 이 '
+                         '아직 반영 전(PR 대기)일 때 임시 보정. 예: 100,0,0')
     ap.add_argument('--gripper', action='store_true', help='/onrobot/sendCommand 로 세트마다 열기·닫기')
     ap.add_argument('--grip-width-mm', type=float, default=None, help='닫을 때 목표 폭 [mm]. 없으면 완전 닫기(c)')
     a = ap.parse_args(argv)
@@ -211,6 +214,10 @@ def main(argv=None):
     close_cmd = f'{int(round(a.grip_width_mm * 10))}' if a.grip_width_mm else 'c'
     if a.goto_station:
         posx = station_posx(a.goto_station)
+        if a.offset_mm:
+            dx, dy, dz = (float(v) for v in a.offset_mm.split(','))
+            posx = [posx[0] + dx, posx[1] + dy, posx[2] + dz, *posx[3:]]
+            print(f'    offset ({dx:g}, {dy:g}, {dz:g}) mm 적용 → {posx}')
         input(f'\n[0] {a.goto_station} 계량 자세 {posx} 로 이동합니다 (vel_scale {a.vel_scale}). 주변 확인 → Enter ')
         arm.movel(posx, a.vel_scale)
         print('    이동 완료')
