@@ -55,6 +55,8 @@ ros2 launch gmp_bringup skill.launch.py
 cd ~/auto-pharmacist/ros2_ws/src && python3 -m pytest gmp_dosing gmp_process -q
 ```
 
+`gmp_process/test/test_process_node.py` 는 ROS 를 소싱한 상태에서 진짜 `process_node` 와 가짜 스킬 노드를 띄우는 통합 테스트다. **같은 `ROS_DOMAIN_ID` 로 다른 pytest 가 동시에 돌면 액션 서버가 겹쳐 무작위로 실패한다** ("There may be more than one action server" 경고, 실행마다 다른 테스트가 깨짐, NUDGE 계열이 특히 잘 걸림 — #167). 여러 세션·터미널에서 동시에 돌릴 때는 세션마다 다른 도메인을 준다: `ROS_DOMAIN_ID=71 python3 -m pytest …`. `test_run_batch_ros.py` 는 `ROS_DOMAIN_ID=88` 일 때만 실행되고 그 외에는 skip 된다.
+
 관절 이송을 포함한 스킬 단위 테스트는 저장소 루트에서 실행한다.
 가상·실물 검증은 사용자가 수행한다. 개발 검증은 아래 단위 테스트로 한정한다.
 
