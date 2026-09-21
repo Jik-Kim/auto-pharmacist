@@ -47,6 +47,8 @@ class FakeSkillNode(Node):
                                                 #   → 스쿱 계량으로는 안 잡히고 VERIFY ① BATCH_OUT_OF_SPEC 이 잡는다
         self.scoop_gain = 1.0                   # 깊이당 퍼올림 배율. 크게 주면 min_fraction 으로도 남은 양을 넘겨
                                                 #   반환만 반복하다 붓기 전에 TIMEOUT 이 난다 (붓기 전 일탈 시험용)
+        self.block_rescoop = False              # 실물처럼 반환 뒤 Scoop 을 거부할지 (v1.5.1 · PR #43)
+        self._rescoop_blocked = False           #   반환이 세운다. 실물과 같이 풀리지 않는다
         self.cancelled = False                  # safe_pose 가 세운다 — 진행 중 스킬 1건이 실패로 끝난다
         self.attendant = True                   # 세트 끝 NUDGE_WAIT 에서 사람이 건드려 준다 (D-23). 대기 자체를 시험하면 False
         self._attend_stop = threading.Event()
@@ -169,6 +171,14 @@ class FakeSkillNode(Node):
         if not math.isfinite(depth) or not MIN_DEPTH_FRACTION <= depth <= 1.0:
             gh.abort()
             return Scoop.Result(success=False, message=f'담그기 깊이 비율 범위 밖: {depth}')
+        # v1.5.1 (PR #43) — 실물은 반환 중 `_return_rescoop_blocked` 를 세우고 이후 Scoop 을 전부
+        # 거부한다. 플래그는 풀리지 않는다(연결 경로 미구현, #64). 같은 문구로 흉내 낸다.
+        with self.lock:
+            blocked = self._rescoop_blocked
+        if blocked:
+            gh.abort()
+            return Scoop.Result(success=False,
+                                message='반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
         self._hold('scoop')
         with self.lock:
             if self._take_cancel():
@@ -214,6 +224,8 @@ class FakeSkillNode(Node):
             if self._fails('return_material'):
                 gh.abort()
                 return ReturnMaterial.Result(success=False, message='원료통 반환 경로 실패')
+            if self.block_rescoop:
+                self._rescoop_blocked = True    # 실물처럼 기울인 자세에서 세우고 풀지 않는다
             if self.held:
                 self.content[self.held] = 0.0
         gh.succeed()
