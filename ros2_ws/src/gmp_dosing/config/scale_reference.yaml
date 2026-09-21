@@ -183,6 +183,23 @@ tool_force_calibration:
       순서: ① 9/22 σ 측정 → ② σ 파라미터 추가 + VERIFY ② 수식(C) → ③ 그때 min_resolvable_g 제거.
       **②가 되기 전에는 뺄 수 없다** — 지금은 그 값이 VERIFY ② 임계다.
 
+      ③ 은 common.yaml 한 줄 삭제로 끝나지 않는다 (C 지적, B 재확인). 여러 패키지를 같이 고쳐야 한다:
+        · common.yaml scale.min_resolvable_g 삭제 ..................... 조장
+        · skill_node:911 ScaleConfig(min_resolvable_g=...) 전달 제거 ... A
+        · test_skill_node_weigh_held.py:493 overrides 에서 제거 ........ A
+        · process_node:83,96 선언·ScaleConfig 전달 제거 ................ C
+        · process_fsm:27,289,291 ② 수식·주석 교체 ..................... C
+        · make_process_drawio.py:130,253 의 ② 표기 교체 ................ C
+        · scale.py 의 ScaleConfig 필드·resolvable() 는 유지 ............ B
+        · scale_reference.yaml·calibration/README.md 에 측정 기록으로 보존 . B
+      ⚠️ 순서를 어기면 **기동이 아니라 배치 도중에** 터진다. C 는 "기동 시점" 이라 했는데 실제로는 더 늦다:
+         skill_node 는 automatically_declare_parameters_from_overrides=True(:64) 라 이 파라미터가
+         common.yaml 에만 존재하고, 읽는 자리도 생성자가 아니라 _measure_weight_reading(:911) 이다.
+         그래서 common.yaml 에서 먼저 빼면 **브링업은 멀쩡히 뜨고** 첫 계량 —
+         _do_weigh(:952 용기) 또는 _do_weigh_held(:989 스쿱) — 에서 ParameterNotDeclaredException 이 난다.
+         이미 시료를 퍼담은 뒤에 터지므로 실물 피해가 있다. **common.yaml 에서 빼는 건 skill_node 수정 뒤다.**
+         process_node 는 :83 에 기본값 선언이 있어 안 죽는다. 대신 조용히 19.0 을 계속 쓴다 — 더 나쁘다.
+
     ownership: |
       process_fsm 수식·ItemRun.cycles 는 C, 파라미터 추가·min_resolvable_g 제거는 조장, σ 측정은 B.
       C 제안 순서: ① 계량 자세 결정 → ② common.yaml 갱신 → ③ σ 분리 + 동적 임계 구현 → ④ 가상 브링업 실측.
