@@ -84,7 +84,7 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 | `weigh_scoop` | `station`, `material_id`, `tare_g`(빈 스쿱) | `weigh_held(tare_g)` — **해당 `material_N.posx`에서** 들고 있는 스쿱을 계량 (SCOOP_TARE · WEIGH_SCOOP · WEIGH_RESIDUAL) | `{'gross_g', 'net_g', 'std_g', 'valid'}` + `weight` 발행 (`station=material_N`, `subject='scoop'`) |
 | `move` | `station`, `approach`('AT'/'ABOVE') | `move_to_station(station_id, approach)` — `station='scoop'` 이면 `material_id` 로 `stations.yaml` 의 `scoop_N` 을 찾아 넣는다 (`core/station_map.py`, D-24) | `{'success', 'reached'}` — `reached` 는 `CellState.station` 이 된다 |
 | `grip` | `close`, `target`('scoop'/'cup') | `set_gripper(close, width=scoop_width 또는 cup_width, force)` | `{'grip_inferred', 'final_width_mm'}` |
-| `scoop` | `material_id`, `attempt`, `fraction` | `scoop(material_id, attempt)` — `fraction` 은 담그기 깊이 **힌트**일 뿐 (보정 투입은 얕게) | `{'contact_detected', 'max_contact_force_n', 'insertion_depth_mm'}` — 뒤 둘은 FSM 이 안 쓰고 `ScoopCycle` 에 실린다. 붓기 비율은 WEIGH_SCOOP 가 퍼낸 양으로 다시 정한다 |
+| `scoop` | `material_id`, `attempt`, `fraction` | `scoop(material_id, attempt, depth_fraction=fraction)` — 계약 v1.5: `fraction` 이 담그기 깊이 비율 [`min_fraction`, 1.0] 로 전달된다. `attempt` 는 기록용. 실제 Z 변환식은 A 실물 뒤 | `{'contact_detected', 'max_contact_force_n', 'insertion_depth_mm'}` — 뒤 둘은 FSM 이 안 쓰고 `ScoopCycle` 에 실린다. 붓기 비율은 WEIGH_SCOOP 가 퍼낸 양으로 다시 정한다 |
 | `pour` | `station`, `fraction=1` | `pour(1)` — `workbench_pour_start`에서 `workbench_pour_end`까지 전량 붓는다. | `{'success'}` |
 | `return_material` | `material_id` | `return_material(material_id)` — `return_start_posx`·`return_end_posj` 가 없으면 실패 | `{'success', 'message'}` |
 | `safe` | `reason`, `then` | `safe_pose(reason)` | `{'success'}` — 전이는 요청의 `then` 이 정한다 |

@@ -11,8 +11,9 @@
 | T2 | HMI | (T1 에 포함) HMI 창 | 상태 `IDLE`, 그리퍼 폭 표시 |
 | T3 | 사람 | 원료통 A·B·C(판 바깥 아래)와 **각 원료통 아래 전용 스쿱 3개**, **빈 약통을 Pass Box 「빈통」 칸(`passbox_empty`, slots 1)** 에 넣었는지. 완성품은 로봇이 Pass Box 「완성품」 칸(`passbox_done`)에 놓고 QA 가 회수한다 (D-23·D-24). 판 위 매거진·트레이·스쿱랙은 없다 (9/18 폐지). 이후 용기는 사람이 만지지 않는다 (D-18) | — |
 | T4 | HMI | 레시피 `demo_batch` 선택 → 주문 제출 | 상태 `RUNNING` |
-| T5 | — | 자율 운전. **손대지 않는다** | 원료 3종 `OK`, `DONE` |
-| T6 | 시연 | 일탈 시나리오: (a) 스쿱을 빼둔 채 시작 → `GRIP_FAIL` 자동 재시도 (b) 원료통 비움 → `MATERIAL_EMPTY` → 인터락 보충 → 재개 (c) 과다 투입 유도 → `OVERFILL` → HMI QA 판정 | 각각 `deviation` 이 뜨고 기록에 남는다 |
+| T5 | — | 자율 운전. **공정 중에는 손대지 않는다** (건드리면 NUDGE 정지, 한 번 더 건드리면 재개 — D-21). 원료 3종이 끝나면 완성품을 Pass Box 「완성품」 칸에 놓고 `nudge_wait` 로 물러나 **PAUSED 로 선다(`NUDGE_WAIT`)** | 원료 3종 `OK` → 상태 `NUDGE_WAIT` |
+| T5' | 사람 | **완성품을 Pass Box 에서 회수하고 로봇을 한 번 건드린다** (D-23 세트 경계). 이 NUDGE 없이는 `DONE` 이 되지 않고 다음 주문도 받지 않는다 | `DONE`, 상태 `IDLE` |
+| T6 | 시연 | 일탈 시나리오: (a) 스쿱을 빼둔 채 시작 → `GRIP_FAIL` 자동 재시도 (b) 원료통 비움 → `MATERIAL_EMPTY` → 인터락 보충 → 재개 (c) 초과 스쿱 유도(원료를 수북이) → `RETURN_MATERIAL` 로 원료통에 반환 후 재스쿱 — **반환→재스쿱 연결 경로 구현 전(v1.5.1)까지 실물은 여기서 `ERROR` 로 끝난다**, 가상은 반환 한도 초과 시 `TIMEOUT` → QA (d) 배치 끝 VERIFY 규격 이탈 → `BATCH_OUT_OF_SPEC` → HMI QA 판정. `OVERFILL` 은 v1.3 뒤 정상 경로에서 나오지 않는다(초과는 붓기 전에 반환) | 각각 `deviation` 이 뜨고 기록에 남는다 |
 | T7 | — | 종료: HMI 에서 `SafePose` → 런치 Ctrl-C | |
 
 규칙

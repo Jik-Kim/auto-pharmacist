@@ -1,4 +1,4 @@
-# Interfaces — 계약 v1.5.1 초안 (2026-09-21)
+# Interfaces — 계약 v1.5.1 (2026-09-21)
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
@@ -196,10 +196,13 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `batches` | 배치 1건 — 시작·종료·결과·사이클타임 | `state` 의 mode 전이 | RUNNING 진입 = 시작, DONE/ERROR 진입 = 종료 |
 | `items` | 원료별 분주 결과 | `dispense_result` | 목표·실측·오차·판정·시도 |
 | `weights` | 계량 1회 | `weight` | 그래프·분해능 근거. `valid=0` 도 남긴다 |
-| `scoop_cycles` *(v1.2 구현 필요)* | 스쿠핑 시도별 특징·결과·독립 기준값 | `scoop_cycle` | `valid=0`과 실패 outcome도 원본으로 남기고 학습 단계에서 필터링한다 |
+| `scoop_cycles` (v1.2, 구현 완료 — `UNIQUE(batch_id, material_id, attempt)`·배치 인덱스) | 스쿠핑 시도별 특징·결과·독립 기준값 | `scoop_cycle` | `valid=0`과 실패 outcome도 원본으로 남기고 학습 단계에서 필터링한다 |
 | `deviations` | 일탈 — 종류·판정·**판정자·판정 시각** | `deviation` | 같은 ID 재수신 시 판정만 갱신 |
 | `events` | 전 이벤트, **append-only** | `event` | MTBI(`INTERVENTION_FORCED`)·자동복구율 원천. 수정·삭제 메서드 없음 |
 | `audit` | **사람의 조작만** — 누가·언제·무엇 | `event` 중 `code` 가 `HMI_*` | `text` 첫 단어가 actor. 주문·QA 승인/폐기·인터락 |
+| `batch_recipes` | 주문 시점의 레시피 원본 (`payload_json`) | `RunBatch`/`SubmitOrder` 접수 | 배치당 1건. 계량 목표선·재기동 이어하기의 근거 (PR #42) |
+| `state_checkpoints` | 상태 전이마다 mode·step·item_index·station·note | `state` | 재기동 이어하기(추가 3) 체크포인트. C 복원 경로 연결은 미완 (#42) |
+| `legacy_item_duplicates` | 스키마 이관 전 `items` 중복 행 보관 (`original_id` + 원본 JSON) | — | 삭제 대신 보관 — append-only 원칙. 신규 기록에는 쓰지 않는다 |
 
 **규칙**
 - 배치 종료 시 `records/<batch_id>.json` 으로 내보낸다 — **DB 가 원본, JSON 은 사본**(제출·인쇄용).
@@ -211,7 +214,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 
 값을 만드는 쪽(process)·기록하는 쪽(record)·집계하는 쪽(`tools/report.py`, 휴강 중 작성)을 나눈다.
 
-## 8. v1.2 적용 인계
+### 7.1 v1.2 적용 인계 (9/18 기록 — 완료분은 SOT·todo 스냅샷 참조)
 
 - **A/조장:** `SetGripper` 서버와 계약 정의 완료. `Scoop` 본문에서 Feedback/Result 관측값을 실제 채우고, `GripperState`의 `busy/grip_inferred/safety_triggered`를 어댑터 실값에 연결하며 G1에서 `MeasureForce`의 tool/TCP 기준을 확인한다.
 - **C:** ✅ **9/18 완료** — `process_node` 가 스킬 8종을 계약대로 부른다. `grade/scoop_id` 없음, 원료 → `scoop_N` 은 `core/station_map.py` 가 `stations.yaml` 에서 풀고, `Pour`·`WeighContainer` 는 station 인자 없이 부르며, `SetGripper` 사용, `QaDecision.deviation_id` 불일치는 거부하고 판정 후 **같은 ID 로 재발행**한다. `scoop_cycle` 은 정상이면 `WEIGH_RESIDUAL` 뒤, 실패면 확정 단계에서 나간다. `CellState.station/note` 도 채운다. 확인: `test/test_process_node.py`(가짜 skill_node 로 레시피 1건 완주). **남은 것** — 6축 wrench 는 채울 경로가 없어 `*_wrench_valid=false` (I-008).
@@ -223,7 +226,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 
 ## 8. 안전 정지 복구 (v1.4 인계)
 
-사용자가 HMI 복구 요청 운영의 팀 합의를 확인했다. A 서비스는 `RecoverSafety.srv`, `/cell/recover_safety`다. HMI가 A를 직접 호출하지 않고 C가 현재 배치·실행 루프·권한을 확인한 뒤 전달한다. C 중계 엔드포인트 `/cell/request_safety_recovery`는 **구현됐다** (`process_node._srv_recover_safety`, 9/20) — 필드가 비었거나 `operator_confirmed` 가 아니면 skill_node 를 부르지 않고 거부하고, 그 외는 그대로 전달해 A 의 응답을 돌려준다. 상태·중복 요청·경합의 최종 판단은 A 가 한다. HMI `/recover` 버튼은 **아직 없다** (D).
+사용자가 HMI 복구 요청 운영의 팀 합의를 확인했다. A 서비스는 `RecoverSafety.srv`, `/cell/recover_safety`다. HMI가 A를 직접 호출하지 않고 C가 현재 배치·실행 루프·권한을 확인한 뒤 전달한다. C 중계 엔드포인트 `/cell/request_safety_recovery`는 **구현됐다** (`process_node._srv_recover_safety`, 9/20) — 필드가 비었거나 `operator_confirmed` 가 아니면 skill_node 를 부르지 않고 거부하고, 그 외는 그대로 전달해 A 의 응답을 돌려준다. 상태·중복 요청·경합의 최종 판단은 A 가 한다. HMI `/recover` 버튼·`POST /recover` 는 **구현됐다** (PR #41, `hmi_web_node.py` — operator/admin 단일 복구 버튼, 작업자·요청 ID·기대 상태·조치 확인 전달, 감사 기록). 남은 것은 A/C/D 실물 통합 검증이다.
 
 | 필드 | 의미 |
 |---|---|
