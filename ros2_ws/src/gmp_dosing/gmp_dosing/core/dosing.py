@@ -41,10 +41,22 @@ def verdict_of(target_g: float, actual_g: float, tol_pct: float) -> tuple[str, f
 
 def decide(target_g: float, actual_g: float, tol_pct: float, attempts: int, valid: bool,
            invalid_count: int, cfg: DosingConfig) -> Decision:
+    """다음 행동을 고른다. 상태를 갖지 않으며 이력은 호출자가 넘긴다.
+
+    ⚠️ `valid`·`invalid_count` 는 **운영에서 쓰이지 않는다** (2026-09-21 확인, C 교차검증).
+    유일한 운영 호출처인 `process_fsm:258` 이 `valid` 를 리터럴 `True` 로 넘기기 때문이다 —
+    무효 계량은 그 앞의 `_invalid_or()` 가 재계량시키거나 `WEIGH_INVALID` 로 일탈시켜
+    여기까지 내려오지 않는다. `invalid_count` 도 `if not valid:` 안에서만 읽히므로 같이 죽어 있다.
+    아래 무효 분기는 계약(상태 없음·이력은 호출자)을 지키려고 방어적으로 남겨둔 것이고,
+    지금 도달하는 곳은 test_dosing.py 뿐이다.
+    """
     if not valid:
         if invalid_count + 1 >= cfg.max_invalid:
             return Decision('DEVIATION', 'INVALID', 'WEIGH_INVALID')
-        return Decision('SCOOP', 'INVALID', fraction=0.0)   # fraction 0 = 붓지 말고 다시 재라
+        # ⚠️ fraction 은 **담그기 깊이**다 (v1.5). 옛 설계에서는 붓기 비율이라 0 이 "붓지 말고 다시 재라"
+        #    였지만, 지금 이 값이 실제로 쓰이면 `_scoop(0.0)` → 깊이 0 이 되어 계약 v1.5 의
+        #    min_fraction 하한(미만이면 이동 전 거부)을 위반한다. 이 분기를 살려 쓰려면 먼저 고칠 것.
+        return Decision('SCOOP', 'INVALID', fraction=0.0)
     v, err = verdict_of(target_g, actual_g, tol_pct)
     if v == 'OK':
         return Decision('DONE', v, error_pct=err)
