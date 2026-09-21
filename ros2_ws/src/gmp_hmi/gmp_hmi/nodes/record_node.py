@@ -66,6 +66,7 @@ class RecordNode(Node):
         self.active = row['finished_at'] is None
         if not self.active:
             return  # 재접속 때 재수신한 DONE/RUNNING 이 완료 배치를 다시 열지 않는다.
+        self.db.checkpoint(m.batch_id, t, str(m.mode), m.step, m.item_index, m.station, m.note)
         if m.mode == CellState.DONE and m.step not in ('DONE', 'DISCARDED'):
             if m.batch_id not in self._held_completion:
                 note = '물리적 완료 확인 대기: C가 이송 완료 후 mode=DONE, step=DONE/DISCARDED 발행 필요'
@@ -132,6 +133,12 @@ class RecordNode(Node):
             except (ValueError, TypeError):
                 pass
             self.db.start_batch(batch_id, t, product)
+        if m.code == 'HMI_ORDER_CONTEXT' and batch_id:
+            try:
+                recipe = json.loads(m.text.partition(' ')[2])
+                self.db.save_recipe_context(batch_id, t, recipe)
+            except (ValueError, TypeError, KeyError, AttributeError):
+                self.get_logger().warning('잘못된 HMI 레시피 문맥: ' + batch_id)
         if m.code.startswith('HMI_'):
             actor, _, detail = m.text.partition(' ')
             self.db.audit(t, actor or 'unknown', m.code[4:], batch_id or '', detail)

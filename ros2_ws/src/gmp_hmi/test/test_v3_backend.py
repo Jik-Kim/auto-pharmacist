@@ -356,6 +356,7 @@ def test_qa_contract_pending_check_and_command_staleness(app_db, node):
     node.act_batch.ready = False
     assert post(client, token, '/order', {'recipe': 'demo_batch'}).status_code == 503
     node.act_batch.ready = True
+    node._on_state(state(mode=0, batch=''))
     node._send_batch_goal = lambda *args, **kwargs: None
     response = post(client, token, '/order', {'recipe': 'demo_batch'})
     assert response.status_code == 503 and response.json['uncertain'] is True

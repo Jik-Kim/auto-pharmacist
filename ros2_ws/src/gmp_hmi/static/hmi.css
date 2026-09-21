@@ -34,14 +34,14 @@ header{flex-wrap:wrap;gap:16px 24px;padding:16px 24px}.brand{font-size:23px}nav{
 .operation>.column:nth-child(3)>:nth-child(2){grid-area:interlock}
 .operation>.column>.card{height:100%}
 #results{max-height:240px;overscroll-behavior:contain}
-.extra-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.extra-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .login-overlay{z-index:200}
 .safety-mode-popup{position:fixed;right:22px;bottom:22px;z-index:190;width:min(430px,calc(100% - 44px));display:flex;gap:14px;padding:17px 18px;border:1px solid #e2b052;border-left:5px solid #d88b0e;border-radius:9px;background:#fff8e8;color:#754600;box-shadow:0 18px 48px #14284038}.safety-mode-popup[hidden]{display:none}.safety-mode-popup.critical{border-color:#e3a6b1;border-left-color:var(--red);background:#fff0f2;color:#9d2036}.safety-mode-icon{display:grid;place-items:center;flex:0 0 30px;height:30px;border-radius:50%;background:currentColor;color:#fff;font-size:18px;font-weight:800}.safety-mode-popup h2{margin:1px 0 6px;font-size:16px}.safety-mode-popup p{margin:0 0 6px;font-size:12px;line-height:1.65}.safety-mode-popup small{font-size:10px;opacity:.78}
 
 @media(max-width:1180px){
  .operation{grid-template-columns:1fr 1fr;grid-template-areas:"order weighing" "inventory results" "qa interlock"}
  .extra-grid{grid-template-columns:1fr 1fr}
- .extra-grid>.gripper-card{grid-column:1/-1}
+
 }
 
 @media(max-width:760px){

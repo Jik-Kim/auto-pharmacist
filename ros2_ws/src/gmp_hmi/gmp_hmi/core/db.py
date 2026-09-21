@@ -72,7 +72,7 @@ class CellDB:
                                  (row['id'], json.dumps(dict(row), ensure_ascii=False)))
                 self.con.execute('DELETE FROM items WHERE id=?', (row['id'],))
             self.con.execute('CREATE UNIQUE INDEX IF NOT EXISTS ux_items_material ON items(batch_id, material_id)')
-            self.con.execute('PRAGMA user_version=3')
+            self.con.execute('PRAGMA user_version=4')
 
     def close(self):
         with self._lock:
@@ -224,6 +224,50 @@ class CellDB:
             cycle['payload'] = json.loads(cycle.pop('payload_json'))
         b['audit'] = self._rows('SELECT * FROM audit WHERE target=? ORDER BY id', (batch_id,))
         return b
+
+    def checkpoint(self, batch_id, t, mode, step, item_index, station, note):
+        """같은 상태의 주기 발행은 생략. 역순 수신으로 관측 이력을 되돌리지 않는다."""
+        if not batch_id:
+            return
+        with self._lock, self.con:
+            previous = self.con.execute(
+                'SELECT * FROM state_checkpoints WHERE batch_id=? ORDER BY t DESC,id DESC LIMIT 1',
+                (batch_id,)).fetchone()
+            fields = (mode, step, item_index, station, note)
+            if previous and (t < previous['t'] or fields == tuple(
+                    previous[k] for k in ('mode', 'step', 'item_index', 'station', 'note'))):
+                return
+            self.con.execute('INSERT INTO state_checkpoints '
+                             '(batch_id,t,mode,step,item_index,station,note) VALUES (?,?,?,?,?,?,?)',
+                             (batch_id, t, *fields))
+
+    def save_recipe_context(self, batch_id, t, recipe):
+        from gmp_hmi.core.measurement_context import validate_recipe_context
+        recipe = validate_recipe_context(recipe)
+        with self._lock, self.con:
+            # 한 배치의 수락된 레시피는 뒤늦은 중복 이벤트로 교체하지 않는다.
+            self.con.execute('INSERT OR IGNORE INTO batch_recipes VALUES (?,?,?)',
+                             (batch_id, t, json.dumps(recipe, ensure_ascii=False, allow_nan=False)))
+
+    def recipe_context(self, batch_id):
+        rows = self._rows('SELECT payload_json FROM batch_recipes WHERE batch_id=?', (batch_id,))
+        return json.loads(rows[0]['payload_json']) if rows else None
+
+    def restart_records(self, limit=20):
+        records = self._rows('SELECT * FROM batches WHERE finished_at IS NULL '
+                             'ORDER BY started_at DESC LIMIT ?', (self._limit(limit),))
+        for row in records:
+            batch_id = row['batch_id']
+            checkpoints = self._rows('SELECT * FROM state_checkpoints WHERE batch_id=? '
+                                     'ORDER BY t DESC,id DESC LIMIT 1', (batch_id,))
+            row['checkpoint'] = checkpoints[0] if checkpoints else None
+            row['recipe'] = self.recipe_context(batch_id)
+            row['last_measurements'] = self._rows(
+                'SELECT * FROM weights w WHERE batch_id=? AND id=(SELECT w2.id FROM weights w2 '
+                'WHERE w2.batch_id=w.batch_id AND w2.subject=w.subject ORDER BY t DESC,id DESC LIMIT 1)',
+                (batch_id,))
+            row['resume_supported'] = False
+        return records
 
     def active_batch(self):
         rows = self._rows('SELECT * FROM batches WHERE finished_at IS NULL ORDER BY started_at DESC LIMIT 1')
