@@ -21,6 +21,13 @@ core/calib.py 가 `--method tool_force` / `--method workpiece` 로 두 경로를
   요약      python3 -m gmp_dosing.core.calib records/g1_rezero_0921_material1.csv --method tool_force
 무게는 3점 이상 떠야 gain 직선의 잔차가 의미를 가진다 (fit_gain 이 2점이면 경고한다).
 
+**용기 계량(TARE·VERIFY)은 경로가 다르다** — skill_node._do_weigh 는 workbench AT 에서 잡고
+approach_mm(100) 만큼 올린 ABOVE 에서 잰다. --pick-lift-mm 으로 그 경로를 그대로 따라간다:
+  --actual-g 78 --object container --goto-station workbench --pick-lift-mm 100 \\
+      --grip-width-mm 60 --gripper --sets 3 --trials 5 --samples 20 --period 0.1 --out records/<...>.csv
+--offset-mm 로 올려서 재면 **한 자세에서 잡고 재는 것**이라 파지 경로가 운영과 다르다 (9/21 그렇게 쟀다).
+측정 자세는 CSV 의 `측정조건` 열에 `@station[x,y,z]` 로 남는다 — 자세가 σ 를 좌우하므로 기록해 둔다.
+
 절차 (프롬프트가 안내한다):
   1. 빈 그리퍼로 계량 자세 → Enter → reset_workpiece_weight (세션 1회, 매뉴얼 5.1.2)
   2. 세트마다: 물체를 잡고 계량 자세에서 정지 → Enter → trials × samples 읽기.
@@ -252,6 +259,10 @@ def main(argv=None):
     ap.add_argument('--offset-mm', default='', metavar='DX,DY,DZ',
                     help='--goto-station 좌표에 더할 [mm] — 실물 위치가 바뀌었는데 stations.yaml 이 '
                          '아직 반영 전(PR 대기)일 때 임시 보정. 예: 100,0,0')
+    ap.add_argument('--pick-lift-mm', type=float, default=0.0, metavar='MM',
+                    help='파지는 --goto-station 자세(AT)에서 하고, 측정 전에 이만큼 들어올려(ABOVE) 잰다. '
+                         '용기 계량 경로와 같다 — skill_node._do_weigh 는 AT 에서 잡고 approach_mm 만큼 올려 잰다. '
+                         '세트가 끝나면 다시 AT 로 내려 놓는다. 0 = 한 자세에서 잡고 잰다(스쿱 방식)')
     ap.add_argument('--controller-timeout', type=float, default=30.0, metavar='SEC',
                     help='dsr_controller2 응답 대기 한도 [s]. 브링업 직후엔 컨트롤러 활성화에 시간이 걸린다')
     ap.add_argument('--gripper', action='store_true', help='/onrobot/sendCommand 로 세트마다 열기·닫기')
@@ -267,18 +278,27 @@ def main(argv=None):
     setup_tool(arm, tool, tcp, bool(a.goto_station))
     grip = Gripper(rclpy) if a.gripper else None
     close_cmd = f'{int(round(a.grip_width_mm * 10))}' if a.grip_width_mm else 'c'
+    pick_posx = measure_posx = None
     if a.goto_station:
         posx = station_posx(a.goto_station)
         if a.offset_mm:
             dx, dy, dz = (float(v) for v in a.offset_mm.split(','))
             posx = [posx[0] + dx, posx[1] + dy, posx[2] + dz, *posx[3:]]
             print(f'    offset ({dx:g}, {dy:g}, {dz:g}) mm 적용 → {posx}')
-        input(f'\n[0] {a.goto_station} 계량 자세 {posx} 로 이동합니다 (vel_scale {a.vel_scale}). 주변 확인 → Enter ')
-        arm.movel(posx, a.vel_scale)
+        pick_posx = posx
+        measure_posx = ([posx[0], posx[1], posx[2] + a.pick_lift_mm, *posx[3:]]
+                        if a.pick_lift_mm else posx)
+        if a.pick_lift_mm:
+            print(f'    파지 AT {pick_posx}  →  측정 ABOVE {measure_posx} (+{a.pick_lift_mm:g} mm)')
+        input(f'\n[0] {a.goto_station} {"파지" if a.pick_lift_mm else "계량"} 자세 {pick_posx} 로 '
+              f'이동합니다 (vel_scale {a.vel_scale}). 주변 확인 → Enter ')
+        arm.movel(pick_posx, a.vel_scale)
         print('    이동 완료')
     if a.probe > 0:
         return probe(arm, grip, close_cmd, a.probe, a.actual_g)
     cond = a.condition or f'{a.object}_total_{a.actual_g:g}g'
+    if measure_posx:                    # 어디서 쟀는지 CSV 에 남긴다 — 자세가 σ 를 좌우한다 (9/21)
+        cond += '@' + a.goto_station + '[' + ','.join(f'{v:g}' for v in measure_posx[:3]) + ']'
     stamp = datetime.datetime.now().strftime('%m%d%H%M')
     out = pathlib.Path(a.out); out.parent.mkdir(parents=True, exist_ok=True)
     new = not out.exists()
@@ -298,10 +318,15 @@ def main(argv=None):
     try:
         for s in range(1, a.sets + 1):
             if grip:
+                if a.pick_lift_mm:      # 파지는 AT 에서 — 내려가 있어야 용기를 놓고 잡을 수 있다
+                    arm.movel(pick_posx, a.vel_scale)
                 release_gripper(grip, f'[2] 세트 {s}/{a.sets} 시작 —', swallow_interrupt=False)
                 input(f'\n[2] 세트 {s}/{a.sets}: 물체({a.actual_g:g} g) 를 핑거 사이에 대고 → Enter (닫는다) ')
                 grip.send(close_cmd)
                 input('    잡혔는지 눈으로 확인 → Enter (측정 시작) ')
+                if a.pick_lift_mm:      # 측정은 ABOVE 에서 — 운영(skill_node._do_weigh)과 같은 경로
+                    arm.movel(measure_posx, a.vel_scale)
+                    print(f'    측정 자세로 +{a.pick_lift_mm:g} mm 올림 → {measure_posx}')
             else:
                 input(f'\n[2] 세트 {s}/{a.sets}: 물체({a.actual_g:g} g) 를 잡고 계량 자세에서 정지 → Enter ')
             name = f'{a.object}_total{a.actual_g:g}g_{stamp}_set{s}'
@@ -333,6 +358,12 @@ def main(argv=None):
         print('\n중단 — 지금까지 기록은 남는다')
     finally:
         f.close()
+        if grip and a.pick_lift_mm and pick_posx:
+            try:                           # ABOVE 에서 놓으면 떨어뜨린다 — AT 로 내려가서 연다
+                arm.movel(pick_posx, a.vel_scale)
+                print(f'    파지 자세로 내려옴 → {pick_posx}')
+            except Exception as e:         # noqa: BLE001
+                print(f'    ⚠ 파지 자세 복귀 실패: {e} — 그리퍼를 열기 전에 물체를 받쳐라')
         release_gripper(grip)              # 물체를 든 채 끝내지 않는다 — 단 사람이 받친 뒤에 연다
         rclpy.shutdown()
     print(f'\n저장: {out}\n요약: python3 -m gmp_dosing.core.calib {out} --method workpiece   (tool_force 도 같은 파일로)')

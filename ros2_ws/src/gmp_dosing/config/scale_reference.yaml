@@ -22,7 +22,8 @@ tool_force_calibration:
   gain: 1.03                 # 두 측정의 교차 검증 — scoop_1 3점 1.0279(±0.012) · scoop_3 2점 1.0331
   offset_g: 195.0            # 세션마다 ±5 g 움직인다 (190.8~197.4). 아래 offset_is_cancelled 참조
   min_resolvable_g: 5.0      # 운영 조건 실측 3σ 4.01 g + 여유. 레시피 A·B·C 셋 다 판정 가능 (아래 resolvable)
-  max_std_g: 8.0             # 회차 내부 σ p95 6.95 g 위
+  max_std_g: 8.0             # ⚠️ [재검토 필요] 스쿱 계량 p95 6.95 g 위로 잡았는데 용기 계량은 p95 9.09
+                             #    → workbench ABOVE 에서 valid 13/15(87 %). 10.0 이면 15/15. cup_sigma 절 참조
   operating_samples: 20      # 이 분해능은 samples 20(16.4초) 기준이다 — 10 으로 줄이면 3σ 가 10.3 g 으로 나빠진다
 
   basis_2point:              # gain 직선의 근거 — calibration/g1_rezero_0921_m3_2point.csv (표본 10개)
@@ -125,6 +126,18 @@ tool_force_calibration:
       창평균 σ 가 0.89 였으나 파지 재현 오차가 빠진 낙관치라 **세트 포함 실측이 필요하다 (B 예정).**
       소량 배치에서 ②가 죽는 것은 σ 로도 안 없어진다 — 레시피별로 ②가 정보를 주는지 접수 시점에
       계산해 기록하는 쪽이 정직하다 (C 가 BRD 3.1.3 게이트 이슈에 포함 예정).
+    cup_sigma: |           # 9/21 1차 측정 (ABOVE 자세 맞음, 단 사람이 들어 쥐여줌) — σ_verify 확정 아님
+      records/g1_rezero_0921_workbench_cup.csv · 빈 용기 78 g · samples 20 · 3세트 × 5회
+        세트 안 σ 0.98 g (스쿱 0.89 와 비슷) · **세트 간 흐름 10.5 g** (스쿱 2.2) · 회차 평균 σ 4.54
+        회차 내부 σ p95 9.09 g · 단일점 offset 207.43 · Mx +1.07 / My +0.15 / Mz +0.53
+      회차 내 반복은 좋고 세트 간만 나쁘다 → 사람이 매번 들어 쥐여준 탓으로 보인다(모멘트도 세트마다 흔들림).
+      운영은 로봇이 AT 로 내려가 일정하게 잡으므로 **σ_verify 로 그대로 쓸 수 없다. 로봇 파지로 재측정한다**
+      (measure_g1 --pick-lift-mm 100 으로 AT→파지→ABOVE 경로를 따라간다, 9/22 예정).
+      **판정 기준: σ_cup < 2.58 g 이어야 데모 레시피(k=3, N=12)에서 ②가 산다.**
+        σ_cup 0.98 → tol 20.1 g (② 유효) · σ_cup 4.54 → tol 27.5 g (② 죽음)
+      **그리고 max_std_g 8.0 을 다시 봐야 한다** — 용기 계량 p95 9.09 라 valid 13/15(87 %)다.
+      TARE·VERIFY 가 valid=false 면 배치가 진행되지 않는다. 10.0 이면 15/15 (폐기 전 값이 공교롭게 맞는다).
+
     missing_sigma: |       # ⚠️ [B 측정 필요] σ 가 하나가 아니다
       위 수식은 모든 계량이 같은 σ 를 갖는다고 가정한다. 실제로는:
         · 스쿱 계량(WEIGH_SCOOP·WEIGH_RESIDUAL) — 계량 자세. 9/21 팀 결정으로 material_3 통일 → σ 1.34 실측

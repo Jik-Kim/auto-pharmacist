@@ -460,6 +460,66 @@ scooped = gross − tare = (raw_g − raw_t) × gain        ← offset 이 소�
 계량만 안정적인 자세에서 하도록 바꿀 수 있는지, 아니면 material_1·2 의 요동을 잡을 수 있는지가
 남은 질문이다. 모멘트(Mx·My)가 0 인 자세가 안정적이었다는 것이 단서다.
 
+### workbench 용기 계량 · 2026-09-21 21:51 (`records/g1_rezero_0921_workbench_cup.csv`)
+
+**조건: 계량 자세 ABOVE `[423, 93, 200]` (사용자 확인) · 빈 용기 78 g(저울 실측) · 용기 폭 60 mm ·
+`samples` 20 · 3세트 × 5회 · ⚠️ 파지는 로봇이 아니라 사람이 들어 쥐여줬다.**
+
+| | 값 | material_3 스쿱 비교 |
+|---|---|---|
+| 세트 안 σ 평균 | **0.98 g** | 0.89 g (비슷) |
+| **세트 간 흐름** | **10.5 g** | 2.2 g (5배 나쁨) |
+| 회차 평균 σ(합산) | 4.54 g | 1.34 g |
+| 회차 내부 σ p95 | **9.09 g** | 6.95 g |
+| 단일점 offset | 207.43 g | 190.75 g |
+| Mx / My / Mz | +1.07 / +0.15 / +0.53 | 0.000 / 0.000 / +0.172 |
+| 세트별 평균 | 72.6 / 83.1 / 78.3 g | 131.6 / 133.8 / 133.6 g |
+
+**읽은 것**
+- **회차 내 반복은 좋다** (세트 안 σ 0.98). 자세 자체가 불안정한 것은 아니다.
+- **세트 간이 10.5 g 로 나쁘다.** 사람이 매번 들어 쥐여줘 잡는 위치·각도가 달라진 탓으로 보인다
+  (모멘트도 세트마다 Mx 1.072/1.102/1.076 으로 흔들린다). **운영에서는 로봇이 AT 로 내려가 일정하게
+  잡으므로 이 값을 σ_verify 로 그대로 쓸 수 없다 — 로봇 파지로 재측정해야 한다.**
+- **⚠️ `max_std_g` 8.0 이 용기 계량에는 빡빡하다** — 회차 내부 σ p95 가 9.09 라 valid 13/15(87 %)다
+  (`max_std_g` 10.0 이면 15/15). 8.0 은 스쿱 계량 p95 6.95 만 보고 정한 값이었다. TARE·VERIFY 가
+  `valid=false` 면 배치가 진행되지 않으므로 **재측정 뒤 `max_std_g` 를 다시 정해야 한다.**
+  공교롭게 폐기 전 값 10.0 이 이 조건을 만족한다 — 근거는 달랐지만 크기는 맞았던 셈이다.
+- **모멘트 패턴이 세 번째로 재현됐다.** 이 자세는 Mx +1.07 Nm 이 실리고(material_3 은 0.000)
+  회차 내부 σ 도 9.09 로 더 크다. 모멘트가 실린 자세가 덜 안정적이다.
+
+**VERIFY ② 에 주는 함의** — `tol = k·√(2N·σ_weigh² + σ_tare² + σ_verify²)`, k=3 · N=12 · σ_weigh 1.34 기준:
+
+| σ_cup | tol | ① 임계 22.5 대비 |
+|---|---|---|
+| 0.98 (세트 안만) | 20.1 g | ② 유효 |
+| 4.54 (오늘 측정 그대로) | 27.5 g | **② 죽음** |
+
+**한계선은 σ_cup < 2.58 g.** 이 선을 넘으면 데모 레시피에서 ②가 무력해진다. 내일 로봇 파지로 잰 값을
+이 선에 대보면 바로 판정된다.
+
+### 내일 측정 (2026-09-22)
+
+**1. 용기 σ — 로봇 파지로 다시** (`--pick-lift-mm` 으로 AT→파지→ABOVE 경로를 따라간다)
+
+```
+source tools/env.sh && python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py \
+    --actual-g 78 --object container --goto-station workbench --pick-lift-mm 100 \
+    --grip-width-mm 60 --gripper --sets 3 --trials 5 --samples 20 --period 0.1 \
+    --out records/g1_rezero_0922_workbench_cup_robot.csv
+```
+
+세트마다 AT 로 내려가 열고, 용기를 놓으면 잡고, ABOVE 로 올려서 잰다. 끝나면 AT 로 내려가 놓는다.
+9/21 은 `--offset-mm` 으로 ABOVE 에 간 뒤 **한 자세에서** 사람이 쥐여줬다 — 파지 경로가 운영과 달랐다.
+
+**2. 스쿱 σ — `samples` 25 로** (σ 0.89 가 나오면 ② 유효 상한이 14 → 34 가 된다)
+
+```
+source tools/env.sh && python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py \
+    --actual-g 133 --object scoop3 --goto-station material_3 --gripper \
+    --sets 3 --trials 5 --samples 25 --period 0.1 \
+    --out records/g1_rezero_0922_m3_scoop3_s25.csv
+```
+
 ## 걸리면 여기부터
 
 **아무 출력 없이 멈춘다** (`_robot_id` / `_robot_model` / `_srv_name_prefix` / `_topic_name_prefix` 네 줄만 찍히고 정지)
