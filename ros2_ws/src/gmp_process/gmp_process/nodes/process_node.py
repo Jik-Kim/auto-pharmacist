@@ -41,7 +41,7 @@ from gmp_interfaces.srv import (InterlockRequest, MeasureForce, QaDecision, Reco
 from gmp_dosing.core.dosing import DosingConfig
 from gmp_dosing.core.scale import ScaleConfig, WeightModel
 from gmp_process.core.attempt import Attempt, Reading
-from gmp_process.core.process_fsm import ProcessFSM
+from gmp_process.core.process_fsm import ProcessFSM, ToolFingerprint
 from gmp_process.core.recipe import parse as parse_recipe
 from gmp_process.core.station_map import StationMap
 
@@ -85,6 +85,7 @@ class ProcessNode(Node):
             ('dosing.max_attempts', 3), ('dosing.scoop_nominal_g', 40.0), ('dosing.min_fraction', 0.15),
             ('gripper.scoop_width_mm', 18.0), ('gripper.cup_width_mm', 60.0),
             ('gripper.open_width_mm', 100.0), ('gripper.force_n', 20.0),
+            ('gripper.fingerprint_tolerance_mm', 0.0),   # [추가 1] WRONG_TOOL 폭 지문 margin. 0 이면 검사 꺼짐
             ('skill_timeout_s', 90.0), ('server_wait_s', 20.0), ('grip_timeout_s', 5.0),
             ('safety.nudge_enabled', True),   # skill_node 와 같은 스위치 — 끄면 NUDGE 를 무시한다
         ])
@@ -373,7 +374,9 @@ class ProcessNode(Node):
         self._used_batch_ids.add(self.batch_id)
         self._reset_batch()
         self._last_result = DispenseResult()
-        self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale)
+        fingerprint = ToolFingerprint(scoop_widths_mm=self.smap.widths, cup_width_mm=self.p('gripper.cup_width_mm'),
+                                      tolerance_mm=self.p('gripper.fingerprint_tolerance_mm'))
+        self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale, fingerprint=fingerprint)
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name='process-run')
         self._thread.start()
 
@@ -755,8 +758,15 @@ class ProcessNode(Node):
                        MoveToStation.Goal.AT if req.get('approach') == 'AT' else MoveToStation.Goal.ABOVE)
             return {'success': True, 'reached': self.station}
         if k == 'grip':
-            width = (self.p('gripper.scoop_width_mm') if req.get('target') == 'scoop'
-                     else self.p('gripper.cup_width_mm')) if req.get('close') else self.p('gripper.open_width_mm')
+            if not req.get('close'):
+                width = self.p('gripper.open_width_mm')
+            elif req.get('target') == 'scoop':
+                # 원료별 명령 폭 (9/21) — 손잡이 굵기가 원료마다 달라(A/B/C 15.5/18/28) 하나의 값으로
+                # 다 쥘 수 없다. 없는 원료는 기존 단일값으로 물러난다. WRONG_TOOL 판정의 전제조건이기도
+                # 하다 — 더 넓은 목표 폭으로 명령하면 더 가는 손잡이는 닿지도 않고 GRIP_FAIL 로 빠진다.
+                width = self.smap.widths.get(self.fsm.cur.material_id, self.p('gripper.scoop_width_mm'))
+            else:
+                width = self.p('gripper.cup_width_mm')
             return self._grip(bool(req.get('close')), width)
         if k == 'carry':
             return self._carry(req)
