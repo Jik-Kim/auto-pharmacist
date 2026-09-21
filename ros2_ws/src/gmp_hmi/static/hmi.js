@@ -13,9 +13,10 @@ const modes={IDLE:'주문 대기',RUNNING:'운전 중',PAUSED:'일시 정지',DE
 function arrangeOperationColumns(){
  const operation=$('operation'),columns=operation?[...operation.children].filter(el=>el.classList.contains('column')):[];
  if(!operation||operation.dataset.fourColumns==='true'||columns.length!==3)return;
- const [,center]=columns,inventory=$('inventory').closest('section'),results=$('results').closest('section');
- const inventoryColumn=document.createElement('div');inventoryColumn.className='column';
- operation.insertBefore(inventoryColumn,center);inventoryColumn.append(inventory,results);
+ const [,center]=columns,results=$('results')?.closest('section');
+ if(!results)return;
+ const resultsColumn=document.createElement('div');resultsColumn.className='column';
+ operation.insertBefore(resultsColumn,center);resultsColumn.append(results);
  operation.dataset.fourColumns='true';
 }
 arrangeOperationColumns();
@@ -82,8 +83,6 @@ function gate(){
 async function loadRecipe(){const version=++recipeVersion;selectedRecipe=null;$('recipeDetail').textContent='레시피 구성 조회 중';try{const r=await source.recipe($('recipe').value);if(version!==recipeVersion)return;if(!r||r.error)throw Error('레시피 구성을 확인할 수 없습니다.');selectedRecipe=r;$('recipeDetail').innerHTML=`<div class="recipe-title"><span>${escapeHtml(r.product||r.name)}</span><span>총 ${number(r.total_g,0)} g</span></div><div class="recipe-chips">${r.items.map(i=>`<span class="recipe-chip">${escapeHtml(i.material_id)} <b>${number(i.target_g,0)} g</b></span>`).join('')}</div><small>투입 순서 ${r.items.map(i=>escapeHtml(i.material_id)).join(' → ')} · 허용 오차 ${r.items.map(i=>escapeHtml(i.material_id)+' ±'+number(i.tol_pct,1)+'%').join(' / ')}</small>`;}catch(e){if(version===recipeVersion)$('recipeDetail').textContent='레시피 구성 조회 실패 · 선택 파일을 확인하세요.';}renderInventory(snapshot);gate();}
 function renderInventory(s){
  const inv=s.inventory||{mode:'unconfigured',items:[]};
- $('inventoryMode').textContent=inv.mode==='test_process'?(inv.fresh?'시험 공정 재고':'재고 수신 대기'):inv.mode==='demo'?'데모 재고':inv.mode==='session_estimate'?'세션 추정':'미설정';
- $('inventoryMode').className='badge '+(inv.mode==='unconfigured'?'neutral':'info');
  $('inventoryNote').textContent=inv.note||'원료통 기준량과 초기 재고가 설정되면 잔량을 표시합니다.';
  if(inv.mode==='unconfigured'||!inv.items?.length){$('inventory').innerHTML='<div class="inventory-unknown">잔량을 확인할 수 없습니다.<br>초기 재고와 원료통 기준량 설정이 필요합니다.</div>';}
  else{$('inventory').innerHTML=inv.items.map(i=>{
