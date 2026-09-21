@@ -56,6 +56,10 @@
       dio_settle_s: 0.3             # DO1/DO2 전환 뒤 기구 동작 대기
 
     # ── 로봇 센서 계량 ───────────────────────────────────────────────
+    # ⚠️ [조장·A 확인 필요] 2026-09-21 영점 재작업 — 아래 scale.* 는 9/18·9/19 G1 측정에서 나온 값인데
+    #    그 근거 CSV 를 폐기했다 (records/deprecated/scale_20260921/, gmp_dosing/README.md).
+    #    method·gain·offset_g·min_resolvable_g·max_std_g·fz_sign 은 근거를 잃은 임시치다 —
+    #    재측정 전까지 이 값으로 계량 정확도를 판단하지 말 것. 값 자체는 런타임이 깨지지 않게 그대로 두었다 (B 도징).
     scale:
       method: tool_force            # tool_force | workpiece — 9/19 G1 로 tool_force 확정 (D-07). workpiece 는 리셋이 안 먹어 탈락
       period_s: 0.82                # 표본 시작 간격 시험값(9/19 독립 표본 실측). 호출 지연 시 늘어날 수 있음

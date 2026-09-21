@@ -40,48 +40,6 @@ def test_scale_tare_and_resolution():
     assert m.resolvable(100, 19.0)
 
 
-def test_g1_csv_reproduces_reference_and_defaults():
-    """CSV → calib → scale_reference.yaml → ScaleConfig 기본값이 한 줄로 이어지는지. 숫자를 손으로 옮기면 여기서 깨진다."""
-    import pathlib
-    import yaml
-    from gmp_dosing.core.calib import load_trials, summarize
-    root = pathlib.Path(__file__).resolve().parent.parent
-    s = summarize(load_trials(str(root / 'calibration' / 'g1_scoop133g_tool_force.csv')))
-    ref = yaml.safe_load((root / 'config' / 'scale_reference.yaml').read_text())['tool_force_calibration']
-    assert s['n_sets'] == 6 and s['n_trials'] == 180 and s['samples_per_trial'] == (10, 10)
-    assert abs(s['offset_g'] - ref['basis_0918']['offset_single_g']) < 0.01
-    assert abs(s['three_sigma_g'] - ref['basis_0918']['three_sigma_g']) < 0.01
-    assert abs(s['repeat_sigma_g'] - ref['basis_0918']['repeat_sigma_g']) < 0.01
-    cfg = ScaleConfig()
-    assert cfg.offset_g == 0.0                                  # method 별 값 — 기본값에 섞지 않는다
-    assert cfg.min_resolvable_g == ref['min_resolvable_g'] >= s['three_sigma_g']   # 중복 표본 조건의 3σ 18.0 을 아직 덮는다
-    assert s['distinct_sample_ratio'] < 0.7                     # 빠른 표본은 중복 — 9/19 독립 표본과 대비
-
-
-def test_g1_0919_two_weights_reproduce_gain_line():
-    """9/19 CSV(32 g·132 g, 같은 세션) → calib → yaml 의 gain·offset·σ 가 일치. common.yaml 값의 근거."""
-    import pathlib
-    import yaml
-    from gmp_dosing.core.calib import load_trials, summarize_by_weight, fit_gain
-    root = pathlib.Path(__file__).resolve().parent.parent
-    by_w = summarize_by_weight(load_trials(str(root / 'calibration' / 'g1_scoop_0919_both.csv'), 'tool_force'))
-    doc = yaml.safe_load((root / 'config' / 'scale_reference.yaml').read_text())
-    ref = doc['tool_force_calibration']
-    assert list(by_w) == [32.0, 132.0] and all(s['n_sets'] == 3 and s['n_trials'] == 90 for s in by_w.values())
-    for w, key in ((32.0, 'w32'), (132.0, 'w132')):
-        assert abs(by_w[w]['three_sigma_g'] - ref['basis_0919'][key]['three_sigma_g']) < 0.01
-        assert abs(by_w[w]['offset_g'] - ref['basis_0919'][key]['offset_single_g']) < 0.01
-        assert by_w[w]['distinct_sample_ratio'] == 1.0                         # 0.82 s 간격 — 표본 독립
-        assert abs(by_w[w]['update_interval_s'] - ref['basis_0919']['effective_period_s']) < 0.02
-    fit = fit_gain(by_w)
-    assert abs(fit['gain'] - ref['gain']) < 5e-4 and abs(fit['offset_g'] - ref['offset_g']) < 0.01
-    cfg = ScaleConfig()
-    assert cfg.method == doc['method'] == 'tool_force' and cfg.gain == 1.0 and cfg.offset_g == 0.0   # 값은 common.yaml 이 넣는다
-    assert cfg.min_resolvable_g == ref['min_resolvable_g'] and cfg.max_std_g == ref['max_std_g']
-    assert cfg.max_std_g >= max(s['within_trial_sigma_p95_g'] for s in by_w.values())
-    assert cfg.min_resolvable_g >= max(s['three_sigma_g'] for s in by_w.values())
-
-
 def test_calib_reads_both_methods_and_estimates_update_interval(tmp_path):
     """measure_g1.py 형식(두 경로 + 시각) 을 읽고, 값이 바뀌는 간격으로 센서 갱신 주기를 추정한다."""
     from gmp_dosing.core.calib import load_trials, summarize
@@ -120,3 +78,20 @@ def test_calib_two_weights_give_gain_line(tmp_path):
     fit = fit_gain(by_w)
     assert abs(fit['gain'] - 1 / 0.9) < 1e-6 and abs(fit['offset_g'] - (-10 / 0.9)) < 1e-6 and fit['max_residual_g'] < 1e-9
     assert fit_gain({32.0: by_w[32.0]}) is None
+
+
+def test_scale_reference_is_rezero_pending():
+    """영점 재측정 전에는 확정 보정값이 없어야 한다 — 폐기한 9/18·19 값이 되살아나는 것을 막는 가드.
+
+    원래 이 자리에는 CSV → scale_reference.yaml → ScaleConfig 기본값 정합 검사 두 건이 있었다.
+    근거 CSV 를 폐기(records/deprecated/scale_20260921/)하면서 같이 걷어냈고, 재측정이 끝나면 다시 붙인다.
+    """
+    import pathlib
+    import yaml
+    root = pathlib.Path(__file__).resolve().parent.parent
+    doc = yaml.safe_load((root / 'config' / 'scale_reference.yaml').read_text())
+    assert doc['status'] == 'rezero_pending'
+    assert doc['method'] is None and doc['measurements'] == {}   # 확정값을 여기 적으려면 status 부터 바꾼다
+    assert not list((root / 'calibration').glob('*.csv'))        # 폐기한 CSV 가 되돌아오면 알아챈다
+    cfg = ScaleConfig()
+    assert cfg.gain == 1.0 and cfg.offset_g == 0.0               # 보정 전 중립값 — 값은 common.yaml 이 넣는다
