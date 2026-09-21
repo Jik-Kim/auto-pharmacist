@@ -162,6 +162,58 @@ def test_scoop_grip_commands_the_search_width_not_the_expected_width(cell):
         f'원료마다 다른 폭으로 명령하고 있다: {scoop_closes}'
 
 
+# ── 적재 카운터 · 회수 확인 리셋 ────────────────────────────────────────
+def test_output_full_blocks_next_order_until_collection_confirmed(cell):
+    """완성품 칸은 구멍 하나(용량 1)다. 한 배치 넣으면 차고, QA 가 비우고 회수 확인을 눌러야 다음 주문을 받는다."""
+    proc, fake, col = cell
+    assert _submit(col, [('A', 100.0, 5.0)]).accepted
+    assert _wait_done(proc) == 'DONE', _why(proc)
+    assert proc._loaded['passbox_done'] == 1, proc._loaded
+
+    r = _submit(col, [('A', 100.0, 5.0)])
+    assert not r.accepted and 'passbox_done' in r.message and '회수 확인' in r.message, r.message
+
+    fake.collection_confirmed()
+    assert _wait_until(lambda: proc._loaded['passbox_done'] == 0), proc._loaded
+    with fake.lock:                                # 가짜 셀을 다음 배치 상태로
+        fake.in_cup, fake.held = 0.0, None
+        fake.content.clear()
+    assert _submit(col, [('A', 100.0, 5.0)]).accepted, '회수 확인 뒤에는 받아야 한다'
+
+
+def test_discarded_batch_counts_into_reject_bin(cell):
+    """폐기함도 센다 — 완성품 칸은 비어 있어도 폐기함이 차면 새 주문을 막는다."""
+    proc, fake, col = cell
+    fake.transfer = 2.0                            # VERIFY ① BATCH_OUT_OF_SPEC → QA
+    _submit(col, [('A', 10.0, 5.0)])
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    assert _qa(col, proc._pending_dev().deviation_id, Deviation.DISCARDED).accepted
+    assert _wait_done(proc) == 'DONE', _why(proc)
+
+    assert proc._loaded == {'passbox_done': 0, 'reject_bin': 1}, proc._loaded
+    r = _submit(col, [('A', 10.0, 5.0)])
+    assert not r.accepted and 'reject_bin' in r.message, r.message
+
+
+def test_capacity_zero_disables_the_gate(cell):
+    """한도 0 은 '검사 끔' 이다 — 0 을 '자리 없음' 으로 읽으면 설정 실수 하나로 셀이 영영 잠긴다."""
+    proc, fake, col = cell
+    proc.set_parameters([Parameter('capacity.passbox_done', value=0)])
+    proc._loaded['passbox_done'] = 99
+    assert proc._full() == '', proc._loaded
+    assert _submit(col, [('A', 100.0, 5.0)]).accepted
+
+
+def test_collection_confirm_is_idempotent_and_announced(cell):
+    """이미 비어 있는데 또 확인해도 탈나지 않는다. 초기화는 이벤트로 남겨 HMI 가 볼 수 있어야 한다."""
+    proc, fake, col = cell
+    fake.collection_confirmed()
+    fake.collection_confirmed()
+    assert _wait_until(lambda: sum(e.code == 'COLLECTION_RESET' for e in col.events) >= 2), \
+        [e.code for e in col.events]
+    assert proc._loaded == {'passbox_done': 0, 'reject_bin': 0}
+
+
 def test_rejects_unknown_material(cell):
     """전용 스쿱이 없는 원료는 주문 단계에서 거부한다 — 배치 중간에 서지 않게."""
     proc, fake, col = cell
@@ -693,6 +745,8 @@ def test_set_end_waits_at_nudge_wait_until_nudged(cell):
     assert _wait_done(proc) == 'DONE' and proc.fsm.state == 'DONE', _why(proc)
     assert not proc._nudge_paused, '세트 끝의 NUDGE 는 정지 토글이 아니다'
     fake.attendant = True
+    fake.collection_confirmed()                    # 완성품 칸이 찼다(용량 1) — QA 가 비워야 다음 주문을 받는다
+    assert _wait_until(lambda: proc._loaded['passbox_done'] == 0), proc._loaded
     with fake.lock:                                # 가짜 셀을 다음 배치 상태로 — 첫 배치의 스쿱 잔량·용기 내용물이 남으면 계량이 어긋난다
         fake.in_cup, fake.held = 0.0, None
         fake.content.clear()

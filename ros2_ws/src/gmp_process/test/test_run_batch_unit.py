@@ -234,6 +234,9 @@ def test_actual_fsm_done_feedback_results_and_next_order(node):
     assert h.terminal=='succeeded'
     assert any(f.last_result.material_id=='A' for f in h.feedback)
     assert all(f.state.batch_id=='B1' for f in h.feedback)
+    # 완성품 칸은 용량 1이라 B1 이 채웠다 — QA 회수 확인 전에는 다음 주문을 막는다
+    assert node._goal_batch(Message(recipe=recipe('B2')))==0
+    node._on_collection_confirmed(Message(text='qa_kim passbox_done_empty=true reject_bin_empty=true'))
     assert node._goal_batch(Message(recipe=recipe('B2')))==1
 
 

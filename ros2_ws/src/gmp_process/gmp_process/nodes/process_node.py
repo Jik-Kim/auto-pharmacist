@@ -89,6 +89,9 @@ class ProcessNode(Node):
             ('gripper.scoop_search_width_mm', 0.0),      # 스쿱 파지 탐색 목표 폭 — 기대 폭과 분리(A 리뷰, PR #165)
             ('skill_timeout_s', 90.0), ('server_wait_s', 20.0), ('grip_timeout_s', 5.0),
             ('safety.nudge_enabled', True),   # skill_node 와 같은 스위치 — 끄면 NUDGE 를 무시한다
+            # 적재 한도 — 칸이 차면 새 주문을 받지 않는다. 구멍 하나에 통 하나라 둘 다 1 (9/21 확인).
+            # stations.yaml 의 `slots`(물리 칸 수)와는 다른 값이다 — 이쪽은 '가득참' 판정 기준이다.
+            ('capacity.passbox_done', 1), ('capacity.reject_bin', 1),
         ])
         p = lambda k: self.get_parameter(k).value  # noqa: E731
         self.p = p
@@ -174,6 +177,10 @@ class ProcessNode(Node):
         self._last_result = DispenseResult()
         self._seq = 0
         self._used_batch_ids = set()  # 이 프로세스 세션 내 중복 ID 금지
+        # 적재 수 — 배치가 아니라 셀의 상태라 fsm 이 아니라 여기 둔다(배치마다 새로 만들어지므로).
+        # QA 가 비우고 HMI 회수 확인을 누르면 0 으로 돌아간다 (_on_collection_confirmed).
+        # 노드를 재기동하면 0 부터 시작한다 — 재기동 이어하기(추가 3)에서 같이 다룰 문제다.
+        self._loaded = {'passbox_done': 0, 'reject_bin': 0}
         self._execution_uncertain = False  # 스킬 응답 유실 후 새 주문으로 겹쳐 실행하지 않는다
         self.batch_server = ActionServer(
             self, RunBatch, 'run_batch', self._execute_batch,
@@ -201,6 +208,9 @@ class ProcessNode(Node):
             return
         if msg.code == 'ROBOT_SAFETY_RECOVERY':
             self._on_safety_recovery(msg)
+            return
+        if msg.code == 'HMI_COLLECTION_CONFIRMED':
+            self._on_collection_confirmed(msg)
             return
         if msg.code != 'NUDGE' or not self.get_parameter('safety.nudge_enabled').value:
             return
@@ -345,6 +355,11 @@ class ProcessNode(Node):
             raise ValueError('기존 배치 실행 / 종료 처리 중')
         if self._pause or self._nudge_paused:
             raise ValueError('구역 진입 / 일시 정지 중에는 새 주문을 받지 않습니다')
+        full = self._full()
+        if full:
+            # 놓을 자리가 없는 배치를 시작하면 다 만들고 나서 갈 데가 없다 — 접수에서 막는다.
+            raise ValueError(f'{full} 가득참 ({self._loaded[full]}/{self._capacity(full)}) — '
+                             f'QA 가 비우고 HMI 회수 확인을 눌러야 다음 주문을 받습니다')
         spec = parse_recipe({'product': recipe.product,
                              'items': [{'material_id': i.material_id, 'target_g': i.target_g,
                                         'tol_pct': i.tol_pct} for i in recipe.items]})
@@ -953,6 +968,47 @@ class ProcessNode(Node):
         elif step == 'PICK_SCOOP' and req['kind'] == 'grip':
             self._scoop_tare = None                       # 원료가 바뀌면 빈 스쿱 무게도 다시 잰다
             self._grip_width = float(res.get('final_width_mm', 0.0))
+        if req['kind'] == 'carry' and req.get('dst') in self._loaded and res.get('grip_inferred'):
+            # 실제로 놓은 것만 센다 — `_carry` 는 파지에 실패하면 목적지로 가지 않고 돌아온다.
+            self._count_loaded(req['dst'])
+
+    # ── 적재 카운터 (추가 기능 · 회수 확인 연동) ──────────────────────────
+    def _capacity(self, station: str) -> int:
+        """0 이하면 한도 검사를 끈다 — 설정 실수로 0 이 들어가 셀 전체가 잠기는 것보다 낫다."""
+        return max(0, int(self.p(f'capacity.{station}')))
+
+    def _full(self) -> str:
+        """한도에 닿은 칸 이름. 없으면 빈 문자열 — 주문 접수에서 본다."""
+        for station, n in self._loaded.items():
+            cap = self._capacity(station)
+            if cap > 0 and n >= cap:
+                return station
+        return ''
+
+    def _count_loaded(self, station: str):
+        self._loaded[station] += 1
+        n, cap = self._loaded[station], self._capacity(station)
+        self.event('INFO', 'LOADED', f'{station} {n}/{cap}')
+        if n >= cap:
+            # 로봇은 이 배치를 끝까지 마치고 멈춘다 — 다음 주문을 _reserve_batch 가 막는다.
+            self.event('WARN', 'COLLECTION_REQUIRED', f'{station} 가득참 ({n}/{cap}) — QA 회수 확인 필요')
+
+    def _on_collection_confirmed(self, msg):
+        """HMI 회수 확인(`HMI_COLLECTION_CONFIRMED`) — QA 가 두 칸을 모두 비웠다고 확인했다.
+
+        HMI 는 완성품·폐기함을 **둘 다** 비웠을 때만 이 이벤트를 낸다(hmi_web_node 의
+        `/collection-confirm` 가 두 플래그를 모두 요구한다). 그래서 여기서도 둘 다 0 으로 돌린다.
+        이미 0 이어도 그냥 0 이다 — 중복 확인은 무해하다.
+        """
+        before = dict(self._loaded)
+        self._loaded = {k: 0 for k in self._loaded}
+        # HMI audit() 은 text 를 '<작업자> <상세>' 로 만든다 — 앞 토큰이 누가 눌렀는지다.
+        # 형식이 어긋나도 기록만 비므로 판정에는 쓰지 않는다 (GMP 감사 추적용).
+        actor = (getattr(msg, 'text', '') or '').split(' ', 1)[0] or 'unknown'
+        self.event('INFO', 'COLLECTION_RESET',
+                   f'회수 확인({actor}) — 적재 카운터 초기화 '
+                   f'({", ".join(f"{k} {v}→0" for k, v in before.items())})')
+        self._pub_state()
 
     def _drain(self):
         """전이 뒤 FSM 이 늘린 것만 발행한다 — 일탈·원료 결과·시도 기록."""

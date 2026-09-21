@@ -92,6 +92,17 @@ class FakeSkillNode(Node):
         with self.lock:
             self.calls.append('nudge')
 
+    def collection_confirmed(self, actor='qa_kim'):
+        """QA 가 두 칸을 비우고 HMI 에서 회수 확인을 눌렀다 (D 의 /collection-confirm).
+
+        실물에서는 hmi_web_node.audit() 가 `HMI_` 접두사를 붙여 같은 event 토픽으로 낸다.
+        HMI 는 완성품·폐기함을 둘 다 비웠을 때만 이 이벤트를 낸다.
+        """
+        m = CellEvent(level=CellEvent.INFO, code='HMI_COLLECTION_CONFIRMED',
+                      text=f'{actor} passbox_done_empty=true reject_bin_empty=true')
+        m.header.stamp = self.get_clock().now().to_msg()
+        self.pub_event.publish(m)
+
     def safety_stop(self, reason='vendor alarm', robot_state=5, **correlation):
         """A 가 SAFE_STOP 류를 감지했다고 알린다 (v1.4, docs/interfaces.md 8절)."""
         self.safety_revision += 1
