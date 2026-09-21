@@ -44,7 +44,7 @@
 | Service | `submit_order` | `SubmitOrder` (Recipe → accepted, batch_id) | HMI | 주문 버튼 | 실행 중(RUNNING/PAUSED/DEVIATION)이면 `accepted=false`. 수락하면 FSM 생성 + run_loop 스레드 시작, `batch_id` 발급 (`B-YYYYMMDD-NNN`) |
 | Service | `qa_decision` | `QaDecision` (deviation_id, decision, operator_id) | HMI (셀 밖 QA) | DEVIATION 상태일 때 승인/폐기 | 대기 중인 `deviation_id`와 다르거나 DEVIATION이 아니면 거부. `operator_id`는 Deviation에 옮겨 재발행 |
 | Service | `interlock` | `InterlockRequest` (ENTER=1 / EXIT=2, reason) | HMI | 사람 반입 전/후 | **ENTER**: 진행 중 스킬을 멈추고 `SafePose` 성공 후에야 `granted=true` (TODO). **EXIT**: `_interlock_exit.set()` → 루프 재개 |
-| Action | `run_batch` | `RunBatch` (Recipe → result, feedback CellState) | CLI·시험용 | `submit_order` 와 같은 일을 Action 으로 | 골격에 아직 없음. 우선순위 낮음 — HMI 는 Service 를 쓴다 |
+| Action | `run_batch` | `RunBatch` (Recipe → result, feedback CellState + 마지막 DispenseResult) | HMI (`/order`) | `submit_order` 와 같은 접수 검사·실행 슬롯·FSM 을 공유하는 Action 경로 | **PR #163 (9/21) 구현.** 진행·최종 결과가 필요한 클라이언트용. Result: DONE 만 success, DISCARDED 는 SUCCEEDED+success=false, 취소 ABORTED(CANCELED), 안전정지·실패 ERROR. 취소는 진행 중 스킬 응답을 기다린 뒤 중단 — 즉시 정지 아님. 스킬 응답 유실 시 ERROR + 재기동 전까지 새 주문 차단 |
 | Topic (구독) | `event` | `CellEvent` code=`NUDGE` | skill_node | 사람이 로봇을 건드림 (D-21) | 콜백은 토글만. 루프 게이트가 **다음 로봇 동작 전에** PAUSED 로 멈추고, 두 번째 NUDGE 로 재개 (추가 기능 7). `safety.nudge_enabled=false` 면 무시. 우리가 내는 event 도 같이 들어오므로 `code` 로 거른다 |
 
 ### 나가는 것 (process_node 가 발행) — record_node 가 전부 DB 에 쓰고, HMI 가 화면에 띄운다
