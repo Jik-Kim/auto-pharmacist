@@ -1,34 +1,67 @@
 # 저울 보정 근거 요약 — 코드가 읽는 파일이 아니다. 런타임 값은 gmp_bringup/params/common.yaml 의 scale.* 가 단일 출처.
+# 숫자는 calibration/*.csv 를 core/calib.py 로 돌리면 다시 나온다:
+#   python3 -m gmp_dosing.core.calib ros2_ws/src/gmp_dosing/calibration/g1_rezero_0921_m3_2point.csv --method tool_force
+# test/test_dosing.py 가 CSV → 이 값 → ScaleConfig 기본값의 정합을 검사한다.
 #
-# ⚠️ 2026-09-21: 영점(offset)부터 다시 잡기로 해서 9/18·9/19 G1 측정 근거를 전부 폐기했다.
-#    원시 CSV 는 records/deprecated/scale_20260921/ 로 옮겼고 (git 밖), 폐기 사유는 그 폴더의 README.md 에 있다.
-#    여기 있던 gain 0.8859 · offset_g 247.091 · min_resolvable_g 19.0 · max_std_g 10.0 · 3σ 12.6 g 은
-#    **전부 무효다.** 다시 쓰지 말 것 — 되살리려면 새 측정으로 재현되는지 먼저 확인한다.
-#
-# 재측정이 끝나면 이 파일을 다시 채운다. 채우는 방법:
-#   1) calibration/measure_g1.py 로 CSV 를 뜬다 (--out 은 records/ 아래, git 밖)
-#   2) python3 -m gmp_dosing.core.calib <csv> --method tool_force 로 요약을 낸다
-#   3) 확정된 CSV 를 calibration/ 으로 복사해 커밋하고, 그 요약을 아래 measurements 에 옮긴다
-#   4) test/test_dosing.py 에 CSV → 이 파일 → ScaleConfig 정합 검사를 다시 붙인다 (폐기와 함께 지웠다)
+# 2026-09-21 영점 재작업으로 전부 다시 쟀다. 9/18·9/19 측정은 폐기했다 (records/deprecated/scale_20260921/).
+# 측정 과정과 그때 알아낸 것(자세 의존·요동 주기·파지 영향)은 calibration/README.md 에 있다.
 
-status: rezero_pending      # rezero_pending | measured — 재측정 전에는 이 파일에 확정값이 없다
+status: measured
+measured_on: 2026-09-21
+station: material_3          # ⚠️ 이 보정은 이 자세에서 잰 것이다. material_1·2 는 요동이 5~9배 커 같은 값을 쓸 수 없다
+scoop: scoop_3               # 세 스쿱은 파지부 두께만 다르고 무게·무게중심이 같아 보정을 공유한다 (9/21 확인)
 
-method: null                # [재측정 대기] tool_force | workpiece — 9/19 의 tool_force 확정도 폐기 근거 위였다
+method: tool_force           # workpiece 는 이번에 판단 근거를 만들지 않았다 — 필요하면 같은 CSV 로 재분석 가능
 
-measurements: {}            # [재측정 대기] 무게별 요약(offset·σ·3σ·표본 독립성)과 두 점 이상의 gain 직선
-
-reference_weights:          # 실제 저울로 잰 물체 자체 무게 [g] — 보정 계산과 무관한 실측이라 유지한다
-  empty_scoop_g: 32.0
+reference_weights:           # 실제 저울로 잰 물체 자체 무게 [g]
+  empty_scoop_g: 32.0        # scoop_1/2/3 동일 (파지부 테이프·보드롱은 무게에 영향 없음)
   empty_container_g: 78.0
 
-deprecated_20260921:        # 무엇이 왜 무효가 됐는지 — 같은 값이 다시 기어들어오는 것을 막기 위해 남긴다
-  moved_to: records/deprecated/scale_20260921/
-  files: [g1_scoop133g_tool_force.csv, g1_scoop_0919_both.csv]
-  voided: [method, gain, offset_g, min_resolvable_g, max_std_g, fz_sign]
-  why: 영점을 다시 잡기로 해서 이 데이터로 세운 보정 직선·분해능·유효성 임계가 전제를 잃었다
-  keep_in_mind: |
-    재측정 때 다시 확인할 것 —
-      · 표본 간격: 0.05 s 면 표본이 겹쳐 σ 가 작게 나왔고 0.82 s 면 독립이었다. σ 는 표본 수가 아니라 간격이 정한다
-      · 자세 의존: tool_force 편향은 자세마다 다르다. weigh_held 가 실제로 재는 자세에서 떠야 한다
-      · workpiece 경로: reset 이 success 를 줘도 잔류 오차가 값을 지배한 적이 있다. 쓰려면 이동을 끼운 절차로 재확인
-      · 분해능 vs 허용오차: 레시피는 tol 5 % 다. 100 g 이면 ±5 g — 3σ 가 그보다 크면 이 저울로는 합격 판정을 못 한다
+tool_force_calibration:
+  fz_sign: -1.0
+  gain: 1.03                 # 두 측정의 교차 검증 — scoop_1 3점 1.0279(±0.012) · scoop_3 2점 1.0331
+  offset_g: 195.0            # 세션마다 ±5 g 움직인다 (190.8~197.4). 아래 offset_is_cancelled 참조
+  min_resolvable_g: 5.0      # 운영 조건 실측 3σ 4.01 g + 여유. 레시피 A·B·C 셋 다 판정 가능 (아래 resolvable)
+  max_std_g: 8.0             # 회차 내부 σ p95 6.95 g 위
+  operating_samples: 20      # 이 분해능은 samples 20(16.4초) 기준이다 — 10 으로 줄이면 3σ 가 10.3 g 으로 나빠진다
+
+  basis_2point:              # gain 직선의 근거 — calibration/g1_rezero_0921_m3_2point.csv (표본 10개)
+    file: calibration/g1_rezero_0921_m3_2point.csv
+    sets_per_weight: 3
+    trials_per_set: 5
+    samples_per_trial: 10
+    w32:  {offset_single_g: 191.792, three_sigma_g: 8.6657,  within_trial_sigma_p95_g: 6.7197, set_drift_g: 1.0481}
+    w133: {offset_single_g: 195.023, three_sigma_g: 10.2651, within_trial_sigma_p95_g: 7.8702, set_drift_g: 1.4815}
+    fit: {gain: 1.0331, offset_g: 197.073, n_weights: 2}
+
+  basis_samples20:           # 분해능·유효성 임계의 근거 — 운영 조건 그대로 (samples 20)
+    file: calibration/g1_rezero_0921_m3_samples20.csv
+    sets: 3
+    trials_per_set: 5
+    samples_per_trial: 20
+    effective_period_s: 0.820   # 설정 0.1 s 지만 get_workpiece_weight 호출이 0.7 s — 표본은 전부 독립 (중복 0 %)
+    three_sigma_g: 4.0116        # ← min_resolvable_g 의 근거
+    within_trial_sigma_p95_g: 6.9456   # ← max_std_g 의 근거
+    set_drift_g: 2.1693          # 스쿱을 놓았다 다시 잡는 오차. 폐기 전 7.9~8.6 g 보다 5배 작다
+
+  offset_is_cancelled: |
+    offset_g 가 세션마다 ±5 g 움직이지만 **도징 판정에는 영향이 없다.**
+      gross = raw_g × gain + offset,  tare = raw_t × gain + offset
+      scooped = gross − tare = (raw_g − raw_t) × gain      ← offset 이 소거된다
+    process_fsm 이 SCOOP_TARE 에서 그 파지 상태의 빈 스쿱을 재 tare 로 쓰고, VERIFY 의 용기 순량도
+    같은 구조다. 판정에 실제로 쓰이는 것은 gain 이고 offset_g 는 gross_g 표시·기록용 대략값이다.
+    세션 변동의 원인은 파지할 때마다 스쿱 자세가 달라져 무게중심이 옮겨가는 것으로 보인다
+    (모멘트로 확인, README 참조).
+
+  resolvable:                # target × tol% ≥ min_resolvable_g (5.0) — WeightModel.resolvable()
+    A_200g_tol5: 10.0        # 가능 (여유 2.0배)
+    B_150g_tol5: 7.5         # 가능 (여유 1.5배)
+    C_100g_tol5: 5.0         # 가능 — 경계다. set_drift 가 커지면 먼저 깨진다
+
+  caveats: |
+    · 이 값은 material_3 자세 전용이다. material_1·2 는 같은 조건에서 회차 평균 σ 가 5~9배 크고,
+      계량 창을 두 배로 늘려도 material_3 의 절반 수준에 못 미친다 — 그 자세에서는 tol 5 % 판정이 안 된다.
+      계량을 어느 자세에서 할지는 조장·A 와 정할 문제다 (README 의 자세 비교).
+    · 세트가 3개뿐이라 set_drift 추정이 거칠다. min_resolvable_g 5.0 은 실측 3σ 4.01 에 여유를 둔 값이고,
+      C 레시피(±5 g)가 경계에 걸리므로 세트를 더 뜨면 이 값부터 다시 본다.
+    · workpiece 경로는 이번에 결론을 내지 않았다. 같은 CSV 에 열이 들어 있어 재분석은 가능하다.

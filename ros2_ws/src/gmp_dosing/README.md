@@ -14,12 +14,18 @@
 값의 단일 출처는 `gmp_bringup/params/common.yaml` 의 `scale.*`·`dosing.*` — `process_node` 가 읽어서 생성자에 넣는다.
 `offset_g` 는 method 에 종속이라 기본값은 0 이고 common.yaml 이 넣는다.
 
-## ⚠️ 영점 재작업 중 (2026-09-21)
+## 영점 재작업 완료 (2026-09-21)
 
-**영점(offset)부터 다시 잡는다. 9/18·9/19 G1 측정에서 나온 값은 전부 폐기했다** — `method: tool_force`,
-`gain 0.8859`, `offset_g 247.091`, `min_resolvable_g 19.0`, `max_std_g 10.0`, 3σ 12.6 g 이 여기 해당한다.
-원시 CSV 두 건은 `records/deprecated/scale_20260921/` 로 옮겼다 (git 밖, 폐기 사유는 그 폴더 README).
-`common.yaml` 의 `scale.*` 에는 아직 폐기된 값이 남아 있다 — 조장·A 소관이라 이 브랜치에서는 주석으로만 표시했다.
+9/18·9/19 G1 측정은 **폐기했다** (`records/deprecated/scale_20260921/`). 거기서 나온
+`gain 0.8859` · `offset_g 247.091` · `min_resolvable_g 19.0` · `max_std_g 10.0` 은 전부 무효다.
 
-재측정 전까지는 **계량 정확도에 의존하는 판단을 새로 만들지 않는다** (VERIFY 임계, `min_resolvable_g` 기반 로직).
-재측정이 끝나면 `config/scale_reference.yaml` 머리말의 4단계를 따라 값·CSV·정합 테스트를 같이 되살린다.
+다시 잰 결과 — **`gain 1.03` · `min_resolvable_g 5.0` · `max_std_g 8.0`** (material_3 자세, 운영 조건
+`samples` 20). 폐기 전에는 레시피 셋 다 판정 불가였는데 이제 A·B·C 모두 통과한다 (C 는 경계).
+근거 CSV 는 `calibration/`, 요약은 `config/scale_reference.yaml`, 측정 과정과 그때 알아낸 것은
+`calibration/README.md` 에 있다.
+
+**⚠️ 이 값은 자세에 딸린다.** material_1·2 에서는 같은 조건에서 회차 평균 σ 가 5~9배 크고, 계량 창을
+두 배로 늘려도 못 따라온다. 계량을 어느 자세에서 할지는 조장·A 와 정할 문제다.
+
+**`common.yaml` 의 `scale.*` 는 아직 폐기된 값이다** — 조장·A 소관이라 B 가 바꾸지 않았다.
+갱신안은 `calibration/README.md` 에 있고, 적용 전까지 운영은 옛 값으로 돈다.
