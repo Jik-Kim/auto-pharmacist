@@ -5,7 +5,7 @@ M0609 + RG2 조제 셀. 평상시 무인, 사람은 패스박스와 HMI 로만 �
 
 ## 기준 문서
 
-- [docs/SOT.md](docs/SOT.md) 확정 결정 · [docs/interfaces.md](docs/interfaces.md) **계약 v1.0** (토픽·서비스·액션·파라미터) · [docs/architecture.md](docs/architecture.md) 데이터 흐름
+- [docs/SOT.md](docs/SOT.md) 확정 결정 · [docs/interfaces.md](docs/interfaces.md) **계약 v1.5.1** (확정 v1.3·v1.5, v1.4 구현·확정 대기, v1.6 제안 — 상태 요약은 문서 머리) · [docs/architecture.md](docs/architecture.md) 데이터 흐름
 - [docs/setup.md](docs/setup.md) 환경 구축·실행 · [docs/demo_run_procedure.md](docs/demo_run_procedure.md) 시연 절차 (명령 정본)
 - [docs/responsibilities.md](docs/responsibilities.md) 영역별 책임 · [docs/todo.md](docs/todo.md) 파일 단위 작업 · [docs/issues.md](docs/issues.md) 이슈
 - [PROJECT.md](PROJECT.md) 개요·역할 · [AGENTS.md](AGENTS.md) 작업 규칙 · [docs/spec/](docs/spec/README.md) BRD·SDD
@@ -47,5 +47,4 @@ ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100
 
 ## 상태
 
-**골격 생성 (9/16 밤).** 계약 v1.0 과 패키지 스켈레톤만 있다. 실물 5일(9/17·18·21·22·23)은 `docs/todo.md` 순서대로 —
-**9/17 오전 첫 게이트는 외력 분해능 측정**(I-001)이다. 이 값이 도징 단위(30 g 인가 100 g 인가)를 정한다.
+**9/21 기준.** 계약 v1.5.1, 패키지 6개(interfaces·skills·dosing·process·hmi·bringup) 구현·단위 테스트 완료, PR #44 까지 머지. 실물 확정: G1 계량 `tool_force` gain 0.886·offset 247.1·분해능 19 g (9/19, SOT D-07·D-08), 레시피 A/B/C = 200/150/100 g ±5 %, G2 그리퍼 상태 비트 전달 (9/20). 남은 것: 스쿱 깊이 실물 적용(v1.5), 반환→재스쿱 연결 경로, 가상 브링업 레시피 완주와 HMI 통합(9/22~23). 현황은 `docs/todo.md` 상단 「오늘 우선순위」, 확정 결정은 `docs/SOT.md`.
