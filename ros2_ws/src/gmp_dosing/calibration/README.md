@@ -497,9 +497,32 @@ scooped = gross − tare = (raw_g − raw_t) × gain        ← offset 이 소�
 **한계선은 σ_cup < 2.58 g.** 이 선을 넘으면 데모 레시피에서 ②가 무력해진다. 내일 로봇 파지로 잰 값을
 이 선에 대보면 바로 판정된다.
 
-### 내일 측정 (2026-09-22)
+### 9/22 측정 절차 (처음부터 끝까지)
 
-**1. 용기 σ — 로봇 파지로 다시** (`--pick-lift-mm` 으로 AT→파지→ABOVE 경로를 따라간다)
+#### 0. 시작 전 확인
+
+- 로봇 전원, 펜던트 **Auto 모드**, 서보 ON. 수동 모드면 `set_tool`·이동이 거부된다
+- 로봇 주변 정리 — 첫 단계에서 실제로 팔이 움직인다
+- **저울**: 빈 용기·스쿱+원료를 그때그때 재서 `--actual-g` 에 넣는다. 눈대중 값은 그대로 offset 오차가 된다
+
+#### 1. 터미널 1 — 브링업
+
+```
+source tools/env.sh && ros2 launch m0609_rg2_bringup new_bringup.launch.py mode:=real host:=192.168.1.100
+```
+
+`cell.launch.py` 가 아니다 — `skill_node` 가 뜨면 로봇을 두고 다툰다.
+
+**띄운 뒤 5초쯤 기다린다.** 컨트롤러가 활성화되기 전에 측정 스크립트를 돌리면 걸린다(9/21 실제로 걸렸다).
+`measure_g1.py` 가 이제 30초까지 기다렸다가 무엇이 문제인지 말하고 끝나지만, 애초에 안 걸리는 편이 낫다.
+
+확인하려면 (터미널 3):
+```
+source tools/env.sh && ros2 control list_controllers -c /dsr01/controller_manager
+```
+`dsr_controller2 … active` 가 보이면 준비된 것이다.
+
+#### 2. 터미널 2 — 측정 ①: 용기 계량 σ (로봇 파지)
 
 ```
 source tools/env.sh && python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py \
@@ -508,10 +531,14 @@ source tools/env.sh && python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py 
     --out records/g1_rezero_0922_workbench_cup_robot.csv
 ```
 
-세트마다 AT 로 내려가 열고, 용기를 놓으면 잡고, ABOVE 로 올려서 잰다. 끝나면 AT 로 내려가 놓는다.
-9/21 은 `--offset-mm` 으로 ABOVE 에 간 뒤 **한 자세에서** 사람이 쥐여줬다 — 파지 경로가 운영과 달랐다.
+**9/21 과 다른 점: 용기를 손에 들지 않는다.** `--pick-lift-mm 100` 이 운영 경로를 그대로 따라간다 —
+세트마다 **AT `[423,93,100]` 로 내려가 그리퍼를 열고 → 용기를 그 자리에 놓으면 잡고 → ABOVE `[423,93,200]`
+로 올려서 잰다.** 끝나면 AT 로 내려가 놓는다. 사람은 용기를 **바닥에 놓고 Enter 만** 누르면 된다.
 
-**2. 스쿱 σ — `samples` 25 로** (σ 0.89 가 나오면 ② 유효 상한이 14 → 34 가 된다)
+9/21 에는 `--offset-mm` 으로 ABOVE 에 간 뒤 **한 자세에서 사람이 쥐여줬고**, 그래서 세트 간 흐름이 10.5 g
+(회차 안은 0.98)이었다. 파지 재현이 사람 손에 달려 있었다.
+
+#### 3. 터미널 2 — 측정 ②: 스쿱 σ (`samples` 25)
 
 ```
 source tools/env.sh && python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py \
@@ -519,6 +546,30 @@ source tools/env.sh && python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py 
     --sets 3 --trials 5 --samples 25 --period 0.1 \
     --out records/g1_rezero_0922_m3_scoop3_s25.csv
 ```
+
+스쿱은 `--pick-lift-mm` 을 쓰지 않는다 — `skill_node._do_weigh_held` 가 `material_N.posx` 그 자세에서
+재기 때문이다. 9/21 과 같은 조건에 `--samples` 만 20 → 25 다.
+
+#### 4. 측정 중 조작
+
+- `[0]` 이동 확인 → Enter (**팔이 움직인다**)
+- `[1]` 빈 그리퍼로 영점 → Enter
+- `[2]` 세트 시작: **물체를 받치고** Enter (그리퍼가 열린다) → 핑거 사이에 놓고 Enter (닫는다) → 확인 Enter
+- 세트 끝: **기록 확인 → Enter** (여기서 멈추므로 그리퍼는 문 상태다)
+- `[끝]` 받치고 Enter (연다). Ctrl-C 로 건너뛰면 문 채로 끝난다
+
+**그리퍼는 언제나 Enter 를 누른 뒤에 열린다.** 세트 사이에 시료를 쏟지 않도록 9/21 에 고쳤다.
+
+#### 5. 요약
+
+```
+PYTHONPATH=ros2_ws/src/gmp_dosing python3 -m gmp_dosing.core.calib <csv> --method tool_force
+```
+
+**판정 기준**
+- 용기 σ: **σ_cup < 2.58 g** 이어야 데모 레시피(k=3, N=12)에서 VERIFY ②가 산다
+- 용기 회차 내부 σ p95: `max_std_g` 를 8.0 으로 둘 수 있는지가 여기 달렸다 (9/21 은 9.09 라 valid 13/15)
+- 스쿱 σ: **0.89** 가 나오면 ② 유효 상한이 N=14 → 34 가 된다
 
 ## 걸리면 여기부터
 
