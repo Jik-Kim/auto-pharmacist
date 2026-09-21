@@ -245,6 +245,11 @@ def main(argv=None):
     ap.add_argument('--samples', type=int, default=10)
     ap.add_argument('--period', type=float, default=0.1, help='표본 간격 [s]')
     ap.add_argument('--settle', type=float, default=1.0, help='회차 전 정착 대기 [s]')
+    ap.add_argument('--alt-actual-g', type=float, default=None, metavar='G',
+                    help='짝 계량 [9/22 C 요청]: 홀수 회차는 --actual-g, 짝수 회차는 이 무게로 **그리퍼를 놓지 않고** 번갈아 잰다. '
+                         '회차마다 Enter 로 멈추므로 그 사이에 내용물을 넣고 뺀다. 산출은 각 σ 가 아니라 σ(홀−짝) — '
+                         'process_fsm 은 한 원료의 N 사이클을 한 파지 안에서 돌고(PICK_SCOOP~RETURN_SCOOP) '
+                         'actual_g 에 들어가는 값이 gross1−gross2 라 스쿱 tare 와 파지 오프셋이 같이 빠진다')
     ap.add_argument('--out', required=True, help='CSV 경로 (records/ 는 git 밖. 확정되면 calibration/ 으로 복사)')
     ap.add_argument('--no-reset', action='store_true', help='reset_workpiece_weight 를 건너뛴다 (이미 한 세션)')
     ap.add_argument('--no-workpiece', action='store_true',
@@ -331,6 +336,11 @@ def main(argv=None):
                 input(f'\n[2] 세트 {s}/{a.sets}: 물체({a.actual_g:g} g) 를 잡고 계량 자세에서 정지 → Enter ')
             name = f'{a.object}_total{a.actual_g:g}g_{stamp}_set{s}'
             for t in range(1, a.trials + 1):
+                trial_g = a.actual_g if (a.alt_actual_g is None or t % 2 == 1) else a.alt_actual_g
+                if a.alt_actual_g is not None:
+                    # 그리퍼는 문 채로 둔다 — 파지 오프셋이 유지되어야 차에서 빠진다
+                    input(f'    세트 {s} 회차 {t}/{a.trials}: 내용물을 {"채우고" if t % 2 == 1 else "비우고"} '
+                          f'({trial_g:g} g) → Enter (그리퍼는 문 채로 둔다) ')
                 time.sleep(a.settle)
                 fz, kg = [], []
                 for n in range(1, a.samples + 1):
@@ -339,7 +349,7 @@ def main(argv=None):
                     ts = time.monotonic() - t0
                     force6 = list(force) if force else [''] * 6
                     wp_v = float(wp) if isinstance(wp, (int, float)) and wp >= 0 else ''
-                    w.writerow([name, a.object, cond, f'{a.actual_g:g}', t, n, f'{ts:.3f}', *force6, wp_v])
+                    w.writerow([name, a.object, cond, f'{trial_g:g}', t, n, f'{ts:.3f}', *force6, wp_v])
                     if force:
                         fz.append(force[2])
                     if wp_v != '':
