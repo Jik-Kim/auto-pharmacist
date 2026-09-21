@@ -489,3 +489,26 @@ def test_qa_enter_grant_survives_deviation_heartbeat_until_exit(node):
     assert node.snapshot()['interlock']['entry_granted'] is True
     node.interlock(2, 'QA', 'qa')
     assert node.snapshot()['interlock']['entry_granted'] is None
+
+
+@pytest.mark.parametrize('mode,step,note,expected', [
+    (2, 'SCOOP', 'NUDGE 정지 — 다시 건드리면 재개', 'NUDGE'),
+    (0, '', 'NUDGE 일시 정지 — 다시 건드리면 해제, 이후 새 주문 가능', 'NUDGE'),
+    (2, 'NUDGE_WAIT', 'NUDGE_WAIT — 세트 완료, 건드리면 다음 세트', 'SET_COMPLETE'),
+    (2, 'PAUSED', 'REFILL 대기', 'REFILL'),
+    (2, 'PAUSED', '인터락 ENTER (REFILL)', 'INTERLOCK'),
+    (2, 'PAUSED', '', ''),
+    (2, 'PAUSED', '원인 미확인', ''),
+    (4, 'ERROR', 'NUDGE 정지', ''),
+    (1, 'SCOOP', 'NUDGE 정지', ''),
+])
+def test_ros_state_pause_display_context(node, mode, step, note, expected):
+    msg = state(mode=mode)
+    msg.step, msg.note = step, note
+    node._on_state(msg)
+    observed = node.snapshot()['state']
+    assert observed['pause_reason'] == expected
+    assert observed['note'] == note
+    # 다음 정상 상태에서 과거 사유를 유지하지 않는다.
+    node._on_state(state(mode=1))
+    assert node.snapshot()['state']['pause_reason'] == ''

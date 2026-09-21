@@ -27,7 +27,7 @@
 
 | 요청 | 현재 Git 근거 | 다음 담당 작업 |
 |---|---|---|
-| 운영 RunBatch | C process_node는 SubmitOrder 서비스만 구현. HMI 시험 노드만 RunBatch 서버 있음 | C: Action 서버/Feedback/Result/cancel 및 종료 정책 구현 |
+| 운영 RunBatch | C process_node의 RunBatch 서버·배치 취소 구현 완료(PR #163 병합) | 실제 HMI·C·A 통합 검증 필요 |
 | 운영 원료 잔량·보충 | 운영 메시지·서비스 없음. test_inventory/test_refill_*는 /hmi_test 전용 | B/C: 원료별량·단위·revision·신선도·보충 확인 권한/응답 계약 확정 |
 | 회수 확인 | HMI_COLLECTION_CONFIRMED는 감사 기록뿐. C 카운터 수신/초기화 없음 | C: 대상 용량·회수 명령·중복 요청·초기화 결과 계약 |
 | 공정 재기동 이어하기 | C resume 서비스/저장 FSM 복원 계약 없음 | C: 재개 가능 상태·검증·응답·금지 조건 확정. 안전정지 ERROR 배치 제외 |
@@ -35,7 +35,7 @@
 
 HMI의 `integration`과 미연결 문구는 이 상태를 명시한다. 없는 ROS 엔드포인트를 만들거나
 시험 서비스를 운영 네임스페이스에 붙이지 않는다. 회수 버튼은 감사 기록 기능을 그대로 유지한다.
-`todo.md`와 `issues.md`는 조장 관리이므로 수정하지 않는다.
+할 일·이슈의 정본은 GitHub Issues다. `docs/todo.md`와 `docs/issues.md`는 동결된 과거 스냅샷이다.
 
 ## 검증
 

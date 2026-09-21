@@ -2,7 +2,7 @@
 
 대조: origin/main 7e25232, PR #41 f196a92. 원격 fetch 후 main 변동 없음.
 근거: docs/SOT.md, docs/todo.md D 항목, docs/interfaces.md, 실제 HMI 코드.
-조장 관리 todo.md는 수정하지 않는다. 아래는 구현과 남은 일을 분리한 결과다.
+9/21부터 할 일·이슈 정본은 GitHub Issues이며 todo.md는 동결된 과거 스냅샷이다. 아래는 작성 시점의 구현과 남은 일을 분리한 결과다.
 
 | 항목 | 코드 확인 결과 |
 |---|---|
