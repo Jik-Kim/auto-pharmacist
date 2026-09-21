@@ -80,6 +80,7 @@ class ProcessFSM:
     _counts: dict = field(default_factory=dict)
     _resume: object = None       # 인터락/QA 후 돌아갈 요청
     _qa_step: str = ''           # QA 판정을 기다리는 일탈이 난 스텝 — APPROVED/DISCARDED 뒤 경로를 가른다
+    _tare_invalid: int = 0       # 빈 용기 계량 무효 횟수 — TARE 시점엔 self.cur 가 없어 _invalid_or 를 못 쓴다
     _verify_invalid: int = 0
     _final: str = 'DONE'         # NUDGE_WAIT 뒤 끝나는 상태 — DONE(완성품) | DISCARDED(폐기)
     slot: int = 0                # 매거진·트레이 슬롯 (process_node 가 배치마다 올린다)
@@ -193,6 +194,15 @@ class ProcessFSM:
             self.state = 'TARE'
             return self._weigh_cup(0.0)
         if k == 'weigh' and st == 'TARE':
+            # 빈 용기 계량도 다른 계량과 같은 유효성 규칙을 받는다. 무효한 tare 가 그냥 통과하면
+            # VERIFY 의 net = gross − tare_g 가 어긋나 ①(제품 규격)·②(계측 신뢰성)이 둘 다 틀린다.
+            # `_invalid_or` 는 카운터를 `self.cur` 에 두는데 이 시점엔 원료가 아직 없어(아래에서
+            # 생성) 쓸 수 없다 — VERIFY 와 같은 배치 단위 카운터로 센다.
+            if not res.get('valid', False):
+                self._tare_invalid += 1
+                if self._tare_invalid >= self.dosing_cfg.max_invalid:
+                    return self._deviate('WEIGH_INVALID', 'TARE')
+                return req
             self.tare_g = res.get('gross_g', 0.0)
             self.scale.set_tare(self.tare_g)
             self.cur = self._item()
