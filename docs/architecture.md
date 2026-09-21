@@ -54,7 +54,7 @@
 | 13 | `VERIFY` | `WeighContainer(tare_g)` — **용기를 들어** 계량 (그리퍼 비어 있음) | **두 가지를 본다** (9/17 조장 합의). ① **제품 판정** `\|net − Σtarget\| > Σ(target×tol)` → `Deviation(BATCH_OUT_OF_SPEC)` → QA (폐기 권고) ② **계측 신뢰성** `\|net − Σ투입량\| > min_resolvable_g` → `Deviation(VERIFY_MISMATCH)` → QA. **①이 규격 판정이다** — 원료가 전부 같은 방향으로 치우치면 net 과 Σ투입량이 함께 낮아 ②로는 안 잡힌다 |
 | 14 | `FINISH` | **carry**: `workbench` → `passbox_done` → `MoveToStation(nudge_wait)` | 완료품을 용기째 Pass Box 「완성품」 칸으로 (D-24) — QA 가 회수한다 (D-23). 이어 15 |
 | 15 | `NUDGE_WAIT` | `nudge_wait` AT 에서 대기 (mode `PAUSED`, 주문 거부) | **세트 경계 (D-23)** — 사람이 회수하고 로봇을 건드리면(NUDGE, D-21) `DONE`/`DISCARDED` 로 끝나고 다음 주문을 받는다. 폐기도 여기로 온다 |
-| E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료(VERIFY 였으면 FINISH) / DISCARD → 스쿱 반납 → **carry** `workbench` → `reject_bin` → 15 → `DISCARDED` |
+| E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료(VERIFY 였으면 FINISH) / DISCARD → 스쿱 반납 → **carry** `workbench` → `reject_bin` → 15 → `DISCARDED`. **`WRONG_TOOL`은 예외**(PR #165) — APPROVE 시 원료를 건너뛰지 않고 같은 원료를 이어간다: `PICK_CONTAINER`는 4 `TARE`, `PICK_SCOOP`는 6 `SCOOP_TARE`로 |
 | E | `PAUSED` | `SafePose` | `InterlockRequest(ENTER)` → 안전 자세 도달 후 granted / `EXIT` → 이전 상태 재개 |
 
 **도징 결정은 `gmp_dosing/core/dosing.py` 가 한다** (순수 함수: 목표·실측·이력 → 다음 행동). 상태기계는 그 결정을 스킬 호출로 옮길 뿐이다.
