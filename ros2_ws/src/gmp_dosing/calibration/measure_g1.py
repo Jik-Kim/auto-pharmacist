@@ -151,8 +151,7 @@ def probe(arm, grip, close_cmd, sec: float, actual_g: float):
     """workpiece 추정기의 거동을 본다 — reset 뒤 값이 수렴하는지, 빈 상태 편향이 얼마인지, 물체를 잡으면 얼마나 반응하는지."""
     import rclpy
     try:
-        if grip:
-            grip.send('o')
+        release_gripper(grip, '[probe] 시작 —', swallow_interrupt=False)
         input(f'\n[probe] 빈 그리퍼로 계량 자세에서 정지 → Enter (reset 후 {sec:.0f} s 관찰) ')
         r = arm.reset_workpiece()
         print(f'    reset_workpiece_weight return={r!r}')
@@ -203,17 +202,23 @@ class Gripper:
         time.sleep(1.0)                    # 기구 동작 대기
 
 
-def release_gripper(grip):
-    """측정 끝에 그리퍼를 연다 — **사람이 받칠 때까지 기다린다.**
+def release_gripper(grip, label='[끝]', *, swallow_interrupt=True):
+    """그리퍼를 연다 — **사람이 받칠 때까지 기다린다.**
 
-    바로 열면 원료가 담긴 스쿱을 떨어뜨려 쏟는다 (9/21 사용자 요청으로 Enter 대기로 바꿨다).
-    Ctrl-C 나 EOF 로 건너뛰면 물체를 문 채로 끝나므로, 다음 실행 전에 손으로 빼야 한다.
+    바로 열면 원료가 담긴 스쿱을 떨어뜨려 쏟는다 (9/21 사용자 요청). 끝날 때뿐 아니라
+    **세트를 시작할 때도** 부른다 — 이전 세트에서 문 물체를 놓는 자리가 거기다.
+
+    swallow_interrupt=False 면 Ctrl-C·EOF 를 그대로 올려보낸다. 세트 루프에서는 사람이
+    Ctrl-C 로 측정을 중단하려는 것이므로 이 프롬프트가 삼키면 안 된다. 정리 단계(finally)에서만
+    삼켜서, 물체를 문 채로 끝내는 선택을 할 수 있게 한다.
     """
     if not grip:
         return
     try:
-        input('\n[끝] 스쿱을 받치고 → Enter (그리퍼를 연다. 건너뛰려면 Ctrl-C — 문 채로 남는다) ')
+        input(f'\n{label} 물체를 받치고 → Enter (그리퍼를 연다. 비어 있으면 그냥 Enter) ')
     except (KeyboardInterrupt, EOFError):
+        if not swallow_interrupt:
+            raise
         print('\n    ⚠ 그리퍼를 열지 않고 끝낸다 — 물체가 물린 채로 남아 있다')
         return
     try:
@@ -283,8 +288,7 @@ def main(argv=None):
         w.writerow(COLUMNS)
 
     if not a.no_reset:
-        if grip:
-            grip.send('o')
+        release_gripper(grip, '[1] 영점 전 —', swallow_interrupt=False)
         input('\n[1] 빈 그리퍼(열림)로 계량 자세에서 정지 → Enter (reset_workpiece_weight) ')
         r = arm.reset_workpiece()
         print(f'    reset_workpiece_weight return={r!r}' + ('  OK' if r == 0 else '  ⚠ 실패 — workpiece 영점이 안 잡혔다'))
@@ -294,7 +298,7 @@ def main(argv=None):
     try:
         for s in range(1, a.sets + 1):
             if grip:
-                grip.send('o')
+                release_gripper(grip, f'[2] 세트 {s}/{a.sets} 시작 —', swallow_interrupt=False)
                 input(f'\n[2] 세트 {s}/{a.sets}: 물체({a.actual_g:g} g) 를 핑거 사이에 대고 → Enter (닫는다) ')
                 grip.send(close_cmd)
                 input('    잡혔는지 눈으로 확인 → Enter (측정 시작) ')
