@@ -100,9 +100,10 @@ def test_check_depth_compliance_entry_failure_still_releases_without_retreat(mon
         _require_scoop_extracted=lambda: None,
         _held_payload='scoop', _held_material_id='A',
         gripper=SimpleNamespace(state=lambda _: {'busy': False, 'grip_inferred': True}),
-        _now_s=lambda: 0, vel_scale=0.3,
+        _now_s=lambda: 0, vel_scale=0.3, motion_timeout_s=30.0,
         get_parameter=lambda _: SimpleNamespace(value=[1]*6),
-        stations=SimpleNamespace(approach_mm=60, for_material=lambda _: SimpleNamespace(above=lambda _: [1]*6)),
+        stations=SimpleNamespace(for_material=lambda _: SimpleNamespace(
+            station_id="material_1", posx=[1]*6, extra={"measure_posx": [2]*6})),
         arm=SimpleNamespace(movel=lambda *_: calls.append('move'), current_posx=lambda: [1]*6,
                             compliance_on=fail, compliance_off=lambda: calls.append('release')))
     node.get_parameter = lambda key: SimpleNamespace(value=[1]*6 if key == 'safety.compliance_stx' else 3.0)

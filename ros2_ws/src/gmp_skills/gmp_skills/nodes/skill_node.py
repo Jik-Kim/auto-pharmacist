@@ -130,6 +130,9 @@ class SkillNode(Node):
             raise ValueError('robot.shutdown_timeout_s는 유한한 양수여야 한다')
         self.arm.cancel_requested = self._cancel_requested
         self.arm.motion_timeout_s = self.motion_timeout_s
+        self.arm.pose_xyz_tolerance = self.pose_xyz_tolerance
+        self.arm.pose_rotation_tolerance = self.pose_rotation_tolerance
+        self.arm.joint_tolerance = self.joint_tolerance
         self._safety_latched = False
         self._safety_reason = ''
         self._safety_revision = 0
@@ -581,13 +584,32 @@ class SkillNode(Node):
             raise RuntimeError('스쿱 복원은 안전 차단 없는 대기 상태에서만 가능합니다')
         if not self._pose_matches(self.arm.current_posx(), station.posx):
             raise RuntimeError('현재 자세가 해당 원료 계량 자세와 다릅니다. 파지 복원 거부')
-        # 자세 조회 뒤 최신 센서를 확인한다. 오래된 표본은 어댑터가 busy/미파지로 반환한다.
+        # 기동 직후 첫 표본의 도착만 제한 시간 동안 기다린다. 실제 미파지/안전 이상은 즉시 거부한다.
+        timeout_s = float(self.get_parameter('robot.startup_timeout_s').value)
+        if not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise ValueError('스쿱 복원 센서 대기 시간은 유한한 양수여야 합니다')
+        deadline = self._now_s() + timeout_s
+        while True:
+            if (job.cancel or self._stopping.is_set() or self._safety_latched
+                    or self._safety_revision != revision):
+                raise RuntimeError('센서 대기 중 취소 또는 안전 상태 변경 발생')
+            state = self.gripper.state(self._now_s())
+            if state.get('fresh', False):
+                break
+            remaining = deadline - self._now_s()
+            if remaining <= 0:
+                raise TimeoutError(f'스쿱 복원 센서 대기 {timeout_s:g}s 초과: {state}')
+            time.sleep(min(self.state_poll_s, remaining))
+        # 센서를 기다리는 동안 위치·로봇 상태가 바뀌었을 수 있어 다시 확인한다.
+        self._poll_safety(force=True)
+        if self._last_robot_state != STANDBY or not self._pose_matches(self.arm.current_posx(), station.posx):
+            raise RuntimeError('센서 대기 후 로봇 상태 또는 계량 자세 불일치')
         state = self.gripper.state(self._now_s())
         width = state.get('width_mm')
-        if (state.get('busy', True) or not state.get('grip_inferred', False)
+        if (not state.get('fresh', False) or state.get('busy', True) or not state.get('grip_inferred', False)
                 or state.get('safety_triggered', True) or state.get('slip', False)
                 or width is None or not math.isfinite(float(width)) or float(width) <= 0):
-            raise RuntimeError('최신 파지·폭·안전 상태를 확인할 수 없어 복원을 거부합니다')
+            raise RuntimeError(f'최신 파지·폭·안전 상태를 확인할 수 없어 복원을 거부합니다: {state}')
         with self._job_lock:
             if (job.cancel or self._stopping.is_set() or self._safety_latched
                     or self._safety_revision != revision):
@@ -845,47 +867,69 @@ class SkillNode(Node):
         # TODO(A): 실제 원료를 퍼 올리는 스쿠핑 동작 구현.
         return SkillNode._do_check_depth(self, job)
 
+    def _wait_compliance_settle(self, job: Job, duration_s: float):
+        """순응 진입 응답 후 컨트롤러 전환 시간을 확보하며 취소를 확인한다."""
+        deadline = self._now_s() + duration_s
+        while True:
+            if job.cancel or self._cancel_requested():
+                raise RuntimeError('cancelled')
+            remaining = deadline - self._now_s()
+            if remaining <= 0:
+                return
+            time.sleep(min(0.02, remaining))
+
     def _do_check_depth(self, job: Job):
-        """접촉 위치와 삽입 깊이를 확인한다. 실제 퍼 올리기 동작은 미구현이다."""
+        """계량 자세에서 티칭 측정 목표로 이동하며 접촉·삽입 깊이를 확인한다."""
         if getattr(self, '_return_rescoop_blocked', False):
             raise RuntimeError('반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
         self._require_scoop_extracted()
         SkillNode._require_held_scoop(self, job.args['material_id'])
         p = self.get_parameter
+        settle_s = float(p('safety.compliance_settle_s').value)
+        if not math.isfinite(settle_s) or not 0 < settle_s <= self.motion_timeout_s:
+            raise ValueError('순응 전환 대기는 양수이며 이동 제한 시간 이하여야 합니다')
         station = self.stations.for_material(job.args['material_id'])
-        above = station.above(self.stations.approach_mm)
+        target = SkillNode._pose_from_extra(station, 'measure_posx')
+        start = list(station.posx)
+        if job.cancel:
+            raise RuntimeError('cancelled')
         job.feedback and job.feedback('APPROACH')
-        self.arm.movel(above, self.vel_scale)
-        start = self.arm.current_posx()
+        self.arm.movel(start, self.vel_scale)
+        if job.cancel:
+            raise RuntimeError('cancelled')
         contact_z = None
         max_force_n = 0.0
         insertion_mm = 0.0
-        deadline_s = self._now_s() + float(p('safety.scoop_timeout_s').value)
-        completed = False
+
+        def observe_depth():
+            nonlocal contact_z, max_force_n, insertion_mm
+            force = self.arm.tool_force()
+            if force is None or len(force) != 6 or not all(math.isfinite(float(v)) for v in force):
+                raise RuntimeError('깊이 측정 외력 조회 실패')
+            current = self.arm.current_posx()
+            if len(current) != 6 or not all(math.isfinite(float(v)) for v in current):
+                raise RuntimeError('깊이 측정 자세 조회 실패')
+            max_force_n = max(max_force_n, abs(float(force[2])))
+            if contact_z is None and self.arm.force_over(float(p('safety.fz_max_n').value)):
+                contact_z = float(current[2])
+            insertion_mm = 0.0 if contact_z is None else abs(float(current[2]) - contact_z)
+            job.feedback and job.feedback('DIP', contact_z is not None, abs(float(force[2])), insertion_mm)
+
         try:
-            try:
-                self.arm.compliance_on(list(p('safety.compliance_stx').value))
-                self.arm.force_z(float(p('safety.scoop_force_n').value))
-                while self._now_s() < deadline_s:
-                    if job.cancel:
-                        raise RuntimeError('cancelled')
-                    force = self.arm.tool_force() or [0.0] * 6
-                    max_force_n = max(max_force_n, abs(float(force[2])))
-                    current = self.arm.current_posx()
-                    if contact_z is None and self.arm.force_over(float(p('safety.fz_max_n').value)):
-                        contact_z = current[2]
-                    insertion_mm = 0.0 if contact_z is None else abs(float(current[2]) - float(contact_z))
-                    job.feedback and job.feedback('DIP', contact_z is not None, abs(float(force[2])), insertion_mm)
-                    depth_limit = float(start[2]) - float(p('safety.dip_max_mm').value)
-                    if self.arm.position_at_or_below(depth_limit):
-                        break
-                    time.sleep(0.05)
-            finally:
-                self.arm.compliance_off()
-            completed = True
+            self.arm.compliance_on(list(p('safety.compliance_stx').value))
+            self._wait_compliance_settle(job, settle_s)
+            # 목표의 XYZ와 회전을 모두 사용한다. 고정 Z 힘·상대 40 mm 담그기는 사용하지 않는다.
+            self.arm.movel_cancellable(
+                target, self.vel_scale, lambda: job.cancel or self._cancel_requested(),
+                self.motion_timeout_s, observer=observe_depth)
+            if not self._pose_matches(self.arm.current_posx(), target):
+                raise RuntimeError('깊이 측정 목표 자세 미도달')
         finally:
-            if completed and not job.cancel:
-                self.arm.movel(above, self.vel_scale)
+            self.arm.compliance_off()
+        if job.cancel:
+            raise RuntimeError('cancelled')
+        # 성공한 경로만 계량 자세로 되짚는다. 실패·취소 시 자동 복귀하지 않는다.
+        self.arm.movel(start, self.vel_scale)
         job.feedback and job.feedback('LIFT', contact_z is not None, max_force_n, insertion_mm)
         return {'contact_detected': contact_z is not None, 'max_contact_force_n': max_force_n,
                 'insertion_depth_mm': insertion_mm}

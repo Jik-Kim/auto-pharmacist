@@ -13,7 +13,7 @@ def restore_node(monkeypatch):
     node = object.__new__(module.SkillNode)
     pose = [344.0, -298.0, 200.0, 90.0, -180.0, -90.0]
     station = SimpleNamespace(station_id='material_1', posx=pose)
-    state = dict(width_mm=24.8, busy=False, grip_inferred=True,
+    state = dict(width_mm=24.8, fresh=True, busy=False, grip_inferred=True,
                  safety_triggered=False, slip=False)
     node.mode = 'real'
     node.gripper = SimpleNamespace(backend='modbus', state=lambda _: state)
@@ -23,7 +23,11 @@ def restore_node(monkeypatch):
     node.stations = SimpleNamespace(for_material=lambda mid: station if mid == 'A' else (_ for _ in ()).throw(KeyError(mid)))
     node._pose_matches = lambda actual, expected: pose_matches(actual, expected, 2.0, 2.0)
     node._poll_safety = lambda **_: None
-    node._now_s = lambda: 1.0
+    clock = [1.0]
+    node._now_s = lambda: clock[0]
+    node.state_poll_s = 0.1
+    node.get_parameter = lambda _: SimpleNamespace(value=0.3)
+    monkeypatch.setattr(module.time, 'sleep', lambda seconds: clock.__setitem__(0, clock[0] + seconds))
     node._last_robot_state = 1
     node._safety_latched = False
     node._safety_revision = 0
@@ -65,7 +69,7 @@ def test_failed_restore_never_enables_startup(monkeypatch, fault):
     elif fault == 'wrong_pose':
         node.arm.current_posx = lambda: [0.0] * 6
     elif fault == 'stale':
-        state.update(busy=True, grip_inferred=False)
+        state.update(fresh=False, busy=True, grip_inferred=False)
     elif fault == 'no_grip':
         state['grip_inferred'] = False
     elif fault == 'safety':
@@ -91,7 +95,7 @@ def test_failed_restore_never_enables_startup(monkeypatch, fault):
         node._return_rescoop_blocked = True
     elif fault == 'virtual':
         node.mode = 'virtual'
-    with pytest.raises((ValueError, RuntimeError, KeyError)):
+    with pytest.raises((ValueError, RuntimeError, KeyError, TimeoutError)):
         node._do_startup(job)
     assert not node._configured
     assert node._held_payload == 'unknown' and node._held_material_id == ''
@@ -109,3 +113,45 @@ def test_failed_self_check_does_not_restore(monkeypatch):
     node.arm.self_check = lambda *_: (False, 'tool mismatch')
     assert not node._do_startup(job)[0]
     assert not node._configured and node._held_payload == 'unknown'
+
+
+def test_restore_waits_for_first_fresh_sample(monkeypatch):
+    node, job, state = restore_node(monkeypatch)
+    readings = []
+    def read(_):
+        readings.append(True)
+        return dict(state, fresh=False, busy=True, grip_inferred=False) if len(readings) < 3 else state
+    node.gripper.state = read
+    assert node._do_startup(job)[0]
+    assert len(readings) == 4  # 대기 2회·최신 확인·자세 재확인 후 최종 센서 확인
+    assert node._held_material_id == 'A'
+
+
+@pytest.mark.parametrize('fault', ['cancel', 'alarm', 'pose_changed'])
+def test_sensor_wait_never_overrides_changed_conditions(monkeypatch, fault):
+    node, job, state = restore_node(monkeypatch)
+    calls = []
+    def read(_):
+        calls.append(True)
+        if len(calls) == 1:
+            if fault == 'cancel':
+                job.cancel = True
+            elif fault == 'alarm':
+                node._safety_revision += 1
+            else:
+                node.arm.current_posx = lambda: [0.0] * 6
+            return dict(state, fresh=False)
+        return state
+    node.gripper.state = read
+    with pytest.raises(RuntimeError):
+        node._do_startup(job)
+    assert not node._configured and node._held_payload == 'unknown'
+
+
+def test_fresh_safety_fault_is_not_waited_out(monkeypatch):
+    node, job, state = restore_node(monkeypatch)
+    state['safety_triggered'] = True
+    start = node._now_s()
+    with pytest.raises(RuntimeError, match='safety_triggered'):
+        node._do_startup(job)
+    assert node._now_s() == start
