@@ -9,6 +9,9 @@ header{flex-wrap:wrap;gap:16px 24px;padding:16px 24px}.brand{font-size:23px}nav{
 @media(max-width:760px){header{padding:14px}.connection{margin-left:0;gap:8px}.safety-banner{padding:9px 12px;display:block;font-size:11px}.safety-banner span{display:block;margin-top:4px;font-size:10px}.dashboard-kpis{gap:8px}.dashboard-kpis>div{display:block;padding:12px}.dashboard-kpis small{display:block;margin-bottom:8px;font-size:11px}.dashboard-kpis strong{font-size:18px}.operation.focused,.extra-grid{display:block}.extra-grid>.card{margin-top:12px}.filters{gap:9px}.filters label{min-width:140px}nav button{flex:0 0 auto;min-width:95px}.weight-selector{align-items:flex-start;flex-wrap:wrap}.weight-selector label{white-space:normal;font-size:11px}.weight-selector select{min-width:140px}.force-summary{gap:22px}.login-card{padding:22px}.network-metrics{gap:10px}.kpis{grid-template-columns:repeat(2,1fr)}}
 
 .completion.pending,.state-pill.FINISH_PENDING{background:#fff5df;border-color:#efd497;color:#925809}
+.collection-state{border:1px solid #dce5f2;border-radius:6px;background:#f6f8fb;color:#536d8e;padding:12px;font-size:12px;line-height:1.65}.collection-state.required{border-color:#efcd8a;background:#fff6e7;color:#925809}.collection-state.pending{border-color:#b8ccef;background:#eef4ff;color:#2453a1}.collection-state.available{border-color:#b8dec8;background:#edf9f1;color:#215e3a}
+/* 운영 계약 없는 HMI 자체 재고 기준값은 시험 보조로만 남기고 운영 설정 화면에서는 숨긴다. */
+#settings #materialSettings,#settings label:has(#settingLow),#settingsForm+.hint{display:none}
 
 /* V3 화면 정리: 메인 2개 + 설정/계정 팝업 */
 #alarms{margin-top:20px}#alarmCount{background:#fff0ce;color:#9b5700;min-width:22px;font-size:12px}

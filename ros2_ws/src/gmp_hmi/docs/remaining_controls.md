@@ -29,7 +29,7 @@
 |---|---|---|
 | 운영 RunBatch | C process_node의 RunBatch 서버·배치 취소 구현 완료(PR #163 병합) | 실제 HMI·C·A 통합 검증 필요 |
 | 운영 원료 잔량·보충 | 운영 메시지·서비스 없음. test_inventory/test_refill_*는 /hmi_test 전용 | B/C: 원료별량·단위·revision·신선도·보충 확인 권한/응답 계약 확정 |
-| 회수 확인 | HMI_COLLECTION_CONFIRMED는 감사 기록뿐. C 카운터 수신/초기화 없음 | C: 대상 용량·회수 명령·중복 요청·초기화 결과 계약 |
+| 회수 확인 | HMI는 두 칸 비움 확인 뒤 `HMI_COLLECTION_CONFIRMED`를 발행하고 `COLLECTION_RESET`을 기다린다 | C: 적재 카운터·`LOADED`/`COLLECTION_REQUIRED`/`COLLECTION_RESET` 구현 병합 및 실제 통합 검증 |
 | 공정 재기동 이어하기 | C resume 서비스/저장 FSM 복원 계약 없음 | C: 재개 가능 상태·검증·응답·금지 조건 확정. 안전정지 ERROR 배치 제외 |
 | 운영 레시피 | 운영 demo_batch.yaml 삭제. 시험 3종만 존재 | 팀: 실제 목표량/허용오차 확정 후 운영 YAML 등록 |
 
