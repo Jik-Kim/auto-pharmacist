@@ -324,7 +324,11 @@ def main(argv=None):
                 fz_g = -sum(fz) / len(fz) / 9.80665 * 1000 if fz else float('nan')
                 wp_g = sum(kg) / len(kg) * 1000 if kg else float('nan')
                 print(f'    세트 {s} 회차 {t:2d}/{a.trials}: Fz→ {fz_g:8.1f} g (offset 전)   workpiece {wp_g:8.1f} g', flush=True)
-            print(f'    세트 {s} 끝 — 물체를 놓았다가 다시 잡는다' + (' (다음 세트에서 자동으로 연다)' if grip else ''))
+            # 측정이 끝나도 여기서 멈춘다 — 다음 세트로 그냥 넘어가면 물체를 문 채 프롬프트가 지나가
+            # 언제 손을 대도 되는지 알기 어렵다 (9/21 사용자 요청). Ctrl-C 는 바깥 except 로 전달된다.
+            last = (s == a.sets)
+            print(f'    세트 {s}/{a.sets} 측정 끝' + ('' if last else ' — 다음 세트에서 물체를 놓았다 다시 잡는다'))
+            input(f'    세트 {s} 기록 확인 → Enter ({"정리로 넘어간다" if last else "다음 세트"}) ')
     except KeyboardInterrupt:
         print('\n중단 — 지금까지 기록은 남는다')
     finally:
