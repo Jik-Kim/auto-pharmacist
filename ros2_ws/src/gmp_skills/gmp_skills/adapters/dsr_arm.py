@@ -156,17 +156,47 @@ class DsrArm:
             self.R.amove_periodic(amp, period, atime=atime, repeat=repeat,
                                   ref=self.R.DR_TOOL if ref_tool else self.R.DR_BASE))
 
-    def robot_state(self):
-        # 래퍼는 상태 조회 전에 서비스 준비를 기다리지 않는다. 실제 호출에 쓰는
-        # 클라이언트의 discovery 완료를 확인해야 첫 요청이 무한 대기에 빠지지 않는다.
-        client = getattr(self.R, '_ros2_get_robot_state', None)
+    def _bounded_query(self, operation, **fields):
+        """벤더의 기존 조회 클라이언트를 같은 워커에서 제한 시간 내 처리한다."""
+        client = getattr(self.R, '_ros2_' + operation, None)
         if client is None or not callable(getattr(client, 'wait_for_service', None)):
-            raise RuntimeError('DSR 래퍼의 상태 조회 서비스 준비 확인 기능이 없습니다')
-        if not client.wait_for_service(timeout_sec=self.startup_timeout_s):
-            raise TimeoutError('로봇 상태 조회 서비스 준비 시간 초과')
-        state = self.R.get_robot_state()
+            raise RuntimeError(f'{operation}: DSR 조회 클라이언트 준비 확인 기능 없음')
+        timeout_s = self.startup_timeout_s
+        if not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise ValueError('robot.startup_timeout_s는 유한한 양수여야 한다')
+        logger = getattr(self, 'log', None)
+        phase = '서비스 준비'
+        future = None
+        try:
+            if not client.wait_for_service(timeout_sec=timeout_s):
+                raise TimeoutError(f'{operation}: {phase} 시간 초과 ({timeout_s:g}s)')
+            request = client.srv_type.Request()
+            for name, value in fields.items():
+                setattr(request, name, value)
+            phase = '응답'
+            future = client.call_async(request)
+            rclpy.spin_until_future_complete(self.node, future, timeout_sec=timeout_s)
+            if not future.done():
+                raise TimeoutError(f'{operation}: {phase} 시간 초과 ({timeout_s:g}s)')
+            if future.cancelled():
+                raise RuntimeError(f'{operation}: 조회 취소됨')
+            response = future.result()
+            if response is None or not response.success:
+                raise RuntimeError(f'{operation}: 조회 실패 또는 빈 응답')
+            return response
+        except Exception as exc:
+            if logger:
+                logger.error(f'[DSR_QUERY_FAILED] {operation} / {phase}: {exc}')
+            raise
+        finally:
+            if future is not None and not future.done():
+                # 조회 대기만 취소한다. 장치 동작 취소를 뜻하지 않는다.
+                future.cancel()
+
+    def robot_state(self):
+        state = self._bounded_query('get_robot_state').robot_state
         if not isinstance(state, int) or state < 0:
-            raise RuntimeError(f'로봇 상태 조회 실패: {state!r}')
+            raise RuntimeError(f'get_robot_state: 잘못된 상태값 {state!r}')
         return state
 
     def recover_control(self, control, timeout_s, dispatch):
@@ -269,8 +299,10 @@ class DsrArm:
 
     # ── 관측 ────────────────────────────────────────────────────────────
     def tool_force(self):
-        force = self.R.get_tool_force(self.R.DR_BASE)
-        return list(force) if isinstance(force, (list, tuple)) and len(force) == 6 else None
+        force = list(self._bounded_query('get_tool_force', ref=self.R.DR_BASE).tool_force)
+        if len(force) != 6 or not all(math.isfinite(value) for value in force):
+            raise RuntimeError('get_tool_force: 유효하지 않은 6축 외력')
+        return force
 
     def _settle(self, duration_s: float, period_s: float, observer=None):
         end_s = self._now() + max(0.0, duration_s)

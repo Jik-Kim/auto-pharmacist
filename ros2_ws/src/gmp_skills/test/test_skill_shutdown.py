@@ -88,7 +88,7 @@ def test_force_sampling_observer_interrupts_on_shutdown(monkeypatch):
         node._observe_force([0]*6)
 
 
-def test_scoop_compliance_entry_failure_still_releases_without_retreat(monkeypatch):
+def test_check_depth_compliance_entry_failure_still_releases_without_retreat(monkeypatch):
     module = _load_skill_node(monkeypatch)
     calls = []
 
@@ -107,7 +107,7 @@ def test_scoop_compliance_entry_failure_still_releases_without_retreat(monkeypat
                             compliance_on=fail, compliance_off=lambda: calls.append('release')))
     node.get_parameter = lambda key: SimpleNamespace(value=[1]*6 if key == 'safety.compliance_stx' else 3.0)
     with pytest.raises(RuntimeError, match='entry failed'):
-        module.SkillNode._do_scoop(node, module.Job('scoop', {'material_id': 'A'}))
+        module.SkillNode._do_check_depth(node, module.Job('scoop', {'material_id': 'A'}))
     assert calls == ['move', 'compliance_on', 'release']
 
 

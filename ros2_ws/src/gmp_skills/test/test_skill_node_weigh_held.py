@@ -147,7 +147,8 @@ def test_scoop_grip_with_stale_anchor_does_not_assign_material(monkeypatch):
     assert node._held_material_id == ''
 
 
-def test_weigh_held_extracts_scoop_plus_y_before_matching_material(monkeypatch):
+@pytest.mark.parametrize('lift_mm', [100.0, 125.0])
+def test_weigh_held_extracts_then_lifts_before_matching_material(monkeypatch, lift_mm):
     skill_node = _load_skill_node(monkeypatch)
     moves = []
     phases = []
@@ -157,12 +158,13 @@ def test_weigh_held_extracts_scoop_plus_y_before_matching_material(monkeypatch):
     node = SimpleNamespace(
         gripper=SimpleNamespace(state=lambda _: {'grip_inferred': True}),
         arm=SimpleNamespace(
-            current_posx=lambda: [400.0, -298.0, 50.0, 90.0, -180.0, -90.0],
+            current_posx=lambda: moves[-1][0] if moves else [400.0, -298.0, 50.0, 90.0, -180.0, -90.0],
             movel=lambda target, scale: moves.append((list(target), scale)),
         ),
         stations=SimpleNamespace(for_material=lambda material_id: material),
         vel_scale=0.3,
         scoop_extract_y_mm=150.0,
+        scoop_extract_lift_z_mm=lift_mm,
         _pending_scoop_extract=True,
         _scoop_extract_uncertain=False,
         _station_id='scoop_1',
@@ -179,12 +181,18 @@ def test_weigh_held_extracts_scoop_plus_y_before_matching_material(monkeypatch):
     assert result is reading
     assert moves == [
         ([400.0, -148.0, 50.0, 90.0, -180.0, -90.0], 0.3),
+        ([400.0, -148.0, 50.0 + lift_mm, 90.0, -180.0, -90.0], 0.3),
         (material.posx, 0.3),
     ]
     assert phases == ['LIFT', 'SETTLE', 'MEASURE']
     assert node._pending_scoop_extract is False
     assert node._scoop_extract_uncertain is False
     assert node._station_id == 'material_1'
+
+    # 같은 파지의 후속 계량은 인출·상승을 반복하지 않는다.
+    moves.clear()
+    assert skill_node.SkillNode._do_weigh_held(node, job) is reading
+    assert moves == [(material.posx, 0.3)]
 
 
 def test_weigh_held_rejects_empty_gripper(monkeypatch):
@@ -299,6 +307,7 @@ def test_failed_extraction_is_not_automatically_retried(monkeypatch):
         ),
         vel_scale=0.3,
         scoop_extract_y_mm=150.0,
+        scoop_extract_lift_z_mm=100.0,
         _pending_scoop_extract=True,
         _scoop_extract_uncertain=False,
         _held_payload='scoop',
@@ -584,3 +593,52 @@ def test_return_rejected_before_motion_does_not_set_rescoop_guard(monkeypatch):
         module.SkillNode._do_return_material(node, module.Job('return_material', {'material_id': 'A'}))
     assert not node._return_rescoop_blocked
     assert moves == []
+
+
+@pytest.mark.parametrize('failure_step', [1, 2])
+@pytest.mark.parametrize('cancel', [False, True])
+def test_extract_or_lift_failure_never_continues_to_material(monkeypatch, failure_step, cancel):
+    module = _load_skill_node(monkeypatch)
+    moves = []
+    pose = [344.0, -298.0, 50.0, 90.0, -180.0, -90.0]
+    job = module.Job('weigh_held', {'tare_g': 0.0})
+    def move(target, scale):
+        moves.append(list(target))
+        pose[:] = target
+        if len(moves) == failure_step:
+            if cancel:
+                job.cancel = True
+            else:
+                raise RuntimeError('motion failed')
+    node = SimpleNamespace(
+        gripper=SimpleNamespace(state=lambda _: {'grip_inferred': True}),
+        arm=SimpleNamespace(current_posx=lambda: list(pose), movel=move),
+        stations=SimpleNamespace(for_material=lambda _: SimpleNamespace(
+            station_id='material_1', posx=[344.0, -298.0, 200.0, 90.0, -180.0, -90.0])),
+        vel_scale=0.2, scoop_extract_y_mm=150.0, scoop_extract_lift_z_mm=100.0,
+        _pending_scoop_extract=True, _scoop_extract_uncertain=False,
+        _held_payload='scoop', _held_material_id='A', _now_s=lambda: 0.0,
+        _measure_weight_reading=lambda *args: pytest.fail('실패 후 계량하면 안 됨'))
+    with pytest.raises(RuntimeError, match='cancelled|motion failed'):
+        module.SkillNode._do_weigh_held(node, job)
+    assert len(moves) == failure_step
+    assert node._scoop_extract_uncertain
+    job.cancel = False
+    with pytest.raises(RuntimeError, match='불확실'):
+        module.SkillNode._do_weigh_held(node, job)
+    assert len(moves) == failure_step
+
+
+@pytest.mark.parametrize('height', [0.0, -100.0, float('nan'), float('inf')])
+def test_invalid_extract_lift_height_rejected_before_first_motion(monkeypatch, height):
+    module = _load_skill_node(monkeypatch)
+    node = SimpleNamespace(
+        gripper=SimpleNamespace(state=lambda _: {'grip_inferred': True}),
+        stations=SimpleNamespace(for_material=lambda _: object()),
+        arm=SimpleNamespace(current_posx=lambda: pytest.fail('설정 검증 전 장치 조회')),
+        scoop_extract_lift_z_mm=height, _pending_scoop_extract=True,
+        _scoop_extract_uncertain=False, _held_payload='scoop', _held_material_id='A',
+        _now_s=lambda: 0.0)
+    with pytest.raises(ValueError, match='유한한 양수'):
+        module.SkillNode._do_weigh_held(node, module.Job('weigh_held', {'tare_g': 0.0}))
+    assert node._pending_scoop_extract

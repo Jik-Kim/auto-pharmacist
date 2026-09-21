@@ -202,3 +202,56 @@ def test_pending_recovery_requests_do_not_block_alarm_executor(recovery, request
     assert not result.success and not result.manual_required
     assert '처리 중' in result.message
     assert not node.controls
+
+
+@pytest.mark.parametrize('configured,latched', [(False, False), (True, True)])
+def test_nudge_does_not_query_force_before_configuration_or_while_latched(recovery, configured, latched):
+    node, _, module = recovery
+    node._nudge_enabled = True
+    node._configured = configured
+    node._safety_latched = latched
+    node.arm.tool_force = lambda: pytest.fail('차단 상태에서 외력 조회')
+    module.SkillNode._poll_nudge(node)
+
+
+@pytest.mark.parametrize('active_job', [False, True])
+def test_nudge_query_timeout_latches_and_aborts_active_job(recovery, active_job):
+    node, _, module = recovery
+    node._nudge_enabled = True
+    node._safety_latched = False
+    node._nudge_fault_logged = False
+    node._current = module.Job('pour', {}) if active_job else None
+    def fail():
+        raise TimeoutError('get_tool_force: 응답 시간 초과')
+    node.arm.tool_force = fail
+    if active_job:
+        with pytest.raises(TimeoutError):
+            module.SkillNode._poll_nudge(node)
+    else:
+        module.SkillNode._poll_nudge(node)
+    assert node._safety_latched
+    assert 'get_tool_force' in node._safety_reason
+
+
+def test_worker_handles_recovery_after_observation_timeout(recovery):
+    node, _, module = recovery
+    node._safety_latched = False
+    node.state = 1
+    def fail(job):
+        raise TimeoutError('get_tool_force: 응답 시간 초과')
+    node._do_measure = fail
+    active = module.Job('measure', {})
+    node._q.put(active)
+    node._worker_thread.start()
+    try:
+        assert active.done.wait(1)
+        assert node._safety_latched
+        assert 'SAFETY_STOP' in node._submit('measure').error
+        recovery_job = module.Job('recover', {'expected_state': 1, 'operator_confirmed': True,
+                                               'safety_revision': node._safety_revision})
+        node._q.put(recovery_job)
+        assert recovery_job.done.wait(1)
+        assert recovery_job.result[:3] == (True, False, 1)
+        assert not node._safety_latched
+    finally:
+        assert node.shutdown()

@@ -17,6 +17,13 @@
     mode: virtual                  # virtual | real
     stations_file: ""             # launch가 stations.yaml의 절대 경로를 넣는다
 
+    # 매 기동 시 작업자가 명시할 때만 사용. 인출·상승 완료 후 material.posx 정지 상태 전용.
+    # 투입·반환 중 중단된 상태에는 사용 금지. 공정 기록이나 안전 차단은 복원하지 않는다.
+    restore:
+      material_id: ""
+      operator_id: ""
+      confirmed: false
+
     # ── 두산 로봇 ────────────────────────────────────────────────────
     robot:
       id: dsr01
@@ -30,7 +37,7 @@
       vel_scale: 0.3                # 런치가 덮어쓴다. 실물 첫 기동 0.2
       shutdown_timeout_s: 5.0       # 종료 정리 대기 한도. 초과 시 해제 성공으로 처리하지 않음
       motion_timeout_s: 30.0        # 비동기 이동 제한. 초과·취소 시 MoveStop(DR_SSTOP)
-      startup_timeout_s: 15.0       # dsr_controller2 motion 서비스 준비 대기
+      startup_timeout_s: 15.0       # 서비스 준비 및 상태·힘 조회 응답 각각의 제한 시간
       transfer_joint_vel_deg_s: 0.0   # TODO([A]): 티칭 검증 후 관절 이송 속도 설정. 0은 이송 거부
       transfer_joint_acc_deg_s2: 0.0  # TODO([A]): 약통 기울기·흘림 검증 후 설정. 직선 acc와 별개
       pose_xyz_tolerance_mm: 2.0      # 출발 이력·도착 위치 확인 허용오차
@@ -44,6 +51,7 @@
       scoop_width_mm: 18.0          # 레거시 단일 파지 명령값(B 폭). C의 원료별 명령 전환 전까지 유지
       scoop_expected_widths_mm: [15.5, 18.0, 28.0]  # A/B/C 스쿱 폭 지문 (9/19 확정)
       scoop_extract_y_mm: 150.0     # 스쿱 파지 후 첫 WeighHeld에서 BASE +Y로 빼는 거리
+      scoop_extract_lift_z_mm: 100.0 # 인출 완료 후 BASE +Z 상승 거리, 이후 원료 계량 자세로 이동
       fingerprint_tolerance_mm: 1.0 # [실물 정밀도 확인 후 확정] WRONG_TOOL 식별 허용차
       cup_width_mm: 60.0            # [구매 후 실측] 약통 파지부 외경 (D-18: 입구 근처를 잡는다, 파지점 위 돌출 ≤ 40 mm)
       force_n: 20.0                 # 데이터시트 조절 범위 3~40 N. modbus 는 2.5 N 스텝 (D-06)

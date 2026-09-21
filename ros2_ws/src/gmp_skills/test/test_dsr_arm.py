@@ -348,22 +348,72 @@ def test_backdrive_command_is_never_dispatched():
         _arm().recover_control(6, 1.0, lambda operation: operation())
 
 
-@pytest.mark.parametrize('ready', [True, False])
-def test_robot_state_waits_for_wrapper_client_before_query(ready):
+def query_arm(monkeypatch, operation='get_robot_state', *, ready=True, done=True,
+              success=True, payload=None):
     arm = _arm()
+    arm.node = object()
     calls = []
-    arm.R = types.SimpleNamespace(
-        _ros2_get_robot_state=types.SimpleNamespace(
-            wait_for_service=lambda **kw: calls.append(('wait', kw)) or ready),
-        get_robot_state=lambda: calls.append(('query', {})) or 1)
+    cancelled = []
+    response = types.SimpleNamespace(success=success, **(
+        payload if payload is not None else {'robot_state': 1}))
+    future = types.SimpleNamespace(done=lambda: done, cancelled=lambda: False,
+                                   result=lambda: response,
+                                   cancel=lambda: cancelled.append(True))
+    client = types.SimpleNamespace(
+        srv_type=types.SimpleNamespace(Request=types.SimpleNamespace),
+        wait_for_service=lambda **kw: calls.append(('wait', kw)) or ready,
+        call_async=lambda req: calls.append(('query', vars(req))) or future)
+    arm.R = types.SimpleNamespace(DR_BASE=0, **{'_ros2_' + operation: client})
+    logs = []
+    arm.log = types.SimpleNamespace(error=logs.append)
+    monkeypatch.setattr('gmp_skills.adapters.dsr_arm.rclpy', types.SimpleNamespace(
+        spin_until_future_complete=lambda node, fut, **kw: calls.append(('spin', kw))))
+    return arm, calls, cancelled, logs
+
+
+@pytest.mark.parametrize('ready', [True, False])
+def test_robot_state_waits_for_wrapper_client_before_query(monkeypatch, ready):
+    arm, calls, _, _ = query_arm(monkeypatch, ready=ready)
     if ready:
         assert arm.robot_state() == 1
-        assert calls[1][0] == 'query'
+        assert calls[1] == ('query', {})
+        assert calls[2] == ('spin', {'timeout_sec': arm.startup_timeout_s})
     else:
-        with pytest.raises(TimeoutError):
+        with pytest.raises(TimeoutError, match='서비스 준비'):
             arm.robot_state()
         assert len(calls) == 1
     assert calls[0] == ('wait', {'timeout_sec': arm.startup_timeout_s})
+
+
+@pytest.mark.parametrize('operation', ['get_robot_state', 'get_tool_force'])
+def test_query_timeout_cancels_without_retry_and_names_failed_operation(monkeypatch, operation):
+    arm, calls, cancelled, logs = query_arm(monkeypatch, operation, done=False)
+    with pytest.raises(TimeoutError, match=operation + ': 응답 시간 초과'):
+        getattr(arm, 'robot_state' if operation == 'get_robot_state' else 'tool_force')()
+    assert cancelled == [True]
+    assert sum(name == 'query' for name, _ in calls) == 1
+    assert operation in logs[-1] and '응답' in logs[-1]
+
+
+@pytest.mark.parametrize('operation', ['get_robot_state', 'get_tool_force'])
+def test_failed_response_is_never_treated_as_valid_reading(monkeypatch, operation):
+    arm, _, _, _ = query_arm(monkeypatch, operation, success=False)
+    with pytest.raises(RuntimeError, match='조회 실패'):
+        getattr(arm, 'robot_state' if operation == 'get_robot_state' else 'tool_force')()
+
+
+def test_tool_force_keeps_base_reference_and_six_axes(monkeypatch):
+    force = [1., 2., 3., 4., 5., 6.]
+    arm, calls, _, _ = query_arm(monkeypatch, 'get_tool_force', payload={'tool_force': force})
+    assert arm.tool_force() == force
+    assert calls[1] == ('query', {'ref': 0})
+
+
+@pytest.mark.parametrize('force', [[1.] * 5, [float('nan')] * 6, [float('inf')] * 6])
+def test_invalid_force_is_rejected(monkeypatch, force):
+    arm, _, _, _ = query_arm(monkeypatch, 'get_tool_force', payload={'tool_force': force})
+    with pytest.raises(RuntimeError, match='6축 외력'):
+        arm.tool_force()
 
 
 def test_robot_state_missing_private_client_fails_without_query():

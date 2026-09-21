@@ -10,6 +10,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -20,6 +21,10 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('mode', default_value='real', description='real | virtual'),
         DeclareLaunchArgument('vel_scale', default_value='0.2', description='로봇 속도 스케일'),
+        DeclareLaunchArgument('restore_material_id', default_value='', description='인출 완료 스쿱 원료 ID'),
+        DeclareLaunchArgument('restore_operator_id', default_value='', description='복원 확인 작업자'),
+        DeclareLaunchArgument('restore_confirmed', default_value='false',
+                              description='인출 완료·계량 자세 정지·투입/반환 중단 아님을 확인'),
         Node(
             package='gmp_skills',
             executable='skill_node',
@@ -30,6 +35,9 @@ def generate_launch_description():
                 'mode': LaunchConfiguration('mode'),
                 'robot.vel_scale': LaunchConfiguration('vel_scale'),
                 'stations_file': stations,
+                'restore.material_id': ParameterValue(LaunchConfiguration('restore_material_id'), value_type=str),
+                'restore.operator_id': ParameterValue(LaunchConfiguration('restore_operator_id'), value_type=str),
+                'restore.confirmed': ParameterValue(LaunchConfiguration('restore_confirmed'), value_type=bool),
             }],
         ),
     ])
