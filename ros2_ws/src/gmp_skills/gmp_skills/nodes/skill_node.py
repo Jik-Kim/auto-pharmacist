@@ -656,15 +656,15 @@ class SkillNode(Node):
         if job.cancel:
             raise RuntimeError('cancelled')
         approach = job.args['approach'] if approach is None else approach
-        if approach not in (0, 1):
+        if approach not in (MoveToStation.Goal.ABOVE, MoveToStation.Goal.AT):
             raise ValueError('approach는 ABOVE(0) 또는 AT(1)이어야 한다')
         st = self.stations.get(station_id or job.args['station_id'])
         # 티칭 관절 경로만 가상에서 직선 폴백한다. solution_space 접근은 양 모드에 적용한다.
         transfers = self.stations.transfers if self.mode != 'virtual' else {}
         incoming = [r for r in transfers.values() if r.destination == st.station_id]
-        if incoming and all(r.arrival == 'at' for r in incoming) and approach != 1:
+        if incoming and all(r.arrival == 'at' for r in incoming) and approach != MoveToStation.Goal.AT:
             raise ValueError('관절 직접 도착 목적지는 AT 요청만 허용한다')
-        target = st.above(self.stations.approach_mm) if approach == 0 else st.posx
+        target = st.above(self.stations.approach_mm) if approach == MoveToStation.Goal.ABOVE else st.posx
         vel_scale = job.args.get('vel_scale') or self.vel_scale
         if not math.isfinite(vel_scale) or not 0 < vel_scale <= 1:
             raise ValueError('vel_scale은 0 초과 1 이하여야 한다')
@@ -684,9 +684,9 @@ class SkillNode(Node):
                 for outgoing in self.stations.transfers.values():
                     if outgoing.source != st.station_id or not outgoing.enabled:
                         continue
-                    if outgoing.start_from == 'above' and approach != 0:
+                    if outgoing.start_from == 'above' and approach != MoveToStation.Goal.ABOVE:
                         continue
-                    taught = (outgoing.start_above_posj if approach == 0
+                    taught = (outgoing.start_above_posj if approach == MoveToStation.Goal.ABOVE
                               else outgoing.start_at_posj)
                     if (self._pose_matches(self.arm.current_posx(), target)
                             and joints_match(self.arm.current_posj(), taught, self.joint_tolerance)):
@@ -695,7 +695,7 @@ class SkillNode(Node):
                         self._cartesian_ready = True
                         return st.station_id
                 raise ValueError('등록된 출발 이력이 없는 보호 대상 이송이다')
-        safe_posj = st.extra.get('posj') if approach != 0 else None
+        safe_posj = st.extra.get('posj') if approach != MoveToStation.Goal.ABOVE else None
         if safe_posj is not None:
             job.feedback and job.feedback('HOMING')
             self.arm.movej_cancellable(safe_posj, vel_scale, lambda: job.cancel,
@@ -786,7 +786,7 @@ class SkillNode(Node):
             raise RuntimeError('빈 그리퍼의 열림 폭을 확인할 수 없다')
 
     def _run_transfer(self, route, job, target, vel_scale):
-        if route.arrival == 'at' and job.args['approach'] != 1:
+        if route.arrival == 'at' and job.args['approach'] != MoveToStation.Goal.AT:
             raise ValueError('관절 직접 도착 경로는 AT 요청만 허용한다')
         validate_start(route, self._motion_anchor, self.arm.current_posx(),
                        self.arm.current_posj(), self._held_payload,
@@ -821,7 +821,7 @@ class SkillNode(Node):
                  else destination.above(self.stations.approach_mm))
         if not self._pose_matches(self.arm.current_posx(), entry):
             raise RuntimeError(f'마지막 관절점이 목적지 {route.arrival.upper()} 위치/자세와 일치하지 않는다')
-        if route.arrival == 'above' and job.args['approach'] == 1:
+        if route.arrival == 'above' and job.args['approach'] == MoveToStation.Goal.AT:
             self.arm.movel_cancellable(target, vel_scale, lambda: job.cancel, self.motion_timeout_s)
         checkpoint()
         self._record_arrival(route.destination, job.args['approach'], target)
@@ -839,7 +839,7 @@ class SkillNode(Node):
                 anchor is not None
                 and self._station_id.startswith('scoop_')
                 and anchor.station == self._station_id
-                and anchor.approach == 1
+                and anchor.approach == MoveToStation.Goal.AT
                 and self._pose_matches(self.arm.current_posx(), anchor.pose)
                 and joints_match(self.arm.current_posj(), anchor.joints, self.joint_tolerance)
             )
@@ -853,7 +853,7 @@ class SkillNode(Node):
                         raise ValueError(f'{self._station_id}.material_id가 필요하다')
                     self._held_payload = 'scoop'
                     self._held_material_id = material_id
-                elif (anchor is not None and anchor.station == self._station_id and anchor.approach == 1
+                elif (anchor is not None and anchor.station == self._station_id and anchor.approach == MoveToStation.Goal.AT
                       and self._station_id in ('workbench', 'passbox_empty', 'passbox_done', 'reject_bin')
                       and self._pose_matches(self.arm.current_posx(), anchor.pose)
                       and joints_match(self.arm.current_posj(), anchor.joints, self.joint_tolerance)):
@@ -1099,7 +1099,7 @@ class SkillNode(Node):
         measure_posx = station.above(self.stations.approach_mm)
         if 'solution_space' in station.extra:
             # Weigh의 내부 이동도 MoveToStation과 같은 상부 접근 정책을 따른다.
-            self._do_move(job, station_id='workbench', approach=0)
+            self._do_move(job, station_id='workbench', approach=MoveToStation.Goal.ABOVE)
         else:
             self.arm.movel(measure_posx, self.vel_scale)
         if not bool(p('scale.simulated').value):

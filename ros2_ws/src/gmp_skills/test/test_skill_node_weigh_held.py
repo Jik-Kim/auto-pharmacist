@@ -15,6 +15,10 @@ def _module(name, **members):
 
 def _load_skill_node(monkeypatch):
     class Interface:
+        class Goal:
+            ABOVE = 0
+            AT = 1
+
         class Feedback:
             pass
 
