@@ -261,6 +261,10 @@ def main(argv=None):
                          "예: workbench(용기 계량) | material_1/2/3(weigh_held 가 실제로 재는 자세 — "
                          "calibration 은 이 자세로 해야 gain/offset 이 운영과 맞는다)")
     ap.add_argument('--vel-scale', type=float, default=0.2, help='--goto-station 속도 스케일')
+    ap.add_argument('--tool-name', default='', metavar='NAME',
+                    help='common.yaml 의 robot.tool_name 대신 이 공구를 set_tool 한다. '
+                         '공구 무게·무게중심을 바꿔 시험할 때 쓴다 — add_tool 로 시험용 공구를 만들고 '
+                         '여기에 그 이름을 주면 등록된 tool_weight 를 건드리지 않는다 (9/22 cz 검증).')
     ap.add_argument('--load-series', default='', metavar='G1,G2,..',
                     help='[9/22] **한 파지 안에서 하중을 늘려가며** 재서 gain 직선을 뽑는다. 회차마다 Enter 로 멈추므로 '
                          '그 사이에 시료를 더 붓고 저울로 읽은 값을 이 목록에 미리 넣어둔다 (예: 78,155,232,309). '
@@ -293,6 +297,9 @@ def main(argv=None):
     import rclpy
     from gmp_skills.adapters.dsr_arm import DsrArm
     rid, model, vel, acc, tool, tcp = robot_params()
+    if a.tool_name:
+        print(f'    공구를 {tool!r} 대신 {a.tool_name!r} 로 바꿔 쓴다 (--tool-name)')
+        tool = a.tool_name
     rclpy.init()
     arm = DsrArm(rid, model, 'real', vel, acc, tool, tcp)
     wait_controller(arm, rclpy, a.controller_timeout)
