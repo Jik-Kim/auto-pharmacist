@@ -69,12 +69,43 @@ def robot_params():
     return r['id'], r['model'], float(r['vel']), float(r['acc']), r.get('tool_name', ''), r.get('tcp_name', '')
 
 
+def apply_tolerances(arm):
+    """skill_node:131-135 가 외부에서 넣어주는 값들 — movejx 계열이 이걸 참조한다.
+
+    DsrArm 생성자는 이 속성들을 안 만든다. movel 만 쓸 때는 필요 없지만
+    movejx_cancellable 은 도착 확인에 pose_xyz_tolerance 를 써서 AttributeError 가 난다 (9/22).
+    """
+    import yaml
+    r = yaml.safe_load(COMMON.read_text())['/**']['ros__parameters']['robot']
+    arm.cancel_requested = lambda: False
+    arm.motion_timeout_s = float(r.get('motion_timeout_s', 60.0))
+    arm.pose_xyz_tolerance = float(r.get('pose_xyz_tolerance_mm', 2.0))
+    arm.pose_rotation_tolerance = float(r.get('pose_rotation_tolerance_deg', 2.0))
+    arm.joint_tolerance = float(r.get('joint_tolerance_deg', 1.0))
+    return arm
+
+
 def station_posx(station_id: str):
     import yaml
     st = yaml.safe_load(STATIONS.read_text())
     s = st['stations'][station_id]
     print(f"    stations.yaml({st.get('frame')} frame) {station_id}: {s.get('note', '')}")
     return [float(v) for v in s['posx']]
+
+
+def station_solution_space(station_id: str):
+    """스테이션의 solution_space (관절 분기). 없으면 None.
+
+    9/22: 이 값이 계량 품질을 가른다. 같은 좌표·같은 자세각이라도 **손목 분기**가 다르면
+    거동이 완전히 달라진다 — material_3(sol 3) 는 σ 6.1·모멘트 0.000 인데
+    material_1(sol 2) 는 σ 19.0·모멘트 0.912 다. 둘은 J4 0° vs 180°, J5 부호반전,
+    J6 180° 차이로 전형적인 손목 뒤집기 쌍이었다.
+    movel 은 출발 자세의 분기를 물려받으므로 재현되지 않는다 — movejx 로 분기를 지정해야 한다.
+    """
+    import yaml
+    s = yaml.safe_load(STATIONS.read_text())['stations'][station_id]
+    v = s.get('solution_space')
+    return int(v) if v is not None else None
 
 
 STATES = {0: 'INITIALIZING', 1: 'STANDBY', 2: 'MOVING', 3: 'SAFE_OFF', 4: 'TEACHING', 5: 'SAFE_STOP',
@@ -261,6 +292,11 @@ def main(argv=None):
                          "예: workbench(용기 계량) | material_1/2/3(weigh_held 가 실제로 재는 자세 — "
                          "calibration 은 이 자세로 해야 gain/offset 이 운영과 맞는다)")
     ap.add_argument('--vel-scale', type=float, default=0.2, help='--goto-station 속도 스케일')
+    ap.add_argument('--sol-space', type=int, default=None, metavar='N',
+                    help='[9/22] 관절 분기(0~7)를 지정해 movejx 로 이동한다. stations.yaml 에 solution_space 가 '
+                         '있으면 자동으로 쓰고, 이 옵션이 그것을 덮는다. -1 을 주면 끄고 movel 로 간다. '
+                         '**계량 품질이 이 값에 갈린다** — material_3(sol 3) σ 6.1·모멘트 0.000 vs '
+                         'material_1(sol 2) σ 19.0·모멘트 0.912. movel 은 출발 자세의 분기를 물려받아 재현되지 않는다')
     ap.add_argument('--tool-name', default='', metavar='NAME',
                     help='common.yaml 의 robot.tool_name 대신 이 공구를 set_tool 한다. '
                          '공구 무게·무게중심을 바꿔 시험할 때 쓴다 — add_tool 로 시험용 공구를 만들고 '
@@ -301,7 +337,7 @@ def main(argv=None):
         print(f'    공구를 {tool!r} 대신 {a.tool_name!r} 로 바꿔 쓴다 (--tool-name)')
         tool = a.tool_name
     rclpy.init()
-    arm = DsrArm(rid, model, 'real', vel, acc, tool, tcp)
+    arm = apply_tolerances(DsrArm(rid, model, 'real', vel, acc, tool, tcp))
     wait_controller(arm, rclpy, a.controller_timeout)
     setup_tool(arm, tool, tcp, bool(a.goto_station))
     grip = Gripper(rclpy) if a.gripper else None
@@ -325,9 +361,22 @@ def main(argv=None):
                         if a.pick_lift_mm else posx)
         if a.pick_lift_mm:
             print(f'    파지 AT {pick_posx}  →  측정 ABOVE {measure_posx} (+{a.pick_lift_mm:g} mm)')
+        sol = a.sol_space if a.sol_space is not None else station_solution_space(a.goto_station)
+        if sol is not None and sol < 0:
+            sol = None
+            print('    solution_space 끔 (--sol-space -1) → movel 로 간다')
+        elif sol is not None:
+            print(f'    solution_space {sol} 로 movejx — 관절 분기를 고정한다')
+        else:
+            print('    ⚠ solution_space 가 없다 → movel. 출발 자세의 분기를 물려받아 재현되지 않는다')
         input(f'\n[0] {a.goto_station} {"파지" if a.pick_lift_mm else "계량"} 자세 {pick_posx} 로 '
               f'이동합니다 (vel_scale {a.vel_scale}). 주변 확인 → Enter ')
-        arm.movel(pick_posx, a.vel_scale)
+        if sol is None:
+            arm.movel(pick_posx, a.vel_scale)
+        else:
+            arm.movejx_cancellable(pick_posx, sol, a.vel_scale, lambda: False, a.controller_timeout)
+            got = arm.solution_space()
+            print(f'    도착 solution_space = {got}' + ('' if got == sol else f'  ⚠ 요청 {sol} 과 다르다'))
         print('    이동 완료')
     if a.probe > 0:
         return probe(arm, grip, close_cmd, a.probe, a.actual_g)
