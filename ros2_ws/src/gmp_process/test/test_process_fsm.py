@@ -197,6 +197,57 @@ def test_normal_scoop_failure_still_retries_once():
     assert fsm.deviations[-1]['action'] == 'RETRY'
 
 
+class _DepthCell(Cell):
+    """요청한 깊이(fraction)만큼 퍼올리는 셀 — 실물처럼 마지막 스쿱이 부분 스쿱이 된다."""
+    NOMINAL_G = 40.0
+
+    def __call__(self, req):
+        if req['kind'] == 'scoop':
+            self.n['scoop'] += 1
+            self.in_scoop += self.NOMINAL_G * req.get('fraction', 1.0)
+            return {'contact_detected': True}
+        return super().__call__(req)
+
+
+def _demo_spec():
+    return parse({'product': 'demo', 'items': [
+        {'material_id': 'A', 'target_g': 200.0, 'tol_pct': 5.0},
+        {'material_id': 'B', 'target_g': 150.0, 'tol_pct': 5.0},
+        {'material_id': 'C', 'target_g': 100.0, 'tol_pct': 5.0}]})
+
+
+def test_데모_레시피가_일탈_없이_완주한다():
+    """#189 회귀 — `max_attempts` 는 ceil(목표량 ÷ 스쿱 1회량) 이상이어야 한다.
+
+    3 이면 한 원료 상한이 3×40 = 120 g 이라 A(200)·B(150)이 TIMEOUT 으로 못 끝낸다.
+    이 시험이 깨지면 `common.yaml` 의 `dosing.max_attempts` 나 `scoop_nominal_g` 가
+    레시피와 어긋난 것이다.
+    """
+    fsm = ProcessFSM(_demo_spec(), DosingConfig(max_attempts=8, scoop_nominal_g=40.0),
+                     WeightModel(ScaleConfig()), max_returns=3)
+    run(fsm, _DepthCell(yields=[], residual=0.0))
+    assert fsm.deviations == [], fsm.deviations
+    assert fsm.state == 'DONE'
+    assert [round(r.actual_g) for r in fsm.results] == [200, 150, 100]
+    assert [r.attempts for r in fsm.results] == [5, 4, 3]     # ceil(목표 ÷ 40)
+
+
+def test_붓기_상한이_모자라면_TIMEOUT_으로_못_끝낸다():
+    """#189 가 있던 상태를 고정한다 — 값이 다시 내려가면 이 시험이 알려 준다."""
+    fsm = ProcessFSM(_demo_spec(), DosingConfig(max_attempts=3, scoop_nominal_g=40.0),
+                     WeightModel(ScaleConfig()), max_returns=3)
+    run(fsm, _DepthCell(yields=[], residual=0.0))
+    assert [d['kind'] for d in fsm.deviations].count('TIMEOUT') == 2      # A·B
+    assert [round(r.actual_g) for r in fsm.results][:2] == [120, 120]     # 3 × 40 이 상한
+
+
+def test_반환_상한은_붓기_상한과_분리돼_있다():
+    """#189 — 한 상수로 묶여 있으면 큰 레시피 때문에 붓기 상한을 올릴 때 반환 허용도 같이 오른다."""
+    fsm = ProcessFSM(_demo_spec(), DosingConfig(max_attempts=8), WeightModel(ScaleConfig()),
+                     max_returns=3)
+    assert fsm.max_returns == 3 and fsm.dosing_cfg.max_attempts == 8
+
+
 def test_verify_규격이탈은_BATCH_OUT_OF_SPEC():
     """① 제품 판정 — 용기 순량이 레시피 총 목표량에서 벗어나면 규격 이탈이다.
     레시피 A 100 + B 50 = 150 g, 허용치 Σ(target×tol) = 7.5 g. 용기에 50 g 이 더 있다."""

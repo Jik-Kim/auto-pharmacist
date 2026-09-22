@@ -85,7 +85,10 @@ class ProcessNode(Node):
             # 전까지 미적용이라, 여기와 ScaleConfig 기본값과 common.yaml 의 숫자가 당분간 서로 다르다.
             ('scale.min_resolvable_g', 19.0), ('scale.max_std_g', 10.0),
             ('scale.samples', 20), ('scale.settle_s', 1.0),
-            ('dosing.max_attempts', 3), ('dosing.scoop_nominal_g', 40.0), ('dosing.min_fraction', 0.15),
+            # max_attempts 는 **붓기 시도** 상한이다. 목표량÷스쿱 1회량에 비례해야 한다
+            # (데모 A 200 g ÷ 40 g = 5회가 하한). max_returns 는 **초과 반환** 상한으로 성격이 다르다 (#189).
+            ('dosing.max_attempts', 8), ('dosing.max_returns', 3),
+            ('dosing.scoop_nominal_g', 40.0), ('dosing.min_fraction', 0.15),
             ('gripper.cup_width_mm', 60.0),
             ('gripper.open_width_mm', 100.0), ('gripper.force_n', 20.0),
             ('gripper.fingerprint_tolerance_mm', 0.0),   # [추가 1] WRONG_TOOL 폭 지문 margin. 0 이면 검사 꺼짐
@@ -97,8 +100,10 @@ class ProcessNode(Node):
         self.p = p
         self.scale = WeightModel(ScaleConfig(p('scale.method'), p('scale.gain'), p('scale.offset_g'),
                                              p('scale.min_resolvable_g'), p('scale.max_std_g')))
-        self.dosing_cfg = DosingConfig(p('dosing.max_attempts'), p('dosing.scoop_nominal_g'),
-                                       p('dosing.min_fraction'))
+        # 키워드로 넘긴다 — 필드 사이에 값이 끼면 위치 인자는 조용히 밀린다
+        self.dosing_cfg = DosingConfig(max_attempts=p('dosing.max_attempts'),
+                                       scoop_nominal_g=p('dosing.scoop_nominal_g'),
+                                       min_fraction=p('dosing.min_fraction'))
         # 스테이션 이름표 — 없으면 원료 → scoop_N 을 못 찾는다. 경로가 비면 주문 때 거부한다
         self.smap = StationMap.from_yaml(p('stations_file')) if p('stations_file') else StationMap()
 
@@ -380,7 +385,8 @@ class ProcessNode(Node):
         self._last_result = DispenseResult()
         fingerprint = ToolFingerprint(scoop_widths_mm=self.smap.widths, cup_width_mm=self.p('gripper.cup_width_mm'),
                                       tolerance_mm=self.p('gripper.fingerprint_tolerance_mm'))
-        self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale, fingerprint=fingerprint)
+        self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale, fingerprint=fingerprint,
+                              max_returns=int(self.p('dosing.max_returns')))
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name='process-run')
         self._thread.start()
 

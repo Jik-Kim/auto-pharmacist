@@ -70,6 +70,10 @@ class ProcessFSM:
     dosing_cfg: object           # DosingConfig
     scale: object                # WeightModel
     fingerprint: ToolFingerprint = field(default_factory=ToolFingerprint)
+    max_returns: int = 3         # 한 원료에서 초과 반환을 허용하는 횟수. **붓기 시도 상한과 다른 것이다** —
+                                 # 붓기 상한은 목표량÷스쿱 1회량에 비례해야 하고(200 g÷40 g = 5회),
+                                 # 반환 상한은 깊이 보정이 수렴하는지를 보는 오류 복구 한계다. 한 상수로
+                                 # 묶여 있으면 큰 레시피 때문에 붓기 상한을 올릴 때 반환 허용도 같이 올라간다 (#189).
     state: str = 'IDLE'
     mode: str = 'IDLE'
     idx: int = 0
@@ -248,7 +252,7 @@ class ProcessFSM:
             # 반환이 끝난 스쿱만 다시 쓸 수 있다. 마지막 허용 시도도 일단 반환해 원료와
             # 약통 투입량을 분리한 뒤 TIMEOUT 일탈로 멈춘다.
             self.cur.returns += 1
-            if self.cur.returns >= self.dosing_cfg.max_attempts:
+            if self.cur.returns >= self.max_returns:
                 return self._deviate('TIMEOUT', 'RETURN_MATERIAL')
             self.state = 'SCOOP'
             # 같은 깊이로 다시 푸면 초과가 그대로 재현된다. 직전 깊이를 남은 목표량과
