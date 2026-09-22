@@ -720,8 +720,10 @@ class ProcessNode(Node):
                 self._await(self._interlock_exit, '인터락 EXIT')
             finally:
                 self._refill_waiting = False
+                self.note = ''          # 위 `safe` 가 실은 정지 사유를 여기서 내린다
             self._interlock_exit.clear()
             self._pause = False
+            self._pub_state()
             return {}
         if k == 'wait_nudge':
             # 세트 끝. 로봇은 nudge_wait 에 서 있다 — 여기까지 오는 동안의 접촉으로 남은 '정지'는 뜻이 없다
@@ -751,10 +753,23 @@ class ProcessNode(Node):
                                                                settle_s=float(self.p('scale.settle_s'))))
             return {'valid': bool(r.valid), 'fz_mean_n': float(r.fz_mean_n), 'fz_std_n': float(r.fz_std_n)}
         if k == 'safe':
-            r = self._call_srv('safe', SafePose.Request(reason=req.get('reason', '')))
+            reason = req.get('reason', '')
+            r = self._call_srv('safe', SafePose.Request(reason=reason))
             if r.success and req.get('then') == 'wait_interlock':
                 # 성공 후 즉시 EXIT를 받을 준비를 한다. 다음 dispatch까지의 틈에도 유지한다.
                 self._refill_waiting = True
+                # FSM 이 만든 사유(REFILL 등)를 note **앞머리**에 싣는다 — HMI 는 note 앞머리로
+                # 정지 사유를 가른다 (gmp_hmi pause_context.pause_reason 이 `^REFILL\b`). 여기서
+                # 안 실으면 대기 내내 note 가 비어 HMI 의 REFILL 분기가 영영 안 뜬다 (#191).
+                # 사유를 하드코딩하지 않는 것은 뒤에 사유가 늘어도(HEIGHT_LOW 등, #192) 그대로
+                # 흐르게 하기 위해서다.
+                #
+                # `_pause_reason()` 은 건드리지 않는다 — `_gate()` 가 `while self._pause_reason():`
+                # 로 도는데 그 루프가 내릴 수 있는 건 `_pause` 뿐이다. REFILL 을 거기 넣으면
+                # `_refill_waiting` 을 내리는 자리가 다음 dispatch(`wait_interlock`)뿐이라
+                # 그 dispatch 에 닿기도 전에 루프에 갇힌다.
+                self.note = f'{reason or "REFILL"} 정지 — 보충 후 EXIT 로 재개'
+                self._pub_state()
             return {'success': bool(r.success)}
         if k == 'move':
             self._move(self._station_of(req),
