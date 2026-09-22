@@ -25,7 +25,7 @@
 
 | 게이트 | 방법 | 통과 기준 | 실패 시 |
 |---|---|---|---|
-| G1 외력 분해능 | 터미널 1 `ros2 launch m0609_rg2_bringup new_bringup.launch.py mode:=real host:=192.168.1.100` (로봇+그리퍼 드라이버, cell.launch 아님) · 터미널 2 `python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py --actual-g 133 --goto-station material_3 --gripper --out records/g1_<날짜>.csv` — **weigh_held 가 실제로 재는 `material_N.posx` 자세**로 느리게 이동, 그리퍼는 스크립트가 열고 닫는다 (workbench 는 자세가 달라 tool_force JTS 편향이 안 옮겨간다 — 9/20 확인). 빈 그리퍼 영점 → 세트마다 물체를 **다시 잡고** 정지 → 6세트×30회×10표본을 tool_force·workpiece **동시에** 기록. 요약은 `python3 -m gmp_dosing.core.calib <csv> --method workpiece` | 계량 한 번(회차 평균)의 3σ 가 `min_resolvable_g` — **9/18 18 g (중복 표본), 9/19 12.6 g (독립 표본)**. 9/19 tool_force 확정, workpiece 탈락 (SOT D-07) | 도징 단위·레시피 yaml 만 바꾼다 (SOT D-08). 표본 43 % 중복이면 `--period` 를 calib 이 알려 주는 갱신 간격보다 길게 |
+| G1 외력 분해능 | 터미널 1 `ros2 launch m0609_rg2_bringup new_bringup.launch.py mode:=real host:=192.168.1.100` (로봇+그리퍼 드라이버, cell.launch 아님) · 터미널 2 `python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py --actual-g 133 --goto-station material_3 --gripper --out records/g1_<날짜>.csv` — **weigh_held 가 실제로 재는 `material_N.posx` 자세**로 느리게 이동, 그리퍼는 스크립트가 열고 닫는다 (workbench 는 자세가 달라 tool_force JTS 편향이 안 옮겨간다 — 9/20 확인). 빈 그리퍼 영점 → 세트마다 물체를 **다시 잡고** 정지 → 6세트×30회×10표본을 tool_force·workpiece **동시에** 기록. 요약은 `python3 -m gmp_dosing.core.calib <csv> --method workpiece` | 계량 한 번(회차 평균)의 3σ 가 `min_resolvable_g` — **9/18 18 g (중복 표본), 9/19 12.6 g (독립 표본), 9/21 재작업 4.01 g (material_3 자세, samples 20)**. 9/19 tool_force 확정, workpiece 탈락 (SOT D-07). 9/21 값(gain 1.03·offset 195.0·제안 5.0/8.0)은 **material_3 자세 전용**이라 운영값은 아직 19 g 그대로 — 계량 자세 통일 구현 뒤 갱신 (SOT D-08, BRD 3.4.3). `measure_g1.py` 는 9/21 부터 그리퍼를 무조건 열지 않고 Enter 확인 뒤 연다 | 도징 단위·레시피 yaml 만 바꾼다 (SOT D-08). 표본 43 % 중복이면 `--period` 를 calib 이 알려 주는 갱신 간격보다 길게 |
 | G2 그리퍼 modbus | `SetGripper close width:=20 force:=20` → 폭 피드백 | 폭이 목표 근처에서 멈추고 `busy` 가 풀린다 | `gripper.backend:=dio` 로 전환 (Q-02·Q-03) |
 | G3 스테이션 티칭 | `stations.yaml` 9곳 | `MoveToStation` 9곳 왕복 무충돌 | — |
 | G4 힘제어 접촉 | 비드 통 위에서 `Scoop` | `contact_detected=true`, 담금 깊이 상한 안 | 강성·목표력 파라미터 조정 |
@@ -40,7 +40,7 @@
 export ROS_DOMAIN_ID=70
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 export GMP_HMI_ADMIN_USER=admin
-read -rsp '관리자 비밀번호(12자 이상): ' GMP_HMI_ADMIN_PASSWORD
+read -rsp '관리자 비밀번호(10자 이상): ' GMP_HMI_ADMIN_PASSWORD
 printf '\n'
 export GMP_HMI_ADMIN_PASSWORD
 ```

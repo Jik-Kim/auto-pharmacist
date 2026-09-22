@@ -7,6 +7,7 @@ FSM 단위 시험(test_process_fsm.py)은 전이표를 본다. 이 시험은 그
 ROS 가 안 깔린 곳에서는 통째로 건너뛴다 (core 단위 시험은 그대로 돈다).
 """
 import os
+import re
 import sys
 import threading
 import time
@@ -226,6 +227,16 @@ def _qa(col, deviation_id, decision, operator='qa_kim'):
     return fut.result()
 
 
+def _wait_state_note(col, pattern, timeout=20.0):
+    """발행된 CellState 중 note 앞머리가 pattern 에 맞는 것이 있었는가."""
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        if any(re.match(pattern, s.note or '') for s in col.states):
+            return True
+        time.sleep(0.02)
+    return False
+
+
 def _wait_mode(proc, mode, timeout=20.0):
     t0 = time.time()
     while time.time() - t0 < timeout:
@@ -415,6 +426,34 @@ def test_refill_wait_then_enter_resumes_with_one_exit(cell):
     # 빈 스쿱 시도 4건은 SCOOP_EMPTY 로, 성공 1건은 COMPLETE 로 남는다 — 하나도 안 잃는다
     outcomes = [c.outcome for c in col.cycles]
     assert outcomes.count(ScoopCycle.SCOOP_EMPTY) == 4 and outcomes.count(ScoopCycle.COMPLETE) >= 1, outcomes
+
+
+def test_refill_wait_puts_reason_at_head_of_note(cell):
+    """REFILL 대기 중 CellState.note **앞머리**에 정지 사유가 실린다 (#191).
+
+    HMI 는 note 앞머리로 정지 사유를 가른다 (gmp_hmi pause_context.pause_reason 이 `^REFILL\\b`).
+    사유를 안 실으면 대기 내내 note 가 비어 HMI 의 REFILL 분기가 영영 안 뜬다 — 그게 #191 이다.
+    `_pause_reason()` 은 이 경로에 관여하지 않는다 (REFILL 대기 중 `_pause` 는 False 다).
+    """
+    from gmp_interfaces.srv import InterlockRequest
+    proc, fake, col = cell
+    fake.empty = 4                                # SCOOP_EMPTY ×3 재시도 → 4회째 MATERIAL_EMPTY → REFILL
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_mode(proc, 'PAUSED'), proc.fsm.state
+    assert proc.fsm.deviations[-1]['action'] == 'REFILL', proc.fsm.deviations
+
+    # **폴링으로 먼저 기다린다.** `_wait_mode` 가 True 가 되는 시점(`on_result` 안, REFILL 판정 즉시)과
+    # note 가 실리는 시점(`_run_loop` 스레드가 그 다음 `safe` 를 dispatch 할 때)이 달라서, 여기서
+    # `proc.note` 를 바로 읽으면 스레드 스케줄링 창에 빈 값으로 걸린다 (정합성 검토: 14회 중 4회 실패).
+    # 발행까지 돼야 HMI 가 본다 — proc.note 만 맞고 CellState 에 안 실리면 소용없다.
+    assert _wait_state_note(col, r'^REFILL\b'), [t.note for t in col.states[-5:]]
+    # 발행됐으면 그 값은 EXIT 전까지 유지된다 — 이제 동기적으로 읽어도 안전하다
+    assert re.match(r'^REFILL\b', proc.note), f'note 앞머리가 REFILL 이어야 한다: {proc.note!r}'
+    assert not proc._pause, 'REFILL 대기는 인터락 정지가 아니다 — _pause 가 서면 안 된다'
+
+    assert _lock(col, InterlockRequest.Request.EXIT).granted
+    assert _wait_done(proc) == 'DONE', f'{proc.fsm.state} / {proc.note}'
+    assert proc.note == '', f'대기가 끝나면 사유를 내린다: {proc.note!r}'
 
 
 def test_scoop_skill_failure_does_not_lose_scoop_cycle(cell):
