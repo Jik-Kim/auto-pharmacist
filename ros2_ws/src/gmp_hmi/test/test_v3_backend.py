@@ -256,6 +256,23 @@ def enable_test_inventory(node):
     node._on_test_inventory(Message(data=json.dumps(TrialInventory(['A', 'B', 'C'], [1000.] * 3, [1000.] * 3).snapshot(True))))
 
 
+def test_recipe_paths_follows_symlink_install(backend, tmp_path):
+    # colcon --symlink-install 로 빌드하면 install 경로의 레시피 yaml 은 소스 트리를
+    # 가리키는 심볼릭 링크다 (#161 후속). recipes_dir 밖을 가리켜도 로드되어야 한다.
+    src = tmp_path / 'src'
+    src.mkdir()
+    (src / 'recipe-01.yaml').write_text(
+        'product: "레시피 1"\nitems:\n  - {material_id: A, target_g: 40, tol_pct: 5}\n',
+        encoding='utf-8')
+    install = tmp_path / 'install'
+    install.mkdir()
+    (install / 'recipe-01.yaml').symlink_to(src / 'recipe-01.yaml')
+
+    node = backend.HmiRosNode()
+    node.params['recipes_dir'] = str(install)
+    assert list(node._recipe_paths()) == ['recipe-01']
+
+
 def test_recipe_contract_no_removed_fields(node, tmp_path):
     enable_test_inventory(node)
     catalog = node.recipe_catalog()

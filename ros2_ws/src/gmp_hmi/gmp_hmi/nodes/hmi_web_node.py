@@ -482,8 +482,11 @@ class HmiRosNode(Node):
         paths = {}
         for path in sorted(glob.glob(os.path.join(directory, '*.yaml'))):
             resolved = os.path.realpath(path)
-            # 외부 파일을 가리키는 심볼릭 링크도 주문 대상에서 제외한다.
-            if os.path.isfile(resolved) and os.path.commonpath((directory, resolved)) == directory:
+            # recipes_dir 자체가 이미 신뢰된 런치 파라미터라 심볼릭 링크 자체는 막지 않는다.
+            # colcon --symlink-install 로 빌드하면 install 경로의 *.yaml 이 소스 트리를
+            # 가리키는 심볼릭 링크라 commonpath 검사가 표준 빌드에서도 항상 걸려 레시피가
+            # 전부 제외됐다 (#161 후속).
+            if os.path.isfile(resolved):
                 paths[os.path.splitext(os.path.basename(path))[0]] = resolved
         return paths
 
