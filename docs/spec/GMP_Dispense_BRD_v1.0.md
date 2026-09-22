@@ -12,7 +12,7 @@
 
 **적용 로봇:** Doosan Robotics M0609 (M-Series 6축, 가반하중 6 kg, 최대 도달거리 900 mm) + OnRobot RG2 전동 2지 그리퍼
 
-**원장 관계:** 강사 지침·평가·장비 제약은 `PROJECT_RULES.md`(R#), 설계·코드 결정은 `docs/SOT.md`(D#), 노드 간 통신 계약은 `docs/interfaces.md`(v1.5.1). 이 문서의 요구사항은 해당 원장들을 가리키며, 근거 없는 요구사항은 포함하지 않는다.
+**원장 관계:** 강사 지침·평가·장비 제약은 `PROJECT_RULES.md`(R#), 설계·코드 결정은 `docs/SOT.md`(D#), 노드 간 통신 계약은 `docs/interfaces.md`(v1.7, 9/22). 이 문서의 요구사항은 해당 원장들을 가리키며, 근거 없는 요구사항은 포함하지 않는다.
 
 &nbsp;
 
@@ -45,7 +45,7 @@ M0609 로봇팔이 사람이 Pass Box 빈통 칸(`passbox_empty`)에 넣어 둔 
 * 파지 판정 및 폭 지문: OnRobot RG2 Modbus 상태 비트(`gSTA` grip 비트) 기반 파지 성공 판정, 스쿱·약통 정지 폭 규격 검증을 통한 도구 불일치(`WRONG_TOOL`) 일탈 식별 (D-05, D-20, 추가 기능 1)
 * Z 방향 힘/순응 제어: `task_compliance_ctrl`, `set_desired_force`, `check_force_condition` 기반 원료면 접촉 감지, `depth_fraction` 담금 깊이 제어 (v1.5), 진입/해제 짝 관리
 * 분주 및 초과 반환 정책: 전량 붓기(`Pour.fraction=1.0`), 퍼올린 양이 잔여 목표량 + 허용 오차를 초과할 경우 `ReturnMaterial` Action으로 동일 원료통에 전량 반환 후 더 얕은 깊이로 재스쿱 (v1.3, v1.5)
-* 로봇 외력 단독 계량: `get_tool_force(DR_BASE)` Fz 단독 사용(D-07), 0.82 s 독립 표본 간격 기반 20표본 평균·표준편차 취득, 선형 2점 보정(gain 0.886, offset 247.1), 계량 분해능 `scale.min_resolvable_g = 19` 확정 (D-08)
+* 로봇 외력 단독 계량: `get_tool_force(DR_BASE)` Fz 단독 사용(D-07), 0.82 s 독립 표본 간격 기반 20표본 평균·표준편차 취득, 선형 2점 보정(gain 0.886, offset 247.1), ~~계량 분해능 `scale.min_resolvable_g = 19` 확정~~ (D-08 — 9/22 D-26 으로 `min_resolvable_g` 는 제거(#209), 계량 유효성은 `max_std_g`·`max_hf_std_g` 게이트로 관리)
 * 스쿱 든 채 3회 계량 및 배치 끝 2차 대조 검증: 빈 스쿱 풍량(`SCOOP_TARE`), 붓기 전 스쿱(`WEIGH_SCOOP`), 붓기 후 스쿱 잔량(`WEIGH_RESIDUAL`)을 `WeighHeld` Action으로 측정하고, 배치 종료 시 용기를 들어(`WeighContainer`) 제품 규격(`BATCH_OUT_OF_SPEC`)을 판정 (D-22, Q-11). ~~계측 신뢰성(`VERIFY_MISMATCH`) 이중 검증~~ → 9/22 D-26 으로 ② 폐지, 수치는 기록만
 * 일탈 처리 및 원격 QA: 파지 실패, 원료 소진, 초과 반환, 계량 무효, 시간 초과, 도구 불일치(`WRONG_TOOL`), 규격 이탈 일탈 정책표 실행 및 HMI 원격 QA 승인/폐기. **TBD**: 계량 무효(`WEIGH_INVALID`)의 상한 초과 뒤 경로는 정책표상 QA 이나 현행 코드는 `ERROR` 로 끝난다 — Issue #213 결정 뒤 2.1·3.4.2·3.5.3·3.5.5 를 한 경로로 통일
 * 안전 협동 및 세트 경계 넛지: 작업자 상주 배제(R23), 판 중앙 300×300 mm Keep Clear, 사람 투입 인터락(ENTER/EXIT), 두산 충돌 감지(PFL), 사람 접촉 외력 감지(`get_tool_force` 폴링)에 의한 일시정지/재개(D-21), 세트 완료 후 `nudge_wait` 대기 및 회수 터치 트리거(D-23)

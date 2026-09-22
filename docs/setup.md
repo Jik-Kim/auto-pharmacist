@@ -136,7 +136,7 @@ ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거�
 
 스테이션 티칭과 `stations.yaml` 관리는 조장·A 담당이다. process는 `station_id`·`approach` 계약만 사용하며, 파지 좌표 연결은 C 담당 작업이 아니다.
 
-- `_carry()`와 용기 계량은 동일한 `workbench.posx`를 AT로 사용한다. 용기 계량은 ABOVE(Z=200), 스쿱 계량은 대응 `material_N.posx`다.
+- `_carry()`와 용기 계량은 동일한 `workbench.posx`를 AT로 사용한다. 용기 계량은 ABOVE(Z=180 = AT 130 + `approach_mm` 50, 107행과 같음), 스쿱 계량은 대응 `material_N.posx`다.
 - 초과 스쿱 반환·재시도와 투입량 기록 분리는 공정 패키지에 함께 반영했다. 새 `ReturnMaterial` Action이 있으므로 사용자는 가상·실물 검증 전에 인터페이스와 호출 패키지를 다시 빌드해야 한다.
 - 9/21 원료 A/B/C 반환 시작 posx·끝 posx/posj 입력 완료. 끝 이동은 `return_end_posj` 관절 이동(취소·도착 확인 포함)을 사용하고 시작점으로 복귀하지 않는다. 끝 posx는 참고용이다. 관절 보간 중 스쿱 궤적·낙하·간섭 검증은 별도다.
 - TODO([A]): 반환 끝→재스쿱 경로는 스쿱 모션 구현 시 함께 연결한다. 현재 기본 Scoop 접근을 이 경로의 검증으로 간주하지 않는다.
@@ -186,7 +186,7 @@ ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거�
 
 ```bash
 source tools/env.sh
-export PYTHONPATH="/tmp/gmp-g2-venv/lib/python3.12/site-packages:/home/jonny/rokey_proj/Automation/ws_cobot_pjt/ws_dsr/build/onrobot_rg_control:$PYTHONPATH"
+export PYTHONPATH="/tmp/gmp-g2-venv/lib/python3.12/site-packages:<ws_dsr>/build/onrobot_rg_control:$PYTHONPATH"   # <ws_dsr> = 두산 SDK 워크스페이스 경로(사람마다 다름, 예: ~/ws_cobot_pjt/ws_dsr)
 ros2 launch gmp_bringup robot.launch.py mode:=real host:=192.168.1.100 gui:=false
 # 별도 터미널에서 source tools/env.sh 후:
 ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=0.2
@@ -248,7 +248,7 @@ ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=1.0 \
 정지된 개발 환경에서 아래 순서로 설치한다. 실행 중인 컨트롤러는 이 명령으로 재시작하지 않는다.
 
 ```bash
-cd ~/rokey_proj/Automation/auto-pharmacist
+cd <auto-pharmacist 저장소 경로>   # 예: ~/auto-pharmacist
 source tools/env.sh
 cd ros2_ws
 colcon build --symlink-install --packages-select gmp_interfaces gmp_dsr_controller gmp_skills gmp_bringup
