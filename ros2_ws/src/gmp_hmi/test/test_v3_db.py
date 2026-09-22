@@ -163,7 +163,7 @@ def node_at(tmp_path, monkeypatch):
 
 
 def state(node, batch, mode, step, t):
-    node._on_state(types.SimpleNamespace(header=stamp(t), batch_id=batch, mode=mode, step=step, note=''))
+    node._on_state(types.SimpleNamespace(header=stamp(t), batch_id=batch, mode=mode, step=step, note='', item_index=0, station='test_safe'))
 
 
 def test_record_waits_physical_done_and_refreshes_late_data(tmp_path, monkeypatch):

@@ -48,7 +48,7 @@
     gripper:
       backend: modbus               # modbus | dio  (virtual 은 런치가 자동)
       open_width_mm: 100.0           # 운용 열림 폭. 데이터시트의 전체 조절 범위는 0~110 mm
-      scoop_width_mm: 18.0          # 레거시 단일 파지 명령값(B 폭). C의 원료별 명령 전환 전까지 유지
+      scoop_search_width_mm: 0.0     # 스쿱 파지 탐색 목표 폭 — 기대 폭(WRONG_TOOL 판정)과 분리, 0 = 완전히 닫힐 때까지 접촉 탐색 (A 리뷰, PR #165)
       scoop_expected_widths_mm: [15.5, 18.0, 28.0]  # A/B/C 스쿱 폭 지문 (9/19 확정)
       scoop_extract_y_mm: 150.0     # 스쿱 파지 후 첫 WeighHeld에서 BASE +Y로 빼는 거리
       scoop_extract_lift_z_mm: 100.0 # 인출 완료 후 BASE +Z 상승 거리, 이후 원료 계량 자세로 이동
@@ -64,6 +64,12 @@
       dio_settle_s: 0.3             # DO1/DO2 전환 뒤 기구 동작 대기
 
     # ── 로봇 센서 계량 ───────────────────────────────────────────────
+    # ⚠️ [조장·A 확인 필요] 2026-09-21 영점 재작업 완료 — 아래 scale.* 는 아직 **폐기된 9/18·9/19 값**이다 (B 도징).
+    #    갱신안(gain 1.03 · offset_g 195.0 · min_resolvable_g 5.0 · max_std_g 8.0)은
+    #    gmp_dosing/calibration/README.md 의 "common.yaml 갱신안" 절에, 근거는 gmp_dosing/config/scale_reference.yaml 에.
+    #    ⚠️ **적용 전에 계량 자세를 먼저 정해야 한다.** skill_node._do_weigh_held 는 원료마다 material_N.posx 에서
+    #       재는데, material_1·2 에서는 max_std_g 가 8 이든 10(아래 현재값)이든 계량이 valid 0/15·2/15 로 거의 전부
+    #       무효다 (material_3 은 15/15). 그 자세에서 재는 한 값을 어떻게 두든 도징이 성립하지 않는다.
     scale:
       method: tool_force            # tool_force | workpiece — 9/19 G1 로 tool_force 확정 (D-07). workpiece 는 리셋이 안 먹어 탈락
       period_s: 0.82                # 표본 시작 간격 시험값(9/19 독립 표본 실측). 호출 지연 시 늘어날 수 있음

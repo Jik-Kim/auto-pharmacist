@@ -7,6 +7,13 @@
 # frame: user  → D-15 판 좌표계 (set_user_cart_coord). 판 3점 티칭 후 전환
 # 9/21 posx는 사용자 제공값 그대로이며 자동 반올림하지 않았다.
 # 기존 taught_at_posj·이송 관절각은 유지했다. 갱신 posx와 일치는 실물 확인 대기다.
+#
+# 오른쪽 볼트구멍 열 (x=717, z=100, 자세 [180,-90,-90] 공통) — 위에서 아래로 약 15 cm 간격:
+#   맨 위 구멍 = 미사용. 실측 결과 팔이 닿지 않아 스테이션으로 쓸 수 없다 (9/21).
+#   passbox_done(y=71.32) → passbox_empty(y=-70.37) → reject_bin(y=-220.0)
+# 구멍 하나에 통 하나라 완성품·폐기함 모두 용량 1이다 (slots: 1).
+# nudge_wait 는 이 열에 없다 — 위 이유로 맨 위 구멍을 못 쓰고 팔이 닿는 자리로 따로 티칭했다.
+# 완성품보다 85.7 mm 위, x·z·자세도 달라 한 칸의 절반처럼 보이지만 티칭 오차가 아니다. 고치지 말 것.
 frame: base
 approach_mm: 60.0          # 작업점 위 접근 높이
 stations:
@@ -26,7 +33,7 @@ stations:
   passbox_empty: {posx: [717.0, -70.37, 130.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, note: "Pass Box 「빈통」 칸 — 빈 약통을 여기서 꺼낸다 (구 magazine)", slots: 1}
   passbox_done:  {posx: [717.0, 71.32, 130.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, note: "Pass Box 「완성품」 칸 — 완료품을 여기 넣는다 (구 output_tray). QA 가 회수", slots: 1}
   nudge_wait:    {posx: [578.0, 157.0, 84.0, 45.0, 180.0, 135.0], taught_at_posj: &nudge_wait_at [14.57, 35.24, 63.40, -0.12, 81.36, 104.70], note: "넛지 대기 위치 (D-24) — 세트 완료 후 여기서 사람이 건드리기를 기다린다. safe 와 별개"}
-  reject_bin:    {posx: [717.0, -220.0, 130.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, note: "폐기 위치"}
+  reject_bin:    {posx: [717.0, -220.0, 130.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, note: "폐기 위치", slots: 1}
 
 # 실물: 등록된 경로는 미티칭/비활성일 때 기존 amovel로 우회하지 않고 거부한다.
 # 가상: 등록 여부·활성 여부와 무관하게 기존 amovel 직선 이동을 사용한다.

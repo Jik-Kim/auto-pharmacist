@@ -25,6 +25,8 @@ source ~/auto-pharmacist/tools/env.sh      # ROS_DOMAIN_ID=70 설정 + /opt/ros 
 
 `ROS_DOMAIN_ID` 는 **70** 으로 조 전원 동일해야 한다. `.bashrc` 에 다른 값이 있으면 env.sh 가 덮어쓴다.
 
+HMI 첫 기동 때 관리자 계정이 없으면 `GMP_HMI_ADMIN_USER`·`GMP_HMI_ADMIN_PASSWORD` 환경변수로 만든다 — 없으면 로그인할 계정이 없어 HMI 를 쓸 수 없다. 입력 절차와 격리 시험용 `ROS_DOMAIN_ID=88` 은 [demo_run_procedure.md](demo_run_procedure.md) 2절과 `ros2_ws/src/gmp_hmi/README.md` 를 따른다.
+
 ## 실행
 
 | 모드 | 명령 | 되는 것 / 안 되는 것 |
@@ -52,6 +54,8 @@ ros2 launch gmp_bringup skill.launch.py
 ```bash
 cd ~/auto-pharmacist/ros2_ws/src && python3 -m pytest gmp_dosing gmp_process -q
 ```
+
+`gmp_process/test/test_process_node.py` 는 ROS 를 소싱한 상태에서 진짜 `process_node` 와 가짜 스킬 노드를 띄우는 통합 테스트다. **같은 `ROS_DOMAIN_ID` 로 다른 pytest 가 동시에 돌면 액션 서버가 겹쳐 무작위로 실패한다** ("There may be more than one action server" 경고, 실행마다 다른 테스트가 깨짐, NUDGE 계열이 특히 잘 걸림 — #167). 여러 세션·터미널에서 동시에 돌릴 때는 세션마다 다른 도메인을 준다: `ROS_DOMAIN_ID=71 python3 -m pytest …`. `test_run_batch_ros.py` 는 `ROS_DOMAIN_ID=88` 일 때만 실행되고 그 외에는 skip 된다.
 
 관절 이송을 포함한 스킬 단위 테스트는 저장소 루트에서 실행한다.
 가상·실물 검증은 사용자가 수행한다. 개발 검증은 아래 단위 테스트로 한정한다.

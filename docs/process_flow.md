@@ -44,7 +44,7 @@
 | Service | `submit_order` | `SubmitOrder` (Recipe → accepted, batch_id) | HMI | 주문 버튼 | 실행 중(RUNNING/PAUSED/DEVIATION)이면 `accepted=false`. 수락하면 FSM 생성 + run_loop 스레드 시작, `batch_id` 발급 (`B-YYYYMMDD-NNN`) |
 | Service | `qa_decision` | `QaDecision` (deviation_id, decision, operator_id) | HMI (셀 밖 QA) | DEVIATION 상태일 때 승인/폐기 | 대기 중인 `deviation_id`와 다르거나 DEVIATION이 아니면 거부. `operator_id`는 Deviation에 옮겨 재발행 |
 | Service | `interlock` | `InterlockRequest` (ENTER=1 / EXIT=2, reason) | HMI | 사람 반입 전/후 | **ENTER**: 진행 중 스킬을 멈추고 `SafePose` 성공 후에야 `granted=true` (TODO). **EXIT**: `_interlock_exit.set()` → 루프 재개 |
-| Action | `run_batch` | `RunBatch` (Recipe → result, feedback CellState) | CLI·시험용 | `submit_order` 와 같은 일을 Action 으로 | 골격에 아직 없음. 우선순위 낮음 — HMI 는 Service 를 쓴다 |
+| Action | `run_batch` | `RunBatch` (Recipe → result, feedback CellState + 마지막 DispenseResult) | HMI (`/order`) | `submit_order` 와 같은 접수 검사·실행 슬롯·FSM 을 공유하는 Action 경로 | **PR #163 (9/21) 구현.** 진행·최종 결과가 필요한 클라이언트용. Result: DONE 만 success, DISCARDED 는 SUCCEEDED+success=false, 취소 ABORTED(CANCELED), 안전정지·실패 ERROR. 취소는 진행 중 스킬 응답을 기다린 뒤 중단 — 즉시 정지 아님. 스킬 응답 유실 시 ERROR + 재기동 전까지 새 주문 차단 |
 | Topic (구독) | `event` | `CellEvent` code=`NUDGE` | skill_node | 사람이 로봇을 건드림 (D-21) | 콜백은 토글만. 루프 게이트가 **다음 로봇 동작 전에** PAUSED 로 멈추고, 두 번째 NUDGE 로 재개 (추가 기능 7). `safety.nudge_enabled=false` 면 무시. 우리가 내는 event 도 같이 들어오므로 `code` 로 거른다 |
 
 ### 나가는 것 (process_node 가 발행) — record_node 가 전부 DB 에 쓰고, HMI 가 화면에 띄운다
@@ -67,7 +67,7 @@
 | Action | `pour` | `Pour` | `fraction`(0~1) | `success` — 목적지는 skill 설정의 고정 `workbench` |
 | Action | `weigh_container` | `WeighContainer` | `tare_g` | **`reading`**(WeightReading: gross/net/std/valid) — 고정 `workbench`의 **용기를 들어** 잰다 (파지 → 계량 자세 → 읽기 → 내려놓기), 그리퍼가 비어 있어야 한다 |
 | Action | **`weigh_held`** (v1.2) | `WeighHeld` | `tare_g`(빈 스쿱) | **`reading`** — **들고 있는 스쿱을 그대로** 계량 자세로 가져가 잰다. 파지·내려놓기 없음, 계량 후 그 자세에 머문다. 빈 그리퍼면 `success=false` (I-007 해소) |
-| Action | **`return_material`** (v1.3) | `ReturnMaterial` | `material_id` | 초과 원료를 원료통으로 반환한다. 원료별 반환 start/end 티칭값이 없으면 이동하지 않고 실패한다. |
+| Action | **`return_material`** (v1.3) | `ReturnMaterial` | `material_id` | 초과 원료를 원료통으로 반환한다. 원료별 `return_start_posx`·`return_end_posj` 가 없으면 이동하지 않고 실패한다. 끝 자세에서 종료, `RETURN` 피드백 없음 (v1.5.1). |
 | Service | `set_gripper` | `SetGripper` | `close`, `width_mm`, `force_n`, `timeout_s` | `success`, `final_width_mm`, **`grip_inferred`** |
 | Service | `measure_force` | `MeasureForce` | `samples`, `settle_s` | `force[6]`(힘+모멘트), `fz_mean_n`, `fz_std_n`, `valid` |
 | Service | `safe_pose` | `SafePose` | `reason` | `success` |
@@ -84,9 +84,9 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 | `weigh_scoop` | `station`, `material_id`, `tare_g`(빈 스쿱) | `weigh_held(tare_g)` — **해당 `material_N.posx`에서** 들고 있는 스쿱을 계량 (SCOOP_TARE · WEIGH_SCOOP · WEIGH_RESIDUAL) | `{'gross_g', 'net_g', 'std_g', 'valid'}` + `weight` 발행 (`station=material_N`, `subject='scoop'`) |
 | `move` | `station`, `approach`('AT'/'ABOVE') | `move_to_station(station_id, approach)` — `station='scoop'` 이면 `material_id` 로 `stations.yaml` 의 `scoop_N` 을 찾아 넣는다 (`core/station_map.py`, D-24) | `{'success', 'reached'}` — `reached` 는 `CellState.station` 이 된다 |
 | `grip` | `close`, `target`('scoop'/'cup') | `set_gripper(close, width=scoop_width 또는 cup_width, force)` | `{'grip_inferred', 'final_width_mm'}` |
-| `scoop` | `material_id`, `attempt`, `fraction` | `scoop(material_id, attempt)` — `fraction` 은 담그기 깊이 **힌트**일 뿐 (보정 투입은 얕게) | `{'contact_detected', 'max_contact_force_n', 'insertion_depth_mm'}` — 뒤 둘은 FSM 이 안 쓰고 `ScoopCycle` 에 실린다. 붓기 비율은 WEIGH_SCOOP 가 퍼낸 양으로 다시 정한다 |
+| `scoop` | `material_id`, `attempt`, `fraction` | `scoop(material_id, attempt, depth_fraction=fraction)` — 계약 v1.5: `fraction` 이 담그기 깊이 비율 [`min_fraction`, 1.0] 로 전달된다. `attempt` 는 기록용. 실제 Z 변환식은 A 실물 뒤 | `{'contact_detected', 'max_contact_force_n', 'insertion_depth_mm'}` — 뒤 둘은 FSM 이 안 쓰고 `ScoopCycle` 에 실린다. WEIGH_SCOOP 은 퍼낸 양으로 **전량 붓기와 원료통 반환**을 가른다 — 부분 붓기는 v1.3 으로 폐기됐고, 양 조절은 이 `fraction`(담그기 깊이)이 한다 |
 | `pour` | `station`, `fraction=1` | `pour(1)` — `workbench_pour_start`에서 `workbench_pour_end`까지 전량 붓는다. | `{'success'}` |
-| `return_material` | `material_id` | `return_material(material_id)` — 반환 start/end 티칭값이 없으면 실패 | `{'success', 'message'}` |
+| `return_material` | `material_id` | `return_material(material_id)` — `return_start_posx`·`return_end_posj` 가 없으면 실패 | `{'success', 'message'}` |
 | `safe` | `reason`, `then` | `safe_pose(reason)` | `{'success'}` — 전이는 요청의 `then` 이 정한다 |
 | `wait_qa` | `deviation` | 아무 스킬도 안 부름. `_qa.wait()` | `{'decision': 'APPROVED'/'DISCARDED', 'operator_id'}` |
 | `wait_interlock` | — | `_interlock_exit.wait()` | `{}` |
@@ -109,8 +109,8 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
    │
    ▼
  PICK_SCOOP ──grip ok──▶ SCOOP_TARE ──weigh_scoop──▶ SCOOP ──contact──▶ WEIGH_SCOOP ──weigh_scoop──▶ POUR ──▶ WEIGH_RESIDUAL
-   │ GRIP_FAIL ×3           (빈 스쿱 무게)             ▲  │ SCOOP_EMPTY ×3   (퍼낸 양 →                 (fraction)      │ (잔량 → 투입량 누적
-   ▼ ×4 ERROR                                          │  ▼ 연속 3회 = MATERIAL_EMPTY  붓기 비율 = 부족량/퍼낸 양)         │  → decide)
+   │ GRIP_FAIL ×3           (빈 스쿱 무게)             ▲  │ SCOOP_EMPTY ×3   (퍼낸 양 →                 (fraction=1.0)  │ (잔량 → 투입량 누적
+   ▼ ×4 ERROR                                          │  ▼ 연속 3회 = MATERIAL_EMPTY  전량 붓기 / 원료통 반환)            │  → decide)
                                                        │ PAUSED ──interlock EXIT──▶ _resume(scoop)                    ├─ OK ────────▶ RETURN_SCOOP
                                                        └──────────────── UNDER, attempts<3 → scoop(attempt+1) ◀───────┤                 │ 다음 원료 → PICK_SCOOP
                                                                                                                       ├─ OVER ──────▶ RETURN_MATERIAL(material_id) → SCOOP 재시도
@@ -133,13 +133,13 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 | 상태 | 받는 결과 (이전 요청) | 판단 | 다음 요청 | 이 시점 발행 |
 |---|---|---|---|---|
 | `SELF_CHECK` | `measure` → valid, fz_std | valid 아니면 ERROR (TODO). 툴·TCP·감도 확인은 skill_node 가 기동 시 함 | `carry(passbox_empty→workbench, slot)` | `event BATCH_START`, `state` |
-| `PICK_CONTAINER` | `carry` → grip_inferred | false → `_deviate(GRIP_FAIL)` (같은 carry 재시도) | `weigh(workbench, tare 0)` | `deviation` (실패 시) |
-| `TARE` | `weigh` → gross | `tare_g = gross`, `scale.set_tare()`. cur = 원료 0 | `move(scoop_N, AT)` | `weight` |
-| `PICK_SCOOP` | `move` → 도착 / `grip` → inferred | 파지 실패 → GRIP_FAIL 재시도(≤3) → 4회 FORCED → ERROR. **[추가 1]** `final_width_mm` 가 원료 기대 폭 ±margin 밖이면 `WRONG_TOOL` → QA | `grip(close, scoop)` → `weigh_scoop(tare 0)` | `deviation` |
+| `PICK_CONTAINER` | `carry` → grip_inferred | false → `_deviate(GRIP_FAIL)` (같은 carry 재시도). **[추가 1]** `final_width_mm` 가 기대 약통 폭(`gripper.cup_width_mm`) ±margin 밖이면 `WRONG_TOOL` → QA (승인 시 TARE 로 이어감, 거부 시 DISCARDED) | `weigh(workbench, tare 0)` | `deviation` (실패 시) |
+| `TARE` | `weigh` → gross, valid | `tare_g = gross` (빈 용기, 배치마다 1회). cur = 원료 0. 무효 ≤2 재계량 → 3회 WEIGH_INVALID | `move(scoop_N, AT)` | `weight` |
+| `PICK_SCOOP` | `move` → 도착 / `grip` → inferred | 파지 실패 → GRIP_FAIL 재시도(≤3) → 4회 FORCED → ERROR. **[추가 1]** `final_width_mm` 가 원료 기대 폭 ±margin 밖이면 `WRONG_TOOL` → QA (승인 시 그 스쿱으로 SCOOP_TARE 이어감 — 원료를 건너뛰지 않는다, 거부 시 스쿱 반납 후 DISCARDED. A 리뷰 정정, PR #165) | `grip(close, scoop)` → `weigh_scoop(tare 0)` | `deviation` |
 | `SCOOP_TARE` | `weigh_scoop` → gross, valid | `scoop_tare_g = gross` (빈 스쿱, 원료마다 1회). 무효 ≤2 재계량 → 3회 WEIGH_INVALID | `scoop(material, attempt=1)` | `weight` |
 | `SCOOP` | `scoop` → contact_detected | false → SCOOP_EMPTY 재시도(≤3) → 4회째 REFILL → PAUSED | `weigh_scoop(tare=scoop_tare)` | `deviation` |
 | `WEIGH_SCOOP` | `weigh_scoop(material_N)` → gross, valid | `scooped = gross − scoop_tare`. `scooped > max(0, target − actual) + target×tol_pct/100`이면 초과다. 반환 전에는 `actual`을 증가시키지 않는다. 무효 ≤2 재계량 | 초과→`return_material(material_id)` · 이하→`pour(fraction=1)` | `weight` |
-| `RETURN_MATERIAL` | `return_material` → success | 반환 좌표가 없거나 Action이 실패하면 `safe` 후 즉시 `ERROR`로 종료한다. 성공이고 returns<max면 같은 원료를 다시 `SCOOP`한다. 한도 초과면 `TIMEOUT` 일탈이다. 반환은 약통에 아무것도 넣지 않았으므로 붓기 시도(`attempts`)를 소모하지 않고 별도 `returns`로 센다. 재스쿱은 `직전 fraction × (남은 목표량 / 방금 잰 초과 스쿱량)` 으로 더 얕은 깊이를 요청한다 (하한 `min_fraction`). | 성공→`scoop(같은 attempt, 더 얕은 fraction)` · 실패/미티칭→`safe → ERROR` | `scoop_cycle(RETURNED/RETURN_FAILED, delivered=0, valid=false)` |
+| `RETURN_MATERIAL` | `return_material` → success | 반환 좌표가 없거나 Action이 실패하면 `safe` 후 즉시 `ERROR`로 종료한다. 성공이고 returns<max면 같은 원료를 다시 `SCOOP`한다 (깊이 = 직전 fraction × 남은량/퍼낸 양, 하한 `min_fraction`). **실물 주의 (v1.5.1, 9/21): 반환 끝→재스쿱 연결 경로가 없어(#64) 실물 `skill_node` 가 반환 중 세운 플래그로 후속 `scoop` 을 전부 거부한다 → `SKILL_FAIL`. 플래그는 풀리지 않아 재시도해도 같은 이유로 거부되므로, 재시도 없이 `FORCE_LIMIT`(FORCED) **1건**에 사유(`반환 후 재스쿱 차단 — …`)를 남기고 `safe → ERROR` 로 끝낸다. fake 스킬은 `block_rescoop` 으로 같은 동작을 흉내 낸다.** 한도 초과면 `TIMEOUT` 일탈이다. 반환은 약통에 아무것도 넣지 않았으므로 붓기 시도(`attempts`)를 소모하지 않고 별도 `returns`로 센다. 재스쿱은 `직전 fraction × (남은 목표량 / 방금 잰 초과 스쿱량)` 으로 더 얕은 깊이를 요청한다 (하한 `min_fraction`). | 성공→`scoop(같은 attempt, 더 얕은 fraction)` · 실패/미티칭→`safe → ERROR` | `scoop_cycle(RETURNED/RETURN_FAILED, delivered=0, valid=false)` |
 | `POUR` | `pour(fraction=1)` | workbench의 pour start→end 전량 이동 | `weigh_scoop(material_N)` | — |
 | `WEIGH_RESIDUAL` | `weigh_scoop` → gross, valid | `residual = gross − scoop_tare`, **`actual += scooped − residual`** (실제 투입량 누적). `decide(target, actual, tol, attempts, True, invalid, cfg)` → DONE / SCOOP(fraction 힌트) / DEVIATION(kind). 무효 ≤2 재계량 | DONE→`move(scoop_N)` · SCOOP→`scoop(attempt+1)` · DEVIATION→`wait_qa` | `weight` · **`scoop_cycle`** · `dispense_result` (DONE·DEVIATION 시) · `deviation` |
 | `RETURN_SCOOP` | `move` / `grip(open)` | idx+1. 남았으면 다음 원료, 없으면 VERIFY | `move(scoop_N)` → `grip(open)` → `move(scoop_N)`(다음) 또는 `weigh(workbench, tare)` | `state` |
@@ -250,7 +250,7 @@ python3 -m pytest ros2_ws/src/gmp_process/test/test_process_node.py -q
 ## 8. 함정
 
 - `on_result` 는 전이표 밖이면 `RuntimeError('전이 없음')` 를 **일부러** 던진다. 조용히 넘기지 말 것 — 새 kind·상태를 넣으면 전이도 같이.
-- `weigh`/`weigh_scoop` 결과의 `valid=false` 는 값이 아니라 **재계량 신호**다. FSM 은 `_invalid_or()` 로 같은 요청을 다시 내고(≤2), 3회째 `WEIGH_INVALID` → QA. `decide()` 는 항상 `valid=True` 로 부른다 (무효는 그 앞에서 걸러진다).
+- `weigh`/`weigh_scoop` 결과의 `valid=false` 는 값이 아니라 **재계량 신호**다. FSM 은 `_invalid_or()` 로 같은 요청을 다시 내고(≤2), 3회째 `WEIGH_INVALID` → QA. `TARE`·`VERIFY` 는 그 시점에 `self.cur`(원료)가 없거나 원료 단위가 아니라 `_tare_invalid`·`_verify_invalid` **배치 카운터**를 쓴다 — 규칙은 같다. `decide()` 는 항상 `valid=True` 로 부른다 (무효는 그 앞에서 걸러진다).
 - **투입량은 스쿱 계량의 차이**(붓기 전 − 붓기 후)로 누적한다. 붓기 후 스쿱에 남은 잔량은 투입량이 아니며, 다음 스쿱에 섞여 들어가도 다시 붓기 전 계량에 잡히므로 이중으로 세지 않는다. 용기 계량은 배치 끝 VERIFY 에서 한 번 — 스쿱을 든 채로는 용기를 잡을 수 없다.
 - 스쿱을 든 채 QA 로 간 일탈이 DISCARD 되면 **스쿱을 먼저 반납**(move → set_gripper open)하고 용기를 폐기함으로 옮긴다. `_qa_step` 이 이 분기를 가른다.
 - `attempts` 는 SCOOP 진입마다 +1, `invalid` 는 계량 무효마다 +1 — 둘 다 `ItemRun` 에 있고 `DispenseResult.attempts` 로 나간다.

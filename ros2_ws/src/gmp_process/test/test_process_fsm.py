@@ -5,25 +5,29 @@ residual 만큼 스쿱에 남긴다. weigh_scoop 은 스쿱 총량, weigh 는 �
 """
 from gmp_dosing.core.dosing import DosingConfig
 from gmp_dosing.core.scale import ScaleConfig, WeightModel
-from gmp_process.core.process_fsm import ProcessFSM
+from gmp_process.core.process_fsm import ProcessFSM, ToolFingerprint
 from gmp_process.core.recipe import parse
 
 SCOOP_TARE, CUP_TARE = 20.0, 30.0
 
 
-def _fsm(min_resolvable_g=30.0):
+def _fsm(min_resolvable_g=30.0, fingerprint=None):
     spec = parse({'product': 't', 'items': [{'material_id': 'A', 'target_g': 100, 'tol_pct': 5},
                                               {'material_id': 'B', 'target_g': 50, 'tol_pct': 5}]})
-    return ProcessFSM(spec, DosingConfig(scoop_nominal_g=40), WeightModel(ScaleConfig(min_resolvable_g=min_resolvable_g)))
+    return ProcessFSM(spec, DosingConfig(scoop_nominal_g=40), WeightModel(ScaleConfig(min_resolvable_g=min_resolvable_g)),
+                      fingerprint=fingerprint or ToolFingerprint())
 
 
 class Cell:
-    def __init__(self, yields, residual=2.0, grip=None, qa='APPROVED', spill=False, cup_bias=0.0, invalid_first=0):
+    def __init__(self, yields, residual=2.0, grip=None, qa='APPROVED', spill=False, cup_bias=0.0, invalid_first=0,
+                width_mm=None, cup_invalid_first=0):
         self.yields, self.residual, self.qa, self.spill, self.cup_bias = list(yields), residual, qa, spill, cup_bias
         self.grip = grip or (lambda req, n: True)
+        self.width_mm = width_mm                          # 폭 지문 테스트용 — 정지 폭을 고정값으로 돌려준다
         self.in_scoop = self.in_cup = 0.0
         self.n = {'grip': 0, 'carry': 0, 'scoop': 0, 'weigh_scoop': 0, 'return_material': 0}
         self.invalid_left = invalid_first
+        self.cup_invalid_left = cup_invalid_first   # 용기 계량(TARE·VERIFY) 무효 횟수
 
     def __call__(self, req):
         k = req['kind']
@@ -32,7 +36,10 @@ class Cell:
             ok = self.grip(req, self.n[k])
             if k == 'grip' and not req.get('close', True):
                 self.in_scoop = 0.0                       # 스쿱 반납 → 잔량은 스쿱과 함께 랙으로
-            return {'grip_inferred': ok}
+            res = {'grip_inferred': ok}
+            if self.width_mm is not None:
+                res['final_width_mm'] = self.width_mm
+            return res
         if k == 'scoop':
             self.n['scoop'] += 1
             amt = self.yields.pop(0) if self.yields else 0.0
@@ -55,6 +62,9 @@ class Cell:
                 return {'gross_g': 0.0, 'valid': False}
             return {'gross_g': SCOOP_TARE + self.in_scoop, 'valid': True}
         if k == 'weigh':
+            if self.cup_invalid_left > 0:
+                self.cup_invalid_left -= 1
+                return {'gross_g': 0.0, 'net_g': 0.0, 'valid': False}
             gross = CUP_TARE + self.in_cup + (self.cup_bias if self.in_cup > 0 else 0.0)   # bias 는 TARE 뒤에만
             return {'gross_g': gross, 'net_g': gross - req['tare_g'], 'valid': True}
         if k == 'wait_qa':
@@ -153,6 +163,40 @@ def test_return_failure_goes_safe_without_retry_or_repour():
     assert not any(k == 'pour' for _, k in trace)
 
 
+def test_rescoop_after_return_fails_once_without_retry():
+    """실물 skill_node 는 반환 중 세운 플래그로 이후 Scoop 을 전부 거부한다 (v1.5.1 · PR #43).
+    플래그가 풀리지 않으니 재시도는 같은 이유로 또 거부된다 — FORCE_LIMIT 2건을 쌓지 말고
+    사유를 남기고 한 번에 끝내야 한다 (연결 경로는 A 몫, #64)."""
+    cell = Cell(yields=[130])
+    fsm = _fsm()
+    req = fsm.start()
+    while not (req['kind'] == 'scoop' and req.get('after_return')):
+        req = fsm.on_result(req, cell(req))
+
+    safe = fsm.skill_failed(req, 'scoop 실패: 반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
+    assert safe == {'kind': 'safe', 'then': None, 'reason': 'RECOVERY'}
+    assert fsm.state == 'ERROR' and fsm.mode == 'ERROR'
+    assert len(fsm.deviations) == 1, fsm.deviations        # 재시도분(2건째)이 없다
+    d = fsm.deviations[-1]
+    assert (d['kind'], d['step'], d['action']) == ('FORCE_LIMIT', 'SCOOP', 'FORCED')
+    assert d['detail'].startswith('반환 후 재스쿱 차단 — '), d['detail']
+    assert '연결 경로 미구현' in d['detail']                # 스킬이 준 진짜 사유도 남는다
+
+
+def test_normal_scoop_failure_still_retries_once():
+    """반환과 무관한 스쿱 실패는 기존대로 1회 재시도한다 — 위 분기가 일반 경로를 삼키면 안 된다."""
+    cell = Cell(yields=[100])
+    fsm = _fsm()
+    req = fsm.start()
+    while req['kind'] != 'scoop':
+        req = fsm.on_result(req, cell(req))
+    assert not req.get('after_return')
+
+    retry = fsm.skill_failed(req, '담그기 중 힘 상한')
+    assert retry == req and fsm.state == 'SCOOP'           # 같은 요청을 한 번 더
+    assert fsm.deviations[-1]['action'] == 'RETRY'
+
+
 def test_verify_규격이탈은_BATCH_OUT_OF_SPEC():
     """① 제품 판정 — 용기 순량이 레시피 총 목표량에서 벗어나면 규격 이탈이다.
     레시피 A 100 + B 50 = 150 g, 허용치 Σ(target×tol) = 7.5 g. 용기에 50 g 이 더 있다."""
@@ -204,6 +248,76 @@ def test_container_grip_fail_retries_at_pick_container():
                                'detail': '', 'material_id': None}]
     assert trace[:3] == [('SELF_CHECK', 'measure'), ('PICK_CONTAINER', 'carry'), ('PICK_CONTAINER', 'carry')]
     assert fsm.tare_g == CUP_TARE and fsm.state == 'DONE' and len(fsm.results) == 2
+
+
+def test_wrong_tool_scoop_width_mismatch_goes_to_qa_and_discards():
+    """A 자리에 C(28mm) 스쿱이 잘못 꽂혀 있으면 퍼내기 전에 QA 로 멈춘다(교차오염 의심, 0회 즉시 QA)."""
+    fp = ToolFingerprint(scoop_widths_mm={'A': 15.5, 'B': 18.0}, tolerance_mm=1.0)
+    cell = Cell(yields=[100, 50], width_mm=28.0, qa='DISCARDED')
+    fsm = _fsm(fingerprint=fp)
+    trace = run(fsm, cell)
+    assert fsm.deviations[0] == {'kind': 'WRONG_TOOL', 'step': 'PICK_SCOOP', 'count': 1, 'action': 'QA',
+                                 'detail': '폭 28.0mm (기대 15.5±1.0mm)', 'material_id': 'A'}
+    assert kinds_for(trace, 'SCOOP_TARE') == []          # 저울질도 못 가보고 걸렸다
+    assert fsm.state == 'DISCARDED'
+
+
+def test_wrong_tool_container_width_mismatch_approved_resumes_dosing():
+    """규격 다른 용기를 QA 가 승인하면(완료품이 아니라) 정상적으로 TARE 부터 이어간다."""
+    fp = ToolFingerprint(cup_width_mm=60.0, tolerance_mm=1.0)
+    cell = Cell(yields=[100, 50], width_mm=45.0)         # scoop_widths_mm 을 안 줬으니 스쿱 쪽은 검사하지 않는다
+    fsm = _fsm(fingerprint=fp)
+    trace = run(fsm, cell)
+    assert fsm.deviations[0] == {'kind': 'WRONG_TOOL', 'step': 'PICK_CONTAINER', 'count': 1, 'action': 'QA',
+                                 'detail': '폭 45.0mm (기대 60.0±1.0mm)', 'material_id': None}
+    assert trace[3] == ('TARE', 'weigh') and fsm.tare_g == CUP_TARE   # SELF_CHECK·PICK_CONTAINER·DEVIATION 다음
+    assert fsm.state == 'DONE' and len(fsm.results) == 2  # 승인 후 평소대로 두 원료 다 담아 완료
+
+
+def test_wrong_tool_skips_check_when_width_feedback_is_negative():
+    """DIO 백엔드는 폭 피드백이 없어 성공해도 final_width_mm=-1 을 돌려준다(grip_inferred 는 DI 로 추론) —
+    정상 파지를 WRONG_TOOL 로 오판하면 안 된다 (A 리뷰, PR #165)."""
+    fp = ToolFingerprint(scoop_widths_mm={'A': 15.5, 'B': 18.0}, tolerance_mm=1.0)
+    cell = Cell(yields=[100, 50], width_mm=-1.0)
+    fsm = _fsm(fingerprint=fp)
+    run(fsm, cell)
+    assert fsm.state == 'DONE' and not fsm.deviations
+
+
+def test_wrong_tool_detects_narrower_actual_width_too():
+    """기대보다 더 가는 손잡이(교차오염의 반대 방향)도 잡는다 — 비교 자체는 방향에 무관하다."""
+    fp = ToolFingerprint(scoop_widths_mm={'A': 15.5, 'B': 18.0}, tolerance_mm=1.0)
+    cell = Cell(yields=[100, 50], width_mm=5.0, qa='DISCARDED')   # 기대(15.5)보다 훨씬 가는 손잡이
+    fsm = _fsm(fingerprint=fp)
+    run(fsm, cell)
+    assert fsm.deviations[0]['kind'] == 'WRONG_TOOL'
+    assert fsm.deviations[0]['detail'] == '폭 5.0mm (기대 15.5±1.0mm)'
+
+
+def test_wrong_tool_scoop_approved_resumes_scooping_not_skip():
+    """PICK_SCOOP 의 WRONG_TOOL 을 승인하면 이 스쿱으로 실제로 퍼서 투입한다 — 원료를 빈 결과로 건너뛰면
+    안 된다 (A 리뷰, PR #165 — 예전엔 빈 ItemRun 을 결과에 남기고 RETURN_SCOOP 로 건너뛰었다)."""
+    fp = ToolFingerprint(scoop_widths_mm={'A': 15.5}, tolerance_mm=1.0)
+    cell = Cell(yields=[100], width_mm=28.0, qa='APPROVED')
+    fsm = _fsm(fingerprint=fp)
+    req = fsm.start()
+    while req['kind'] != 'wait_qa':
+        req = fsm.on_result(req, cell(req))
+    assert fsm.deviations[-1]['kind'] == 'WRONG_TOOL' and fsm.deviations[-1]['step'] == 'PICK_SCOOP'
+    nxt = fsm.on_result(req, cell(req))
+    assert fsm.state == 'SCOOP_TARE' and nxt['kind'] == 'weigh_scoop'
+    assert not fsm.results, '승인 즉시 원료를 건너뛰면 안 된다 — 아직 아무것도 못 퍼냈다'
+
+
+def test_wrong_tool_container_width_mismatch_discarded():
+    """QA 가 거부하면 이미 workbench 에 내려놓은 빈 통을 다시 들어 폐기함으로 보낸다(스쿱 반납 단계 없음)."""
+    fp = ToolFingerprint(cup_width_mm=60.0, tolerance_mm=1.0)
+    cell = Cell(yields=[], width_mm=45.0, qa='DISCARDED')
+    fsm = _fsm(fingerprint=fp)
+    trace = run(fsm, cell)
+    assert fsm.deviations[0]['kind'] == 'WRONG_TOOL' and fsm.deviations[0]['step'] == 'PICK_CONTAINER'
+    assert [k for s, k in trace if s == 'DISCARDED'] == ['carry']   # 스쿱을 쥔 적이 없어 move·grip 이 없다
+    assert fsm.state == 'DISCARDED' and not fsm.results
 
 
 def test_material_empty_refill_resumes_scoop():
@@ -305,3 +419,26 @@ def test_rescoop_depth_compounds_when_already_shallow():
     assert fsm.results[0].returns == 1 and a == [1.0, 0.5, 0.25], a
     assert fsm.state == 'DONE' and not fsm.deviations, [d['kind'] for d in fsm.deviations]
     assert abs(fsm.results[0].actual_g - 100) < 1e-6
+
+
+def test_invalid_tare_reweighs_and_does_not_keep_the_bad_value():
+    """빈 용기 계량이 무효면 그 값을 tare 로 받지 않고 다시 잰다 (VERIFY 와 같은 규칙).
+
+    무효 tare 를 그대로 쓰면 VERIFY 의 net = gross − tare_g 가 어긋나 ①·②가 둘 다 틀린다.
+    """
+    cell = Cell(yields=[100, 50], cup_invalid_first=1)
+    fsm = _fsm()
+    trace = run(fsm, cell)
+    assert fsm.state == 'DONE' and not fsm.deviations
+    assert fsm.tare_g == CUP_TARE                      # 무효값 0.0 이 아니라 재계량한 값이 들어간다
+    assert kinds_for(trace, 'TARE') == ['weigh', 'weigh']
+    assert fsm.verify_net_g == 146                     # 순량이 정상 경로와 같다 (happy path 와 동일)
+
+
+def test_invalid_tare_up_to_limit_raises_weigh_invalid():
+    """max_invalid 만큼 무효면 WEIGH_INVALID 일탈로 멈춘다 — 무효 tare 로 배치를 시작하지 않는다."""
+    cell = Cell(yields=[100, 50], cup_invalid_first=2)
+    fsm = _fsm()
+    run(fsm, cell)
+    assert [(d['kind'], d['step']) for d in fsm.deviations] == [('WEIGH_INVALID', 'TARE')]
+    assert fsm.state == 'ERROR' and fsm.tare_g == 0.0

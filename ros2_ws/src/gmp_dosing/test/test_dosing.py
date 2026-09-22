@@ -40,48 +40,6 @@ def test_scale_tare_and_resolution():
     assert m.resolvable(100, 19.0)
 
 
-def test_g1_csv_reproduces_reference_and_defaults():
-    """CSV → calib → scale_reference.yaml → ScaleConfig 기본값이 한 줄로 이어지는지. 숫자를 손으로 옮기면 여기서 깨진다."""
-    import pathlib
-    import yaml
-    from gmp_dosing.core.calib import load_trials, summarize
-    root = pathlib.Path(__file__).resolve().parent.parent
-    s = summarize(load_trials(str(root / 'calibration' / 'g1_scoop133g_tool_force.csv')))
-    ref = yaml.safe_load((root / 'config' / 'scale_reference.yaml').read_text())['tool_force_calibration']
-    assert s['n_sets'] == 6 and s['n_trials'] == 180 and s['samples_per_trial'] == (10, 10)
-    assert abs(s['offset_g'] - ref['basis_0918']['offset_single_g']) < 0.01
-    assert abs(s['three_sigma_g'] - ref['basis_0918']['three_sigma_g']) < 0.01
-    assert abs(s['repeat_sigma_g'] - ref['basis_0918']['repeat_sigma_g']) < 0.01
-    cfg = ScaleConfig()
-    assert cfg.offset_g == 0.0                                  # method 별 값 — 기본값에 섞지 않는다
-    assert cfg.min_resolvable_g == ref['min_resolvable_g'] >= s['three_sigma_g']   # 중복 표본 조건의 3σ 18.0 을 아직 덮는다
-    assert s['distinct_sample_ratio'] < 0.7                     # 빠른 표본은 중복 — 9/19 독립 표본과 대비
-
-
-def test_g1_0919_two_weights_reproduce_gain_line():
-    """9/19 CSV(32 g·132 g, 같은 세션) → calib → yaml 의 gain·offset·σ 가 일치. common.yaml 값의 근거."""
-    import pathlib
-    import yaml
-    from gmp_dosing.core.calib import load_trials, summarize_by_weight, fit_gain
-    root = pathlib.Path(__file__).resolve().parent.parent
-    by_w = summarize_by_weight(load_trials(str(root / 'calibration' / 'g1_scoop_0919_both.csv'), 'tool_force'))
-    doc = yaml.safe_load((root / 'config' / 'scale_reference.yaml').read_text())
-    ref = doc['tool_force_calibration']
-    assert list(by_w) == [32.0, 132.0] and all(s['n_sets'] == 3 and s['n_trials'] == 90 for s in by_w.values())
-    for w, key in ((32.0, 'w32'), (132.0, 'w132')):
-        assert abs(by_w[w]['three_sigma_g'] - ref['basis_0919'][key]['three_sigma_g']) < 0.01
-        assert abs(by_w[w]['offset_g'] - ref['basis_0919'][key]['offset_single_g']) < 0.01
-        assert by_w[w]['distinct_sample_ratio'] == 1.0                         # 0.82 s 간격 — 표본 독립
-        assert abs(by_w[w]['update_interval_s'] - ref['basis_0919']['effective_period_s']) < 0.02
-    fit = fit_gain(by_w)
-    assert abs(fit['gain'] - ref['gain']) < 5e-4 and abs(fit['offset_g'] - ref['offset_g']) < 0.01
-    cfg = ScaleConfig()
-    assert cfg.method == doc['method'] == 'tool_force' and cfg.gain == 1.0 and cfg.offset_g == 0.0   # 값은 common.yaml 이 넣는다
-    assert cfg.min_resolvable_g == ref['min_resolvable_g'] and cfg.max_std_g == ref['max_std_g']
-    assert cfg.max_std_g >= max(s['within_trial_sigma_p95_g'] for s in by_w.values())
-    assert cfg.min_resolvable_g >= max(s['three_sigma_g'] for s in by_w.values())
-
-
 def test_calib_reads_both_methods_and_estimates_update_interval(tmp_path):
     """measure_g1.py 형식(두 경로 + 시각) 을 읽고, 값이 바뀌는 간격으로 센서 갱신 주기를 추정한다."""
     from gmp_dosing.core.calib import load_trials, summarize
@@ -120,3 +78,89 @@ def test_calib_two_weights_give_gain_line(tmp_path):
     fit = fit_gain(by_w)
     assert abs(fit['gain'] - 1 / 0.9) < 1e-6 and abs(fit['offset_g'] - (-10 / 0.9)) < 1e-6 and fit['max_residual_g'] < 1e-9
     assert fit_gain({32.0: by_w[32.0]}) is None
+
+
+def test_rezero_csv_reproduces_reference_and_defaults():
+    """CSV → calib → scale_reference.yaml → ScaleConfig 기본값이 한 줄로 이어지는지.
+
+    숫자를 손으로 옮기면 여기서 깨진다. 9/18·19 근거를 폐기하고 9/21 에 다시 잰 값이다
+    (calibration/README.md). 근거가 또 바뀌면 이 테스트부터 고치게 된다.
+    """
+    import pathlib
+    import yaml
+    from gmp_dosing.core.calib import fit_gain, load_trials, summarize, summarize_by_weight
+    root = pathlib.Path(__file__).resolve().parent.parent
+    doc = yaml.safe_load((root / 'config' / 'scale_reference.yaml').read_text())
+    ref = doc['tool_force_calibration']
+    assert doc['status'] == 'measured' and doc['method'] == 'tool_force'
+
+    b2 = ref['basis_2point']
+    by_w = summarize_by_weight(load_trials(str(root / b2['file']), 'tool_force'))   # yaml 에 적힌 경로 그대로
+    assert list(by_w) == [32.0, 133.0]
+    for w, key in ((32.0, 'w32'), (133.0, 'w133')):
+        s = by_w[w]
+        assert s['n_sets'] == b2['sets_per_weight'] and s['n_trials'] == b2['sets_per_weight'] * b2['trials_per_set']
+        assert abs(s['offset_g'] - b2[key]['offset_single_g']) < 0.01
+        assert abs(s['three_sigma_g'] - b2[key]['three_sigma_g']) < 0.01
+        assert abs(s['set_drift_g'] - b2[key]['set_drift_g']) < 0.01
+    fit = fit_gain(by_w)
+    assert abs(fit['gain'] - b2['fit']['gain']) < 5e-4 and abs(fit['offset_g'] - b2['fit']['offset_g']) < 0.01
+
+    b20 = ref['basis_samples20']
+    s20 = summarize(load_trials(str(root / b20['file']), 'tool_force'))
+    assert s20['samples_per_trial'] == (b20['samples_per_trial'], b20['samples_per_trial'])
+    assert s20['distinct_sample_ratio'] == 1.0                       # 0.82 s 간격 — 표본 독립
+    assert abs(s20['update_interval_s'] - b20['effective_period_s']) < 0.02
+    assert abs(s20['three_sigma_g'] - b20['three_sigma_g']) < 0.01
+    assert abs(s20['within_trial_sigma_p95_g'] - b20['within_trial_sigma_p95_g']) < 0.01
+
+    cfg = ScaleConfig()
+    assert cfg.method == doc['method'] and cfg.gain == 1.0 and cfg.offset_g == 0.0   # 값은 common.yaml 이 넣는다
+    assert cfg.min_resolvable_g == ref['min_resolvable_g'] >= s20['three_sigma_g']   # 실측 3σ 를 덮는다
+    assert cfg.max_std_g == ref['max_std_g'] >= s20['within_trial_sigma_p95_g']      # 정상 계량이 invalid 로 떨어지지 않게
+    assert abs(round((fit['gain'] + 1.0279) / 2, 2) - ref['gain']) < 1e-9            # scoop_1 3점과의 교차 검증값
+
+
+def test_resolvable_covers_every_recipe():
+    """9/21 실측 분해능으로 레시피 A·B·C 를 전부 판정할 수 있어야 한다 — C 는 경계다.
+
+    ⚠️ resolvable() 은 **런타임에서 호출되지 않는다** (호출처는 이 파일뿐, 9/21 전수 확인).
+    "이 저울로 그 목표를 가를 수 있는가" 라는 물리적 사실을 고정하는 테스트이지, 코드가 그렇게
+    판정한다는 뜻이 아니다. 실제 합격 판정은 verdict_of() 가 분해능과 무관하게 한다.
+    min_resolvable_g 의 유일한 런타임 용도는 process_fsm 의 VERIFY ② 이고 성격이 다르다 —
+    config/scale_reference.yaml 의 verify_mismatch 절 참조.
+    """
+    import pathlib
+    import yaml
+    root = pathlib.Path(__file__).resolve().parent.parent
+    ref = yaml.safe_load((root / 'config' / 'scale_reference.yaml').read_text())['tool_force_calibration']
+    m = WeightModel(ScaleConfig(min_resolvable_g=ref['min_resolvable_g']))
+    for target, key in ((200.0, 'A_200g_tol5'), (150.0, 'B_150g_tol5'), (100.0, 'C_100g_tol5')):
+        assert m.resolvable(target, 5.0), f'{target:g} g ±5 % 를 못 가른다'
+        assert abs(target * 0.05 - ref['resolvable'][key]) < 1e-9
+    assert not m.resolvable(99.0, 5.0)        # C 가 경계 — 목표가 조금만 낮아도 못 가른다
+
+
+def test_offset_cancels_out_in_net_weight():
+    """offset 은 세션마다 ±5 g 움직이지만 tare 를 빼는 순간 사라진다 — 판정에 쓰이는 것은 gain 뿐이다.
+
+    scale_reference.yaml 의 offset_is_cancelled 가 말하는 성질을, 운영에서 실제로 쓰이는 **두 경로**로 고정한다.
+      (a) reading() 의 net_g — skill_node 가 set_tare 뒤 reading 을 불러 WeightReading.net_g 로 내보낸다
+      (b) gross_g 끼리 빼기 — process_fsm 이 scooped_g·residual_g 를 구하는 방식 (gross − scoop_tare_g)
+    (b) 를 따로 두는 이유: FSM 은 net_g 를 쓰지 않고 두 gross 를 직접 뺀다. 소거가 성립하는 근거가
+    경로마다 다르므로 둘 다 고정해야 한다.
+    """
+    raw_tare, raw_gross = 1.0, 2.5
+    sessions = (190.8, 195.0, 197.4)          # 9/21 에 관측된 세션별 offset 범위
+    nets_a, nets_b = [], []
+    for offset in sessions:
+        m = WeightModel(ScaleConfig(gain=1.03, offset_g=offset))
+        tare_g = m.raw_to_g(raw_tare)
+        m.set_tare(tare_g)
+        nets_a.append(m.reading(raw_gross, 0.0, True)[2])
+        gross_g = m.reading(raw_gross, 0.0, True)[0]
+        nets_b.append(gross_g - tare_g)       # FSM 방식
+    assert max(nets_a) - min(nets_a) < 1e-9   # offset 이 6.6 g 달라져도 순량은 같다
+    assert max(nets_b) - min(nets_b) < 1e-9
+    assert abs(nets_a[0] - nets_b[0]) < 1e-9  # 두 경로가 같은 값을 준다
+    assert abs(nets_a[0] - (raw_gross - raw_tare) * -1.0 / 9.80665 * 1000 * 1.03) < 1e-9   # 남는 것은 gain 뿐

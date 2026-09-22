@@ -7,7 +7,7 @@
 
 - 작업 전에 `docs/SOT.md` 와 `git status` 를 확인한다. 통신 계약은 `docs/interfaces.md`, 실행 절차는 `docs/setup.md`.
 - 요구사항의 근거는 **규칙 원장 `PROJECT_RULES.md`(R1~R23, 평가 기준 3-8)** 와 BRD(`docs/spec/`). 문서와 코드가 충돌하면 SOT 를 우선하고 충돌 사실을 알린다.
-- 다른 담당의 패키지를 수정하지 않는다. 필요하면 `docs/issues.md` 에 이슈로 남기고 담당에게 알린다.
+- 다른 담당의 패키지를 수정하지 않는다. 필요하면 GitHub Issue 로 남기고 담당에게 알린다.
 - **예외 1건:** `gmp_dosing` 은 라이브러리다. `gmp_process` 가 import 하지만 수정은 도징 담당(B)만 한다.
 
 ## 작업 범위
@@ -16,6 +16,8 @@
 - 토픽·메시지·서비스·액션 계약(`gmp_interfaces`, `docs/interfaces.md`)을 바꿀 때는 **팀 채널에 먼저 알리고** 문서와 같이 고친다. 계약은 4명 모두의 전제라 한 사람이 정하지 않는다.
 - 확정되지 않은 파라미터(`[팀 확정 필요]`)를 임의로 결정하지 않는다. 값은 `gmp_bringup/params/*.yaml` 에 두고 코드에 하드코딩하지 않는다.
 - 구현하지 않은 영역은 한글 `TODO([담당])` 로 남긴다.
+- **코드에서 호출·상태·전이를 지우거나 바꾸면 생성 문서도 같은 PR 에서 다시 만든다** — `tools/make_process_drawio.py` → `docs/diagrams/process_flow.drawio` 등. 9/21 에 `set_tare` 를 지우면서 그 호출을 그리는 그림을 구현·1차·최종 검토가 모두 놓쳤다. 리뷰어는 바뀐 산출물에 대응하는 생성기를 **이름을 적어** 재실행하고 그 출력 경로가 깨끗한지 본다 — 공정 그림·표는 `python3 tools/make_process_drawio.py && git status --porcelain docs/diagrams/process_flow.drawio docs/process_flow.md docs/interfaces.md`, 배치도는 `python3 tools/make_workcell_layout.py && git status --porcelain docs/diagrams/workcell_layout.png`. `python3 tools/make_*.py` 처럼 glob 으로 부르면 셸이 펼친 첫 스크립트(`make_intro_video.py`)만 실행되고 나머지는 인자로 넘어가 검증이 되지 않는다.
+- **계약 값의 의미가 바뀌면 그 값을 넘기는 쪽과 받는 쪽의 주석·docstring 을 같이 훑는다.** 9/21 에 `fraction` 이 v1.3→v1.5 로 「붓기 비율」에서 「담그기 깊이」로 바뀌었는데, 넘기는 C(`process_fsm` docstring·`_scoop` 주석)와 받는 B(`dosing.decide()` docstring·`Decision.fraction`·`min_fraction`) 양쪽이 각자 옛 의미를 들고 있었고, 서로 물어본 뒤에야 둘 다 찾았다. 어긋남은 파일 **사이**에 있으므로 한쪽만 보면 못 잡는다.
 - 요청하지 않은 `git push`, PR 생성은 하지 않는다.
 
 ## 프로젝트 구조
@@ -75,10 +77,10 @@
 
 ## 이슈 · 진행
 
-- **`docs/issues.md`·`docs/todo.md` 는 조장만 고친다.** 여러 브랜치가 같은 파일(특히 `todo.md` 의 STATS 블록)을 건드리면 병합마다 충돌한다 — 실제로 반복됐다. 다른 담당은 이 두 파일을 직접 커밋하지 않고, 이슈 등록·todo 추가·완료 처리를 조장에게 전달한다(PR 설명·리뷰 코멘트·팀 채널 등). `python3 tools/todo_stats.py` 실행도 조장만.
-- 등록부는 `docs/issues.md` 하나. ID 는 `I-0xx`. **번호를 붙이기 전에 main 을 당긴다.** 원인 하나에 이슈 하나. 상태는 요약표에만, 내용·조치는 상세 절에만.
-- 할 일은 `docs/todo.md` (파일·메서드 기준, 줄 끝 `· 마감 M/D`). 진행률은 손으로 적지 않는다 — `python3 tools/todo_stats.py`.
-- 이슈를 해결로 옮기면 대응하는 todo 도 체크한다. 반대도 마찬가지.
+- **9/21 부터 할 일·이슈의 정본은 GitHub Issues 다** (https://github.com/Jik-Kim/auto-pharmacist/issues). 조장 승인. `docs/todo.md`·`docs/issues.md` 는 9/21 상태로 동결한 스냅샷이며 더 고치지 않는다 — 한 파일을 여러 브랜치가 건드려 병합마다 충돌했고, 조장 혼자 관리하기에도 무거웠다. 115개 항목을 전부 Issue 로 옮겼다(완료 항목은 Closed). `tools/todo_stats.py` 도 더 쓰지 않는다.
+- 라벨: `severity:high/medium/low` · `pkg:gmp_*` · `overdue` · `source:consistency-check`. 원인 하나에 이슈 하나. 코드 PR 은 본문에 `Closes #N` 또는 `Refs #N` 으로 잇는다.
+- 등록·종료는 조장 판단을 거친다. 다른 담당은 발견한 것을 PR 설명·리뷰 코멘트·팀 채널로 조장에게 전달하고, 조장이 판단하면 Issue 가 만들어지거나 닫힌다. 옛 `I-0xx` 번호는 Issue 제목에 남아 있으니 문서에서 `I-0xx` 를 보면 그 제목으로 찾는다.
+- 이슈를 닫을 때 같은 원인의 할 일 Issue 도 함께 닫는다. 반대도 마찬가지.
 
 ## 검증과 완료 보고
 

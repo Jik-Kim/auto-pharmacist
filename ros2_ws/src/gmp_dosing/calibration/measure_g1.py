@@ -6,24 +6,33 @@
 열기·닫기) 를 켜면 터미널 하나로 끝난다. 둘 다 켜기 전에 로봇 주변을 비운다.
 **보정값은 반드시 실제 weigh_held 가 재는 자세(`material_1/2/3`)에서 잰다** — `workbench`는 자세(orientation)가
 달라(`skill_node._do_weigh_held`가 이동하는 `material_N.posx` 참고) tool_force 의 JTS 기반 편향이 안 옮겨간다.
-출력 CSV 는 calibration/g1_scoop133g_tool_force.csv 와 같은 열에 `작업물무게_kgf`·`시각_s` 를 더한 것이라
+자세마다 편향이 다르므로 **한 세션은 한 자세로 끝낸다** — 2026-09-21 재작업은 `material_1` 기준이다.
+출력 CSV 는 폐기한 9/18 파일과 같은 열에 `작업물무게_kgf`·`시각_s` 를 더한 것이라
 core/calib.py 가 `--method tool_force` / `--method workpiece` 로 두 경로를 같은 방법으로 비교한다.
 
 준비 (터미널 1): `source tools/env.sh && ros2 launch m0609_rg2_bringup new_bringup.launch.py mode:=real host:=192.168.1.100`
   — 로봇 컨트롤러 + OnRobot 그리퍼 드라이버. cell.launch.py 는 쓰지 않는다 (skill_node 가 로봇을 움직인다).
-실행 (터미널 2):
-  source tools/env.sh && python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py --actual-g 133 --object scoop \\
-      --goto-station material_3 --gripper --sets 6 --trials 30 --samples 10 --period 0.1 --out records/g1_both_$(date +%m%d).csv
+실행 (터미널 2) — 2026-09-21 영점 재작업은 **material_1 에서 페이즈당 5회**로 짧게 끊어 돈다.
+절차·확인 항목·결과표는 같은 폴더의 README.md 에 있다 (9/18·19 측정 근거는 폐기됨).
+  페이즈 1  --actual-g 32 --goto-station material_1 --gripper --sets 1 --trials 5 --samples 10 --period 0.1 \\
+              --out records/g1_rezero_0921_material1.csv            (빈 스쿱, 영점 포함)
+  페이즈 2+ --actual-g <저울값> --gripper --no-reset --sets 1 --trials 5 --samples 10 --period 0.1 \\
+              --out records/g1_rezero_0921_material1.csv            (같은 파일에 이어 쓴다. 영점은 세션 1회, 자세 유지)
+  요약      python3 -m gmp_dosing.core.calib records/g1_rezero_0921_material1.csv --method tool_force
+무게는 3점 이상 떠야 gain 직선의 잔차가 의미를 가진다 (fit_gain 이 2점이면 경고한다).
 
-두 무게를 한 파일에 (9/19 확정 — 빈 스쿱 6세트 → 원료 담고 6세트, gain 의 두 점이 된다):
-  1회차  --actual-g 32  --out records/g1_both_0919.csv                 (빈 스쿱, 영점 포함)
-  2회차  --actual-g <저울값> --out records/g1_both_0919.csv --no-reset   (같은 파일에 이어 쓴다. 영점은 세션 1회)
-  요약   python3 -m gmp_dosing.core.calib records/g1_both_0919.csv --method workpiece   → 무게별 σ + gain·offset 직선
+**용기 계량(TARE·VERIFY)은 경로가 다르다** — skill_node._do_weigh 는 workbench AT 에서 잡고
+approach_mm(100) 만큼 올린 ABOVE 에서 잰다. --pick-lift-mm 으로 그 경로를 그대로 따라간다:
+  --actual-g 78 --object container --goto-station workbench --pick-lift-mm 100 \\
+      --grip-width-mm 60 --gripper --sets 3 --trials 5 --samples 20 --period 0.1 --out records/<...>.csv
+--offset-mm 로 올려서 재면 **한 자세에서 잡고 재는 것**이라 파지 경로가 운영과 다르다 (9/21 그렇게 쟀다).
+측정 자세는 CSV 의 `측정조건` 열에 `@station[x,y,z]` 로 남는다 — 자세가 σ 를 좌우하므로 기록해 둔다.
 
 절차 (프롬프트가 안내한다):
   1. 빈 그리퍼로 계량 자세 → Enter → reset_workpiece_weight (세션 1회, 매뉴얼 5.1.2)
   2. 세트마다: 물체를 잡고 계량 자세에서 정지 → Enter → trials × samples 읽기.
      세트 사이에 물체를 **놓았다 다시 잡는다** — 운영에서 매 계량이 새 파지라, 그 흐름을 σ 에 넣기 위해서다.
+  3. 끝나면 스쿱을 받치고 Enter → 그리퍼를 연다. 받치기 전에 열면 원료를 쏟는다.
 --period 는 표본 간격[s]. 9/18 데이터는 표본 43 % 가 앞 값 반복이었다 — 센서 갱신보다 짧았다는 뜻.
 calib.py 가 `시각_s` 로 값이 바뀌는 간격의 중앙값을 알려 주니, 그보다 길게 잡는다.
 """
@@ -70,6 +79,35 @@ def station_posx(station_id: str):
 
 STATES = {0: 'INITIALIZING', 1: 'STANDBY', 2: 'MOVING', 3: 'SAFE_OFF', 4: 'TEACHING', 5: 'SAFE_STOP',
           6: 'EMERGENCY_STOP', 7: 'HOMMING', 8: 'RECOVERY', 9: 'SAFE_STOP2', 10: 'SAFE_OFF2'}
+
+
+def wait_controller(arm, rclpy, timeout_s: float):
+    """컨트롤러가 실제로 응답하는지 먼저 확인한다 — **없으면 조용히 멈춘다.**
+
+    DSR_ROBOT2 의 설정·조회 함수는 wait_for_service 없이 call_async 부터 하고
+    spin_until_future_complete 로 기다린다. 컨트롤러 활성화 전에 부르면 future 가 끝나지 않아
+    아무 출력 없이 영원히 선다 (gmp_skills/adapters/dsr_arm.py 의 initialize 주석과 같은 사유).
+    dsr_arm.initialize() 는 move_stop 서비스로 이 확인을 하지만 여기서는 setup_tool 을 직접 부르므로
+    그 확인이 빠져 있었다 — 브링업을 띄우자마자 실행하면 걸린다 (9/21 실제로 걸렸다).
+
+    wait_for_service 는 '그래프에 광고됐다' 까지만 보므로, 타임아웃을 걸고 한 번 실제로 부른다.
+    """
+    from dsr_msgs2.srv import GetRobotMode
+    t0 = time.monotonic()
+    cli = arm.node.create_client(GetRobotMode, 'dsr_controller2/system/get_robot_mode')
+    if not cli.wait_for_service(timeout_sec=timeout_s):
+        raise TimeoutError(
+            f'{timeout_s:.0f} s 안에 dsr_controller2/system/get_robot_mode 가 안 보인다 — '
+            '브링업(new_bringup.launch.py mode:=real)이 떠 있는지, ROS_DOMAIN_ID 가 같은지 확인 '
+            '(source tools/env.sh 하면 70)')
+    left = max(5.0, timeout_s - (time.monotonic() - t0))
+    fut = cli.call_async(GetRobotMode.Request())
+    rclpy.spin_until_future_complete(arm.node, fut, timeout_sec=left)
+    if fut.result() is None:
+        raise TimeoutError(
+            '컨트롤러가 응답하지 않는다 — 서비스는 떴지만 dsr_controller2 가 아직 active 가 아니거나 '
+            '로봇 연결이 끊겼다. `ros2 control list_controllers -c /dsr01/controller_manager` 로 active 확인 후 다시')
+    print(f'    컨트롤러 준비 확인 ({time.monotonic() - t0:.1f} s)')
 
 
 def setup_tool(arm, tool: str, tcp: str, need_motion: bool):
@@ -120,8 +158,7 @@ def probe(arm, grip, close_cmd, sec: float, actual_g: float):
     """workpiece 추정기의 거동을 본다 — reset 뒤 값이 수렴하는지, 빈 상태 편향이 얼마인지, 물체를 잡으면 얼마나 반응하는지."""
     import rclpy
     try:
-        if grip:
-            grip.send('o')
+        release_gripper(grip, '[probe] 시작 —', swallow_interrupt=False)
         input(f'\n[probe] 빈 그리퍼로 계량 자세에서 정지 → Enter (reset 후 {sec:.0f} s 관찰) ')
         r = arm.reset_workpiece()
         print(f'    reset_workpiece_weight return={r!r}')
@@ -137,11 +174,7 @@ def probe(arm, grip, close_cmd, sec: float, actual_g: float):
     except KeyboardInterrupt:
         print('\nprobe 종료')
     finally:
-        if grip:
-            try:
-                grip.send('o')
-            except Exception as e:      # noqa: BLE001
-                print(f'    그리퍼 열기 실패: {e}')
+        release_gripper(grip)
         rclpy.shutdown()
     return 0
 
@@ -176,6 +209,32 @@ class Gripper:
         time.sleep(1.0)                    # 기구 동작 대기
 
 
+def release_gripper(grip, label='[끝]', *, swallow_interrupt=True):
+    """그리퍼를 연다 — **사람이 받칠 때까지 기다린다.**
+
+    바로 열면 원료가 담긴 스쿱을 떨어뜨려 쏟는다 (9/21 사용자 요청). 끝날 때뿐 아니라
+    **세트를 시작할 때도** 부른다 — 이전 세트에서 문 물체를 놓는 자리가 거기다.
+
+    swallow_interrupt=False 면 Ctrl-C·EOF 를 그대로 올려보낸다. 세트 루프에서는 사람이
+    Ctrl-C 로 측정을 중단하려는 것이므로 이 프롬프트가 삼키면 안 된다. 정리 단계(finally)에서만
+    삼켜서, 물체를 문 채로 끝내는 선택을 할 수 있게 한다.
+    """
+    if not grip:
+        return
+    try:
+        input(f'\n{label} 물체를 받치고 → Enter (그리퍼를 연다. 비어 있으면 그냥 Enter) ')
+    except (KeyboardInterrupt, EOFError):
+        if not swallow_interrupt:
+            raise
+        print('\n    ⚠ 그리퍼를 열지 않고 끝낸다 — 물체가 물린 채로 남아 있다')
+        return
+    try:
+        grip.send('o')
+        print('    그리퍼 열림')
+    except Exception as e:      # noqa: BLE001
+        print(f'    그리퍼 열기 실패: {e}')
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--actual-g', type=float, required=True, help='실제 저울로 잰 **들고 있는 것 전체** 무게 [g] — 빈 스쿱이면 32, 원료를 담았으면 스쿱+원료 (9/18 은 133)')
@@ -186,6 +245,11 @@ def main(argv=None):
     ap.add_argument('--samples', type=int, default=10)
     ap.add_argument('--period', type=float, default=0.1, help='표본 간격 [s]')
     ap.add_argument('--settle', type=float, default=1.0, help='회차 전 정착 대기 [s]')
+    ap.add_argument('--alt-actual-g', type=float, default=None, metavar='G',
+                    help='짝 계량 [9/22 C 요청]: 홀수 회차는 --actual-g, 짝수 회차는 이 무게로 **그리퍼를 놓지 않고** 번갈아 잰다. '
+                         '회차마다 Enter 로 멈추므로 그 사이에 내용물을 넣고 뺀다. 산출은 각 σ 가 아니라 σ(홀−짝) — '
+                         'process_fsm 은 한 원료의 N 사이클을 한 파지 안에서 돌고(PICK_SCOOP~RETURN_SCOOP) '
+                         'actual_g 에 들어가는 값이 gross1−gross2 라 스쿱 tare 와 파지 오프셋이 같이 빠진다')
     ap.add_argument('--out', required=True, help='CSV 경로 (records/ 는 git 밖. 확정되면 calibration/ 으로 복사)')
     ap.add_argument('--no-reset', action='store_true', help='reset_workpiece_weight 를 건너뛴다 (이미 한 세션)')
     ap.add_argument('--no-workpiece', action='store_true',
@@ -197,6 +261,15 @@ def main(argv=None):
                          "예: workbench(용기 계량) | material_1/2/3(weigh_held 가 실제로 재는 자세 — "
                          "calibration 은 이 자세로 해야 gain/offset 이 운영과 맞는다)")
     ap.add_argument('--vel-scale', type=float, default=0.2, help='--goto-station 속도 스케일')
+    ap.add_argument('--offset-mm', default='', metavar='DX,DY,DZ',
+                    help='--goto-station 좌표에 더할 [mm] — 실물 위치가 바뀌었는데 stations.yaml 이 '
+                         '아직 반영 전(PR 대기)일 때 임시 보정. 예: 100,0,0')
+    ap.add_argument('--pick-lift-mm', type=float, default=0.0, metavar='MM',
+                    help='파지는 --goto-station 자세(AT)에서 하고, 측정 전에 이만큼 들어올려(ABOVE) 잰다. '
+                         '용기 계량 경로와 같다 — skill_node._do_weigh 는 AT 에서 잡고 approach_mm 만큼 올려 잰다. '
+                         '세트가 끝나면 다시 AT 로 내려 놓는다. 0 = 한 자세에서 잡고 잰다(스쿱 방식)')
+    ap.add_argument('--controller-timeout', type=float, default=30.0, metavar='SEC',
+                    help='dsr_controller2 응답 대기 한도 [s]. 브링업 직후엔 컨트롤러 활성화에 시간이 걸린다')
     ap.add_argument('--gripper', action='store_true', help='/onrobot/sendCommand 로 세트마다 열기·닫기')
     ap.add_argument('--grip-width-mm', type=float, default=None, help='닫을 때 목표 폭 [mm]. 없으면 완전 닫기(c)')
     a = ap.parse_args(argv)
@@ -206,17 +279,31 @@ def main(argv=None):
     rid, model, vel, acc, tool, tcp = robot_params()
     rclpy.init()
     arm = DsrArm(rid, model, 'real', vel, acc, tool, tcp)
+    wait_controller(arm, rclpy, a.controller_timeout)
     setup_tool(arm, tool, tcp, bool(a.goto_station))
     grip = Gripper(rclpy) if a.gripper else None
     close_cmd = f'{int(round(a.grip_width_mm * 10))}' if a.grip_width_mm else 'c'
+    pick_posx = measure_posx = None
     if a.goto_station:
         posx = station_posx(a.goto_station)
-        input(f'\n[0] {a.goto_station} 계량 자세 {posx} 로 이동합니다 (vel_scale {a.vel_scale}). 주변 확인 → Enter ')
-        arm.movel(posx, a.vel_scale)
+        if a.offset_mm:
+            dx, dy, dz = (float(v) for v in a.offset_mm.split(','))
+            posx = [posx[0] + dx, posx[1] + dy, posx[2] + dz, *posx[3:]]
+            print(f'    offset ({dx:g}, {dy:g}, {dz:g}) mm 적용 → {posx}')
+        pick_posx = posx
+        measure_posx = ([posx[0], posx[1], posx[2] + a.pick_lift_mm, *posx[3:]]
+                        if a.pick_lift_mm else posx)
+        if a.pick_lift_mm:
+            print(f'    파지 AT {pick_posx}  →  측정 ABOVE {measure_posx} (+{a.pick_lift_mm:g} mm)')
+        input(f'\n[0] {a.goto_station} {"파지" if a.pick_lift_mm else "계량"} 자세 {pick_posx} 로 '
+              f'이동합니다 (vel_scale {a.vel_scale}). 주변 확인 → Enter ')
+        arm.movel(pick_posx, a.vel_scale)
         print('    이동 완료')
     if a.probe > 0:
         return probe(arm, grip, close_cmd, a.probe, a.actual_g)
     cond = a.condition or f'{a.object}_total_{a.actual_g:g}g'
+    if measure_posx:                    # 어디서 쟀는지 CSV 에 남긴다 — 자세가 σ 를 좌우한다 (9/21)
+        cond += '@' + a.goto_station + '[' + ','.join(f'{v:g}' for v in measure_posx[:3]) + ']'
     stamp = datetime.datetime.now().strftime('%m%d%H%M')
     out = pathlib.Path(a.out); out.parent.mkdir(parents=True, exist_ok=True)
     new = not out.exists()
@@ -226,8 +313,7 @@ def main(argv=None):
         w.writerow(COLUMNS)
 
     if not a.no_reset:
-        if grip:
-            grip.send('o')
+        release_gripper(grip, '[1] 영점 전 —', swallow_interrupt=False)
         input('\n[1] 빈 그리퍼(열림)로 계량 자세에서 정지 → Enter (reset_workpiece_weight) ')
         r = arm.reset_workpiece()
         print(f'    reset_workpiece_weight return={r!r}' + ('  OK' if r == 0 else '  ⚠ 실패 — workpiece 영점이 안 잡혔다'))
@@ -237,14 +323,24 @@ def main(argv=None):
     try:
         for s in range(1, a.sets + 1):
             if grip:
-                grip.send('o')
+                if a.pick_lift_mm:      # 파지는 AT 에서 — 내려가 있어야 용기를 놓고 잡을 수 있다
+                    arm.movel(pick_posx, a.vel_scale)
+                release_gripper(grip, f'[2] 세트 {s}/{a.sets} 시작 —', swallow_interrupt=False)
                 input(f'\n[2] 세트 {s}/{a.sets}: 물체({a.actual_g:g} g) 를 핑거 사이에 대고 → Enter (닫는다) ')
                 grip.send(close_cmd)
                 input('    잡혔는지 눈으로 확인 → Enter (측정 시작) ')
+                if a.pick_lift_mm:      # 측정은 ABOVE 에서 — 운영(skill_node._do_weigh)과 같은 경로
+                    arm.movel(measure_posx, a.vel_scale)
+                    print(f'    측정 자세로 +{a.pick_lift_mm:g} mm 올림 → {measure_posx}')
             else:
                 input(f'\n[2] 세트 {s}/{a.sets}: 물체({a.actual_g:g} g) 를 잡고 계량 자세에서 정지 → Enter ')
             name = f'{a.object}_total{a.actual_g:g}g_{stamp}_set{s}'
             for t in range(1, a.trials + 1):
+                trial_g = a.actual_g if (a.alt_actual_g is None or t % 2 == 1) else a.alt_actual_g
+                if a.alt_actual_g is not None:
+                    # 그리퍼는 문 채로 둔다 — 파지 오프셋이 유지되어야 차에서 빠진다
+                    input(f'    세트 {s} 회차 {t}/{a.trials}: 내용물을 {"채우고" if t % 2 == 1 else "비우고"} '
+                          f'({trial_g:g} g) → Enter (그리퍼는 문 채로 둔다) ')
                 time.sleep(a.settle)
                 fz, kg = [], []
                 for n in range(1, a.samples + 1):
@@ -253,7 +349,7 @@ def main(argv=None):
                     ts = time.monotonic() - t0
                     force6 = list(force) if force else [''] * 6
                     wp_v = float(wp) if isinstance(wp, (int, float)) and wp >= 0 else ''
-                    w.writerow([name, a.object, cond, f'{a.actual_g:g}', t, n, f'{ts:.3f}', *force6, wp_v])
+                    w.writerow([name, a.object, cond, f'{trial_g:g}', t, n, f'{ts:.3f}', *force6, wp_v])
                     if force:
                         fz.append(force[2])
                     if wp_v != '':
@@ -263,16 +359,22 @@ def main(argv=None):
                 fz_g = -sum(fz) / len(fz) / 9.80665 * 1000 if fz else float('nan')
                 wp_g = sum(kg) / len(kg) * 1000 if kg else float('nan')
                 print(f'    세트 {s} 회차 {t:2d}/{a.trials}: Fz→ {fz_g:8.1f} g (offset 전)   workpiece {wp_g:8.1f} g', flush=True)
-            print(f'    세트 {s} 끝 — 물체를 놓았다가 다시 잡는다' + (' (다음 세트에서 자동으로 연다)' if grip else ''))
+            # 측정이 끝나도 여기서 멈춘다 — 다음 세트로 그냥 넘어가면 물체를 문 채 프롬프트가 지나가
+            # 언제 손을 대도 되는지 알기 어렵다 (9/21 사용자 요청). Ctrl-C 는 바깥 except 로 전달된다.
+            last = (s == a.sets)
+            print(f'    세트 {s}/{a.sets} 측정 끝' + ('' if last else ' — 다음 세트에서 물체를 놓았다 다시 잡는다'))
+            input(f'    세트 {s} 기록 확인 → Enter ({"정리로 넘어간다" if last else "다음 세트"}) ')
     except KeyboardInterrupt:
         print('\n중단 — 지금까지 기록은 남는다')
     finally:
         f.close()
-        if grip:
-            try:
-                grip.send('o')             # 물체를 든 채 끝내지 않는다
+        if grip and a.pick_lift_mm and pick_posx:
+            try:                           # ABOVE 에서 놓으면 떨어뜨린다 — AT 로 내려가서 연다
+                arm.movel(pick_posx, a.vel_scale)
+                print(f'    파지 자세로 내려옴 → {pick_posx}')
             except Exception as e:         # noqa: BLE001
-                print(f'    그리퍼 열기 실패: {e}')
+                print(f'    ⚠ 파지 자세 복귀 실패: {e} — 그리퍼를 열기 전에 물체를 받쳐라')
+        release_gripper(grip)              # 물체를 든 채 끝내지 않는다 — 단 사람이 받친 뒤에 연다
         rclpy.shutdown()
     print(f'\n저장: {out}\n요약: python3 -m gmp_dosing.core.calib {out} --method workpiece   (tool_force 도 같은 파일로)')
     return 0

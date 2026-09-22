@@ -146,6 +146,22 @@ def test_skill_call_sequence(cell):
     assert subjects.count('scoop') == 1 + 2 * attempts
 
 
+def test_scoop_grip_commands_the_search_width_not_the_expected_width(cell):
+    """스쿱 파지 명령폭은 원료와 무관한 탐색 폭이다 — 기대 폭(WRONG_TOOL 판정용)을 명령폭으로 쓰면
+    그보다 가는 손잡이는 접촉조차 못 해 GRIP_FAIL 로 빠진다 (A 리뷰, PR #165)."""
+    proc, fake, col = cell
+    search = float(proc.p('gripper.scoop_search_width_mm'))
+    cup = float(proc.p('gripper.cup_width_mm'))
+    _submit(col, [('A', 100.0, 5.0), ('C', 50.0, 5.0)])       # 기대 폭이 서로 다른 두 원료 (15.5 / 28)
+    assert _wait_done(proc) == 'DONE', proc.note
+
+    closes = [c for c in fake.calls if c.startswith('grip:close:')]
+    scoop_closes = [c for c in closes if c != f'grip:close:{cup:.0f}']
+    assert scoop_closes, closes
+    assert set(scoop_closes) == {f'grip:close:{search:.0f}'}, \
+        f'원료마다 다른 폭으로 명령하고 있다: {scoop_closes}'
+
+
 def test_rejects_unknown_material(cell):
     """전용 스쿱이 없는 원료는 주문 단계에서 거부한다 — 배치 중간에 서지 않게."""
     proc, fake, col = cell
@@ -411,6 +427,27 @@ def test_scoop_skill_failure_does_not_lose_scoop_cycle(cell):
     outcomes = [c.outcome for c in col.cycles]
     assert outcomes[0] == ScoopCycle.ABORTED and ScoopCycle.COMPLETE in outcomes, outcomes
     assert len(col.cycles) == 1 + sum(r.attempts for r in proc.fsm.results)
+
+
+def test_rescoop_after_return_is_blocked_once_with_a_clear_reason(cell):
+    """실물은 반환 뒤 Scoop 을 전부 거부한다 (v1.5.1 · PR #43, 연결 경로 #64 미구현).
+    재시도해도 같은 이유로 거부되므로 FORCE_LIMIT 2건이 아니라 사유 1건으로 끝나야 한다."""
+    proc, fake, col = cell
+    fake.block_rescoop = True                     # 반환이 성공하면 이후 Scoop 을 실물처럼 거부한다
+    fake.scoop_gain = 4.0                         # 한 번에 목표+허용오차를 넘겨 퍼 → 붓기 전 반환
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_done(proc) == 'ERROR', _why(proc)
+
+    assert any(c.startswith('return_material:') for c in fake.calls), fake.calls
+    after_return = fake.calls[fake.calls.index(
+        next(c for c in fake.calls if c.startswith('return_material:'))) + 1:]
+    assert len([c for c in after_return if c.startswith('scoop:')]) == 1, \
+        f'거부될 걸 알면서 재시도했다: {after_return}'
+
+    devs = [d for d in proc.fsm.deviations if d['step'] == 'SCOOP']
+    assert len(devs) == 1 and devs[0]['action'] == 'FORCED', proc.fsm.deviations
+    assert '반환 후 재스쿱 차단' in devs[0]['detail'] and '연결 경로 미구현' in devs[0]['detail']
+    assert any(c.startswith('safe:') for c in fake.calls)      # 끝에 안전 자세로 간다
 
 
 def test_submit_rejects_invalid_numbers_and_duplicates(cell):
@@ -694,6 +731,48 @@ def test_enter_during_nudge_wait_goes_to_safe_pose(cell):
     assert _lock(col, InterlockRequest.Request.EXIT).granted
     fake.nudge()
     assert _wait_done(proc) == 'DONE', _why(proc)
+
+
+# ── 종료(Ctrl+C) 가 사람 대기를 끊을 때 (9/21) ─────────────────────────────
+# 종료 전(9/21 이전 main) 에는 `shutdown()` 이 `_qa`·`_interlock_exit` 를 대신 세워 "판정이 온 것처럼"
+# 깨웠다 — QA 미판정이 DISCARDED 로, 인터락 대기가 EXIT 받은 것처럼 지어져 나갔다. NUDGE_WAIT 는
+# 반대로 아무도 안 깨워 `_stop` 폴링에 걸려 FORCE_LIMIT 일탈을 지어냈다. #163(RunBatch) 이 도입한
+# `_check_batch_interrupt()`/`BatchCancelled` 가 세 경로 모두를 이미 정확히 잡아 ABORTED/ERROR 로
+# 끝낸다는 것을 이 3건이 고정한다 — 회귀가 생기면 여기서 먼저 깨진다.
+def test_shutdown_during_qa_wait_ends_the_batch_via_cancellation(cell):
+    """QA 판정 대기 중 종료는 '거부(DISCARDED)'를 지어내지 않는다 — BatchCancelled 로 명확히 취소된다."""
+    proc, fake, col = cell
+    fake.transfer = 2.0                            # 약통에 2배 → VERIFY ① BATCH_OUT_OF_SPEC → QA
+    _submit(col, [('A', 10.0, 5.0)])
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    n_devs = len(proc.fsm.deviations)
+    proc.shutdown(timeout=3.0)
+    assert not proc._thread.is_alive(), 'QA 대기를 못 깨웠다'
+    assert proc.fsm.state == 'ABORTED' and proc.fsm.mode == 'ERROR', _why(proc)
+    assert len(proc.fsm.deviations) == n_devs, 'QA 미판정을 새 일탈로 지어내면 안 된다'
+
+
+def test_shutdown_at_nudge_wait_ends_the_batch_without_a_fabricated_deviation(cell):
+    """세트 끝 NUDGE 대기(제일 흔한 정상 종료 상황) 중 종료는 FORCE_LIMIT 일탈을 지어내면 안 된다."""
+    proc, fake, col = cell
+    fake.attendant = False
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: proc._nudge_waiting, 60.0), _why(proc)
+    proc.shutdown(timeout=3.0)
+    assert not proc._thread.is_alive(), 'NUDGE 대기를 못 깨웠다'
+    assert proc.fsm.deviations == [], f'종료를 일탈로 지어냈다: {proc.fsm.deviations}'
+    assert proc.fsm.state == 'ABORTED' and proc.fsm.mode == 'ERROR', _why(proc)
+
+
+def test_shutdown_during_refill_wait_ends_the_batch_instead_of_faking_a_resume(cell):
+    """보충 대기(PAUSED) 중 종료는 EXIT 가 온 것처럼 재개 상태로 지어내면 안 된다."""
+    proc, fake, col = cell
+    fake.empty = 4                                 # SCOOP_EMPTY ×3 재시도 → 4회째 REFILL
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_mode(proc, 'PAUSED'), proc.fsm.state
+    proc.shutdown(timeout=3.0)
+    assert not proc._thread.is_alive(), '인터락 대기를 못 깨웠다'
+    assert proc.fsm.state == 'ABORTED' and proc.fsm.mode == 'ERROR', 'EXIT 가 온 것처럼 재개시키면 안 된다'
 
 
 def _call(col, srv_type, name, request, timeout=10.0):
