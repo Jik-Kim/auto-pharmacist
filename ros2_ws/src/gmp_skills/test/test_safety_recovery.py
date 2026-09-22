@@ -49,6 +49,10 @@ def recovery(monkeypatch):
     node.state = 5
     node.controls = []
     node.arm.robot_state = lambda: node.state
+    node.arm.self_check = lambda *_: (True, 'OK')
+    node.get_parameter = lambda key: SimpleNamespace(value={
+        'robot.tool_name': 'tool_weight', 'robot.tcp_name': 'GripperDA_v1',
+        'safety.collision_sensitivity': 50.0}[key])
 
     def control(value, timeout, dispatch):
         def apply():
@@ -255,3 +259,19 @@ def test_worker_handles_recovery_after_observation_timeout(recovery):
         assert not node._safety_latched
     finally:
         assert node.shutdown()
+
+
+@pytest.mark.parametrize('failure', ['mismatch', 'timeout'])
+def test_recovery_rechecks_sensitivity_before_unlocking(recovery, failure):
+    node, job, _ = recovery
+    calls = []
+    def check(*args):
+        calls.append(args)
+        if failure == 'timeout':
+            raise TimeoutError('collision query timeout')
+        return False, 'collision_sensitivity=49% expected=50%'
+    node.arm.self_check = check
+    with pytest.raises((RuntimeError, TimeoutError)):
+        node._do_recover(job)
+    assert calls == [('tool_weight', 'GripperDA_v1', 50.0)]
+    assert node._safety_latched

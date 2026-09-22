@@ -65,6 +65,10 @@ class SkillNode(Node):
         g = lambda k: self.get_parameter(k).value  # noqa: E731
         self._scale_period_s()  # 장치 생성 전에 잘못된 계량 설정을 거부한다.
         self.mode = g('mode')
+        collision = g('safety.collision_sensitivity')
+        if (isinstance(collision, bool) or not isinstance(collision, (int, float))
+                or not math.isfinite(collision) or not 0 <= collision <= 100):
+            raise ValueError('safety.collision_sensitivity는 유한한 0~100 % 값이어야 한다')
         self.vel_scale = float(g('robot.vel_scale'))
         self.motion_timeout_s = float(g('robot.motion_timeout_s'))
         self.scoop_extract_y_mm = float(g('gripper.scoop_extract_y_mm'))
@@ -347,11 +351,14 @@ class SkillNode(Node):
         self.arm.compliance_off()
         if not self._configured:
             self.arm.initialize()
-            ok, detail = self.arm.self_check(self.get_parameter('robot.tool_name').value,
-                                             self.get_parameter('robot.tcp_name').value)
-            if not ok:
-                raise RuntimeError(f'복구 후 자가진단 실패: {detail}')
-            self._configured = True
+        # 복구 때도 감도 변경·조회 실패를 확인한 뒤에만 차단을 해제한다.
+        ok, detail = self.arm.self_check(self.get_parameter('robot.tool_name').value,
+                                         self.get_parameter('robot.tcp_name').value,
+                                         self.get_parameter('safety.collision_sensitivity').value)
+        if not ok:
+            self._configured = False
+            raise RuntimeError(f'복구 후 자가진단 실패: {detail}')
+        self._configured = True
         state = self.arm.robot_state()
         with self._job_lock:
             if (self._safety_revision != revision or self._stopping.is_set()
@@ -558,8 +565,9 @@ class SkillNode(Node):
             return True, '안전 복구 필요 — 일반 동작 차단'
         self.get_logger().info('[STARTUP] initialize 시작')
         self.arm.initialize()
-        self.get_logger().info('[STARTUP] tool/TCP self_check 시작')
-        result = self.arm.self_check(job.args['expect_tool'], job.args['expect_tcp'])
+        self.get_logger().info('[STARTUP] tool/TCP/충돌 감도 self_check 시작')
+        result = self.arm.self_check(job.args['expect_tool'], job.args['expect_tcp'],
+                                     self.get_parameter('safety.collision_sensitivity').value)
         if result[0] and restore_requested:
             SkillNode._restore_extracted_scoop(self, job)
         self._configured = bool(result[0])

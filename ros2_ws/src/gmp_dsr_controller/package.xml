@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>gmp_dsr_controller</name>
+  <version>0.1.0</version>
+  <description>기존 DSR 컨트롤러 연결을 재사용하는 읽기 전용 안전 설정 조회 확장 [A]</description>
+  <maintainer email="jungji0913@khu.ac.kr">Kim Byeongjik</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>dsr_controller2</depend>
+  <depend>gmp_interfaces</depend>
+  <depend>pluginlib</depend>
+  <depend>controller_interface</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>
