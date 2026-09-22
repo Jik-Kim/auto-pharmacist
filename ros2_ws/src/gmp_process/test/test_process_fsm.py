@@ -20,7 +20,7 @@ def _fsm(fingerprint=None):
 
 class Cell:
     def __init__(self, yields, residual=2.0, grip=None, qa='APPROVED', spill=False, cup_bias=0.0, invalid_first=0,
-                width_mm=None, cup_invalid_first=0):
+                width_mm=None, cup_invalid_first=0, zero_drift_n=0.0):
         self.yields, self.residual, self.qa, self.spill, self.cup_bias = list(yields), residual, qa, spill, cup_bias
         self.grip = grip or (lambda req, n: True)
         self.width_mm = width_mm                          # 폭 지문 테스트용 — 정지 폭을 고정값으로 돌려준다
@@ -28,9 +28,15 @@ class Cell:
         self.n = {'grip': 0, 'carry': 0, 'scoop': 0, 'weigh_scoop': 0, 'return_material': 0}
         self.invalid_left = invalid_first
         self.cup_invalid_left = cup_invalid_first   # 용기 계량(TARE·VERIFY) 무효 횟수
+        self.zero_drift_n = zero_drift_n            # VERIFY 직전 영점이 이만큼 움직인 것으로 답한다
+        self.n_measure = 0
 
     def __call__(self, req):
         k = req['kind']
+        if k == 'measure':
+            self.n_measure += 1
+            # 1회차는 SELF_CHECK(배치 영점). 2회차부터가 VERIFY 직전 재확인이다.
+            return {'fz_mean_n': 0.0 if self.n_measure == 1 else self.zero_drift_n, 'valid': True}
         if k in ('grip', 'carry'):
             self.n[k] += 1
             ok = self.grip(req, self.n[k])
@@ -273,6 +279,28 @@ def test_verify_회계불일치는_관측만_하고_판정하지_않는다():
     run(fsm, cell)
     assert fsm.deviations == [] and fsm.state == 'DONE', fsm.deviations
     assert '②회계 +5.0 (관측, 판정 안 함)' in fsm.verify_detail, fsm.verify_detail
+
+
+def test_verify_직전_영점이_움직이면_재측정하고_한계를_넘으면_WEIGH_INVALID():
+    """용기를 들기 전 빈 그리퍼 영점을 다시 재서 계량 오염을 거른다.
+
+    NUDGE 는 정지·재개 장치일 뿐 계량 유효성과 연결돼 있지 않다 — 사람이 건드려 생긴 계단이
+    NUDGE 임계를 넘든 못 넘든 오염된 값이 그대로 장부에 들어간다. 이 검사가 그 구멍을 막는다.
+    """
+    cell = Cell(yields=[100, 50], zero_drift_n=2.0)      # 한계 0.5 N 을 크게 넘는다
+    fsm = _fsm()
+    run(fsm, cell)
+    assert [(d['kind'], d['step']) for d in fsm.deviations] == [('WEIGH_INVALID', 'VERIFY')]
+    assert '영점 이동' in fsm.deviations[0]['detail'], fsm.deviations[0]['detail']
+    assert cell.n_measure == 1 + 2, cell.n_measure       # SELF_CHECK 1 + VERIFY 재측정 2회
+
+
+def test_verify_직전_영점이_한계_안이면_그대로_잰다():
+    cell = Cell(yields=[100, 50], zero_drift_n=0.3)      # 한계 0.5 N 안
+    fsm = _fsm()
+    run(fsm, cell)
+    assert fsm.deviations == [] and fsm.state == 'DONE'
+    assert '영점이동 +0.300 N' in fsm.verify_detail, fsm.verify_detail
 
 
 def test_verify_통과해도_판정_근거를_남긴다():

@@ -84,6 +84,8 @@ class ProcessNode(Node):
             # 9/21 영점 재작업의 material_3 재측정값(max_std 8.0)은 조장·A 결정 전까지 미적용이라,
             # 여기와 ScaleConfig 기본값과 common.yaml 의 숫자가 당분간 서로 다르다.
             ('scale.max_std_g', 10.0),
+            # VERIFY 직전 빈 그리퍼 영점 재확인 임계 [N] — 0 이면 검사 꺼짐. B 실측 전 잠정값.
+            ('scale.zero_drift_limit_n', 0.5),
             ('scale.samples', 20), ('scale.settle_s', 1.0),
             # max_attempts 는 **붓기 시도** 상한이다. 목표량÷스쿱 1회량에 비례해야 한다
             # (데모 A 200 g ÷ 40 g = 5회가 하한). max_returns 는 **초과 반환** 상한으로 성격이 다르다 (#189).
@@ -387,7 +389,8 @@ class ProcessNode(Node):
         fingerprint = ToolFingerprint(scoop_widths_mm=self.smap.widths, cup_width_mm=self.p('gripper.cup_width_mm'),
                                       tolerance_mm=self.p('gripper.fingerprint_tolerance_mm'))
         self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale, fingerprint=fingerprint,
-                              max_returns=int(self.p('dosing.max_returns')))
+                              max_returns=int(self.p('dosing.max_returns')),
+                              zero_drift_limit_n=float(self.p('scale.zero_drift_limit_n')))
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name='process-run')
         self._thread.start()
 
