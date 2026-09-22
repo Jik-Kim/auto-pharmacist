@@ -635,3 +635,47 @@ root_cause_0922_cz:
     공구 등록·보정은 **A**. B 는 계량에 미치는 영향만 잰다.
     **A 의 1순위: cz 를 75~92 로 넣고 workbench 모멘트가 0 으로 떨어지는지 확인.**
     떨어지면 그 뒤 B 가 두 경로 gain 을 --load-series 로 다시 재서 1.00 을 확인한다.
+
+# ── 9/22 gain 은 모멘트를 따라가지 않는다 (철회) + 스테이션 변경 반영 ────────
+gain_not_from_moment_0922:
+  retraction: |
+    ⚠️ **"gain 이 모멘트를 따라간다" 를 철회한다.** cz 89 로 모멘트를 6분의 1 로 줄였는데
+    gain 은 거의 안 따라왔다:
+        |Mxy| 0.000 → gain 1.0013   (스쿱 material_3)
+        |Mxy| 1.36  → gain 1.2650   (용기 workbench, cz 2.32)
+        |Mxy| 0.23  → gain 1.1673   (용기 workbench, cz 89)   ← 선형이면 1.03 이어야 한다
+    두 점만 보고 상관을 단정한 것이 잘못이었다. **gain 차이는 cz·모멘트와 별개 현상이다.**
+  remaining_hypothesis: |
+    공구 **방향**이 유력하다 (미검증):
+      · 스쿱 경로 — 공구 Z 가 **아래**. 하중이 축 방향이라 휘는 지렛대가 없다 → gain 1.00
+      · 용기 경로 — 공구 Z 가 **옆**. 하중이 TCP 208 mm 지렛대에 수직으로 걸려, 하중이 늘면
+        손목이 휘고 유효 지렛대가 변한다 → 기울기 오차
+    뒷받침: 잔차가 **대칭 아치형**(-1.13 / +2.25 / -1.13, 최대 2.25 g)으로 곡률을 시사한다.
+    스쿱 경로는 0.41 g 로 직선이었다. 다만 3점·불확실도 1.03 % 라 잡음일 수도 있다 — 점을 더 찍어야 한다.
+
+  ⚠️_my_measurement_was_at_wrong_height: |
+    **이번 용기 gain 1.1673 은 운영 자세 값이 아니다.** 운영은
+        measure_posx = station.above(approach_mm)   (skill_node:1099)
+        above() 는 스테이션별 approach_mm 우선 (core/stations.py:31)
+        workbench: z 130 + approach_mm **50** = **z 180**
+    인데 나는 --pick-lift-mm **100** 을 줘서 **z 230** 에서 쟀다. 50 mm 높다.
+    → 다시 잴 때는 **--pick-lift-mm 50** 이다.
+
+  stations_changed_0922: |
+    조장이 **책상 충돌 방지로 30 mm 올렸다** (사용자 확인). 현재:
+        workbench     z **130** · approach_mm **50** · solution_space 3   ← 계량 자세 바뀜
+        passbox_*·reject_bin  z 130 · approach_mm 50 · solution_space 3
+        material_1/2/3  z 200 · approach_mm 없음(전역 60) · **solution_space 없음**
+        scoop_*         z  50
+    → **스쿱 경로(material_3 z 200)는 그대로**이므로 오늘 스쿱 gain 1.0013 은 현행 스테이션과 일치한다.
+      용기 경로만 자세가 바뀌었고, 그 보정은 새 자세에서 다시 해야 한다.
+
+  posj_item_superseded: |
+    ✅ **"stations.yaml 에 계량 자세 posj 를 넣어야 한다" 는 내 항목은 철회한다 — 더 나은 방식이 이미 있다.**
+    `solution_space` 가 이미 구현·사용되고 있다:
+        skill_node:718,729-730  스테이션에 solution_space 가 있으면 현재 해와 대조해 검사
+        skill_node:767          movejx_cancellable(above, station.extra['solution_space'], ...)
+        core/stations.py:52     파싱
+    posx + solution_space 로 관절해를 고정하는 것이 posj 를 박는 것보다 유연하다 (좌표를 옮겨도 유지됨).
+    ⚠️ **다만 material_1/2/3 와 scoop_* 에는 solution_space 가 없다.** material_3 이 바로
+      스쿱 계량 자세이므로, **거기에 solution_space 를 넣는 것이 남은 실제 과제다** (조장·A).
