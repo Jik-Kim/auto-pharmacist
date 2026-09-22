@@ -18,9 +18,10 @@ def test_only_matching_completed_recovery_unlocks():
     assert not gate.accepts(result())
     gate.stop(started())
     assert gate.accepts(result())
-    for change in ({'request_id': 'other'}, {'operator_id': 'other'},
+    for change in ({'request_id': 'other'},
                    {'success': 'true'}, {'manual_required': True}, {'robot_state': 8}):
         assert not gate.accepts(result(**change))
+    assert gate.accepts(result(operator_id='other'))
 
 
 def test_new_alarm_rejects_late_success_and_late_start():
