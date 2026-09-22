@@ -19,6 +19,7 @@ def generate_launch_description():
     stations = os.path.join(params_dir, 'stations.yaml')
 
     return LaunchDescription([
+        DeclareLaunchArgument('height_measure_only', default_value='false', description='원료 높이 측정만 실행'),
         DeclareLaunchArgument('mode', default_value='real', description='real | virtual'),
         DeclareLaunchArgument('vel_scale', default_value='0.2', description='로봇 속도 스케일'),
         DeclareLaunchArgument('restore_material_id', default_value='', description='인출 완료 스쿱 원료 ID'),
@@ -32,6 +33,7 @@ def generate_launch_description():
             namespace='cell',
             output='screen',
             parameters=[common, {
+                'scoop.height_measure_only': ParameterValue(LaunchConfiguration('height_measure_only'), value_type=bool),
                 'mode': LaunchConfiguration('mode'),
                 'robot.vel_scale': LaunchConfiguration('vel_scale'),
                 'stations_file': stations,

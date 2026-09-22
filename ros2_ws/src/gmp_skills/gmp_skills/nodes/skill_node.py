@@ -67,6 +67,9 @@ class SkillNode(Node):
         g = lambda k: self.get_parameter(k).value  # noqa: E731
         self._scale_period_s()  # 장치 생성 전에 잘못된 계량 설정을 거부한다.
         self.mode = g('mode')
+        self.height_measure_only = g('scoop.height_measure_only')
+        if type(self.height_measure_only) is not bool:
+            raise ValueError('scoop.height_measure_only는 bool이어야 한다')
         collision = g('safety.collision_sensitivity')
         if (isinstance(collision, bool) or not isinstance(collision, (int, float))
                 or not math.isfinite(collision) or not 0 <= collision <= 100):
@@ -933,6 +936,8 @@ class SkillNode(Node):
         self._require_scoop_extracted()
         material = job.args['material_id']
         SkillNode._require_held_scoop(self, material)
+        if getattr(self, 'height_measure_only', False):
+            return SkillNode._measure_surface_world(self, job)
         profile = self.stations.scooping.get(material)
         if not profile or profile.get('calibrated') is not True:
             raise ValueError('스쿠핑 경로/스쿱 끝 높이 보정 미확인: 원료별 보정 후 실행 필요')
@@ -1004,6 +1009,29 @@ class SkillNode(Node):
                                    self.motion_timeout_s, observer=observe)
         job.feedback and job.feedback('LIFT', True, result['max_contact_force_n'],
                                       result['insertion_depth_mm'])
+        return result
+
+    def _measure_surface_world(self, job: Job):
+        """측정 전용: 기존 접촉 경로와 복귀만 실행하고 스쿠핑은 하지 않는다."""
+        material = job.args['material_id']
+        profile = self.stations.scooping.get(material)
+        if not profile:
+            raise ValueError('원료별 스쿱 끝 오프셋 설정이 필요하다')
+        reference = self.arm.transform_pose(profile['reference_pose_base'], to_world=True)
+        offset = tip_offset_local(reference, profile['tip_offset_world_mm'])
+        result = SkillNode._do_check_depth(self, job)
+        contact = result.get('contact_pose_base')
+        if contact is None:
+            raise RuntimeError('원료면 접촉 미검출: WORLD 원료 높이를 계산할 수 없습니다')
+        world = self.arm.transform_pose(contact, to_world=True)
+        z = tip_z(world, offset)
+        message = (f'HEIGHT_MEASUREMENT_ONLY material={material} '
+                   f'contact_base={contact} contact_world={world} '
+                   f'tip_offset_local={list(offset)} surface_world_z_mm={z:.3f} '
+                   f'max_contact_force_n={result["max_contact_force_n"]:.3f}; '
+                   '스쿠핑 미실행, 근사 오프셋으로 계산한 접촉 지점 높이')
+        self.get_logger().info(message)
+        result.update(diagnostic_only=True, measurement_message=message)
         return result
 
     def _wait_compliance_settle(self, job: Job, duration_s: float):
@@ -1292,11 +1320,11 @@ class SkillNode(Node):
                            attempt=gh.request.attempt, depth_fraction=gh.request.depth_fraction)
         data = job.result if isinstance(job.result, dict) else {}
         res = Scoop.Result(
-            success=not job.error and not job.cancel,
+            success=not job.error and not job.cancel and not data.get('diagnostic_only', False),
             contact_detected=bool(data.get('contact_detected', job.result if not data else False)),
             max_contact_force_n=float(data.get('max_contact_force_n', 0.0)),
             insertion_depth_mm=float(data.get('insertion_depth_mm', 0.0)),
-            message=job.error or ('cancelled' if job.cancel else ''),
+            message=job.error or ('cancelled' if job.cancel else data.get('measurement_message', '')),
         )
         gh.succeed() if res.success else (gh.canceled() if job.cancel else gh.abort())
         return res

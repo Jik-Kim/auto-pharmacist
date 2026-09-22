@@ -133,3 +133,28 @@ def test_transform_uses_world_and_base_without_identity_assumption():
     assert arm.transform_pose([0]*6, to_world=True) == [1]*6
     arm.transform_pose([0]*6, to_world=False)
     assert [(v['ref_in'], v['ref_out']) for _,v in calls] == [(0,2),(2,0)]
+
+
+def test_height_only_reports_transformed_contact_without_spline(monkeypatch):
+    node, job, calls, result = prepared(monkeypatch)
+    node.height_measure_only = True
+    node.stations.scooping['A']['calibrated'] = False
+    def transform(p, to_world):
+        p = list(p)
+        p[2] += 15 if to_world else -15
+        return p
+    node.arm.transform_pose = transform
+    measured = node._do_scoop(job)
+    assert measured['diagnostic_only'] is True
+    assert 'surface_world_z_mm=90.000' in measured['measurement_message']
+    assert 'contact_base=[0, 0, 75' in measured['measurement_message']
+    assert not calls  # 측정 모의 호출 이외 spline·털기·추가 이동 없음
+
+
+def test_height_only_without_contact_has_no_height(monkeypatch):
+    node, job, calls, result = prepared(monkeypatch)
+    node.height_measure_only = True
+    result['contact_pose_base'] = None
+    with pytest.raises(RuntimeError, match='접촉 미검출'):
+        node._do_scoop(job)
+    assert not calls
