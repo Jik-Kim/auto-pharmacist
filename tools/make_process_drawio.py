@@ -94,7 +94,7 @@ cx = lambda c, f=0.5: X[c] + W * f          # 상자 안 x 좌표
 idle = S(0, 0, 'IDLE', 'submit_order 대기', 'i')
 selfc = S(1, 0, 'SELF_CHECK', 'req: measure — 빈 그리퍼 외력\n(영점·센서 확인, 용기 아님)')
 pickc = S(2, 0, 'PICK_CONTAINER', 'req: carry passbox_empty→workbench')
-tare = S(3, 0, 'TARE', 'req: weigh — 빈 용기 들어\n풍량 (배치 1회)')
+tare = S(3, 0, 'TARE', 'req: measure(영점 기준) → weigh\n빈 용기 풍량 (배치 1회)')
 picks = S(0, 1, 'PICK_SCOOP', 'req: move(scoop_N) → grip\n스쿱은 원료통 아래 (D-24)')
 stare = S(1, 1, 'SCOOP_TARE', 'req: weigh_scoop — 빈 스쿱\n든 채 (원료마다 1회)')
 scoop = S(2, 1, 'SCOOP', 'req: scoop(material, attempt)')
@@ -103,7 +103,7 @@ pour = S(4, 1, 'POUR', 'req: pour(fraction=1)\nworkbench start→end')
 wreturn = S(3, 3, 'RETURN_MATERIAL', 'req: return_material(material_id)\n좌표 미티칭이면 실패', 'p')
 wres = S(5, 1, 'WEIGH_RESIDUAL', 'req: weigh_scoop — 붓기 후 스쿱 잔량\n투입량 = 전 − 후 → decide()')
 ret = S(1, 2, 'RETURN_SCOOP', 'req: move(scoop_N) → grip(open)\n전용 스쿱 = 교차오염 방지')
-verify = S(3, 2, 'VERIFY', 'req: weigh — 용기 들어 총량 − 풍량\n배치 끝 1회. ① 레시피 총량 ② Σ투입량')
+verify = S(3, 2, 'VERIFY', 'req: move(workbench ABOVE) → measure(영점 재확인) → weigh\n배치 끝 1회. 판정은 ① 레시피 총량 하나 (② 는 관측)')
 finish = S(4, 2, 'FINISH', 'req: carry workbench→passbox_done')
 nudgew = S(5, 2, 'NUDGE_WAIT', 'req: move(nudge_wait) → wait_nudge\n세트 끝 — 건드릴 때까지 PAUSED · 주문 거부 (D-23)', 'p')
 done = S(6, 2, 'DONE', 'event BATCH_END', 'd')
@@ -240,7 +240,7 @@ ROWS = [
   'recipe.parse() / from_msg() 검증', 'state IDLE→ACCEPTED\nevent BATCH_START(product)', False),
  ('SELF_CHECK', 'n', None, 'MeasureForce srv (빈 그리퍼)\nsamples, settle_s → fz_mean, fz_std, valid', None, 'state · event STEP', False),
  ('PICK_CONTAINER', 'n', None, 'carry = MoveToStation act ×4 + SetGripper srv ×2\npassbox_empty(slot) → workbench, cup_width\n→ grip_inferred', None, 'state\ndeviation(GRIP_FAIL 시)', False),
- ('TARE', 'n', None, 'WeighContainer act (고정 workbench 용기 들어)\ntare 0 → reading(gross, std, valid)', None, 'weight(gross, valid=…) · state', False),
+ ('TARE', 'n', None, 'MeasureForce (빈 그리퍼 영점 기준, workbench ABOVE)\nWeighContainer act — tare 0 → reading(gross, std, valid)', None, 'weight(gross, valid=…) · state', False),
  ('PICK_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT)\nSetGripper srv (close, scoop_width, force)\n→ grip_inferred, final_width_mm', None, 'state\ndeviation(GRIP_FAIL · WRONG_TOOL[v1.2])', False),
  ('SCOOP_TARE', 'n', None, 'WeighHeld act [v1.2] (빈 스쿱, 든 채)\n→ gross, std, valid', None, 'weight(스쿱 풍량, subject=scoop) · state', False),
  ('SCOOP', 'n', None, 'Scoop act\nmaterial_id, attempt → contact_detected', None, 'state\ndeviation(SCOOP_EMPTY · MATERIAL_EMPTY)', False),
@@ -250,7 +250,7 @@ ROWS = [
  ('WEIGH_RESIDUAL', 'n', None, 'WeighHeld act (material_N.posx, 붓기 후)\n→ gross, valid', 'decide(target, actual, tol, attempts,\nvalid, invalid, cfg)\n→ DONE / SCOOP / DEVIATION(kind)',
   'weight(잔량) · scoop_cycle(시도 1건) · state\ndispense_result (DONE·DEVIATION 시)\ndeviation(OVERFILL · TIMEOUT · WEIGH_INVALID)', False),
  ('RETURN_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT — 원료통 아래)\nSetGripper srv (open)', None, 'state', False),
- ('VERIFY', 'n', None, 'WeighContainer act (고정 workbench 용기 들어, 배치 1회)\ntare_g → reading(net, subject=container)', '① Σ(target×tol) — 레시피 총량 대조\n(② 회계 대조는 9/22 폐지 — 관측만)', 'weight(net) · state\nevent(VERIFY, ①② 수치)', False),
+ ('VERIFY', 'n', None, 'MoveToStation(workbench, ABOVE) → MeasureForce (영점 재확인 — TARE 와 같은 자세)\nWeighContainer act — tare_g → reading(net, subject=container)', '영점 이동 > scale.zero_drift_limit_n → 재계량 → WEIGH_INVALID\n① Σ(target×tol) — 레시피 총량 대조\n(② 회계 대조는 9/22 폐지 — 관측만)', 'weight(net) · state\nevent(VERIFY, ①② 수치)', False),
  ('FINISH', 'n', None, 'carry workbench → passbox_done(slot)', None, 'state', False),
  ('NUDGE_WAIT', 'p', None, 'MoveToStation act (nudge_wait, AT)\nevent NUDGE ← skill_node (D-21) — 여기서는\n정지가 아니라 「다음 세트」 신호 (D-23)', None, 'event SET_DONE (대기 진입) · SET_NEXT (건드림)\nstate PAUSED(note NUDGE_WAIT) — 주문 거부', True),
  ('DONE', 'd', None, None, None, 'state DONE · event BATCH_END\n(record_node 가 JSON 내보내기 — HMI 는 DB 를 읽어 이력·KPI 표시)', False),

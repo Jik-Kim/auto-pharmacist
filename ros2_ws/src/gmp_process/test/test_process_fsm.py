@@ -35,8 +35,9 @@ class Cell:
         k = req['kind']
         if k == 'measure':
             self.n_measure += 1
-            # 1회차는 SELF_CHECK(배치 영점). 2회차부터가 VERIFY 직전 재확인이다.
-            return {'fz_mean_n': 0.0 if self.n_measure == 1 else self.zero_drift_n, 'valid': True}
+            # 1회차 SELF_CHECK(자가진단), 2회차 TARE 직전(영점 기준), 3회차부터 VERIFY 직전 재확인.
+            # 기준과 대조는 둘 다 workbench ABOVE 라 자세가 같다 — 그래서 차이가 곧 영점 이동이다.
+            return {'fz_mean_n': 0.0 if self.n_measure <= 2 else self.zero_drift_n, 'valid': True}
         if k in ('grip', 'carry'):
             self.n[k] += 1
             ok = self.grip(req, self.n[k])
@@ -287,20 +288,34 @@ def test_verify_직전_영점이_움직이면_재측정하고_한계를_넘으�
     NUDGE 는 정지·재개 장치일 뿐 계량 유효성과 연결돼 있지 않다 — 사람이 건드려 생긴 계단이
     NUDGE 임계를 넘든 못 넘든 오염된 값이 그대로 장부에 들어간다. 이 검사가 그 구멍을 막는다.
     """
-    cell = Cell(yields=[100, 50], zero_drift_n=2.0)      # 한계 0.5 N 을 크게 넘는다
+    cell = Cell(yields=[100, 50], zero_drift_n=2.0)      # 한계 0.1 N 을 크게 넘는다
     fsm = _fsm()
     run(fsm, cell)
     assert [(d['kind'], d['step']) for d in fsm.deviations] == [('WEIGH_INVALID', 'VERIFY')]
     assert '영점 이동' in fsm.deviations[0]['detail'], fsm.deviations[0]['detail']
-    assert cell.n_measure == 1 + 2, cell.n_measure       # SELF_CHECK 1 + VERIFY 재측정 2회
+    assert cell.n_measure == 1 + 1 + 2, cell.n_measure   # SELF_CHECK 1 + TARE 영점 1 + VERIFY 재측정 2회
 
 
 def test_verify_직전_영점이_한계_안이면_그대로_잰다():
-    cell = Cell(yields=[100, 50], zero_drift_n=0.3)      # 한계 0.5 N 안
+    cell = Cell(yields=[100, 50], zero_drift_n=0.05)     # 한계 0.1 N 안
     fsm = _fsm()
     run(fsm, cell)
     assert fsm.deviations == [] and fsm.state == 'DONE'
-    assert '영점이동 +0.300 N' in fsm.verify_detail, fsm.verify_detail
+    assert '영점이동 +0.050 N' in fsm.verify_detail, fsm.verify_detail
+
+
+def test_영점_기준과_대조는_같은_자세에서_잰다():
+    """tool_force 는 자세 의존이라 다른 자세끼리 비교하면 자세 차이가 영점 이동으로 둔갑한다.
+
+    기준은 TARE 직전(carry 가 workbench ABOVE·그리퍼 열림으로 끝난 자리), 대조는 VERIFY 직전에
+    같은 workbench ABOVE 로 옮긴 뒤. SELF_CHECK 의 measure 는 자가진단 전용이라 기준이 아니다.
+    """
+    cell = Cell(yields=[100, 50])
+    fsm = _fsm()
+    trace = run(fsm, cell)
+    assert ('TARE', 'measure') in trace, trace          # 기준 — carry 직후 그 자리에서
+    i = trace.index(('VERIFY', 'move'))
+    assert trace[i:i + 3] == [('VERIFY', 'move'), ('VERIFY', 'measure'), ('VERIFY', 'weigh')], trace[i:i + 3]
 
 
 def test_verify_통과해도_판정_근거를_남긴다():
@@ -518,7 +533,8 @@ def test_invalid_tare_reweighs_and_does_not_keep_the_bad_value():
     trace = run(fsm, cell)
     assert fsm.state == 'DONE' and not fsm.deviations
     assert fsm.tare_g == CUP_TARE                      # 무효값 0.0 이 아니라 재계량한 값이 들어간다
-    assert kinds_for(trace, 'TARE') == ['weigh', 'weigh']
+    # measure 는 영점 기준(같은 자세) — 그 뒤 무효 1회 재계량으로 weigh 가 2번이다
+    assert kinds_for(trace, 'TARE') == ['measure', 'weigh', 'weigh']
     assert fsm.verify_net_g == 146                     # 순량이 정상 경로와 같다 (happy path 와 동일)
 
 

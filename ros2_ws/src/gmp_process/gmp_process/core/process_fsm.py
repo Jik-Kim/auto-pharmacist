@@ -76,16 +76,19 @@ class ProcessFSM:
                                  # 붓기 상한은 목표량÷스쿱 1회량에 비례해야 하고(200 g÷40 g = 5회),
                                  # 반환 상한은 깊이 보정이 수렴하는지를 보는 오류 복구 한계다. 한 상수로
                                  # 묶여 있으면 큰 레시피 때문에 붓기 상한을 올릴 때 반환 허용도 같이 올라간다 (#189).
-    zero_drift_limit_n: float = 0.5   # VERIFY 직전 빈 그리퍼 영점 재확인 임계 [N] — 0 이면 검사 꺼짐.
-                                      # 잠정값: σ_cup 0.91 g ≈ 0.0089 N 이므로 0.5 N 은 그 50배 위 —
-                                      # 계량 잡음이 아니라 **사람이 건드린 수준**(27 g ≈ 0.26 N 계단)만 잡는다.
-                                      # B 의 tool_state_check 실측 뒤 확정한다.
+    zero_drift_limit_n: float = 0.1   # 빈 그리퍼 영점 이동 한계 [N] — 0 이면 검사 꺼짐.
+                                      # **같은 자세(workbench ABOVE) 반복 산포 기준**이다. 잠정값 0.1 N ≈ 10 g
+                                      # 으로 σ_cup 0.91 g 의 11배, ① 허용 22.5 g 의 절반 아래 — 이 검사를 만든
+                                      # 계기인 27 g(0.26 N) 계단을 실제로 잡는다. B 의 tool_state_check 로
+                                      # 같은 자세 반복 시 빈 그리퍼 fz 산포를 받아 확정한다.
     state: str = 'IDLE'
     mode: str = 'IDLE'
     idx: int = 0
     tare_g: float = 0.0          # 빈 용기 (TARE)
     verify_net_g: float = 0.0    # VERIFY 에서 잰 용기 순량
-    zero_fz_n: float = 0.0       # SELF_CHECK 에서 잰 빈 그리퍼 외력 — VERIFY 직전 대조 기준
+    zero_fz_n: float = 0.0       # TARE 직전 workbench ABOVE 에서 잰 빈 그리퍼 외력 — VERIFY 직전 대조 기준.
+                                 # **반드시 같은 자세끼리 비교해야 한다** — tool_force 는 자세 의존이라
+                                 # 다른 자세의 값을 기준으로 쓰면 자세 차이가 그대로 '영점 이동' 으로 읽힌다
     verify_zero_drift_n: float = 0.0  # VERIFY 직전 영점 이동량 — detail 에 남는다
     verify_detail: str = ''      # VERIFY 판정 근거 한 줄 — ①(판정)과 ②(관측) 수치.
                                  # 일탈이 안 나도 남는다 — process_node 가 CellEvent 로 발행한다
@@ -198,8 +201,8 @@ class ProcessFSM:
             if nxt == 'wait_interlock':
                 return {'kind': 'wait_interlock'}
         if k == 'measure' and st == 'SELF_CHECK':
-            # 빈 그리퍼 외력을 배치 영점으로 잡아 둔다 — VERIFY 직전에 이 값과 대조한다.
-            self.zero_fz_n = res.get('fz_mean_n', 0.0)
+            # 자가진단 전용이다. 이 값을 영점 기준으로 쓰지 않는다 — 여기 자세는 배치 시작 자세고
+            # VERIFY 는 workbench 라, 자세 차이가 영점 이동으로 둔갑한다. 기준은 TARE 직전에 잡는다.
             self.state = 'PICK_CONTAINER'
             return self._carry('passbox_empty', 'workbench')
         if k == 'carry' and st == 'PICK_CONTAINER':
@@ -209,6 +212,11 @@ class ProcessFSM:
             if dev is not None:
                 return dev
             self.state = 'TARE'
+            # `carry` 는 dst ABOVE + 그리퍼 열림으로 끝난다(모듈 docstring) — 지금 로봇은
+            # **workbench ABOVE, 빈 그리퍼**다. VERIFY 직전과 같은 자세이므로 여기서 영점을 잡는다.
+            return {'kind': 'measure'}
+        if k == 'measure' and st == 'TARE':
+            self.zero_fz_n = res.get('fz_mean_n', 0.0)
             return self._weigh_cup(0.0)
         if k == 'weigh' and st == 'TARE':
             # 빈 용기 계량도 다른 계량과 같은 유효성 규칙을 받는다. 무효한 tare 가 그냥 통과하면
@@ -305,10 +313,13 @@ class ProcessFSM:
                 self.cur, self.state = self._item(), 'PICK_SCOOP'
                 return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}
             self.state = 'VERIFY'
-            # **용기를 들기 전에 빈 그리퍼 영점을 다시 잰다.** 그리퍼는 방금 열려 비어 있다.
-            # NUDGE 는 정지·재개 장치일 뿐 계량 유효성과 연결돼 있지 않다 — 충격이 임계를 넘어
-            # NUDGE 가 떠도 진행 중 계량을 무효화하지 않고, 못 넘으면 감지조차 안 된다. 어느
-            # 쪽이든 오염된 값이 장부에 들어간다. 여기서 영점이 움직였는지 보고 거른다.
+            # **TARE 때와 같은 자세로 옮긴 뒤** 빈 그리퍼 영점을 다시 잰다. 지금은 스쿱 거치대에
+            # 서 있어서 그대로 재면 자세 차이가 영점 이동으로 읽힌다 — tool_force 는 자세 의존이다.
+            return {'kind': 'move', 'station': 'workbench', 'approach': 'ABOVE'}
+        if k == 'move' and st == 'VERIFY':
+            # 용기를 들기 전, 그리퍼가 빈 채로 잰다. NUDGE 는 정지·재개 장치일 뿐 계량 유효성과
+            # 연결돼 있지 않다 — 충격이 임계를 넘어 NUDGE 가 떠도 진행 중 계량을 무효화하지 않고,
+            # 못 넘으면 감지조차 안 된다. 어느 쪽이든 오염된 값이 장부에 들어간다. 여기서 막는다.
             return {'kind': 'measure'}
         if k == 'measure' and st == 'VERIFY':
             drift_n = res.get('fz_mean_n', 0.0) - self.zero_fz_n

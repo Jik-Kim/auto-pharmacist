@@ -78,9 +78,11 @@
       gain: 0.8859                  # 9/19 두 점(32 g·132 g) 직선 — 3점째(≈86 g)로 9/21 확인 (gmp_dosing/config/scale_reference.yaml)
       offset_g: 247.091             # tool_force 전용 (같은 직선). 9/18·9/19 단일점 offset 이 2 g 안에서 같아 날짜에 안정
       max_std_g: 10.0               # 독립 표본의 회차 내부 σ p95 7.8 g 위 (9/19)
-      zero_drift_limit_n: 0.5       # VERIFY 직전 빈 그리퍼 영점 재확인 임계 [N]. 0 이면 검사 꺼짐.
-                                    # σ_cup 0.91 g ≈ 0.0089 N 의 50배 위 — 계량 잡음이 아니라 사람이
-                                    # 건드린 수준(27 g ≈ 0.26 N 계단)만 잡는다. B 의 tool_state_check 실측 뒤 확정
+      zero_drift_limit_n: 0.1       # 빈 그리퍼 영점 이동 한계 [N]. 0 이면 검사 꺼짐.
+                                    # **같은 자세 반복 산포 기준** — TARE 직전과 VERIFY 직전 모두 workbench
+                                    # ABOVE 에서 재므로 자세 차이는 들어가지 않는다. 0.1 N ≈ 10 g 은 σ_cup
+                                    # 0.91 g 의 11배, ① 허용 22.5 g 의 절반 아래 — 27 g(0.26 N) 계단을 잡는다.
+                                    # B 의 tool_state_check 로 같은 자세 반복 fz 산포를 받아 확정
       fz_sign: -1.0                   # G1 확인: 아래 하중이 +Fz 로 읽혀 -1 로 뒤집는다
       simulated: false              # virtual 은 런치가 true 로
 
