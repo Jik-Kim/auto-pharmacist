@@ -524,6 +524,23 @@ source tools/env.sh && ros2 control list_controllers -c /dsr01/controller_manage
 
 #### 2. 터미널 2 — 측정 ①: 용기 계량 σ (로봇 파지, **하중 3점**)
 
+**⚠️ 측정 자세를 먼저 잡는다 (9/22).** `workbench` 는 `stations.yaml` 에 **`posx` 만** 있고 관절해가
+없다 — 같은 좌표를 elbow-up 으로도 elbow-down 으로도 갈 수 있고, **우리가 재는 JTS 편향이 바로 그
+자세에 딸린 값**이다 (9/21 에 material_1/2/3 이 서로 다르게 나온 것이 그것). 펜던트로 elbow-up 을
+잡아 두고 시작한다 — 스크립트는 `movel` 만 쓰므로 현재 관절 자세를 유지한다.
+
+9/22 측정 자세 (`ros2 topic echo /dsr01/joint_states --once --field position` 을 deg 로):
+
+    posj = [49.65, 47.67, 76.41, 123.14, -118.39, -147.14]   ← J2 +47.67° (위)
+
+`stations.yaml` 의 `workbench→passbox_done` `start_at_posj` `[44.13, 56.20, 79.60, 124.83, -119.18,
+55.21]` 와 **J1~J5 가 거의 같다** — 운영에서 workbench 작업에 쓰는 자세와 같은 계열이다. J6 만
+크게 다른데 손목 롤이고 Fz 는 베이스 좌표계(`dsr_arm.py:272`)라 계량값에는 안 붙는다.
+
+→ **`workbench` 에 계량 자세 `posj` 를 박아야 한다.** 지금은 운영에서 도착할 때의 자세가 직전 위치에
+  달려 있어 재현이 안 된다. 선례는 있다 (`material_N.return_end_posj`, 이송 `start_at_posj`).
+  값은 B 가 기록, `stations.yaml` 반영은 조장, `skill_node` 가 그 자세로 가게 하는 것은 A.
+
 **세 번 돌린다.** 명령은 `--actual-g` 와 `--out` 만 다르고 나머지는 같다.
 
 ```
