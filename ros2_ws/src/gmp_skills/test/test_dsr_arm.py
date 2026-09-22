@@ -23,6 +23,9 @@ def test_dr_init_names_are_not_class_name_mangled(monkeypatch):
     monkeypatch.setitem(sys.modules, 'dsr_msgs2.srv',
                         types.SimpleNamespace(MoveStop=object(), SetRobotControl=object()))
 
+    monkeypatch.setitem(sys.modules, 'gmp_interfaces.srv',
+                        types.SimpleNamespace(GetCollisionSensitivity=object()))
+
     DsrArm('dsr01', 'm0609', 'virtual', 60.0, 60.0)
 
     assert fake_dr.__dsr__id == 'dsr01'
@@ -174,6 +177,8 @@ def real_startup_arm():
             return types.SimpleNamespace(info=state['tool'])
         if operation == 'get_current_tcp':
             return types.SimpleNamespace(info=state['tcp'])
+        if operation == 'get_collision_sensitivity':
+            return types.SimpleNamespace(sensitivity=50.0)
         if operation == 'get_robot_mode':
             return types.SimpleNamespace(robot_mode=state['mode'])
         if operation == 'set_robot_mode':
@@ -192,7 +197,7 @@ def test_real_restart_keeps_matching_settings_and_autonomous_mode():
     arm.initialize()
     assert not any(name.startswith('set_current_') or name == 'set_robot_mode'
                    for name, _, _ in arm.R.calls)
-    assert arm.self_check('tool_weight', 'GripperDA_v1')[0]
+    assert arm.self_check('tool_weight', 'GripperDA_v1', 50.0)[0]
 
 
 def test_real_restart_restores_manual_mode_to_auto_without_tool_selection():
@@ -673,3 +678,53 @@ def test_startup_setting_timeout_is_bounded_and_never_retried(monkeypatch, opera
         arm._bounded_call(operation, **fields)
     assert [entry for entry in calls if entry[0] == 'query'] == [('query', fields)]
     assert cancelled == [True]
+
+
+@pytest.mark.parametrize('actual,expected_ok', [(50.0, True), (49.0, False), (51.0, False), (0.0, False), (100.0, False)])
+def test_self_check_requires_exact_configured_sensitivity(actual, expected_ok):
+    arm, _ = real_startup_arm()
+    original = arm._bounded_call
+    seen = []
+    def call(operation, **fields):
+        seen.append(operation)
+        if operation == 'get_collision_sensitivity':
+            return types.SimpleNamespace(sensitivity=actual)
+        return original(operation, **fields)
+    arm._bounded_call = call
+    ok, detail = arm.self_check('tool_weight', 'GripperDA_v1', 50.0)
+    assert ok is expected_ok
+    assert 'expected=50%' in detail
+    assert seen == ['get_current_tool', 'get_current_tcp', 'get_collision_sensitivity']
+    assert not any(name.startswith(('set_', 'change_')) for name, *_ in arm.R.calls)
+
+
+@pytest.mark.parametrize('value', [float('nan'), float('inf'), -1.0, 101.0, True, '50'])
+def test_self_check_rejects_invalid_sensitivity(value):
+    arm, _ = real_startup_arm()
+    with pytest.raises(ValueError):
+        arm.self_check('tool_weight', 'GripperDA_v1', value)
+    arm._bounded_call = lambda operation: types.SimpleNamespace(info='tool', sensitivity=value)
+    with pytest.raises(RuntimeError, match='감도 응답'):
+        arm.self_check('tool', 'tool', 50.0)
+
+
+@pytest.mark.parametrize('fault', ['unavailable', 'timeout', 'failure', 'success'])
+def test_collision_query_uses_extension_with_bounded_wait(monkeypatch, fault):
+    arm, calls, cancelled, _ = query_arm(
+        monkeypatch, ready=fault != 'unavailable', done=fault != 'timeout',
+        success=fault != 'failure', payload={'sensitivity': 50.0})
+    arm._collision_sensitivity_cli = arm.R._ros2_get_robot_state
+    if fault == 'success':
+        assert arm._bounded_call('get_collision_sensitivity').sensitivity == 50.0
+    else:
+        with pytest.raises((TimeoutError, RuntimeError)):
+            arm._bounded_call('get_collision_sensitivity')
+    assert sum(name == 'query' for name, _ in calls) == (0 if fault == 'unavailable' else 1)
+    assert cancelled == ([True] if fault == 'timeout' else [])
+
+
+def test_virtual_self_check_does_not_call_controller():
+    arm = _arm('virtual')
+    arm._bounded_call = lambda *_: pytest.fail('virtual에서는 실물 감도를 조회하지 않는다')
+    ok, detail = arm.self_check('tool', 'tcp', 50.0)
+    assert ok and '생략' in detail

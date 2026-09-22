@@ -88,7 +88,7 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 
 ## 확정 노드·토픽
 
-**`docs/interfaces.md`의 v1.3까지가 확정 계약**이며 `ros2_ws/src/gmp_interfaces`가 정의 원본이다. 9/20 사용자가 v1.2의 나머지 변경(불필요 필드 삭제·`SetGripper`·`ScoopCycle`)과 v1.3(`ReturnMaterial`·반환 결과)의 팀 승인 완료를 확인했다. v1.4 안전 복구 추가분은 기존 초안·담당 검토 상태를 유지한다.
+**`docs/interfaces.md`의 v1.7이 현재 계약**이며 `ros2_ws/src/gmp_interfaces`가 정의 원본이다. v1.4·v1.6 안전 복구는 9/22 사용자가 영향 담당 승인을 확인했고, v1.7은 사용자 승인에 따라 A 내부 충돌 감도 조회를 추가한다. 기존 v1.2·v1.2.1·v1.3·v1.5·v1.5.1의 확정 사항을 유지한다. 계약 확정은 실물 검증 완료를 의미하지 않는다.
 계약을 바꿀 때는 **팀 채널에 먼저 알리고 `gmp_interfaces` 와 문서를 같은 커밋에서** 고친다. 리뷰는 영향받는 담당 전원 (AGENTS 교차검수 표).
 
 | 노드 | 패키지 | 책임 |
@@ -127,7 +127,7 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 | 3.4 비동기 | `amovej/amovel` + `check_motion` + `MoveStop(DR_SSTOP)` | 이동·스킬 내부 직선 이동의 취소·시간 초과 감속 정지 | 단일 워커 구현 및 단위 테스트 존재. 실제 감속/완전 정지·인터락 응답은 사용자 실물 검증 대기 — I-004 |
 | 3.3/3.4 | `move_periodic`/`amove_periodic` | 교육 명령 대응 후보. 9/19 전량 붓기로 변경해 Pour 털어내기는 제거했으며, Scoop 평탄화는 미구현 | 두산 고유 명령 — 차별점 |
 | 4.1 현재값 | `get_current_posx/posj`, `get_tool_force`, `get_external_torque` | 상태 발행 · 계량 폴백 · 미끄러짐/충돌 관측 · **사람 접촉(nudge) 감지 (D-21)** | `wait_nudge` 는 DRL 전용 → `get_tool_force` 폴링으로 대체 |
-| 4.4 안전 설정 | `get_collision_sensitivity`, `get_current_tool`, `get_current_tcp` | 기동 자가진단 — 툴·TCP·감도가 기대값인지 확인하고 아니면 기동 거부 | 「동작 및 운용 안정성」 |
+| 4.4 안전 설정 | `get_safety_configuration()._fCollisionSensitivity`(C++ 확장), `get_current_tool`, `get_current_tcp` | 기동 자가진단 — 툴·TCP·감도가 기대값인지 확인하고 아니면 기동 거부 | 「동작 및 운용 안정성」 |
 | 5.1 툴/작업물 | `set_tool`, **`reset_workpiece_weight`, `get_workpiece_weight`** | workpiece는 G1 탈락, 기본 계량은 tool_force (D-07) | `set_workpiece_weight` 는 안 쓴다 |
 | 5.2 제어 모드 | `set_singularity_handling` | 선택 — 계량 자세 근처 특이점 회피 | |
 | 6.1 힘/순응 | `task_compliance_ctrl`, `set_stiffnessx`, `set_desired_force`, `release_force`, `release_compliance_ctrl` | **Scoop 담그기** — Z 방향 힘제어(`dir=[0,0,1,0,0,0]`, `mod=DR_FC_MOD_REL`)로 원료면까지 내려가 접촉 | 진입/해제 짝 필수 (AGENTS 코드 규칙) |
@@ -239,3 +239,17 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
   vel_scale을 사용한다. 실물 경로 검증과 실행 중 노드 재시작은 이번 코드 작업에 포함하지 않는다.
 - 검증: 스킬 패키지 모의 단위 테스트 379건 통과, Python AST·YAML 파싱 및 diff 공백 검사 통과.
   실물 이동·가상 컨트롤러 구동 시험은 미수행이며 실행 중 도징 노드는 재시작하지 않았다.
+
+## 충돌 감도 조회·자가진단 (9/22 사용자 승인, #76)
+
+- 기대 전역 충돌 감도는 **50%**, `common.yaml`의 `safety.collision_sensitivity: 50.0`이 단일 출처다.
+- `get_collision_sensitivity`라는 공식 Python 함수는 없다. 공식 C++ `get_safety_configuration()`의
+  `_fCollisionSensitivity`를 읽는다. 설치된 DRCF 버전의 반환 구조체를 사용한다.
+- D-01 및 벤더 원본 보존 원칙의 승인된 확장: 새 `gmp_dsr_controller` 패키지에서 기존 컨트롤러를 상속하고
+  동일한 Drfl 연결로 읽기 전용 서비스를 제공한다. 별도 연결·감도 변경은 없다.
+  `robot.launch.py`는 이름을 유지한 채 컨트롤러 종류를 교체하고 기존 벤더 동작을 상속한다.
+- `skill_node` 단일 워커의 `DsrArm`만 이 서비스를 직접 호출한다. 실물 기동과 안전 복구 시 툴/TCP·감도를
+  확인하고 불일치·조회 실패·시간 초과는 기동 또는 복구 해제를 거부한다. 기존 위치·파지 이력 무효화는 유지한다.
+- 계약 v1.7의 내부 서비스 추가이며 C/D 호출 경로·필드는 유지한다. 가상 모드는 실물 감도 확인을 생략한다.
+  전역 설정 조회를 실제 충돌 감지 성능이나 로컬 안전 구역 검증으로 해석하지 않는다.
+- 실물 조회·컨트롤러 재기동은 아직 수행하지 않았다. 기존 프로세스는 빌드만으로 교체되지 않는다.
