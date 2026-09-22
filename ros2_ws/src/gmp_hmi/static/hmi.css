@@ -100,10 +100,5 @@ body:has(#loginOverlay:not([hidden]))>.safety-banner{visibility:hidden}.login-ca
 /* V5: 레시피·주문/재기동 버튼 앞 간격, 계량모니터·QA판정 카드 내부 빈공간을 콘텐츠로 채움 */
 #orderForm .session-actor.hint{margin-bottom:0}
 #orderForm button,#openCancelBatch,#refreshRestart{margin-top:20px}
-.monitor{display:flex;flex-direction:column}
-.monitor canvas{flex:1;height:auto;min-height:150px}
-.qa-card{display:flex;flex-direction:column}
-#deviations{flex:1;display:flex;flex-direction:column;min-height:0}
-@media(min-width:761px){#deviations{max-height:none}}
-#deviations>.deviation:only-child{flex:1;display:flex;flex-direction:column}
-#deviations>.deviation:only-child>.button-pair{flex:1}
+.monitor canvas{height:260px}
+.deviation .button-pair button{min-height:68px}
