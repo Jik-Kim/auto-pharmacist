@@ -20,13 +20,14 @@ def _fsm(min_resolvable_g=30.0, fingerprint=None):
 
 class Cell:
     def __init__(self, yields, residual=2.0, grip=None, qa='APPROVED', spill=False, cup_bias=0.0, invalid_first=0,
-                width_mm=None):
+                width_mm=None, cup_invalid_first=0):
         self.yields, self.residual, self.qa, self.spill, self.cup_bias = list(yields), residual, qa, spill, cup_bias
         self.grip = grip or (lambda req, n: True)
         self.width_mm = width_mm                          # 폭 지문 테스트용 — 정지 폭을 고정값으로 돌려준다
         self.in_scoop = self.in_cup = 0.0
         self.n = {'grip': 0, 'carry': 0, 'scoop': 0, 'weigh_scoop': 0, 'return_material': 0}
         self.invalid_left = invalid_first
+        self.cup_invalid_left = cup_invalid_first   # 용기 계량(TARE·VERIFY) 무효 횟수
 
     def __call__(self, req):
         k = req['kind']
@@ -61,6 +62,9 @@ class Cell:
                 return {'gross_g': 0.0, 'valid': False}
             return {'gross_g': SCOOP_TARE + self.in_scoop, 'valid': True}
         if k == 'weigh':
+            if self.cup_invalid_left > 0:
+                self.cup_invalid_left -= 1
+                return {'gross_g': 0.0, 'net_g': 0.0, 'valid': False}
             gross = CUP_TARE + self.in_cup + (self.cup_bias if self.in_cup > 0 else 0.0)   # bias 는 TARE 뒤에만
             return {'gross_g': gross, 'net_g': gross - req['tare_g'], 'valid': True}
         if k == 'wait_qa':
@@ -415,3 +419,26 @@ def test_rescoop_depth_compounds_when_already_shallow():
     assert fsm.results[0].returns == 1 and a == [1.0, 0.5, 0.25], a
     assert fsm.state == 'DONE' and not fsm.deviations, [d['kind'] for d in fsm.deviations]
     assert abs(fsm.results[0].actual_g - 100) < 1e-6
+
+
+def test_invalid_tare_reweighs_and_does_not_keep_the_bad_value():
+    """빈 용기 계량이 무효면 그 값을 tare 로 받지 않고 다시 잰다 (VERIFY 와 같은 규칙).
+
+    무효 tare 를 그대로 쓰면 VERIFY 의 net = gross − tare_g 가 어긋나 ①·②가 둘 다 틀린다.
+    """
+    cell = Cell(yields=[100, 50], cup_invalid_first=1)
+    fsm = _fsm()
+    trace = run(fsm, cell)
+    assert fsm.state == 'DONE' and not fsm.deviations
+    assert fsm.tare_g == CUP_TARE                      # 무효값 0.0 이 아니라 재계량한 값이 들어간다
+    assert kinds_for(trace, 'TARE') == ['weigh', 'weigh']
+    assert fsm.verify_net_g == 146                     # 순량이 정상 경로와 같다 (happy path 와 동일)
+
+
+def test_invalid_tare_up_to_limit_raises_weigh_invalid():
+    """max_invalid 만큼 무효면 WEIGH_INVALID 일탈로 멈춘다 — 무효 tare 로 배치를 시작하지 않는다."""
+    cell = Cell(yields=[100, 50], cup_invalid_first=2)
+    fsm = _fsm()
+    run(fsm, cell)
+    assert [(d['kind'], d['step']) for d in fsm.deviations] == [('WEIGH_INVALID', 'TARE')]
+    assert fsm.state == 'ERROR' and fsm.tare_g == 0.0
