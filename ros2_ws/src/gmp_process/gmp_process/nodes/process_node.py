@@ -38,7 +38,7 @@ from gmp_interfaces.msg import (CellEvent, CellState, Deviation, DispenseResult,
 from gmp_interfaces.srv import (InterlockRequest, MeasureForce, QaDecision, RecoverSafety, SafePose,
                                 SetGripper, SubmitOrder)
 
-from gmp_dosing.core.dosing import DosingConfig
+from gmp_dosing.core.dosing import DosingConfig, verdict_of
 from gmp_dosing.core.scale import ScaleConfig, WeightModel
 from gmp_process.core.attempt import Attempt, Reading
 from gmp_process.core.process_fsm import ProcessFSM, ToolFingerprint
@@ -1043,8 +1043,15 @@ class ProcessNode(Node):
         m.batch_id, m.material_id = self.batch_id, r.material_id
         m.target_g, m.actual_g = float(r.target_g), float(r.actual_g)
         m.error_pct = (r.actual_g - r.target_g) / r.target_g * 100.0 if r.target_g else 0.0
-        # DispenseResult 는 OK/UNDER/OVER 뿐이라 QA 승인된 'INVALID' 는 담을 곳이 없다 → OK 로 떨어진다 (I-008)
-        m.verdict = getattr(DispenseResult, r.verdict or 'OK', DispenseResult.OK)
+        # DispenseResult 는 OK/UNDER/OVER 뿐이라 QA 승인된 'INVALID' 는 담을 곳이 없다 (I-008 · #108).
+        # ⚠️ 빈 verdict 를 'OK' 로 떨어뜨리지 않는다 — `decide()` 를 못 거친 원료(계량 무효 뒤 QA
+        # 승인, 첫 사이클 TIMEOUT 등)가 **목표 100 g · 실제 0 g · 오차 −100 % 인데 판정 OK** 로
+        # 나가던 구멍이었다. 미측정분은 `actual_g` 에 안 들어가 실제보다 작으므로, 같은 규칙으로
+        # 다시 매기면 UNDER 가 된다. 「모르는 것을 OK」 대신 **「확인 안 된 것은 미달」**로 보고한다.
+        # 원료가 다음 사이클로 넘어갔다는 것 자체가 직전 `decide()` 에서 허용오차 밖이었다는 뜻이라
+        # 이 되매김은 항상 OK 가 아니다. target 0 은 `error_pct` 와 같은 방식으로 막는다.
+        fallback = verdict_of(r.target_g, r.actual_g, r.tol_pct)[0] if r.target_g else 'OK'
+        m.verdict = getattr(DispenseResult, r.verdict or fallback, DispenseResult.OK)
         m.attempts = min(255, int(r.attempts))
         m.duration_s = max(0.0, self._now() - self._item_t0) if self._item_t0 else 0.0
         self._item_t0 = 0.0
