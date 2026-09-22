@@ -127,7 +127,7 @@ p2.edge(wres, ret, 'OK (|err| ≤ tol) · actual += scooped − residual → dis
 p2.edge(ret, picks, 'grip(open) · idx+1 · 다음 원료 있음', color=ACC,
         exit=(0.5, 0), entry=(0.5, 1), points=((cx(1), Y[2] - 40), (cx(0), Y[2] - 40)), lpos=(0, -14))
 p2.edge(ret, verify, '마지막 원료였음 (그리퍼 비어 있음)', color=ACC, exit=(1, 0.3), entry=(0, 0.3), lpos=(0, -14))
-p2.edge(verify, finish, '① |net − Σtarget| ≤ Σ(target×tol)\n② |net − Σactual| ≤ min_resolvable_g', color=OK, lpos=(0, -22))
+p2.edge(verify, finish, '① |net − Σtarget| ≤ Σ(target×tol)', color=OK, lpos=(0, -22))
 p2.edge(finish, nudgew, 'carry ok', color=OK, lpos=(0, -14))
 p2.edge(nudgew, done, 'NUDGE (사람이 건드림)\n→ DONE · 폐기면 DISCARDED', color=OK, lpos=(0, -22))
 p2.edge(disc, nudgew, 'carry ok — 폐기도 세트의 끝\n같은 자리에서 기다린다', color=RED, exit=(0.5, 0), entry=(0.5, 1), lpos=(0.2, 0))
@@ -150,7 +150,7 @@ p2.edge(wreturn, scoop, '반환 성공 · returns<max → 같은 원료를 더 �
         exit=(0, 0.5), entry=(1, 0.75), points=((X[2] - 40, Y[3] + 36), (X[2] - 40, Y[1] + 54)), lpos=(-0.4, -10))
 p2.edge(wreturn, dev, '반환 좌표 없음/실패 · 반환 한도 초과 → TIMEOUT', color=RED,
         exit=(1, 0.5), entry=(0, 0.7), lpos=(0, -18))
-p2.edge(verify, dev, '① 규격 이탈 → BATCH_OUT_OF_SPEC\n② 계측 불일치 → VERIFY_MISMATCH', color=WARM,
+p2.edge(verify, dev, '① 규격 이탈 → BATCH_OUT_OF_SPEC', color=WARM,
         exit=(0.7, 1), entry=(0.5, 0), points=((cx(3, 0.7), 870), (cx(4, 0.5), 870)), lpos=(0, 14))
 # ── 재시도 자기 루프 (주황) — 상자 위 y-35
 def loop(node, c, label, ex=0.35, en=0.75, lp=-14):
@@ -178,7 +178,7 @@ p2.edge(picks, err, 'GRIP_FAIL 4회 (FORCED)', color=RED,
 p2.edge(selfc, err, 'measure invalid (TODO)', color=RED,
         exit=(0, 0.7), entry=(0.7, 0), points=((cx(0, 0.7), Y[0] + 45),), lpos=(0.5, -14))
 p2.note(1440, 120, 380, 150, '루프 게이트 (FSM 밖, D-21 추가 7)\n\nskill_node 가 event NUDGE 를 쏘면 run_loop 가 다음 요청 전에 멈추고\nstate.mode = PAUSED(note="NUDGE") 발행, 두 번째 NUDGE 로 재개.\n인터락 중·계량 대기 중에만 감지된다 (블로킹 movel 중은 두산 충돌 감지 담당)\n\n세트 끝 NUDGE_WAIT (D-23, 9/19): 그때의 NUDGE 는 정지가 아니라\n「다음 세트」 신호 — _nudge_go 를 세워 wait_nudge 를 푼다. 이벤트 SET_DONE / SET_NEXT')
-p2.note(1660, 880, 240, 270, '일탈 정책 (deviation.py)\n\nGRIP_FAIL  3회 RETRY → FORCED\nSCOOP_EMPTY  3회 RETRY → REFILL\nMATERIAL_EMPTY  즉시 REFILL\nOVERFILL / TIMEOUT  즉시 QA\nWEIGH_INVALID  2회 RETRY → QA\nVERIFY_MISMATCH [v1.2]  즉시 QA (계측)\nBATCH_OUT_OF_SPEC [v1.2]  즉시 QA (규격)\nSLIP 2 · SAFETY_SWITCH 1 · FORCE_LIMIT 1 → FORCED\nWRONG_TOOL [v1.2]  즉시 QA\n\ncount = 같은 배치·같은 스텝·같은 kind')
+p2.note(1660, 880, 240, 270, '일탈 정책 (deviation.py)\n\nGRIP_FAIL  3회 RETRY → FORCED\nSCOOP_EMPTY  3회 RETRY → REFILL\nMATERIAL_EMPTY  즉시 REFILL\nOVERFILL / TIMEOUT  즉시 QA\nWEIGH_INVALID  2회 RETRY → QA\nVERIFY_MISMATCH  9/22 폐지 — 발생 안 함\nBATCH_OUT_OF_SPEC [v1.2]  즉시 QA (규격)\nSLIP 2 · SAFETY_SWITCH 1 · FORCE_LIMIT 1 → FORCED\nWRONG_TOOL [v1.2]  즉시 QA\n\ncount = 같은 배치·같은 스텝·같은 kind')
 p2.note(40, 1180, 1860, 90, 'D-22 원료 1종 = 6단계: 빈 스쿱 계량 → 퍼올림 → 붓기 전 계량(퍼낸 양 → 붓기 비율, 초과 예방) → 붓기 → 붓기 후 계량(잔량 → 투입량 누적 → 판정) → 반납. 로봇이 저울이라 스쿱을 든 채 재는 것이 가장 싸고, 용기 계량(들어 올림)은 그리퍼가 비어야 해서 배치 끝 VERIFY 한 번.\n범례   파랑 = 정상 경로   주황 = 일탈·재시도   청록 = 복구·완료   빨강 = 강제 개입·폐기(종료)   회색 = 대기·재계량\n전이표 밖 조합은 on_result 가 RuntimeError("전이 없음") 를 던진다 — 새 상태·kind 를 넣으면 전이와 테스트(test_process_fsm.py)를 같이 넣는다')
 
 # ───────────────────────── 페이지 3: 요청 ↔ 스킬 번역 ─────────────────────────
@@ -250,7 +250,7 @@ ROWS = [
  ('WEIGH_RESIDUAL', 'n', None, 'WeighHeld act (material_N.posx, 붓기 후)\n→ gross, valid', 'decide(target, actual, tol, attempts,\nvalid, invalid, cfg)\n→ DONE / SCOOP / DEVIATION(kind)',
   'weight(잔량) · scoop_cycle(시도 1건) · state\ndispense_result (DONE·DEVIATION 시)\ndeviation(OVERFILL · TIMEOUT · WEIGH_INVALID)', False),
  ('RETURN_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT — 원료통 아래)\nSetGripper srv (open)', None, 'state', False),
- ('VERIFY', 'n', None, 'WeighContainer act (고정 workbench 용기 들어, 배치 1회)\ntare_g → reading(net, subject=container)', '① Σ(target×tol) — 레시피 총량 대조\n② min_resolvable_g — Σ투입량 대조', 'weight(net) · state\ndeviation(VERIFY_MISMATCH[v1.2])', False),
+ ('VERIFY', 'n', None, 'WeighContainer act (고정 workbench 용기 들어, 배치 1회)\ntare_g → reading(net, subject=container)', '① Σ(target×tol) — 레시피 총량 대조\n(② 회계 대조는 9/22 폐지 — 관측만)', 'weight(net) · state\nevent(VERIFY, ①② 수치)', False),
  ('FINISH', 'n', None, 'carry workbench → passbox_done(slot)', None, 'state', False),
  ('NUDGE_WAIT', 'p', None, 'MoveToStation act (nudge_wait, AT)\nevent NUDGE ← skill_node (D-21) — 여기서는\n정지가 아니라 「다음 세트」 신호 (D-23)', None, 'event SET_DONE (대기 진입) · SET_NEXT (건드림)\nstate PAUSED(note NUDGE_WAIT) — 주문 거부', True),
  ('DONE', 'd', None, None, None, 'state DONE · event BATCH_END\n(record_node 가 JSON 내보내기 — HMI 는 DB 를 읽어 이력·KPI 표시)', False),

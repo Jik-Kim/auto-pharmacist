@@ -18,7 +18,7 @@ uint8 MATERIAL_EMPTY=5  # 원료 소진 (SCOOP_EMPTY 연속)
 uint8 FORCE_LIMIT=6     # 힘 상한·충돌 감지
 uint8 TIMEOUT=7         # 재시도 상한 초과
 uint8 WEIGH_INVALID=8   # 계량 무효 반복
-uint8 VERIFY_MISMATCH=9    # 배치 끝: 용기 순량 vs 스쿱 누적 투입량 차이 > min_resolvable_g — 계측 신뢰성 (D-22)
+uint8 VERIFY_MISMATCH=9    # ⚠️ 9/22 폐지 — FSM 이 내지 않는다(미발생). 열거값은 계약이라 남긴다 (번호 재사용 금지)
 uint8 BATCH_OUT_OF_SPEC=10 # 배치 끝: 용기 순량 vs 레시피 총 목표량 차이 > Σ(target×tol) — 제품 규격 판정 (D-22)
 uint8 WRONG_TOOL=11        # 폭 지문 불일치 — 스쿱·약통 규격이 기대와 다름 = 교차오염 의심 (D-20 추가기능 1)
 
