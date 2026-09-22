@@ -50,13 +50,13 @@ const root=path.resolve(__dirname,'..');
   await page.waitForFunction(()=>document.querySelector('#connection').textContent.startsWith('상태 수신'));
   assert.equal(await page.locator('#operation > .column').count(),4);
   assert.equal(await page.locator('#operation > .column').nth(1).locator('#results').count(),1);
-  assert.equal(await page.locator('#legacyInventory').isVisible(),false);
+  assert.equal(await page.locator('.inventory-card').isVisible(),true);
   assert.equal(await page.locator('#openCollectionConfirm').count(),0);
   assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#operation > .column')]
    .some(c=>[...c.childNodes].some(n=>n.nodeType===3&&n.textContent.trim()==='null'))),false);
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
   assert.deepEqual(errors,[]);
-  console.log('PASS: initial load, 10 demo states, live/test render branches, hidden inventory, 4 columns, mobile overflow, no JS errors');
+  console.log('PASS: initial load, 10 demo states, live/test render branches, visible inventory card, 4 columns, mobile overflow, no JS errors');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
