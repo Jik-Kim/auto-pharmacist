@@ -1,14 +1,14 @@
 # HMI 안전정지 복구
 
-기준: origin/main 7e25232 및 이 PR의 docs/interfaces.md §8 v1.6 제안. 확정 UI 배치를 유지한다.
+기준: docs/interfaces.md §8 v1.6 확정.
 
 - HMI POST /recover → 상대 서비스 request_safety_recovery (운영 /cell/request_safety_recovery).
 - A /cell/recover_safety 또는 DSR 제어 서비스를 직접 호출하지 않는다.
 - operator/admin 세션과 CSRF를 확인한다. operator_id는 세션에서만 얻는다.
 - 서버가 요청 ID를 발급한다. 관측 상태를 expected_state로 보내며 작업자는 단일 버튼으로 현장 조치 완료와 복구 요청을 명시한다. 미관측/미연결이면 차단한다.
-- 실제/불명 STOP마다 세대를 바꾸고 이전 요청/진입 허가를 무효화한다. 현재 요청 ID·작업자가 일치하는 origin=recovery_request만 요청을 유지한다. 새 STOP 뒤 이전 응답은 감사 기록만 남긴다.
+- 실제/불명 STOP마다 세대를 바꾸고 이전 요청/진입 허가를 무효화한다. 현재 요청 ID가 일치하는 origin=recovery_request만 요청을 유지한다. 작업자 ID는 감사 기록이며 인수인계 여부를 제한하지 않는다. 새 STOP 뒤 이전 응답은 감사 기록만 남긴다.
 - 응답 대기/미확인/수동 조치/실패/복구 확인을 구분한다. 응답 미확인은 자동 재전송하지 않는다.
-- 응답 미확인 때 동일 작업자만 동일 ID와 저장된 전체 요청으로 수동 재확인한다.
+- 응답 미확인 때 operator/admin은 동일 ID와 저장된 전체 요청으로 수동 재확인할 수 있다.
 - success=true, manual_required=false, robot_state=1일 때만 이 HMI의 복구 확인 표시를 해제한다.
 - 배치 상태는 C의 CellState만 사용한다. HMI는 ERROR를 IDLE로 바꾸거나 RunBatch/EXIT를 자동 요청하지 않는다.
 - 복구 성공은 진입 허가가 아니다. 다음 작업 전 명시적 안전 자세/현장 재설정이 필요하다.

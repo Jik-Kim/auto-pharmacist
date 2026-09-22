@@ -6,7 +6,7 @@ class SafetyEvents:
         self.session = None
         self.revision = -1
         self.retired = set()
-        self.request = None
+        self.request_id = None
         self.invalidated = set()
 
     @staticmethod
@@ -19,7 +19,7 @@ class SafetyEvents:
     def stop(self, data):
         if data.get('origin') != 'recovery_request':
             self.invalidated.add((self.session, self.revision))
-        self.request = None  # 알 수 없는 정지도 기존 성공 적용을 무효화한다.
+        self.request_id = None  # 알 수 없는 정지도 기존 성공 적용을 무효화한다.
         token = self.token(data)
         if token is None:
             return
@@ -31,13 +31,12 @@ class SafetyEvents:
             self.retired.add(self.session)
         self.session, self.revision = token
         if (data.get('origin') == 'recovery_request'
-                and isinstance(data.get('request_id'), str) and data['request_id']
-                and isinstance(data.get('operator_id'), str) and data['operator_id']):
-            self.request = (data['request_id'], data['operator_id'])
+                and isinstance(data.get('request_id'), str) and data['request_id']):
+            self.request_id = data['request_id']
 
     def accepts(self, data):
-        return (self.request is not None
+        return (self.request_id is not None
                 and self.token(data) == (self.session, self.revision)
-                and self.request == (data.get('request_id'), data.get('operator_id'))
+                and self.request_id == data.get('request_id')
                 and data.get('success') is True and data.get('manual_required') is False
                 and type(data.get('robot_state')) is int and data['robot_state'] == 1)

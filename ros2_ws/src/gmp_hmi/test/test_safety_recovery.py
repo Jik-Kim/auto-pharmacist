@@ -107,8 +107,7 @@ def test_matching_recovery_start_preserves_request_and_completed_result(node, re
 
 @pytest.mark.parametrize('detail', [
     {}, {'origin': 'robot_alarm'},
-    {'origin': 'recovery_request', 'request_id': 'other', 'operator_id': 'admin'},
-    {'origin': 'recovery_request', 'request_id': 'same', 'operator_id': 'other'}])
+    {'origin': 'recovery_request', 'request_id': 'other', 'operator_id': 'admin'}])
 def test_unrelated_stop_during_recovery_remains_blocked(node, detail):
     node._on_state(state(mode=4))
     stop(node)
@@ -125,6 +124,19 @@ def test_unrelated_stop_during_recovery_remains_blocked(node, detail):
         dict(origin='recovery_request', request_id=req['request_id'], operator_id='admin'))))
     future.set_result(SimpleNamespace(success=True, manual_required=False, robot_state=1, message='late'))
     assert node.safety_recovery.active and node.safety_recovery.request is None
+
+
+def test_matching_recovery_start_allows_operator_handoff(node):
+    node._on_state(state(mode=4))
+    stop(node)
+    future = Future()
+    node.cli_recovery.call_async = lambda req: future
+    node.recover_safety('admin', 5, True, 1)
+    req = dict(node.safety_recovery.request)
+    node._on_event(Message(code='ROBOT_SAFETY_STOP', level=2, batch_id='', text=json.dumps(
+        dict(origin='recovery_request', request_id=req['request_id'], operator_id='other'))))
+    future.set_result(SimpleNamespace(success=True, manual_required=False, robot_state=1, message='STANDBY'))
+    assert node.safety_recovery.phase == 'recovered'
 
 
 def test_stop_blocks_order_and_exit_but_not_other_error(node, backend):
@@ -160,9 +172,7 @@ def test_uncertain_retry_preserves_entire_request():
     model.finish(req, None)
     with pytest.raises(ValueError):
         model.begin('operator', 5, True, 'B1', 0)
-    with pytest.raises(ValueError):
-        model.retry('other', req['request_id'])
-    assert model.retry('operator', req['request_id']) == req
+    assert model.retry('other', req['request_id']) == req
     model.stop({})
     with pytest.raises(ValueError):
         model.retry('operator', req['request_id'])
@@ -197,7 +207,7 @@ def test_event_can_resolve_matching_uncertain_request(node):
     req = node.safety_recovery.begin('admin', 5, True, 'B1', 1)
     node.safety_recovery.finish(req, None)
     node._on_event(Message(code='ROBOT_SAFETY_RECOVERY', level=0, batch_id='', text=json.dumps(
-        dict(request_id=req['request_id'], operator_id='admin', success=True,
+        dict(request_id=req['request_id'], operator_id='other', success=True,
              manual_required=False, robot_state=1, message='STANDBY'))))
     assert node.safety_recovery.phase == 'recovered'
     assert not node.act_batch.calls
