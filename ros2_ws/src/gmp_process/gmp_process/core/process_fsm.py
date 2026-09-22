@@ -20,7 +20,7 @@ kind: move | grip | carry | scoop | pour | weigh | weigh_scoop | measure | safe 
 실제 스테이션(stations.yaml 의 scoop_N)은 process_node 가 material_id 로 찾는다.
 
 원료 1종의 흐름 (SOT D-22, 9/17 팀 합의 — 로봇이 저울이므로 스쿱을 든 채 재는 것이 가장 싸다):
-  PICK_SCOOP → SCOOP_TARE(빈 스쿱 무게) → SCOOP → WEIGH_SCOOP(붓기 전: 퍼낸 양 → 붓기 비율 = 1차 폐루프)
+  PICK_SCOOP → SCOOP_TARE(빈 스쿱 무게) → SCOOP → WEIGH_SCOOP(붓기 전: 퍼낸 양 → 전량 붓기 or 원료통 반환 — v1.3)
   → POUR → WEIGH_RESIDUAL(붓기 후: 스쿱 잔량 → 실제 투입량 누적 → decide) → RETURN_SCOOP
 원료가 다 끝나면 VERIFY(용기를 들어 계량) → FINISH → NUDGE_WAIT(nudge_wait 로 물러나 NUDGE 대기, D-23) → DONE. VERIFY 는 두 가지를 본다 (9/17 조장 합의):
   ① 제품 판정   |net − Σtarget| > Σ(target×tol)     → BATCH_OUT_OF_SPEC (규격 이탈)
@@ -111,7 +111,7 @@ class ProcessFSM:
             self.cur.attempts += 1
         self.cur.last_fraction = fraction
         return {'kind': 'scoop', 'material_id': self.cur.material_id, 'attempt': self.cur.attempts,
-                'fraction': fraction,                 # 담그기 깊이 힌트일 뿐 — 붓기 비율은 WEIGH_SCOOP 가 정한다
+                'fraction': fraction,                 # 담그기 깊이 (계약 v1.5 depth_fraction) — 붓기는 언제나 전량이다
                 'after_return': after_return}         # 반환 직후인가 — 실패 처리를 가른다 (skill_failed)
 
     def _return_material(self) -> dict:
