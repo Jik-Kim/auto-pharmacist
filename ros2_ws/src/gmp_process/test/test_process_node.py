@@ -463,6 +463,43 @@ def test_refill_wait_puts_reason_at_head_of_note(cell):
     assert proc.note == '', f'대기가 끝나면 사유를 내린다: {proc.note!r}'
 
 
+def test_t6a_missing_scoop_retries_grip_then_forced(cell):
+    """T6(a) 고의 장애 — 스쿱을 거치대에서 빼둔 채 시작하면 파지가 계속 실패한다 (#111).
+
+    절차서(`demo_run_procedure.md` T6)는 "`GRIP_FAIL` 자동 재시도" 까지만 적고 결말이 없다.
+    실제로는 **3회 RETRY 뒤 4회째가 FORCED 로 올라가 ERROR 로 끝난다** — 사람이 스쿱을 꽂기
+    전에는 어떤 재시도도 성공할 수 없으므로 무한 재시도를 하지 않는 것이 맞다.
+    """
+    proc, fake, col = cell
+    fake.missing_scoop = True
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_done(proc) == 'ERROR', _why(proc)
+    kinds = [(d['kind'], d['action']) for d in proc.fsm.deviations]
+    assert kinds == [('GRIP_FAIL', 'RETRY')] * 3 + [('GRIP_FAIL', 'FORCED')], kinds
+    assert all(d.kind == Deviation.GRIP_FAIL for d in col.devs), [d.kind for d in col.devs]
+
+
+def test_t6c_over_scoop_returns_to_material_then_rescoops_shallower(cell):
+    """T6(c) 고의 장애 — 원료를 수북이 담아 초과 스쿱을 유도한다 (#111).
+
+    **일탈이 뜨지 않는다.** 초과는 붓기 전에 `RETURN_MATERIAL` 로 되돌리고 깊이를 줄여 다시 푸는
+    정상 경로다 (v1.3 뒤 `OVERFILL` 이 정상 경로에서 안 나오는 것과 같은 이유). 절차서 T6 행의
+    "각각 `deviation` 이 뜨고 기록에 남는다" 는 (c)에는 해당하지 않는다 — 기록은
+    `ScoopCycle.outcome = RETURNED` 로 남는다.
+    """
+    proc, fake, col = cell
+    fake.scoop_gain = 3.0                          # 공칭 40 g 자리에 120 g — 남은 목표 + 허용오차 초과
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_done(proc) == 'DONE', _why(proc)
+    assert proc.fsm.deviations == [], proc.fsm.deviations
+    assert any(c.startswith('return_material:') for c in fake.calls), fake.calls
+    outcomes = [c.outcome for c in col.cycles]
+    assert ScoopCycle.RETURNED in outcomes and ScoopCycle.COMPLETE in outcomes, outcomes
+    # 반환은 붓기 시도를 소모하지 않는다 — returns 로 따로 센다
+    r = proc.fsm.results[0]
+    assert r.returns >= 1 and r.attempts == 1, (r.returns, r.attempts)
+
+
 def test_scoop_skill_failure_does_not_lose_scoop_cycle(cell):
     """스쿱 스킬이 실패(FORCE_LIMIT)해 같은 요청을 다시 부를 때 앞 시도 기록이 덮여 사라지면 안 된다 (리뷰 P2)."""
     proc, fake, col = cell

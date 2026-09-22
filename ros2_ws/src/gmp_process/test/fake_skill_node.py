@@ -49,6 +49,7 @@ class FakeSkillNode(Node):
                                                 # 음수가 되어 물리적으로 불가능한 잔량이 나온다. VERIFY ① 을
                                                 # 유발하려면 `cup_bias` 를 쓴다 (test_process_fsm 의 Cell 과 같은 규약)
                                                 #   → 스쿱 계량으로는 안 잡히고 VERIFY ① BATCH_OUT_OF_SPEC 이 잡는다
+        self.missing_scoop = False              # 스쿱이 거치대에 없다 — 파지해도 물리지 않는다 (T6(a) 고의 장애)
         self.scoop_gain = 1.0                   # 깊이당 퍼올림 배율. 크게 주면 min_fraction 으로도 남은 양을 넘겨
                                                 #   반환만 반복하다 붓기 전에 TIMEOUT 이 난다 (붓기 전 일탈 시험용)
         self.block_rescoop = False              # 실물처럼 반환 뒤 Scoop 을 거부할지 (v1.5.1 · PR #43)
@@ -266,6 +267,12 @@ class FakeSkillNode(Node):
         self._hold('set_gripper')
         with self.lock:
             if req.close:
+                if self.missing_scoop and self.station.startswith('scoop'):
+                    # 거치대가 비어 있어 손가락이 끝까지 닫힌다 — 실물은 grip 비트가 안 선다 (T6(a))
+                    res.final_width_mm = 0.0
+                    res.grip_inferred = False
+                    res.success = True
+                    return res
                 if self.station.startswith('scoop'):
                     self.held = self.station
                 res.final_width_mm = req.width_mm
