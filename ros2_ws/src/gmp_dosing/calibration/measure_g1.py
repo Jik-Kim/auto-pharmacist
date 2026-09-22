@@ -261,6 +261,11 @@ def main(argv=None):
                          "예: workbench(용기 계량) | material_1/2/3(weigh_held 가 실제로 재는 자세 — "
                          "calibration 은 이 자세로 해야 gain/offset 이 운영과 맞는다)")
     ap.add_argument('--vel-scale', type=float, default=0.2, help='--goto-station 속도 스케일')
+    ap.add_argument('--load-series', default='', metavar='G1,G2,..',
+                    help='[9/22] **한 파지 안에서 하중을 늘려가며** 재서 gain 직선을 뽑는다. 회차마다 Enter 로 멈추므로 '
+                         '그 사이에 시료를 더 붓고 저울로 읽은 값을 이 목록에 미리 넣어둔다 (예: 78,155,232,309). '
+                         '그리퍼를 놓지 않으니 재파지 산포(사람 배치 시 σ 6.34)가 안 들어가고, 하중을 되돌릴 필요도 없다. '
+                         '--trials 는 목록 길이로 맞춰진다. --alt-actual-g 와 같이 쓰지 않는다')
     ap.add_argument('--auto-regrip', type=float, default=0.0, metavar='SEC',
                     help='[9/22 팀장 요청] 세트 경계에서 **사람을 거치지 않고** 로봇만으로 놓고 다시 집는다. '
                          '--pick-lift-mm 이 필요하다: AT 로 내려가 열고 SEC 초 기다렸다 다시 닫고 ABOVE 로 올린다. '
@@ -319,6 +324,12 @@ def main(argv=None):
         print('    이동 완료')
     if a.probe > 0:
         return probe(arm, grip, close_cmd, a.probe, a.actual_g)
+    series = [float(v) for v in a.load_series.split(',')] if a.load_series else None
+    if series:
+        if a.alt_actual_g is not None:
+            raise SystemExit('--load-series 와 --alt-actual-g 는 같이 못 쓴다')
+        a.trials = len(series)
+        print(f'    하중 계열 {series} — 회차 {a.trials} 로 맞춘다 (한 파지 안에서 부어가며 잰다)')
     cond = a.condition or f'{a.object}_total_{a.actual_g:g}g'
     if measure_posx:                    # 어디서 쟀는지 CSV 에 남긴다 — 자세가 σ 를 좌우한다 (9/21)
         cond += '@' + a.goto_station + '[' + ','.join(f'{v:g}' for v in measure_posx[:3]) + ']'
@@ -364,7 +375,13 @@ def main(argv=None):
             name = f'{a.object}_total{a.actual_g:g}g_{stamp}_set{s}'
             for t in range(1, a.trials + 1):
                 trial_g = a.actual_g if (a.alt_actual_g is None or t % 2 == 1) else a.alt_actual_g
-                if a.alt_actual_g is not None:
+                if series:
+                    trial_g = series[t - 1]
+                    prev = series[t - 2] if t > 1 else None
+                    add = '' if prev is None else f' (앞 회차보다 +{trial_g - prev:g} g)'
+                    input(f'    세트 {s} 회차 {t}/{a.trials}: 하중을 **{trial_g:g} g** 으로 맞추고{add} → Enter '
+                          f'(그리퍼는 문 채로 둔다. 다 부은 뒤에 치세요) ')
+                elif a.alt_actual_g is not None:
                     # 그리퍼는 문 채로 둔다 — 파지 오프셋이 유지되어야 차에서 빠진다
                     input(f'    세트 {s} 회차 {t}/{a.trials}: 내용물을 {"채우고" if t % 2 == 1 else "비우고"} '
                           f'({trial_g:g} g) → Enter (그리퍼는 문 채로 둔다) ')
