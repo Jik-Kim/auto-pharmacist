@@ -537,9 +537,14 @@ source tools/env.sh && ros2 control list_controllers -c /dsr01/controller_manage
 55.21]` 와 **J1~J5 가 거의 같다** — 운영에서 workbench 작업에 쓰는 자세와 같은 계열이다. J6 만
 크게 다른데 손목 롤이고 Fz 는 베이스 좌표계(`dsr_arm.py:272`)라 계량값에는 안 붙는다.
 
-→ **`workbench` 에 계량 자세 `posj` 를 박아야 한다.** 지금은 운영에서 도착할 때의 자세가 직전 위치에
-  달려 있어 재현이 안 된다. 선례는 있다 (`material_N.return_end_posj`, 이송 `start_at_posj`).
-  값은 B 가 기록, `stations.yaml` 반영은 조장, `skill_node` 가 그 자세로 가게 하는 것은 A.
+**이 자세는 운영이 쓸 `posj` 에 사용자가 직접 맞춘 것이다 (9/22 사용자 확인)** — 즉 위 값은 임의의
+elbow-up 이 아니라 운영 자세다. 오늘 ①·④ 는 전부 이 자세에서 잰다.
+
+→ 다만 **머지된 `stations.yaml` 에는 그 값이 아직 없다.** `posj` 가 있는 곳은 `safe` 하나뿐이고
+  `workbench` 를 포함한 나머지 10곳은 `posx` 뿐이다. `skill_node:615` 가 `st.extra.get('posj')` 가
+  있으면 `movej`, 없으면 `:634` 의 `movel` 로 빠지는 구조라 **기구는 이미 있고 값만 안 들어가 있다.**
+  팀장이 PR 을 아직 안 올린 상태라고 한다 (9/22, origin 에 해당 브랜치 없음). 그 PR 이 올라오면
+  `workbench.posj` 가 위 값과 같은지 대조한다 — 다르면 ① 3점을 다시 잰다.
 
 **세 번 돌린다.** 명령은 `--actual-g` 와 `--out` 만 다르고 나머지는 같다.
 
