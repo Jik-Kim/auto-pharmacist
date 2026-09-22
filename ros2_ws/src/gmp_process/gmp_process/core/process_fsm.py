@@ -193,8 +193,11 @@ class ProcessFSM:
             self.state = 'TARE'
             return self._weigh_cup(0.0)
         if k == 'weigh' and st == 'TARE':
+            # `self.tare_g` 는 VERIFY 에서 `_weigh_cup(self.tare_g)` 로 넘겨 순량을 받는 데 쓴다.
+            # `self.scale` 에는 넣지 않는다 — FSM 은 `WeightModel.reading()` 을 부르지 않고 gross 끼리
+            # 빼서 순량을 낸다(SCOOP_TARE~WEIGH_RESIDUAL). 넣어 두면 scale 이 tare 를 들고 있는 것처럼
+            # 보여 오해만 산다. `self.scale` 참조는 VERIFY ② 의 `cfg.min_resolvable_g` 때문에 남는다.
             self.tare_g = res.get('gross_g', 0.0)
-            self.scale.set_tare(self.tare_g)
             self.cur = self._item()
             self.state = 'PICK_SCOOP'
             return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}
