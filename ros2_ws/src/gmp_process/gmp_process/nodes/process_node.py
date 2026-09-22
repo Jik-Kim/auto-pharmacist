@@ -847,6 +847,7 @@ class ProcessNode(Node):
         fsm = self.fsm
         try:
             self.event('INFO', 'BATCH_START', fsm.spec.product)
+            verify_logged = False      # VERIFY 수치 이벤트는 배치당 한 번 (무효 재계량으로 여러 번 돌 수 있다)
             self._pub_state()
             self._check_batch_interrupt()
             req = fsm.start()
@@ -879,6 +880,11 @@ class ProcessNode(Node):
                 nxt = fsm.on_result(req, res)
                 self._after(step, req, res)
                 self._drain()
+                if step == 'VERIFY' and fsm.verify_detail and not verify_logged:
+                    # ② 폐지(9/22) 뒤에도 회계 수치는 남긴다. 판정은 ① 만 하지만, 끈 것이
+                    # 「배치 기록 교차검증」이라 무엇을 포기했는지 감사 추적에서 보여야 한다.
+                    verify_logged = True
+                    self.event('INFO', 'VERIFY', fsm.verify_detail)
                 self.event('INFO', 'STEP', f'{step} → {fsm.state}')
                 req = nxt
             self._check_batch_interrupt()

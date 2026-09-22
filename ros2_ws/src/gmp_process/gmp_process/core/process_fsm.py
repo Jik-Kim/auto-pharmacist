@@ -22,10 +22,12 @@ kind: move | grip | carry | scoop | pour | weigh | weigh_scoop | measure | safe 
 원료 1종의 흐름 (SOT D-22, 9/17 팀 합의 — 로봇이 저울이므로 스쿱을 든 채 재는 것이 가장 싸다):
   PICK_SCOOP → SCOOP_TARE(빈 스쿱 무게) → SCOOP → WEIGH_SCOOP(붓기 전: 퍼낸 양 → 전량 붓기 or 원료통 반환 — v1.3)
   → POUR → WEIGH_RESIDUAL(붓기 후: 스쿱 잔량 → 실제 투입량 누적 → decide) → RETURN_SCOOP
-원료가 다 끝나면 VERIFY(용기를 들어 계량) → FINISH → NUDGE_WAIT(nudge_wait 로 물러나 NUDGE 대기, D-23) → DONE. VERIFY 는 두 가지를 본다 (9/17 조장 합의):
-  ① 제품 판정   |net − Σtarget| > Σ(target×tol)     → BATCH_OUT_OF_SPEC (규격 이탈)
-  ② 계측 신뢰성 |net − Σ투입량| > min_resolvable_g  → VERIFY_MISMATCH   (스쿱 계량을 못 믿는다)
-②만으로는 개별 원료가 전부 같은 방향으로 치우친 경우를 못 잡는다 — 두 값이 함께 낮아 서로 일치하기 때문이다.
+원료가 다 끝나면 VERIFY(용기를 들어 계량) → FINISH → NUDGE_WAIT(nudge_wait 로 물러나 NUDGE 대기, D-23) → DONE.
+VERIFY 는 **① 제품 판정 하나만** 한다 (9/22 사용자·조장 확정 — ② 폐지):
+  ① |net − Σtarget| > Σ(target×tol) → BATCH_OUT_OF_SPEC (규격 이탈)
+종전 ②(계측 신뢰성, |net − Σ투입량|)는 **판정하지 않는다.** 값은 계속 계산해 detail·CellEvent 에
+**관측으로만** 남긴다 — ② 를 끈다는 것은 **배치 기록 교차검증을 포기한다**는 뜻이고(제품은 규격 안인데
+원료별 투입 기록이 틀린 배치를 검출할 수단이 없어진다), 그 사실이 기록에서 보이도록 수치는 남긴다.
 상태 이름은 CellState.step 에 그대로 실린다 (docs/architecture.md 전이표).
 """
 import math
@@ -79,6 +81,8 @@ class ProcessFSM:
     idx: int = 0
     tare_g: float = 0.0          # 빈 용기 (TARE)
     verify_net_g: float = 0.0    # VERIFY 에서 잰 용기 순량
+    verify_detail: str = ''      # VERIFY 판정 근거 한 줄 — ①(판정)과 ②(관측) 수치.
+                                 # 일탈이 안 나도 남는다 — process_node 가 CellEvent 로 발행한다
     results: list = field(default_factory=list)
     deviations: list = field(default_factory=list)
     _counts: dict = field(default_factory=dict)
@@ -265,8 +269,14 @@ class ProcessFSM:
             r = self._invalid_or(res, 'WEIGH_RESIDUAL', req)
             if r is not None:
                 return r
-            self.cur.residual_g = max(0.0, res.get('gross_g', 0.0) - self.cur.scoop_tare_g)
-            self.cur.actual_g += max(0.0, self.cur.scooped_g - self.cur.residual_g)
+            # 클램프하지 않는다 — 붓고 나면 참 잔량이 0 근처라 측정 잡음의 절반이 음수인데,
+            # max(0, ...) 로 자르면 잔량이 체계적으로 과대평가되고 투입량이 그만큼 과소평가된다
+            # (편향 ≈ σ/√(2π)). 회계 누산기는 편향이 없어야 한다. ② 판정이 없어져도 Σ투입량은
+            # 배치 기록(ScoopCycle·dispense_result)에 그대로 남으므로 편향은 여전히 문제다.
+            # TODO(영점 재확인과 같은 묶음): 잔량이 −3σ 보다 더 음수면 회계가 아니라 **유효성**
+            # 문제다 (파지 이동·원료 손실·계량 오염). 재계량 또는 WEIGH_INVALID 로 거른다.
+            self.cur.residual_g = res.get('gross_g', 0.0) - self.cur.scoop_tare_g
+            self.cur.actual_g += self.cur.scooped_g - self.cur.residual_g
             d = decide(self.cur.target_g, self.cur.actual_g, self.cur.tol_pct, self.cur.attempts,
                        True, self.cur.invalid, self.dosing_cfg)
             self.cur.verdict = d.verdict
@@ -294,15 +304,18 @@ class ProcessFSM:
                     return self._deviate('WEIGH_INVALID', 'VERIFY')
                 return req
             self.verify_net_g = res.get('net_g', 0.0)
-            # ① 제품 판정 — 레시피 총 목표량 대비. 개별 원료가 전부 같은 방향으로 치우치면
-            #    순량과 Σ투입량이 함께 낮아 ②로는 안 잡힌다 (9/17 조장 합의)
-            if abs(self.verify_net_g - self.target_total()) > self.batch_tol_g():
-                return self._deviate('BATCH_OUT_OF_SPEC', 'VERIFY')
-            # ② 계측 신뢰성 — 스쿱 누적 투입량 대비. 흘림·스쿱 풍량 편향을 잡는다.
-            #    min_resolvable_g < Σ(target×tol) 일 때만 의미가 있다 — 아니면 ①이 먼저 걸려 ②는 안 운다.
-            #    G1 확정(9/19, SOT Q-11): 19 < 22.5(데모 레시피) → 살아있다. 표본 간격 조정 후 14 여도 결론은 같다.
-            if abs(self.verify_net_g - self.dosed_total()) > self.scale.cfg.min_resolvable_g:
-                return self._deviate('VERIFY_MISMATCH', 'VERIFY')
+            # ① 제품 판정 — 레시피 총 목표량 대비. **유일한 판정이다** (9/22 ② 폐지).
+            spec_err = self.verify_net_g - self.target_total()
+            spec_tol = self.batch_tol_g()
+            # 종전 ②(회계 대조)는 판정하지 않고 **관측만** 한다. 값을 계속 남기는 것은 ② 폐지가
+            # 「배치 기록 교차검증을 포기한다」는 결정이기 때문이다 — 포기한 것이 무엇인지 기록에서
+            # 보여야 한다. 이 수치가 커도 배치는 멈추지 않는다.
+            acct_err = self.verify_net_g - self.dosed_total()
+            self.verify_detail = (f'net {self.verify_net_g:.1f} g · '
+                                  f'①규격 {spec_err:+.1f}/{spec_tol:.1f} · '
+                                  f'②회계 {acct_err:+.1f} (관측, 판정 안 함)')
+            if abs(spec_err) > spec_tol:
+                return self._deviate('BATCH_OUT_OF_SPEC', 'VERIFY', detail=self.verify_detail)
             self.state = 'FINISH'
             return self._carry('workbench', 'passbox_done')
         if k == 'carry' and st == 'FINISH':

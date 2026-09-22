@@ -254,26 +254,34 @@ def test_verify_규격이탈은_BATCH_OUT_OF_SPEC():
     cell = Cell(yields=[100, 50], cup_bias=50.0)
     fsm = _fsm(min_resolvable_g=30.0)
     trace = run(fsm, cell)
-    assert fsm.deviations == [{'kind': 'BATCH_OUT_OF_SPEC', 'step': 'VERIFY', 'count': 1, 'action': 'QA',
-                               'detail': '', 'material_id': 'B'}]
+    d, = fsm.deviations
+    assert {k: d[k] for k in ('kind', 'step', 'count', 'action', 'material_id')} == {
+        'kind': 'BATCH_OUT_OF_SPEC', 'step': 'VERIFY', 'count': 1, 'action': 'QA', 'material_id': 'B'}
+    assert '①규격' in d['detail'] and '②회계' in d['detail'], d['detail']
     assert fsm.state == 'DONE' and ('FINISH', 'carry') in trace          # QA 승인 → 그대로 완료품
 
 
-def test_verify_계측불일치는_VERIFY_MISMATCH():
-    """② 계측 신뢰성 — 제품은 규격 안인데 스쿱 누적과 용기 계량이 어긋난다.
-    ②가 ① 없이 울리려면 min_resolvable_g < Σ(target×tol) 여야 한다 (여기선 3 < 7.5).
-    실제 설정(30 vs 22.5)에서는 ①이 먼저 걸리므로 G1 결과로 임계를 맞춰야 한다 — Q-11."""
-    cell = Cell(yields=[100, 50], cup_bias=5.0)         # 규격(±7.5) 안, 분해능(3) 밖
-    fsm = _fsm(min_resolvable_g=3.0)
+def test_verify_회계불일치는_관측만_하고_판정하지_않는다():
+    """② 폐지 (9/22 사용자·조장 확정) — 제품이 규격 안이면 회계가 어긋나도 배치는 안 멈춘다.
+
+    종전에는 이 상황이 `VERIFY_MISMATCH` 였다. 지금은 **일탈이 아니다** — 값은 `verify_detail`
+    에 관측으로만 남는다. 이것이 「배치 기록 교차검증을 포기한다」의 구체적 모습이다:
+    제품은 합격인데 원료별 투입 기록이 5 g 틀린 배치가 그대로 완료품으로 나간다.
+    """
+    cell = Cell(yields=[100, 50], cup_bias=5.0)         # 규격(±7.5) 안, 회계는 5 g 어긋남
+    fsm = _fsm()
     run(fsm, cell)
-    assert [d['kind'] for d in fsm.deviations] == ['VERIFY_MISMATCH']
+    assert fsm.deviations == [] and fsm.state == 'DONE', fsm.deviations
+    assert '②회계 +5.0 (관측, 판정 안 함)' in fsm.verify_detail, fsm.verify_detail
 
 
-def test_verify_둘_다_통과하면_그대로_완료():
+def test_verify_통과해도_판정_근거를_남긴다():
     cell = Cell(yields=[100, 50])                       # 편향 없음
-    fsm = _fsm(min_resolvable_g=3.0)
+    fsm = _fsm()
     run(fsm, cell)
     assert fsm.deviations == [] and fsm.state == 'DONE'
+    # 일탈이 없어도 수치는 남는다 — process_node 가 CellEvent 로 발행한다
+    assert fsm.verify_detail.startswith('net ') and '①규격' in fsm.verify_detail, fsm.verify_detail
 
 
 def test_invalid_scoop_weigh_retries():
