@@ -578,8 +578,9 @@ def test_213_weigh_residual_무효는_미측정으로_세고_누산하지_않는
     assert r.unmeasured == 1, r.unmeasured
     assert r.actual_g < r.target_g          # 미측정분이 빠져 실제보다 작다
     # ⚠️ `decide()` 를 못 거쳐 verdict 가 **비어 있다.** `process_node._publish_result` 가
-    # `r.verdict or 'OK'` 로 떨어뜨리므로 DispenseResult 는 이 원료를 **OK 로 보고한다**
-    # (I-008 — 열거값에 「모름」이 없다). 결정 3 이 이 경로를 처음 열었으므로 여기서 고정해 둔다.
+    # 이걸 `verdict_of` 로 되매겨 DispenseResult 는 **UNDER 로 보고한다** — 「모름」을 담을
+    # 열거값이 없는 동안의 보수적 처리다 (#108). 발행 쪽 고정은 `test_process_node.py` 의
+    # `test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다` 가 한다.
     # 계약이 INVALID 를 갖게 되면 이 assert 가 먼저 깨져야 한다.
     assert r.verdict == '', r.verdict
 
@@ -658,7 +659,7 @@ def test_213_cleanup_weigh_scoop_은_원료를_먼저_반환한다():
 
 
 def test_invalid_tare_up_to_limit_raises_weigh_invalid():
-    """max_invalid 만큼 무효면 WEIGH_INVALID 일탈로 멈춘다 — 무효 tare 로 배치를 시작하지 않는다."""
+    """`max_invalid_retries` 를 넘으면(총 3회 무효) WEIGH_INVALID 일탈로 멈춘다 — 무효 tare 로 배치를 시작하지 않는다."""
     cell = Cell(yields=[100, 50], cup_invalid_first=3)
     fsm = _fsm()
     run(fsm, cell)

@@ -1058,17 +1058,15 @@ class ProcessNode(Node):
         self._last_result = deepcopy(m)
         self.pub_result.publish(m)
         if r.unmeasured:
-            # ⚠️ 바로 위 verdict 는 **OK 로 나간다.** 계량이 무효였던 사이클은 `decide()` 를 못 거쳐
-            # `ItemRun.verdict` 가 빈 문자열이고, 열거값에 「모름」이 없어 `or 'OK'` 로 떨어진다 (I-008).
+            # 계량이 무효였던 사이클은 `decide()` 를 못 거쳐 `ItemRun.verdict` 가 빈 문자열이고,
+            # 열거값에 「모름」이 없어 위에서 **UNDER 로 되매겨 나간다** (#108 INVALID 상수 전까지).
             # #213 결정 3 이 WEIGH_RESIDUAL 무효를 QA 로 보내면서 **이 경로가 처음으로 실제로 밟힌다**
-            # (그 전에는 ERROR 로 끝나 여기까지 오지 못했다). 계약을 넓히기 전까지는 불확실성을
-            # 이벤트로라도 남긴다 — 그대로 두면 「투입량을 모르는 원료」가 배치 기록에 OK 로만 남고,
-            # `actual_g` 는 미측정분이 빠져 실제보다 작은데 그 사실을 아무도 알 수 없다.
-            # 제대로 고치려면 `DispenseResult.verdict` 에 INVALID 가 필요하다 (계약 — 조장·D).
+            # (그 전에는 ERROR 로 끝나 여기까지 오지 못했다). UNDER 는 「모자랐다」지 「모른다」가
+            # 아니므로 그 차이를 이벤트로 남긴다 — `record_node` 가 배치 기록에 넣는다.
             self.event('WARN', 'DISPENSE_UNMEASURED',
                        f'{r.material_id}: 계량 무효 {r.unmeasured}회로 투입량 불확실 — '
-                       f'actual_g {m.actual_g:.1f} 은 미측정분이 빠진 값이고, '
-                       f'verdict 는 열거값 한계로 OK 로 나간다 (I-008)')
+                       f'actual_g {m.actual_g:.1f} 은 미측정분이 빠진 값이라 실제보다 작고, '
+                       f'verdict 는 「모름」을 담을 열거값이 없어 UNDER 로 보고된다 (#108)')
 
     def _close_attempt(self, outcome: str):
         a, self._attempt = self._attempt, None
