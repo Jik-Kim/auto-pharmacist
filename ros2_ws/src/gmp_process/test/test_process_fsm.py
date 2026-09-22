@@ -352,7 +352,7 @@ def test_verify_직전_영점이_움직이면_재측정하고_한계를_넘으�
     run(fsm, cell)
     assert [(d['kind'], d['step']) for d in fsm.deviations] == [('WEIGH_INVALID', 'VERIFY')]
     assert '영점 이동' in fsm.deviations[0]['detail'], fsm.deviations[0]['detail']
-    assert cell.n_measure == 1 + 1 + 2, cell.n_measure   # SELF_CHECK 1 + TARE 영점 1 + VERIFY 재측정 2회
+    assert cell.n_measure == 1 + 1 + 3, cell.n_measure   # SELF_CHECK 1 + TARE 영점 1 + VERIFY 재측정 3회
 
 
 def test_verify_직전_영점이_한계_안이면_그대로_잰다():
@@ -391,7 +391,9 @@ def test_invalid_scoop_weigh_retries():
     fsm = _fsm()
     trace = run(fsm, cell)
     assert kinds_for(trace, 'SCOOP_TARE') == ['weigh_scoop'] * 3 and fsm.state == 'DONE'   # A: 무효+재계량, B: 1회
-    assert not fsm.deviations and fsm.results[0].invalid == 1
+    # 유효해지면 카운터가 0 으로 돌아간다 — 다음 단계의 무효와 합산되지 않는다 (#213 결정 2)
+    assert fsm.results[0].invalid == 0 and fsm.results[0].invalid_step == ''
+    assert not fsm.deviations
 
 
 def test_grip_fail_retries_then_forced():
@@ -597,9 +599,127 @@ def test_invalid_tare_reweighs_and_does_not_keep_the_bad_value():
     assert fsm.verify_net_g == 146                     # 순량이 정상 경로와 같다 (happy path 와 동일)
 
 
+def _cleanup_trace(cell, fsm):
+    """정리 경로에서 나간 요청을 (kind, station) 으로 뽑는다."""
+    out = []
+    for st, k in run(fsm, cell):
+        if st == 'CLEANUP':
+            out.append(k)
+    return out
+
+
+def test_213_weigh_residual_무효는_미측정으로_세고_누산하지_않는다():
+    """#213 5번 1단계 — 이미 부은 뒤라 되돌릴 게 없고 **투입량만 모른다**.
+
+    0 을 더하면 「안 들어갔다」가 되어 거짓이다. 누산을 건너뛰고 미측정으로 센다 —
+    그래서 `actual_g` 는 실제보다 작고, 그 사실이 `unmeasured` 와 detail 에 남는다.
+    """
+    cell = Cell(yields=[100, 50])
+    fsm = _fsm()
+    tap_n = [0]
+    orig = cell.__call__
+
+    def tap(req):
+        if req['kind'] == 'weigh_scoop' and fsm.state == 'WEIGH_RESIDUAL':
+            tap_n[0] += 1
+            if tap_n[0] <= 3:                        # 첫 사이클의 잔량 계량만 무효로 (재시도 2회 + 3회째)
+                return {'gross_g': 0.0, 'valid': False}
+        return orig(req)
+
+    run(fsm, tap)
+    d = next(x for x in fsm.deviations if x['step'] == 'WEIGH_RESIDUAL')
+    # 투입 뒤라 되돌릴 게 없으므로 **QA** 다 (#213 결정 3). 재계량은 이미
+    # max_invalid_retries 가 끝냈으므로 정책표는 즉시 처분만 한다 (결정 1).
+    assert (d['kind'], d['action']) == ('WEIGH_INVALID', 'QA')
+    assert '미측정 1회' in d['detail'], d['detail']
+    # QA 승인으로 배치가 이어지므로 그 원료는 results 에 담긴다 (결정 3).
+    r = fsm.results[0]
+    assert r.unmeasured == 1, r.unmeasured
+    assert r.actual_g < r.target_g          # 미측정분이 빠져 실제보다 작다
+    # ⚠️ `decide()` 를 못 거쳐 verdict 가 **비어 있다.** `process_node._publish_result` 가
+    # 이걸 `verdict_of` 로 되매겨 DispenseResult 는 **UNDER 로 보고한다** — 「모름」을 담을
+    # 열거값이 없는 동안의 보수적 처리다 (#108). 발행 쪽 고정은 `test_process_node.py` 의
+    # `test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다` 가 한다.
+    # 계약이 INVALID 를 갖게 되면 이 assert 가 먼저 깨져야 한다.
+    assert r.verdict == '', r.verdict
+
+
+def test_213_verify_무효는_최종계량_미측정으로_남는다():
+    """#213 5번 1단계 — `verify_net_g` 를 0.0 으로 남기지 않는다.
+
+    고치기 전에는 QA 승인 시 배치 기록에 순량 0.0 이 찍힌 채 완성품으로 나갔다.
+    이제 `verify_unmeasured` 와 detail 이 「모른다」를 명시한다.
+    """
+    cell = Cell(yields=[100, 50], cup_invalid_first=0)
+    fsm = _fsm()
+    orig = cell.__call__
+
+    def tap(req):
+        if req['kind'] == 'weigh' and fsm.state == 'VERIFY':
+            return {'gross_g': 0.0, 'net_g': 0.0, 'valid': False}
+        return orig(req)
+
+    run(fsm, tap)
+    d = fsm.deviations[-1]
+    assert (d['kind'], d['step']) == ('WEIGH_INVALID', 'VERIFY')
+    assert fsm.verify_unmeasured is True
+    assert '최종 계량 미측정' in fsm.verify_detail, fsm.verify_detail
+    assert '판정 불가' in fsm.verify_detail, fsm.verify_detail
+
+
+def test_213_cleanup_투입전_세_단계의_요청_순서를_고정한다():
+    """#213 4번 — 손에 뭐가 있느냐로 정리 경로가 갈린다 (9/22 조장 확인).
+
+    `TARE` 빈 그리퍼 → 정리 없음 · `SCOOP_TARE` 빈 스쿱 → 반환 없이 스쿱만 반납 ·
+    `WEIGH_SCOOP` 원료 든 스쿱 → 원료통 반환 후 스쿱 반납. 중간 경유는 `material_N`(AT) 다.
+    빈 스쿱을 원료통에 기울이는 동작(SCOOP_TARE 의 RETURN_MATERIAL)은 넣지 않는다.
+    """
+    # TARE — 정리 없음
+    fsm = _fsm()
+    assert _cleanup_trace(Cell(yields=[100, 50], cup_invalid_first=3), fsm) == []
+    d, = fsm.deviations
+    assert (d['kind'], d['step'], d['action']) == ('WEIGH_INVALID', 'TARE', 'FORCED')
+    assert '정리 없음' in d['detail'], d['detail']
+    assert fsm.state == 'ERROR'
+
+    # SCOOP_TARE — 반환 없이 스쿱만 반납
+    fsm = _fsm()
+    assert _cleanup_trace(Cell(yields=[100, 50], invalid_first=3), fsm) == ['move', 'move', 'grip']
+    d, = fsm.deviations
+    assert (d['kind'], d['step'], d['action']) == ('WEIGH_INVALID', 'SCOOP_TARE', 'FORCED')
+    assert 'return_material' not in d['detail'], d['detail']   # 빈 스쿱을 기울이지 않는다
+    assert fsm.state == 'ERROR'
+
+
+def test_213_cleanup_weigh_scoop_은_원료를_먼저_반환한다():
+    """#213 4번 — `WEIGH_SCOOP` 은 스쿱에 원료가 있으므로 반환이 맨 앞에 온다."""
+    cell = Cell(yields=[100, 50], invalid_first=3)
+    cell.invalid_left = 0                       # SCOOP_TARE 는 통과시키고
+    fsm = _fsm()
+    trace = []
+    orig = cell.__call__
+
+    def tap(req):
+        # WEIGH_SCOOP 두 번을 무효로 돌려준다
+        if req['kind'] == 'weigh_scoop' and fsm.state == 'WEIGH_SCOOP':
+            tap.n += 1
+            if tap.n <= 3:
+                return {'gross_g': 0.0, 'valid': False}
+        return orig(req)
+    tap.n = 0
+    for st, k in run(fsm, tap):
+        if st == 'CLEANUP':
+            trace.append(k)
+    assert trace == ['return_material', 'move', 'move', 'grip'], trace
+    d = fsm.deviations[-1]
+    assert (d['kind'], d['step'], d['action']) == ('WEIGH_INVALID', 'WEIGH_SCOOP', 'FORCED')
+    assert 'return_material' in d['detail'], d['detail']
+    assert fsm.state == 'ERROR'
+
+
 def test_invalid_tare_up_to_limit_raises_weigh_invalid():
-    """max_invalid 만큼 무효면 WEIGH_INVALID 일탈로 멈춘다 — 무효 tare 로 배치를 시작하지 않는다."""
-    cell = Cell(yields=[100, 50], cup_invalid_first=2)
+    """`max_invalid_retries` 를 넘으면(총 3회 무효) WEIGH_INVALID 일탈로 멈춘다 — 무효 tare 로 배치를 시작하지 않는다."""
+    cell = Cell(yields=[100, 50], cup_invalid_first=3)
     fsm = _fsm()
     run(fsm, cell)
     assert [(d['kind'], d['step']) for d in fsm.deviations] == [('WEIGH_INVALID', 'TARE')]

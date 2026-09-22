@@ -26,8 +26,10 @@ def test_timeout_after_max_attempts():
 
 
 def test_invalid_then_deviation():
-    assert decide(100, 0, 5, 1, False, 0, CFG).action == 'SCOOP'
-    assert decide(100, 0, 5, 1, False, 1, CFG).kind == 'WEIGH_INVALID'
+    # max_invalid_retries=2 → 재시도 2회까지는 다시 재고 3회째 무효에서 일탈 (#213 결정 1)
+    assert decide(100, 0, 5, 1, False, 1, CFG).action == 'SCOOP'
+    assert decide(100, 0, 5, 1, False, 2, CFG).action == 'SCOOP'
+    assert decide(100, 0, 5, 1, False, 3, CFG).kind == 'WEIGH_INVALID'
 
 
 def test_scale_tare_and_reading():

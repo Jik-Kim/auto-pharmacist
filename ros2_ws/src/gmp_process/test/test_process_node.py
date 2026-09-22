@@ -29,6 +29,7 @@ from gmp_interfaces.srv import SubmitOrder                    # noqa: E402
 
 from fake_skill_node import FakeSkillNode                     # noqa: E402
 from gmp_process.nodes.process_node import ProcessNode        # noqa: E402
+from gmp_process.core.process_fsm import ItemRun             # noqa: E402
 
 STATIONS = os.path.join(os.path.dirname(__file__), '..', '..', 'gmp_bringup', 'params', 'stations.yaml')
 
@@ -462,6 +463,43 @@ def test_refill_wait_puts_reason_at_head_of_note(cell):
     assert proc.note == '', f'대기가 끝나면 사유를 내린다: {proc.note!r}'
 
 
+def test_t6a_missing_scoop_retries_grip_then_forced(cell):
+    """T6(a) 고의 장애 — 스쿱을 거치대에서 빼둔 채 시작하면 파지가 계속 실패한다 (#111).
+
+    절차서(`demo_run_procedure.md` T6)는 "`GRIP_FAIL` 자동 재시도" 까지만 적고 결말이 없다.
+    실제로는 **3회 RETRY 뒤 4회째가 FORCED 로 올라가 ERROR 로 끝난다** — 사람이 스쿱을 꽂기
+    전에는 어떤 재시도도 성공할 수 없으므로 무한 재시도를 하지 않는 것이 맞다.
+    """
+    proc, fake, col = cell
+    fake.missing_scoop = True
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_done(proc) == 'ERROR', _why(proc)
+    kinds = [(d['kind'], d['action']) for d in proc.fsm.deviations]
+    assert kinds == [('GRIP_FAIL', 'RETRY')] * 3 + [('GRIP_FAIL', 'FORCED')], kinds
+    assert all(d.kind == Deviation.GRIP_FAIL for d in col.devs), [d.kind for d in col.devs]
+
+
+def test_t6c_over_scoop_returns_to_material_then_rescoops_shallower(cell):
+    """T6(c) 고의 장애 — 원료를 수북이 담아 초과 스쿱을 유도한다 (#111).
+
+    **일탈이 뜨지 않는다.** 초과는 붓기 전에 `RETURN_MATERIAL` 로 되돌리고 깊이를 줄여 다시 푸는
+    정상 경로다 (v1.3 뒤 `OVERFILL` 이 정상 경로에서 안 나오는 것과 같은 이유). 절차서 T6 행의
+    "각각 `deviation` 이 뜨고 기록에 남는다" 는 (c)에는 해당하지 않는다 — 기록은
+    `ScoopCycle.outcome = RETURNED` 로 남는다.
+    """
+    proc, fake, col = cell
+    fake.scoop_gain = 3.0                          # 공칭 40 g 자리에 120 g — 남은 목표 + 허용오차 초과
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_done(proc) == 'DONE', _why(proc)
+    assert proc.fsm.deviations == [], proc.fsm.deviations
+    assert any(c.startswith('return_material:') for c in fake.calls), fake.calls
+    outcomes = [c.outcome for c in col.cycles]
+    assert ScoopCycle.RETURNED in outcomes and ScoopCycle.COMPLETE in outcomes, outcomes
+    # 반환은 붓기 시도를 소모하지 않는다 — returns 로 따로 센다
+    r = proc.fsm.results[0]
+    assert r.returns >= 1 and r.attempts == 1, (r.returns, r.attempts)
+
+
 def test_scoop_skill_failure_does_not_lose_scoop_cycle(cell):
     """스쿱 스킬이 실패(FORCE_LIMIT)해 같은 요청을 다시 부를 때 앞 시도 기록이 덮여 사라지면 안 된다 (리뷰 P2)."""
     proc, fake, col = cell
@@ -520,6 +558,41 @@ def test_scoop_cycle_attempt_numbers_are_unique_per_material(cell):
 
 
 # ── NUDGE 게이트 (추가 기능 7 · D-21) ────────────────────────────────────
+def test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다(cell):
+    """#213·#108 — `decide()` 를 못 거친 원료가 verdict=OK 로 발행되던 구멍.
+
+    계량이 무효라 QA 로 갔다가 승인된 원료는 `ItemRun.verdict` 가 빈 문자열이다.
+    종전 `r.verdict or 'OK'` 는 이걸 **OK 로** 떨어뜨렸다 — 목표 100 g·실제 0 g·
+    오차 −100 % 인데 판정만 OK 라, 판정 필드로 집계하는 소비자는 성공으로 센다.
+
+    `DispenseResult` 에 「모름」을 담을 열거값이 없으므로(#108 INVALID 상수 전까지)
+    **보수적으로 미달로 보고한다** — 미측정분은 actual_g 에 안 들어가 실제보다 작다.
+    계량 경로 전체를 태우지 않고 발행 함수만 직접 부른다 — fake_skill_node 에 무효
+    손잡이를 더하면 test/t6-fault-injection 과 충돌한다.
+    """
+    proc, _fake, col = cell
+    proc.batch_id = 'B-테스트'
+
+    unmeasured = ItemRun(material_id='A', target_g=100.0, tol_pct=5.0, unmeasured=1)
+    proc._publish_result(unmeasured)                 # verdict '' · actual 0.0
+    assert _wait_until(lambda: len(col.results) == 1), '발행이 안 됐다'
+    m = col.results[0]
+    assert (m.verdict, m.actual_g) == (DispenseResult.UNDER, 0.0), m.verdict
+    assert round(m.error_pct) == -100, m.error_pct
+
+    # 불확실성은 이벤트로도 남는다 — record_node 가 배치 기록에 넣는다
+    assert _wait_until(lambda: any(e.code == 'DISPENSE_UNMEASURED' for e in col.events))
+    warn = [e for e in col.events if e.code == 'DISPENSE_UNMEASURED'][-1]
+    assert warn.level == CellEvent.WARN and '불확실' in warn.text, warn.text
+
+    # 대조군 — 정상 원료는 그대로 OK 이고 경고도 없다
+    ok = ItemRun(material_id='B', target_g=100.0, tol_pct=5.0, actual_g=98.0, verdict='OK')
+    proc._publish_result(ok)
+    assert _wait_until(lambda: len(col.results) == 2)
+    assert col.results[1].verdict == DispenseResult.OK
+    assert len([e for e in col.events if e.code == 'DISPENSE_UNMEASURED']) == 1
+
+
 def _wait_until(fn, timeout=20.0):
     t0 = time.time()
     while time.time() - t0 < timeout:
