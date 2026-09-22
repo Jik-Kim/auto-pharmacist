@@ -102,6 +102,61 @@ def test_transfer_joint_speed_is_separate_from_cartesian_speed():
     assert arm.R.calls[-1][2] == {'vel': 2.0, 'acc': 4.0}
 
 
+def test_movejx_uses_base_absolute_and_checks_solution():
+    arm = _arm()
+    target = [423, 93, 180, 90, -90, -90]
+    arm.current_posx = lambda: target
+    arm.solution_space = lambda: 3
+    arm.movejx_cancellable(target, 3, .2, lambda: False, 10)
+    assert arm.R.calls[0] == ('amovejx', (tuple(target),),
+                              dict(sol=3, vel=12., acc=12., ref=0, mod=0))
+
+
+@pytest.mark.parametrize('fault', ['wrong_solution', 'wrong_pose', 'query_error', 'cancel'])
+def test_movejx_failed_completion_stops_motion(fault):
+    arm = _arm()
+    target = [423, 93, 180, 90, -90, -90]
+    arm.current_posx = lambda: ([0]*6 if fault == 'wrong_pose' else target)
+    clock = [0.]
+    arm._now = lambda: clock[0]
+    arm._sleep = lambda t: clock.__setitem__(0, clock[0] + t)
+    stops = []
+    arm.stop_motion = lambda: stops.append(True)
+
+    def solution():
+        if fault == 'query_error':
+            raise RuntimeError('query failed')
+        return 2 if fault == 'wrong_solution' else 3
+
+    arm.solution_space = solution
+    cancel = lambda: fault == 'cancel' and bool(arm.R.calls)
+    with pytest.raises((RuntimeError, TimeoutError)):
+        arm.movejx_cancellable(target, 3, .2, cancel, .1)
+    assert stops == [True]
+
+
+@pytest.mark.parametrize('sol,timeout,cancel', [(True, 10, False), (8, 10, False),
+                                             (3, 0, False), (3, 10, True)])
+def test_movejx_bad_request_never_dispatches(sol, timeout, cancel):
+    arm = _arm()
+    with pytest.raises((ValueError, RuntimeError)):
+        arm.movejx_cancellable([0]*6, sol, .2, lambda: cancel, timeout)
+    assert not arm.R.calls
+
+
+@pytest.mark.parametrize('sol', [3, -1, 8, True])
+def test_current_solution_result_is_validated(sol):
+    arm = _arm()
+    calls = []
+    arm._bounded_query = lambda operation: calls.append(operation) or types.SimpleNamespace(sol_space=sol)
+    if sol == 3:
+        assert arm.solution_space() == 3
+    else:
+        with pytest.raises(RuntimeError):
+            arm.solution_space()
+    assert calls == ['get_current_solution_space']
+
+
 @pytest.mark.parametrize('method', ['movej_cancellable', 'movel_cancellable'])
 def test_pre_cancelled_motion_never_starts(method):
     arm = _arm()

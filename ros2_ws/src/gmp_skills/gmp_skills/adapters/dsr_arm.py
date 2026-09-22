@@ -153,6 +153,30 @@ class DsrArm:
                                     acc=self.acc * vel_scale, ref=self.R.DR_BASE,
                                     mod=self.R.DR_MV_MOD_ABS))
 
+    def solution_space(self):
+        """단일 워커에서 현재 관절 구성을 제한 시간 내 조회한다."""
+        sol = self._bounded_query('get_current_solution_space').sol_space
+        if type(sol) is not int or not 0 <= sol <= 7:
+            raise RuntimeError(f'잘못된 solution_space: {sol!r}')
+        return sol
+
+    def movejx_cancellable(self, x6, sol, vel_scale, cancel_requested, timeout_s):
+        """상부 접근점으로 관절 이동하고 TCP와 선택한 관절 구성을 함께 확인한다."""
+        if type(sol) is not int or not 0 <= sol <= 7:
+            raise ValueError('solution_space는 0~7 정수여야 한다')
+        if not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise ValueError('motion timeout must be finite and positive')
+        if cancel_requested():
+            raise RuntimeError('cancelled')
+        self._require_ok('amovejx', self.R.amovejx(
+            self.posx(*x6), sol=sol, vel=self.vel * vel_scale,
+            acc=self.acc * vel_scale, ref=self.R.DR_BASE, mod=self.R.DR_MV_MOD_ABS))
+        self.wait_motion_cancellable(
+            cancel_requested, timeout_s,
+            target_reached=lambda: (
+                pose_matches(self.current_posx(), x6, self.pose_xyz_tolerance,
+                             self.pose_rotation_tolerance) and self.solution_space() == sol))
+
     def movesx(self, poses, vel_scale=1.0):
         return self._require_ok(
             'movesx', self.R.movesx([self.posx(*p) for p in poses], vel=self.vel * vel_scale,

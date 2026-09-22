@@ -74,10 +74,23 @@ ros2 action send_goal /cell/move_to_station gmp_interfaces/action/MoveToStation 
 
 ## 관절 이송 티칭·인계
 
-9/19 변경은 단위 테스트까지만 개발자가 검증한다. **가상·실물 검증은 사용자가 수행한다.**
-현재 `stations.yaml: transfers`의 두 경로는 `enabled: false`다. **가상 모드는 활성 여부·관절 속도와 무관하게 기존 `amovel` 직선 이동을 사용**하며 보호 목적지 진입 제한도 적용하지 않는다.
-**실물 모드는** 미티칭·비활성 경로와 보호 목적지의 임의 출발 진입을 거부한다. 따라서 실물 FINISH 반송은 티칭·설정·검증 뒤에 가능하다.
-기존 ROS Action 필드(`station_id`, `approach`, `vel_scale`)는 그대로다.
+9/22 승인: `workbench`, `passbox_empty`, `passbox_done`, `reject_bin`은
+`stations.yaml`의 `solution_space: 3`을 사용한다. 목표 ABOVE까지 `amovejx`로 관절 이동하고
+AT까지는 직선으로 접근한다. 같은 스테이션 AT↔ABOVE에서는 현재 sol=3을 먼저 확인하며
+작업점에서 다른 관절 구성으로 뒤집지 않는다. 출발 용기 스테이션에서는 도착 이력·파지·sol을
+확인하고 EXIT까지 직선 이탈한다. 목적지에 등록된 이전 관절 경로와 solution_space 설정의 중복은 거부한다.
+가상에서도 이 네 스테이션은 같은 명령 경로를 사용한다.
+
+`amovejx` 속도·가속도는 기존 `movej`와 같이 `robot.vel`·`robot.acc`에 `vel_scale`을 곱하며
+단위는 deg/s·deg/s²다. TCP 직선 속도 제한이나 충돌 회피를 뜻하지 않는다.
+도착은 IDLE·TCP 위치/회전·sol 일치를 모두 확인한다. sol 조회는 기존 벤더 클라이언트와
+`robot.startup_timeout_s`를 사용하며, 조회 실패·취소·시간초과 시 성공 처리하지 않는다.
+
+기존 `workbench → passbox_done` 관절 티칭 경로는 새 접근 방식으로 대체했다.
+`passbox_done → nudge_wait`는 `enabled: false`를 유지하며 변경된 높이·관절 구성에 맞춰
+재티칭·검증해야 한다. 실물에서 이 경로는 자동 우회하지 않는다. 가상에서는 기존 직선 폴백을 유지한다.
+ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거나 노드를 재시작하지 않는다.
+**다음 기동에서 설정을 읽으며, 새 경로의 간섭·용기 기울기·취소 정지는 실물 검증이 필요하다.**
 
 ### 필요한 티칭
 
@@ -87,16 +100,16 @@ ros2 action send_goal /cell/move_to_station gmp_interfaces/action/MoveToStation 
 | 구간 | 반드시 기록할 값 | 확인할 조건 |
 |---|---|---|
 | 원료 반환 | A/B/C 시작 `return_start_posx`·끝 `return_end_posj` 입력 완료(9/21). 끝 posx는 참고 | 시작 직선→끝 관절 이동 후 유지. 동일 원료통 낙하·관절 경로 간섭 확인 필요. 재스쿱 연결 미구현 |
-| `workbench → passbox_done` | 출발 파지 AT·ABOVE·EXIT 관절각 및 목적지 ABOVE 관절각 반영 완료 | 직접 관절 이송의 기울기·흘림·간섭 확인 후 필요할 때만 중간 관절점 추가 |
-| `passbox_done → nudge_wait` | passbox_done ABOVE·EXIT 및 nudge_wait AT 관절각 반영 완료. **추가 필수 티칭값 없음** | 놓기 후 ABOVE 후퇴 완료 상태에서 EXIT로 직선 이탈하고 nudge_wait AT로 관절 직접 도착. 간섭 검증은 사용자 담당 |
+| 네 용기 스테이션 접근 | 목표 자세에서 조회한 sol=3을 설정에 반영 | EXIT 직선 이탈→목적지 ABOVE 관절 이동→AT 직선 하강의 간섭·기울기·흘림 검증 |
+| `passbox_done → nudge_wait` | 기존 값은 보존했지만 passbox_done ABOVE·EXIT 관절각은 새 Z/sol=3에 맞춰 재티칭 필요 | 놓기 후 ABOVE 후퇴 완료 상태에서 EXIT로 직선 이탈하고 nudge_wait AT로 관절 직접 도착. 간섭 검증은 사용자 담당 |
 
 - ABOVE·EXIT는 기준점에 **BASE Z 상대 높이**를 더해 계산한다. XYZ/자세 절대값은 중복 저장하지 않는다.
-  - workbench 파지: `posx` 기준 `approach_mm: 100`, `exit_mm: 200` → Z=200/300.
-  - passbox_empty·passbox_done·reject_bin: AT Z=100, `approach_mm: 50`, `exit_mm: 150` → Z=150/250.
+  - workbench 파지: AT Z=130, `approach_mm: 50`, `exit_mm: 150` → Z=180/280.
+  - passbox_empty·passbox_done·reject_bin: AT Z=130, `approach_mm: 50`, `exit_mm: 150` → Z=180/280.
   - 스쿱·원료·계량의 높이는 바꾸지 않는다. **nudge_wait ABOVE는 사용하지 않는다.**
   workbench는 AT/ABOVE→EXIT를 확인한다. passbox_done은 놓기 후 AT→ABOVE 후퇴를 먼저 완료하고,
   넛지 이송에서는 ABOVE→EXIT만 수행한다. AT에서 넛지로 바로 요청하면 이동 없이 거부한다.
-  기존 절대 `exit_posx` 경로도 읽지만, 이번 두 경로는 스테이션의 상대 높이로 계산한다.
+  기존 절대 `exit_posx` 경로도 읽지만, 현재 경로는 스테이션의 상대 높이로 계산한다.
 - `waypoints_posj` 마지막 점은 `arrival: above`이면 목적지 ABOVE, `arrival: at`이면 목적지 AT다.
   관절 이동 후 실제 TCP의 위치·자세를 해당 도착점과 대조한다. nudge_wait는 제공된 AT 관절각을
   YAML 별칭으로 참조하므로 중복 입력하지 않는다.
@@ -110,10 +123,9 @@ ros2 action send_goal /cell/move_to_station gmp_interfaces/action/MoveToStation 
 - 출발 AT/ABOVE에서 확인된 관절 구성과 마지막 도착 상태가 맞아야 한다.
   티칭 도중 수동 이동하거나 노드를 재시작한 뒤에는 이전 위치·파지 이력을 재사용하지 않는다.
   정상적인 MoveToStation 도착과 SetGripper 성공 이력을 다시 쌓아야 한다.
-  nudge 경로만 먼저 검증할 때는 수동으로 티칭된 passbox_done **ABOVE**에 놓고,
-  그 위치의 MoveToStation(`station_id: passbox_done, approach: 0`)을 요청하면 위치·관절각 일치 시 **움직이지 않고** 출발 이력을
-  확립한다. 이때 nudge 경로는 티칭값을 채워 활성화한 상태여야 하며, 이후 SetGripper
-  열기 성공과 실제 열림 폭을 확인해야 한다. 위치가 다르면 자동 이동 없이 거부한다.
+  nudge 경로는 먼저 새 sol=3의 passbox_done ABOVE·EXIT를 재티칭하고 속도를 설정한다.
+  MoveToStation으로 passbox_done ABOVE 도착 이력을 쌓고 SetGripper 열기 성공과
+  실제 열림 폭을 확인한 뒤, 검증한 경로를 활성화한다.
   빈 그리퍼는 성공한 열기 이력, 약통은 약통 스테이션 AT에서 성공한 파지 이력이 필요하다.
   파지 피드백은 각 이동 구간 전후에 확인한다. 이는 이동 중 연속 파지 감시를 대체하지 않는다.
 - 취소·실패 뒤에는 이송을 바로 재시도하지 않는다. 상태를 확인하고 출발 위치·파지 이력을

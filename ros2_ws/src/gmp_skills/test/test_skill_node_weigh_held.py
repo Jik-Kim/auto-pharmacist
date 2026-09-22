@@ -334,7 +334,7 @@ def test_container_weigh_grips_at_and_measures_at_above(monkeypatch):
     reading = object()
     at = [423.0, 93.0, 100.0, 90.0, -90.0, -90.0]
     above = [423.0, 93.0, 200.0, 90.0, -90.0, -90.0]
-    workbench = SimpleNamespace(posx=at, above=lambda _: above)
+    workbench = SimpleNamespace(posx=at, above=lambda _: above, extra={})
     node = SimpleNamespace(
         _require_scoop_extracted=lambda: None,
         get_parameter=lambda name: SimpleNamespace(value={

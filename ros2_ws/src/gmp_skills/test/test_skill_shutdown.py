@@ -125,7 +125,7 @@ def test_cancel_during_container_measurement_keeps_grip_and_pose(monkeypatch):
         _require_scoop_extracted=lambda: None,
         get_parameter=lambda key: SimpleNamespace(value={'scale.simulated': True,
             'gripper.cup_width_mm': 30, 'gripper.force_n': 20}[key]),
-        stations=SimpleNamespace(approach_mm=60, get=lambda _: SimpleNamespace(posx=[1]*6, above=lambda _: [2]*6)),
+        stations=SimpleNamespace(approach_mm=60, get=lambda _: SimpleNamespace(posx=[1]*6, above=lambda _: [2]*6, extra={})),
         arm=SimpleNamespace(movel=lambda target, _: calls.append(target)), vel_scale=0.3,
         gripper=SimpleNamespace(grip=lambda *_: (True, 30, True), release=lambda _: calls.append('release')),
         _measure_weight_reading=measure)
