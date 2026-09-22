@@ -17,7 +17,6 @@ class SafetyRecovery:
         request = self.request
         if (request and data.get('origin') == 'recovery_request'
                 and data.get('request_id') == request['request_id']
-                and data.get('operator_id') == request['operator_id']
                 and request['generation'] == self.generation):
             # 복구 시작은 해제 근거가 아니다. 응답이 먼저 왔거나 중복 수신돼도 결과를 덮지 않는다.
             return
@@ -68,12 +67,11 @@ class SafetyRecovery:
         self.message = str(result.get('message', ''))
         return True
 
-    def retry(self, actor, request_id):
+    def retry(self, _actor, request_id):
         if (self.phase != 'uncertain' or not self.request
                 or self.request['request_id'] != request_id
-                or self.request['operator_id'] != actor
                 or self.request['generation'] != self.generation):
-            raise ValueError('이 작업자의 결과 미확인 요청만 같은 ID와 내용으로 재확인할 수 있습니다')
+            raise ValueError('현재 안전정지의 결과 미확인 요청만 같은 ID와 내용으로 재확인할 수 있습니다')
         self.phase = 'pending'
         self.message = '같은 요청 ID·원본 내용으로 C에 결과 재확인 중'
         return copy.deepcopy(self.request)

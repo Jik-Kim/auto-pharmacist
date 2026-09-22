@@ -375,8 +375,7 @@ class HmiRosNode(Node):
                 request = self.safety_recovery.request
                 if isinstance(detail, dict):
                     # 다른 요청/이전 정지의 성공으로 현재 정지를 해제하지 않는다.
-                    if (request and detail.get('request_id') == request['request_id']
-                            and detail.get('operator_id') == request['operator_id']):
+                    if request and detail.get('request_id') == request['request_id']:
                         self.safety_recovery.finish(request, detail)
                     else:
                         self.snap['external_safety_recovery'] = detail
