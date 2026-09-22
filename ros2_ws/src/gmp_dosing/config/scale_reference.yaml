@@ -1,41 +1,311 @@
-# G1 계량 실측 요약 — 코드가 읽는 파일이 아니다. 런타임 값은 gmp_bringup/params/common.yaml 의 scale.* 가 단일 출처.
+# 저울 보정 근거 요약 — 코드가 읽는 파일이 아니다. 런타임 값은 gmp_bringup/params/common.yaml 의 scale.* 가 단일 출처.
 # 숫자는 calibration/*.csv 를 core/calib.py 로 돌리면 다시 나온다:
-#   python3 -m gmp_dosing.core.calib ros2_ws/src/gmp_dosing/calibration/g1_scoop_0919_both.csv --method tool_force
+#   python3 -m gmp_dosing.core.calib ros2_ws/src/gmp_dosing/calibration/g1_rezero_0921_m3_2point.csv --method tool_force
 # test/test_dosing.py 가 CSV → 이 값 → ScaleConfig 기본값의 정합을 검사한다.
+#
+# 2026-09-21 영점 재작업으로 전부 다시 쟀다. 9/18·9/19 측정은 폐기했다 (records/deprecated/scale_20260921/).
+# 측정 과정과 그때 알아낸 것(자세 의존·요동 주기·파지 영향)은 calibration/README.md 에 있다.
 
-reference_weights:            # 실제 저울로 잰 물체 자체 무게 [g]
-  empty_scoop_g: 32.0
+status: measured
+measured_on: 2026-09-21
+station: material_3          # ⚠️ 이 보정은 이 자세에서 잰 것이다. material_1·2 는 요동이 5~9배 커 같은 값을 쓸 수 없다
+scoop: scoop_3               # 세 스쿱은 파지부 두께만 다르고 무게·무게중심이 같아 보정을 공유한다 (9/21 확인)
+
+# ── 9/22 용기 계량 자세 ─────────────────────────────────────────────
+# ⚠️ 관절 자세가 곧 측정 조건이다 — 9/21 에 material_1/2/3 이 σ 5~9배 차이 난 것이 자세 때문이었다.
+# 아래는 9/22 용기 3점(①)·표류(④) 를 잰 자세다. 사용자가 **운영이 쓸 posj 에 직접 맞춰** 조그했다.
+weigh_posture_0922:
+  station: workbench
+  posj_deg: [49.65, 47.67, 76.41, 123.14, -118.39, -147.14]
+  source: 펜던트 조그 — ros2 topic echo /dsr01/joint_states --once --field position (rad→deg)
+  note: |
+    머지된 stations.yaml 에는 이 값이 없다. posj 가 있는 곳은 safe 와 넛지 경로
+    (start_at_posj·start_above_posj·exit_posj) 뿐이고 workbench 를 포함한 스테이션 10곳은 posx 뿐이다
+    (9/22 팀장이 로컬·origin 전 브랜치와 워크트리 두 곳을 훑어 확인). 조장이 아직 안 올린 상태다.
+    skill_node:615 가 st.extra['posj'] 가 있으면 movej, 없으면 :634 의 movel 로 빠지는 구조라
+    **기구는 이미 있고 값만 안 들어가 있다.**
+    참고로 같은 stations.yaml 의 workbench→passbox_done start_at_posj
+    [44.13, 56.20, 79.60, 124.83, -119.18, 55.21] 와 J1~J5 가 5~9° 안이다. J6 만 크게 다른데
+    손목 롤이고 Fz 는 베이스 좌표계(dsr_arm.py:272)라 계량값에 안 붙는다.
+    → 조장 posj 가 올라오면 이 값과 대조한다. J1~J5 기준 몇 도 안이면 그대로 쓰고,
+      크게 다르면 ① 3점만 다시 잰다 (9/22 팀장 판단). 9/21 결정대로 계량 자세를 옮기면
+      그 자리에서 재측정하는 것이 원칙이라 어느 쪽이든 오늘 값이 버려지지는 않는다.
+
+method: tool_force           # workpiece 는 이번에 판단 근거를 만들지 않았다 — 필요하면 같은 CSV 로 재분석 가능
+
+reference_weights:           # 실제 저울로 잰 물체 자체 무게 [g]
+  empty_scoop_g: 32.0        # scoop_1/2/3 동일 (파지부 테이프·보드롱은 무게에 영향 없음)
   empty_container_g: 78.0
 
-method: tool_force            # 9/19 확정 (D-07). workpiece 는 아래 사유로 탈락
-
-tool_force_calibration:       # 9/19, 같은 자세·같은 세션, 빈 스쿱 32 g 3세트 + 원료 담은 132 g 3세트 (세트마다 다시 잡음)
+tool_force_calibration:
   fz_sign: -1.0
-  gain: 0.8859                # 두 점 직선 — 실제 100 g 차이가 센서 113 g 으로 읽힌다. 단일점 offset 274.8(32 g) vs 261.9(132 g) 차 13 g ≈ 3σ 라 gain 을 둔다
-  offset_g: 247.091
-  min_resolvable_g: 19.0      # skill_node 의 현재 표본(20개 × 0.05 s, 중복 섞임)은 9/18 조건(3σ 18.0) — 표본 간격을 늘리면 14 로 내린다 (아래 sampling)
-  max_std_g: 10.0             # 독립 표본의 회차 내부 σ p95 7.8 g 위. 9/18 의 5.0 은 중복 표본이라 과소평가였다
-  status: two_point_line
-  basis_0919:
-    file: calibration/g1_scoop_0919_both.csv
-    sets_per_weight: 3
-    trials_per_set: 30
-    samples_per_trial: 10
-    effective_period_s: 0.82  # 설정 0.1 s 였지만 get_workpiece_weight 호출이 0.7 s 걸려 실제 간격. 그래서 표본이 전부 독립 (중복 0 %)
-    w32:  {repeat_sigma_g: 4.2004, three_sigma_g: 12.6012, offset_single_g: 274.787, set_drift_g: 8.6, within_trial_sigma_p95_g: 7.6081}
-    w132: {repeat_sigma_g: 4.1333, three_sigma_g: 12.3998, offset_single_g: 261.911, set_drift_g: 7.9, within_trial_sigma_p95_g: 7.7621}
-    fit: {gain: 0.8859, offset_g: 247.091, n_weights: 2}
-  basis_0918:                 # 이전 실측 — calibration/g1_scoop133g_tool_force.csv (스쿱+원료 총 133 g, 6세트×30회×10표본, 빠른 표본이라 43 % 중복)
-    offset_single_g: 260.164  # 9/19 의 132 g 점(261.9) 과 2 g 차 — 날이 바뀌어도 offset 은 안정
-    repeat_sigma_g: 6.0130
-    three_sigma_g: 18.0389
-  sampling:
-    finding: 표본이 독립이면 3σ 12.6, 중복이 섞이면(0.05 s 간격) 18. σ 는 표본 수가 아니라 **간격**이 정한다
-    next: skill_node measure_force 의 period_s(현재 0.05 고정) 를 파라미터로 빼고 센서 갱신 주기 이상으로 — A. 그 뒤 min_resolvable_g 14
+  gain: 1.03                 # 두 측정의 교차 검증 — scoop_1 3점 1.0279(±0.012) · scoop_3 2점 1.0331
+  offset_g: 195.0            # 세션마다 ±5 g 움직인다 (190.8~197.4). 아래 offset_is_cancelled 참조
+  min_resolvable_g: 5.0      # 운영 조건 실측 3σ 4.01 g + 여유. 레시피 A·B·C 셋 다 판정 가능 (아래 resolvable)
+  max_std_g: 8.0             # ⚠️ [재검토 필요 — 9/22 재측정 뒤 확정] 스쿱 계량 p95 6.95 위로 잡은 값인데
+                             #    용기 계량은 p95 9.09 다 → valid 13/15(87 %). 10.0 이면 15/15.
+                             #    subject 별로 쪼개는 안은 max_std_split 절, 측정 근거는 cup_sigma 절 참조
+  operating_samples: 20      # 이 분해능은 samples 20(16.4초) 기준이다 — 10 으로 줄이면 3σ 가 10.3 g 으로 나빠진다
 
-workpiece_calibration:        # 9/19 탈락 — get_workpiece_weight 는 같은 JTS 를 컨트롤러가 환산한 값 (매뉴얼: "외력으로부터 측정")
-  verdict: rejected_0919
-  why: reset_workpiece_weight 가 success 를 돌려줘도 1 s 뒤 빈 그리퍼가 869 g 으로 읽혔다(9/18 세션은 32 g 스쿱이 1003 g).
-       세션마다 다른 잔류 오차가 값을 지배해 32 g→1001, 132 g→723 으로 무게를 올리면 값이 내려갔다 (2점 gain −0.36).
-       σ 도 4.4~5.0 으로 tool_force(4.1~4.2) 보다 나을 게 없고, 호출이 0.7 s 로 느리다.
-  reopen_if: 매뉴얼 예제(리셋 → 이동 → 파지 → 이동 → 측정)처럼 이동을 끼운 뒤 값이 갱신되는지 별도 실험으로 확인될 때
+  basis_2point:              # gain 직선의 근거 — calibration/g1_rezero_0921_m3_2point.csv (표본 10개)
+    file: calibration/g1_rezero_0921_m3_2point.csv
+    sets_per_weight: 3
+    trials_per_set: 5
+    samples_per_trial: 10
+    w32:  {offset_single_g: 191.792, three_sigma_g: 8.6657,  within_trial_sigma_p95_g: 6.7197, set_drift_g: 1.0481}
+    w133: {offset_single_g: 195.023, three_sigma_g: 10.2651, within_trial_sigma_p95_g: 7.8702, set_drift_g: 1.4815}
+    fit: {gain: 1.0331, offset_g: 197.073, n_weights: 2}
+
+  basis_samples20:           # 분해능·유효성 임계의 근거 — 운영 조건 그대로 (samples 20)
+    file: calibration/g1_rezero_0921_m3_samples20.csv
+    sets: 3
+    trials_per_set: 5
+    samples_per_trial: 20
+    effective_period_s: 0.820   # 설정 0.1 s 지만 get_workpiece_weight 호출이 0.7 s — 표본은 전부 독립 (중복 0 %)
+    three_sigma_g: 4.0116        # ← min_resolvable_g 의 근거
+    within_trial_sigma_p95_g: 6.9456   # ← max_std_g 의 근거
+    set_drift_g: 2.1693          # 스쿱을 놓았다 다시 잡는 오차. 폐기 전 7.9~8.6 g 보다 5배 작다
+
+  offset_is_cancelled: |
+    offset_g 가 세션마다 ±5 g 움직이지만 **도징 판정에는 영향이 없다.**
+      gross = raw_g × gain + offset,  tare = raw_t × gain + offset
+      scooped = gross − tare = (raw_g − raw_t) × gain      ← offset 이 소거된다
+    process_fsm 이 SCOOP_TARE 에서 그 파지 상태의 빈 스쿱을 재 tare 로 쓰고, VERIFY 의 용기 순량도
+    같은 구조다. 판정에 실제로 쓰이는 것은 gain 이고 offset_g 는 gross_g 표시·기록용 대략값이다.
+    세션 변동의 원인은 파지할 때마다 스쿱 자세가 달라져 무게중심이 옮겨가는 것으로 보인다
+    (모멘트로 확인, README 참조).
+    **이 성질은 gmp_process 의 순량 계산 구조에 기대고 있다.** 9/21 C(공정 담당)와 합의 —
+    `scooped_g = gross_g − scoop_tare_g` 구조와 SCOOP_TARE 에서 **그 파지 상태의** 빈 스쿱을
+    tare 로 쓰는 것을 유지하고, 어느 쪽이든 이 경로를 바꿀 일이 생기면 서로 알린다.
+    test_offset_cancels_out_in_net_weight 가 두 경로(FSM 의 gross 빼기, skill_node 의 net_g)를
+    모두 고정한다.
+
+  resolvable:                # target × tol% ≥ min_resolvable_g (5.0) — WeightModel.resolvable()
+    A_200g_tol5: 10.0        # 가능 (여유 2.0배)
+    B_150g_tol5: 7.5         # 가능 (여유 1.5배)
+    C_100g_tol5: 5.0         # 가능 — 경계다. set_drift 가 커지면 먼저 깨진다
+    caveat: |
+      ⚠️ **resolvable() 은 운영에서 호출되지 않고, 앞으로도 붙지 않는다** (호출처는 test_dosing.py 뿐).
+      구 BRD 3.1.3("목표량 × 허용 오차가 계량 분해능 아래인 주문은 시작 전에 거부")이 요구하던 게이트인데
+      **BRD v1.0:81 에서 폐기 확정됐다 — "이 게이트는 구현하지 않는다" (SOT Q-11, 9/19 조장 확정).**
+      문자 그대로 구현하면 시연 레시피(200/150/100 g ±5 %)가 min_resolvable_g=19 에 전부 미달해
+      모두 거부되기 때문이고, 사전 분해능 판정은 배치 끝 VERIFY ①(제품 규격 대조)로 대체됐다.
+      FR-01 도 "분해능 기반 사전 거부(구 3.1.3)는 Q-11로 폐기되어 미구현" 으로 적고 있다.
+      (한때 이 절에 "미구현 요구사항, C 가 이슈 예정" 이라고 적었는데 **구판 BRD v0.1 을 본 오독**이었다.
+       최신은 v1.0 이고 거기서 폐기됐다. 이슈로 올릴 사안이 아니다 — 9/21 TW 확인으로 정정.)
+      위 표는 "이 저울로 그 목표를 가를 수 있는가" 라는 **물리적 사실**이며 코드가 수행하는 판정이 아니다.
+      실제 합격 판정은 VERIFY ① 이고, 원료별 판정은 dosing.verdict_of() 가 분해능과 무관하게 한다.
+      **따라서 min_resolvable_g 의 유일한 런타임 용도는 아래 VERIFY ② 하나다.**
+
+  verify_mismatch:           # ⚠️ min_resolvable_g 의 유일한 런타임 용도 — 분해능과 성격이 다르다
+    where: process_fsm.py — abs(verify_net_g - dosed_total()) > min_resolvable_g → VERIFY_MISMATCH
+    what: |
+      용기를 들어 잰 순량과 스쿱으로 재 누적한 투입량의 **차이** 임계다. 계량 한 번의 흔들림이 아니라
+      **배치 전체에 걸친 여러 계량의 누적 차이**를 본다. 계량 횟수가 늘수록 √N 으로 커지므로 필요한 크기가
+      분해능(계량 1회 3σ)보다 훨씬 크다. 한 파라미터가 성격이 다른 두 용도를 겸하고 있다.
+      아래 숫자는 계량 1회 σ = 1.34 g (9/21 material_3 운영 조건 실측) 기준이다. 9/21 팀 결정으로 계량을
+      material_3 한 자세에서만 하게 되므로 이 σ 가 원료 A·B·C 전부에 적용된다.
+    false_trip_rate: |       # 정상인데 MISMATCH 나는 비율
+      사이클 3회(원료 3종 각 1회): 차이 σ 3.78 g → 임계 5.0 에서 18.6 %, 15.0 에서 0.01 %, 19.0 에서 0.00 %
+      사이클 6회(각 2회):          차이 σ 5.00 g → 임계 5.0 에서 31.8 %, 15.0 에서 0.27 %, 19.0 에서 0.01 %
+      사이클 9회(각 3회):          차이 σ 5.98 g → 임계 5.0 에서 40.3 %, 15.0 에서 1.21 %, 19.0 에서 0.15 %
+    detection_power: |       # 반대로 진짜 불일치를 잡는 힘 — 임계를 올리면 이쪽이 떨어진다
+      실제 10 g 흘림 → 임계 5.0 에서 84 % 탐지, 15.0 에서 16 %, 19.0 에서 **3.6 %**
+      실제 20 g 흘림 → 임계 5.0 에서 99.9 %,   15.0 에서 84 %,  19.0 에서 58 %
+      현재 운영값 19.0 은 10 g 흘림을 96 % 놓친다 — VERIFY ② 가 사실상 작동하지 않는 상태다.
+      계량을 material_3 으로 통일하면 스쿱을 든 채 원료통에서 계량 자세까지 이동하게 된다. 다만
+      **VERIFY ② 회계가 깨지는 구간은 WEIGH_SCOOP ~ WEIGH_RESIDUAL 사이뿐이다** — 그 앞에서 흘린 것은
+      WEIGH_SCOOP 이 있는 그대로 재므로 장부에 안 들어가고, WEIGH_RESIDUAL 뒤는 이미 마감된 사이클이다.
+      C 가 stations.yaml 좌표로 재보니 그 임계 왕복은 material_1↔workbench 797.8 mm → material_3↔workbench
+      814.6 mm 로 **2.1 % 늘 뿐**이고, 새로 붙는 material_1→material_3 193 mm 는 전부 비임계 구간이다.
+      → "자세 통일로 VERIFY ② 중요도가 올라간다" 는 내 초기 서술은 철회한다. **수율·사이클 타임 문제로는
+      여전히 유효하다** (흘린 만큼 원료가 줄고 목표 도달에 스쿱이 더 필요하다).
+    proposal: |              # [C·조장 확인 필요] 고정값으로는 오검출과 탐지력을 동시에 만족시킬 수 없다
+      필요한 임계가 배치마다 다르다(계량 횟수에 따라). 고정값 대신 계량 횟수에서 유도한다:
+          tol = k · σ_weigh · √(2n + 2),   n = 그 배치의 총 스쿱 사이클 수
+      **σ_weigh 는 측정값을 그대로 쓰는 별도 파라미터여야 한다 (scale.weigh_sigma_g: 1.34).**
+      ⚠️ 처음에 σ = min_resolvable_g / 3 으로 유도하는 안을 냈다가 C 지적으로 철회했다 — 5.0 은 실측
+      3σ 4.01 을 레시피 C(±5 g) 경계에 맞춰 올린 값이라 /3 하면 1.67 이 되어 실측 1.34 보다 24.6 % 크다.
+      그 여유가 임계에 실려 N=10 부터 ② 임계가 ① 임계(데모 Σtarget×tol = 22.5 g)를 넘어 **②가 죽는다.**
+      데모 레시피는 재시도가 하나도 없어도 N = ceil(200/40)+ceil(150/40)+ceil(100/40) = 12 다.
+      목적이 다른 상수를 나눠 쓰면 안 된다 — 하나는 측정값(σ), 하나는 정책값(k)으로 분리한다.
+    k_choice: |             # k = 3.0 (한때 2.5 를 제안했다가 C 반론으로 철회)
+      **k 는 3.0 으로 둔다.** σ 1.34 기준 ② 유효 상한이 N=14 로 데모(12) 대비 여유가 얇아 보여 2.5 를
+      제안했으나, C 지적으로 철회했다. 이유 둘:
+        (a) **상한 N 표는 위험을 거꾸로 보여준다.** 레시피를 고정하고 N 만 흔든 표였는데, 실제로는 총량 T 가
+            커지면 N 도 ① 임계도 같이 커진다 (①=0.05T 는 T 에 비례, ②∝√N∝√T). 검증:
+              T=150 g(N=6)  ① 7.5  vs ② 15.0 → ② 죽음
+              T=300 g(N=9)  ① 15.0 vs ② 17.9 → ② 죽음
+              T=450 g(N=12) ① 22.5 vs ② 20.5 → ② 유효 (데모, ①/② = 1.10 으로 문턱 바로 위)
+              T=900 g(N=24) ① 45.0 vs ② 28.4 → ② 유효
+            즉 ②가 죽는 건 큰 배치가 아니라 **작은 배치**다. 재시도 걱정은 데모가 문턱 바로 위라 생긴
+            증상이고, 구조적 위험은 반대편에 있다. k 를 낮춰도 어느 쪽도 해결되지 않는다.
+        (b) **k 는 통계적 의미를 가진 값이라 맞추려고 건드릴 자리가 아니다.** GMP 에서 VERIFY_MISMATCH
+            한 건은 QA 조사 + 감사증적 1건이다. k 3→2.5 는 오검출을 0.27 %→1.24 % 로 4.6배 올린다
+            — 배치 370건당 1건이던 헛된 일탈 조사가 81건당 1건이 된다.
+      **옳은 레버는 σ 다** (k=3 고정, ① 22.5 기준 ② 유효 상한 N):
+          σ 1.34(현재) → 14 · σ 1.00 → 27 · σ 0.89 → 34 · σ 0.70 → 56
+      σ 0.89 만 되어도 상한 34 라 데모의 재시도 여유 문제가 사라진다. samples 20→25 에서 연속 측정
+      창평균 σ 가 0.89 였으나 파지 재현 오차가 빠진 낙관치라 **세트 포함 실측이 필요하다 (B 예정).**
+      소량 배치에서 ②가 죽는 것은 σ 로도 안 없어진다 — 레시피별로 ②가 정보를 주는지 접수 시점에
+      계산해 기록하는 쪽이 정직하다 (C 가 BRD 3.1.3 게이트 이슈에 포함 예정).
+    cup_sigma: |           # 9/21 1차 측정 (ABOVE 자세 맞음, 단 사람이 들어 쥐여줌) — σ_verify 확정 아님
+      records/g1_rezero_0921_workbench_cup.csv · 빈 용기 78 g · samples 20 · 3세트 × 5회
+        세트 안 σ 0.98 g (스쿱 0.89 와 비슷) · **세트 간 흐름 10.5 g** (스쿱 2.2) · 회차 평균 σ 4.54
+        회차 내부 σ p95 9.09 g · 단일점 offset 207.43 · Mx +1.07 / My +0.15 / Mz +0.53
+      회차 내 반복은 좋고 세트 간만 나쁘다 → 사람이 매번 들어 쥐여준 탓으로 보인다(모멘트도 세트마다 흔들림).
+      운영은 로봇이 AT 로 내려가 일정하게 잡으므로 **σ_verify 로 그대로 쓸 수 없다. 로봇 파지로 재측정한다**
+      (measure_g1 --pick-lift-mm 100 으로 AT→파지→ABOVE 경로를 따라간다, 9/22 예정).
+      ⚠️ **9/22 는 하중 점이 둘 이상 필요하다 (C 지적, 동의).** 위 수식은 σ_tare = σ_verify = σ_cup 으로
+      접었는데 하중이 다르다 — TARE 는 빈 용기 78 g, VERIFY 는 용기 + 원료 450 g ≈ 528 g 이다.
+      빈 용기만 재면 σ_tare 만 얻고 σ_verify 는 외삽치가 되는데, 예산에서 둘이 같은 무게로 들어간다.
+      B 실측으로 본 하중 의존성은 **측정 범위 안에서는 약하다**:
+        · samples 20 : 78 g 세트내 σ 0.90 · 133 g 0.83 — 55 g 차이에 기울기가 안 보인다 (오히려 감소)
+        · samples 10 : 32 g 2.76 · 133 g 3.25 — 101 g 에 +18 %, 다만 세트 3개라 거칠다
+      그러나 **528 g 은 측정 범위(32~133 g)의 4배 밖**이라 이 데이터로는 외삽을 보증할 수 없다.
+      → workbench ABOVE 자세에서 **빈 용기 · 중간 · 최대 하중** 으로 점을 잡는다. 최대는 실제 원료가
+        없어도 되고 추로 대신할 수 있다 — 재는 건 원료가 아니라 그 하중에서의 저울 σ 다.
+      ⚠️ **판정 기준을 단일 문턱으로 쓰면 안 된다 (C 지적, B 재계산으로 확인).** 내가 앞서 "σ_cup < 2.58"
+      과 "N≤14 라 재시도 2회 여유" 를 같이 말했는데 **둘은 같은 예산을 두 가정으로 쓴 것**이라 동시에
+      못 가진다. 2.58 은 N=12(재시도 0) 가정이고, N≤14 는 σ_cup = σ_s = 1.34(등분산) 가정이다.
+      비등분산 형태를 쓰면 하나로 합쳐진다. TARE·VERIFY 는 둘 다 workbench 용기 계량이므로
+      σ_tare = σ_verify = σ_cup 이고, tol = k·√(2N·σ_s² + 2σ_cup²) 이다.
+      → **√(2N+2) 의 "+2" 는 사이클 하나가 아니라 용기 계량 2회(TARE·VERIFY)다.** σ_cup = σ_s 일 때만 접힌다.
+      k=3 · σ_s 1.34 · ① 22.5 → 예산 (22.5/3)² = 56.25. 2N·σ_s² + 2σ_cup² < 56.25:
+          N=12 (재시도 0) → 남는 몫 13.16 → **σ_cup 상한 2.56**
+          N=13 (재시도 1) → 남는 몫  9.56 → **σ_cup 상한 2.19**
+          N=14 (재시도 2) → 남는 몫  5.97 → **σ_cup 상한 1.73**
+          N=15 (재시도 3) → 남는 몫  2.38 → **σ_cup 상한 1.09**
+          N=16 (재시도 4) → **불가 — σ_cup = 0 이어도 ②가 죽는다**
+      ⚠️ **재시도 여유는 용기 저울로 못 산다.** 용기 계량을 완벽하게 만들어도 N ≤ 15 가 끝이고,
+         그 위는 2N·σ_s² 하나로 예산이 찬다. **여유를 늘리는 유일한 손잡이는 σ_s(스쿱 계량)다** —
+         σ_s 1.00 이면 최대 N 28, 0.89 면 35. k 도 σ_cup 도 아닌 세 번째 레버라 갱신문에 따로 적는다.
+      ⚠️ **N 은 붓기가 실제로 일어난 사이클 수다 — 초과 반환은 세지 않는다** (C 확인, B 코드 대조).
+         process_fsm:231 에서 scooped_g 가 남은 목표+허용을 넘으면 RETURN_MATERIAL 로 빠져 POUR 를
+         안 타고, 따라서 :256 의 actual_g += 도 안 탄다. WEIGH_SCOOP 값은 버려지므로 Σdosed 오차에
+         안 들어간다 — **②에 대해 공짜다.** attempts·returns 를 쓰면 공짜 반환까지 세서 ②를 과도하게
+         조인다. ItemRun.cycles 를 actual_g += 실행 횟수로 잡는 게 맞다.
+      ⚠️ **2N·σ_s² 의 σ_s 는 회차평균 σ 가 아닐 수 있다 (C 지적, 9/22).** process_fsm 은 한 원료의 N
+         사이클을 **한 파지 안에서** 돈다 — PICK_SCOOP:202 에서 잡아 RETURN_SCOOP:268 의 close:False
+         까지 안 놓고, WEIGH_RESIDUAL 부족 분기는 SCOOP 으로 돌아간다 (B 코드 확인). actual_g 에
+         더해지는 값이 gross₁ − gross₂ 라 스쿱 tare 와 **파지 오프셋이 같이 빠진다.**
+         → 그 자리에 들어갈 것은 각 계량의 σ 가 아니라 **차의 σ** 다. 9/21 데이터로 바닥값을 냈다
+         (하중 변화·붓기 회전 없이 같은 파지 연속 2회):
+             스쿱 material_3 · s20  — 연속차 σ **1.39** vs 회차평균 σ 1.33 → **재파지가 거의 안 붙는다**
+             용기 workbench · 사람  — 연속차 σ **1.25** vs 회차평균 σ 4.52 → **재파지가 지배한다**
+         가정했던 √2·1.34 = 1.89 보다 작다. 사이클당 분산이 3.59 → 1.93 으로 **46 % 줄어** N 천장이
+         15 → 29 로 오른다 (σ_cup=0 기준). C 가 기대한 34 까지는 아니다.
+         ⚠️ **1.39 는 아래값이다** — 운영에서는 두 계량 사이에 로봇이 스쿱을 기울여 붓는다. 그 회전이
+            파지 오프셋을 흔들면 차의 σ 가 커진다. 9/22 측정 ③(--alt-actual-g)도 회전은 안 넣으므로
+            같은 한계를 갖는다. 인용할 때 **"붓기 회전 미포함"** 을 반드시 단서로 단다.
+         용기 쪽은 반대다 — TARE(배치 시작)와 VERIFY(배치 끝)는 **서로 다른 파지**라 재파지 성분이
+         그대로 들어간다. 위 1.25 vs 4.52 가 그 크기를 보여준다. 측정 ① 세 점의 비중이 더 커진다.
+      ⚠️ **하중별 비등분산 주장은 철회한다 (9/22 팀장 지적, B 확인).** 32 g 2.76 vs 133 g 3.25 의
+         18 % 차이는 F = 1.39, dof 12/12, **p = 0.58** 로 유의하지 않다. 세트 3개짜리 잡음이다.
+         **진짜 비등분산은 하중이 아니라 파지 횟수다** — 스쿱은 한 파지 안(N 사이클 전부),
+         용기는 TARE·VERIFY 가 서로 다른 파지다. 9/21 실측이 그 크기를 보여준다:
+         스쿱 연속차 1.39 ≈ 회차평균 1.33(재파지 무영향) vs 용기 연속차 1.25 → 회차평균 4.52(재파지 지배).
+      **그리고 max_std_g 8.0 을 다시 봐야 한다** — 용기 계량 p95 9.09 라 valid 13/15(87 %)다.
+      TARE·VERIFY 가 valid=false 면 배치가 진행되지 않는다. 10.0 이면 15/15 (폐기 전 값이 공교롭게 맞는다).
+
+    max_std_split: |       # [제안 — B 소관 값, 구현은 A·C] max_std_g 를 subject 별로 쪼갠다
+      스쿱 계량과 용기 계량은 **자세도 하중도 파지 대상도 다르다** — 9/21 실측 p95 가 6.95 vs 9.09 다.
+      하나로 덮으면 반드시 **둘 중 나쁜 쪽에 맞춘 값**이 되고 좋은 쪽에서 불량 계량을 놓친다:
+      현행 10.0 은 용기 p95 9.09 를 덮느라 스쿱 p95 6.95 보다 44 % 헐겁다 (C 지적, 동의).
+      쪼갤 키는 이미 있다 — WeightReading.subject 가 "scoop"(WeighHeld) | "container"(WeighContainer) 를
+      구분한다(gmp_interfaces/msg/WeightReading.msg:10). 새 개념을 만들 필요가 없다.
+      소관: 값·근거는 B, skill_node._measure_weight_reading 의 subject 별 선택은 A,
+            process_fsm 의 _invalid_or·VERIFY 게이트가 그 값을 받는 것은 C, 파라미터 추가는 조장.
+      **9/22 로봇 파지 재측정으로 용기 p95 가 내려갈 수 있으므로 값은 그 뒤에 정한다.**
+
+    tare_has_no_validity_gate: |   # ⚠️ [C 소관 결함 — max_std_g 판단에 직결] C 가 9/21 발견
+      **TARE 스텝에만 계량 유효성 검사가 없다.** process_fsm 에서 _invalid_or() 는 SCOOP_TARE·
+      WEIGH_SCOOP·WEIGH_RESIDUAL 에서만 불리고, VERIFY 는 _verify_invalid 카운터를 따로 쓴다.
+      TARE 는 gross_g 를 그대로 받는다 (self.cur 가 아직 없어 _invalid_or 를 못 부른 것으로 보인다).
+      **그래서 위 "용기 계량 valid 13/15" 의 의미가 갈린다:**
+        · VERIFY 쪽 — 게이트가 있어 재계량하고, max_invalid 2 를 넘으면 WEIGH_INVALID 일탈. 정상 동작.
+        · TARE 쪽  — 13 % 가 **검증 없이 그대로 통과**한다. 무효 tare 는 verify_net_g = gross − tare_g 를
+                     오염시켜 **VERIFY ①(제품 규격)·②(계측 신뢰성) 을 둘 다** 틀리게 만든다.
+      현행 max_std_g 10.0 에서는 용기 계량이 15/15 라 지금 당장은 안 터지고, **8.0 을 적용하면 드러난다.**
+      → max_std_g 를 낮추기 전에 TARE 게이트가 먼저 들어가야 한다. C 가 사용자 확인 후 처리 예정.
+
+    missing_sigma: |       # ⚠️ [B 측정 필요] σ 가 하나가 아니다
+      위 수식은 모든 계량이 같은 σ 를 갖는다고 가정한다. 실제로는:
+        · 스쿱 계량(WEIGH_SCOOP·WEIGH_RESIDUAL) — 계량 자세. 9/21 팀 결정으로 material_3 통일 → σ 1.34 실측
+        · 용기 계량(TARE·VERIFY) — **workbench 자세의 용기 계량이라 아직 안 쟀다**
+      엄밀한 형태는 tol = k·√( Σ_i 2·n_i·σ_i² + σ_tare² + σ_verify² ) 다 (C 지적).
+      계량 자세가 통일되면 스쿱 쪽은 단일 σ 가 되지만 **용기 계량 σ 는 별도 측정이 필요하다** — B 소관.
+    after_split: |         # [조장 판단] σ 를 분리하면 min_resolvable_g 는 운영 파라미터가 아니게 된다
+      **σ·k 로 VERIFY ② 를 바꾸면 min_resolvable_g 의 런타임 용도가 0 이 된다** (C 제안, B 검증).
+      지금 값으로 읽히는 곳은 넷인데 실사용은 하나뿐이다:
+        · process_fsm:291 — VERIFY ② 임계. **유일한 실사용**. σ·k 가 이 자리를 대신한다
+        · scale.py:55 — resolvable(). 구 BRD 3.1.3 게이트용인데 그 요구사항이 폐기 확정(위 caveat)
+        · process_node:83,96 — 파라미터 선언·ScaleConfig 전달
+        · skill_node:911 — ScaleConfig 에 넣지만 **reading() 은 max_std_g 만 쓴다. 지금도 무의미하다**
+      → 분리 뒤에는 `common.yaml` 에서 빼고 `scale_reference.yaml`·`calibration/README.md` 에만 두는
+      **측정 기록**이 되는 게 맞다. 이름도 그때 정리된다 — "이 분해능 아래는 못 가른다" 는 뜻인데
+      그 의미로 쓰이던 자리(접수 게이트)가 없어졌으므로 이름이 가리키는 용도가 실제로 사라진 상태다.
+      단 **`ScaleConfig` 필드와 `resolvable()` 은 남긴다** — 분해능 판정표를 계산하고 테스트가 고정하는
+      물리적 사실이라 라이브러리에는 필요하다. 운영 파라미터에서만 빠진다.
+      순서: ① 9/22 σ 측정 → ② σ 파라미터 추가 + VERIFY ② 수식(C) → ③ 그때 min_resolvable_g 제거.
+      **②가 되기 전에는 뺄 수 없다** — 지금은 그 값이 VERIFY ② 임계다.
+
+      ③ 은 common.yaml 한 줄 삭제로 끝나지 않는다 (C 지적, B 재확인). 여러 패키지를 같이 고쳐야 한다:
+        · common.yaml scale.min_resolvable_g 삭제 ..................... 조장
+        · skill_node:911 ScaleConfig(min_resolvable_g=...) 전달 제거 ... A
+        · test_skill_node_weigh_held.py:493 overrides 에서 제거 ........ A
+        · process_node:83,96 선언·ScaleConfig 전달 제거 ................ C
+        · process_fsm:27,289,291 ② 수식·주석 교체 ..................... C
+        · make_process_drawio.py:130,253 의 ② 표기 교체 ................ C
+        · process_flow.drawio:223,863 **재생성** (스크립트와 같은 커밋) .. C
+        · test_process_fsm.py:14,17,200,209,212,219 ② 3건 재설계 ....... C
+        · process_flow.md:122,146,168 ② 수식 교체 ..................... C
+        · architecture.md:54 ② 수식 교체 .............................. 팀장
+        · demo_run_procedure.md:28 G1 행 ............................. B
+        · SOT.md Q-11:111 · D-22:37 — **인라인 갱신** (아래 ⚠️) ......... 조장
+        · scale.py 의 ScaleConfig 필드·resolvable() 는 유지 ............ B
+        · scale_reference.yaml·calibration/README.md 에 측정 기록으로 보존 . B
+        (todo.md·issues.md 도 이 이름을 쓰지만 9/21 동결 문서라 손대지 않는다)
+      ⚠️ 순서를 어기면 **기동이 아니라 배치 도중에** 터진다. C 는 "기동 시점" 이라 했는데 실제로는 더 늦다:
+         skill_node 는 automatically_declare_parameters_from_overrides=True(:64) 라 이 파라미터가
+         common.yaml 에만 존재하고, 읽는 자리도 생성자가 아니라 _measure_weight_reading(:911) 이다.
+         그래서 common.yaml 에서 먼저 빼면 **브링업은 멀쩡히 뜨고** 첫 계량 —
+         _do_weigh(:952 용기) 또는 _do_weigh_held(:989 스쿱) — 에서 ParameterNotDeclaredException 이 난다.
+         이미 시료를 퍼담은 뒤에 터지므로 실물 피해가 있다. **common.yaml 에서 빼는 건 skill_node 수정 뒤다.**
+         process_node 는 :83 에 기본값 선언이 있어 안 죽는다. 대신 조용히 19.0 을 계속 쓴다 — 더 나쁘다.
+      ⚠️ **② 수식 교체는 구현 과제가 아니라 조장 결정 갱신이다.** SOT Q-11(:111) 이 9/19 조장 확정으로
+         "VERIFY 허용 차 min_resolvable_g 19" 를 못 박았고, D-22(:37) 도 ②를 그 이름으로 적고 있다.
+         임계를 k·σ·√(2n+2) 로 바꾸는 건 그 확정을 대신하는 일이라 **SOT 가 먼저 갱신돼야 머지할 수 있다.**
+         SOT 머리말(:4) 이 "확정 결정이 생길 때마다 조장이 갱신" 이라 조장 소관이다.
+         **형태는 새 항목이 아니라 인라인 갱신이다** (내 초기 제안 철회 — C 지적). SOT 는 취소선으로 옛 글을
+         남기고 같은 칸에 덧붙이는 방식이 이미 서 있다 (D-23 의 ~~미정~~ → 확정, Q-12·Q-04·Q-10 등).
+         새 항목으로 가면 같은 두 행이 두 방식으로 갱신돼 ②를 찾는 사람이 둘 다 봐야 한다.
+      ⚠️ **그 갱신은 PR #184 머지 뒤다.** 팀장이 #184(OPEN)에서 D-22·Q-11 **같은 두 행을 인라인으로**
+         고치고 있다 (v1.3 붓기 비율 대체 표기). 지금 올리면 같은 줄이라 충돌한다.
+      ⚠️ ② 갱신문에는 **성립 조건이 바뀐다는 것**을 같이 적어야 한다. Q-11 의 확정 논리는 상수 둘의
+         비교(min_resolvable_g 19 < Σ(target×tol) 22.5)인데, ②가 k·σ·√(2N+2) 가 되면 ② 임계는 √N 으로
+         자라고 ① 임계는 총량에 선형이라 조건이 **N 상한**이 된다: k·σ·√(2N+2) < Σ(target×tol).
+         그래서 Q-11 의 직관이 뒤집힌다 — 큰 레시피가 아니라 **작은 레시피에서 ②가 죽는다** (위 k_choice).
+         D-08(:24) 은 ② 수식을 안 적고 Q-11 을 참조만 하므로 따라온다. :84 는 값 유지 메모라
+         ② 전제가 아니라 common.yaml 단계에 붙는다 (C 지적, 동의). **② 전제는 이 두 행뿐이다.**
+      ⚠️ demo_run_procedure.md:28 은 **두 갈래로 나뉜다** (C 지적). 판정 칸이 "계량 한 번(회차 평균)의
+         3σ 가 min_resolvable_g" 라 ② 임계의 *정의*를 겸하고 있다. **측정 숫자는 지금 B 가 고치고,
+         ② 임계 문구는 ② 브랜치에서** — 그래야 같은 칸을 두 번 안 연다.
+      그 행의 측정 숫자는 ② 와 무관하게 **지금 이미 낡았다** — G1 행이 폐기된 9/18·9/19 값
+         (3σ 18.0 / 12.6, min_resolvable_g 19)을 그대로 적고 있고 절차도 6세트×30회×10표본이다.
+         재영점(9/21)으로 무효가 된 숫자라 ② 를 기다릴 이유가 없다. B 가 따로 올린다.
+
+    ownership: |
+      process_fsm 수식·ItemRun.cycles 는 C, 파라미터 추가·min_resolvable_g 제거는 조장, σ 측정은 B.
+      C 제안 순서: ① 계량 자세 결정 → ② common.yaml 갱신 → ③ σ 분리 + 동적 임계 구현 → ④ 가상 브링업 실측.
+
+  caveats: |
+    · 이 값은 material_3 자세 전용이다. material_1·2 는 같은 조건에서 회차 평균 σ 가 5~9배 크고,
+      계량 창을 두 배로 늘려도 material_3 의 절반 수준에 못 미친다 — 그 자세에서는 tol 5 % 판정이 안 된다.
+      **9/21 팀 결정(조장 승인): 계량은 한 자세에서만 한다 — 어느 원료든 material_3 자세로 가서 잰다.**
+      원료를 푸는 곳은 그대로 원료별 material_1/2/3 이고 계량(WeighHeld)만 통일된다. 계량 자세는
+      파라미터(scale.weigh_station, 초기값 material_3)로 두어 나중에 통 밖 자리로 옮길 수 있게 하며,
+      옮기면 그 자리에서 저울을 다시 잰다. 구현은 A(skill_node WeighHeld), 그 뒤 조장이 common.yaml 갱신.
+    · 세트가 3개뿐이라 set_drift 추정이 거칠다. min_resolvable_g 5.0 은 실측 3σ 4.01 에 여유를 둔 값이고,
+      C 레시피(±5 g)가 경계에 걸리므로 세트를 더 뜨면 이 값부터 다시 본다.
+    · workpiece 경로는 이번에 결론을 내지 않았다. 같은 CSV 에 열이 들어 있어 재분석은 가능하다.
