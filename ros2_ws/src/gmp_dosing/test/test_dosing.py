@@ -164,3 +164,48 @@ def test_offset_cancels_out_in_net_weight():
     assert max(nets_b) - min(nets_b) < 1e-9
     assert abs(nets_a[0] - nets_b[0]) < 1e-9  # 두 경로가 같은 값을 준다
     assert abs(nets_a[0] - (raw_gross - raw_tare) * -1.0 / 9.80665 * 1000 * 1.03) < 1e-9   # 남는 것은 gain 뿐
+
+
+def test_fit_oscillation_removes_slow_swing():
+    """느린 진동이 실린 표본에서 상수항을 뽑는다 — 단순 평균보다 참값에 가깝다 (9/22)."""
+    import math
+    from gmp_dosing.core.scale import fit_oscillation
+    s = [100.0 + 30.0 * math.sin(2 * math.pi * 0.82 * i / 15.0) for i in range(32)]
+    value, resid, hf, period = fit_oscillation(s, 0.82)
+    assert abs(value - 100.0) < 0.5          # 참값 복원
+    assert abs(sum(s) / len(s) - 100.0) > 2  # 단순 평균은 창이 정수배가 아니라 치우친다
+    assert 14.0 <= period <= 16.0
+    assert resid < 0.5
+
+
+def test_fit_oscillation_guard_falls_back_on_plain_noise():
+    """⚠️ 진동이 없으면 적합하지 않는다 — 안 그러면 잡음을 진동으로 오인해 값이 나빠진다.
+
+    9/22 전체 회귀에서 무조건 적용하면 측정 17건 중 10건이 악화하고 전체 25 % 나빠졌다.
+    가드(residual ≤ apply_ratio × 표본 σ) 로 적용률을 11 % 로 낮추니 전체 -15.1 % 가 됐다.
+    """
+    import random
+    from gmp_dosing.core.scale import fit_oscillation
+    random.seed(1)
+    s = [100.0 + random.gauss(0, 6) for _ in range(32)]
+    value, resid, hf, period = fit_oscillation(s, 0.82)
+    assert period == 0.0                     # 적합을 안 썼다는 표시
+    assert value == sum(s) / len(s)          # 단순 평균 그대로
+    assert fit_oscillation(s, 0.82, apply_ratio=0)[3] == 0.0   # 가드를 꺼도 단순 평균
+
+
+def test_reading_hf_gate_catches_load_change_but_passes_oscillation():
+    """무결성 게이트는 '재는 중 조작' 만 잡고 느린 진동은 통과시킨다 (9/22 실측 분리).
+
+    오염 고주파 σ 10.57·12.26·26.45  vs  양성 최대 8.54 — 임계 9.5 가 그 사이다.
+    정확도 게이트(max_std_g)와 다른 것을 잡으므로 둘 다 필요하다.
+    """
+    from gmp_dosing.core.scale import ScaleConfig, WeightModel
+    m = WeightModel(ScaleConfig(method='workpiece', gain=1.0, offset_g=0.0,
+                                max_std_g=8.0, max_hf_std_g=9.5))
+    # 진동은 크지만 고주파는 작다 → 통과
+    assert m.reading(0.100, 0.005, True, raw_hf_std=0.006)[4] is True
+    # 재는 중 하중이 바뀌어 고주파가 튀었다 → 거부
+    assert m.reading(0.100, 0.005, True, raw_hf_std=0.012)[4] is False
+    # hf 를 안 주면 기존 동작 그대로 (하위호환)
+    assert m.reading(0.100, 0.005, True)[4] is True
