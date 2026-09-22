@@ -261,6 +261,11 @@ def main(argv=None):
                          "예: workbench(용기 계량) | material_1/2/3(weigh_held 가 실제로 재는 자세 — "
                          "calibration 은 이 자세로 해야 gain/offset 이 운영과 맞는다)")
     ap.add_argument('--vel-scale', type=float, default=0.2, help='--goto-station 속도 스케일')
+    ap.add_argument('--goto-posj', default='', metavar='J1,..,J6',
+                    help='시작 시 관절각[deg] 6개로 movej. **자세(관절해)를 보장하는 유일한 방법** — '
+                         '--goto-station 은 movel 이라 출발 자세를 물려받는다. 저울 보정은 관절해에 딸리므로 '
+                         '(9/22: 같은 좌표·같은 자세각인데 +Y200 에서 σ 6.24→26.08) 검증된 자세를 재현할 때 쓴다. '
+                         '--goto-station 과 같이 주면 movej 로 자세를 잡은 뒤 movel 로 좌표를 맞춘다')
     ap.add_argument('--offset-mm', default='', metavar='DX,DY,DZ',
                     help='--goto-station 좌표에 더할 [mm] — 실물 위치가 바뀌었는데 stations.yaml 이 '
                          '아직 반영 전(PR 대기)일 때 임시 보정. 예: 100,0,0')
@@ -284,6 +289,13 @@ def main(argv=None):
     grip = Gripper(rclpy) if a.gripper else None
     close_cmd = f'{int(round(a.grip_width_mm * 10))}' if a.grip_width_mm else 'c'
     pick_posx = measure_posx = None
+    if a.goto_posj:
+        j6 = [float(v) for v in a.goto_posj.split(',')]
+        if len(j6) != 6:
+            raise SystemExit(f'--goto-posj 는 관절각 6개다 (받은 값 {len(j6)}개)')
+        input(f'\n[0j] 관절각 {j6} 로 movej 합니다 (vel_scale {a.vel_scale}). 주변 확인 → Enter ')
+        arm.movej(j6, a.vel_scale)
+        print('    movej 완료 — 이 관절해가 측정 자세다')
     if a.goto_station:
         posx = station_posx(a.goto_station)
         if a.offset_mm:
