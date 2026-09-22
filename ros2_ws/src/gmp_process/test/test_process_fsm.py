@@ -577,6 +577,11 @@ def test_213_weigh_residual_무효는_미측정으로_세고_누산하지_않는
     r = fsm.results[0]
     assert r.unmeasured == 1, r.unmeasured
     assert r.actual_g < r.target_g          # 미측정분이 빠져 실제보다 작다
+    # ⚠️ `decide()` 를 못 거쳐 verdict 가 **비어 있다.** `process_node._publish_result` 가
+    # `r.verdict or 'OK'` 로 떨어뜨리므로 DispenseResult 는 이 원료를 **OK 로 보고한다**
+    # (I-008 — 열거값에 「모름」이 없다). 결정 3 이 이 경로를 처음 열었으므로 여기서 고정해 둔다.
+    # 계약이 INVALID 를 갖게 되면 이 assert 가 먼저 깨져야 한다.
+    assert r.verdict == '', r.verdict
 
 
 def test_213_verify_무효는_최종계량_미측정으로_남는다():
