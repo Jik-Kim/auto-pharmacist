@@ -58,7 +58,8 @@ class ItemRun:
     attempts: int = 0            # 붓기까지 간 횟수 — ScoopCycle.attempt 는 process_node 가 따로 센다
     returns: int = 0             # 원료통 반환 횟수. 붓지 않았으므로 attempts 에 넣지 않는다
     last_fraction: float = 1.0   # 마지막으로 요청한 담그기 깊이 — 반환 뒤 보정의 기준
-    invalid: int = 0
+    invalid: int = 0             # **지금 단계**의 무효 횟수. 유효하거나 단계가 바뀌면 0 으로 돌아간다
+    invalid_step: str = ''       # 위 카운터가 세고 있는 단계 (#213 결정 2)
     scoop_tare_g: float = 0.0    # 빈 스쿱 (SCOOP_TARE)
     scooped_g: float = 0.0       # 붓기 전 스쿱 안의 원료 (WEIGH_SCOOP)
     residual_g: float = 0.0      # 붓기 후 스쿱에 남은 원료 (WEIGH_RESIDUAL)
@@ -165,11 +166,20 @@ class ProcessFSM:
         return {'kind': 'move', 'station': 'nudge_wait', 'approach': 'AT'}
 
     def _invalid_or(self, res: dict, step: str, retry: dict):
-        """계량 무효(valid=false)면 재계량, 상한을 넘으면 WEIGH_INVALID → QA. 유효하면 None."""
+        """계량 무효(valid=false)면 재계량, 재시도 상한을 넘으면 WEIGH_INVALID. 유효하면 None.
+
+        **카운터는 단계별이고 유효 결과·단계 전환에서 0 으로 돌아간다** (#213 결정 2).
+        종전에는 `self.cur.invalid` 하나를 SCOOP_TARE·WEIGH_SCOOP·WEIGH_RESIDUAL 이 공유하고
+        초기화도 없어서, 원료 A(사이클 5회 = 계량 11번) 중 **서로 무관한 두 번**만 무효여도
+        일탈이 났다. 「같은 계량을 연속 재시도」라는 정책 의도와 달랐다.
+        """
         if res.get('valid', False):
+            self.cur.invalid, self.cur.invalid_step = 0, ''
             return None
+        if self.cur.invalid_step != step:
+            self.cur.invalid, self.cur.invalid_step = 0, step
         self.cur.invalid += 1
-        if self.cur.invalid >= self.dosing_cfg.max_invalid:
+        if self.cur.invalid > self.dosing_cfg.max_invalid_retries:
             # 투입 전(SCOOP_TARE·WEIGH_SCOOP)은 정리 후 ERROR, 투입 뒤(WEIGH_RESIDUAL)는 QA (#213).
             # WEIGH_RESIDUAL 은 이미 부은 뒤라 되돌릴 게 없고 투입량만 모르는 상태다.
             if step in ('SCOOP_TARE', 'WEIGH_SCOOP'):
@@ -245,7 +255,7 @@ class ProcessFSM:
             # 생성) 쓸 수 없다 — VERIFY 와 같은 배치 단위 카운터로 센다.
             if not res.get('valid', False):
                 self._tare_invalid += 1
-                if self._tare_invalid >= self.dosing_cfg.max_invalid:
+                if self._tare_invalid > self.dosing_cfg.max_invalid_retries:
                     return self._cleanup_then_error('WEIGH_INVALID', 'TARE')
                 return req
             self.tare_g = res.get('gross_g', 0.0)
@@ -345,7 +355,7 @@ class ProcessFSM:
             drift_n = res.get('fz_mean_n', 0.0) - self.zero_fz_n
             if self.zero_drift_limit_n > 0 and abs(drift_n) > self.zero_drift_limit_n:
                 self._zero_recheck += 1
-                if self._zero_recheck >= self.dosing_cfg.max_invalid:
+                if self._zero_recheck > self.dosing_cfg.max_invalid_retries:
                     return self._deviate('WEIGH_INVALID', 'VERIFY',
                                          detail=f'빈 그리퍼 영점 이동 {drift_n:+.3f} N '
                                                 f'(한계 {self.zero_drift_limit_n:.3f}) — 계량 오염 의심')
@@ -355,7 +365,7 @@ class ProcessFSM:
         if k == 'weigh' and st == 'VERIFY':
             if not res.get('valid', False):
                 self._verify_invalid += 1
-                if self._verify_invalid >= self.dosing_cfg.max_invalid:
+                if self._verify_invalid > self.dosing_cfg.max_invalid_retries:
                     # 최종 계량을 못 믿는다 → ① 판정 불가. QA 가 승인하면 값 없이 나간다 (#213).
                     self.verify_unmeasured = True
                     self.verify_detail = ('최종 계량 미측정 — 용기 순량을 모른다. '

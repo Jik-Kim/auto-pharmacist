@@ -293,7 +293,7 @@ def test_verify_직전_영점이_움직이면_재측정하고_한계를_넘으�
     run(fsm, cell)
     assert [(d['kind'], d['step']) for d in fsm.deviations] == [('WEIGH_INVALID', 'VERIFY')]
     assert '영점 이동' in fsm.deviations[0]['detail'], fsm.deviations[0]['detail']
-    assert cell.n_measure == 1 + 1 + 2, cell.n_measure   # SELF_CHECK 1 + TARE 영점 1 + VERIFY 재측정 2회
+    assert cell.n_measure == 1 + 1 + 3, cell.n_measure   # SELF_CHECK 1 + TARE 영점 1 + VERIFY 재측정 3회
 
 
 def test_verify_직전_영점이_한계_안이면_그대로_잰다():
@@ -332,7 +332,9 @@ def test_invalid_scoop_weigh_retries():
     fsm = _fsm()
     trace = run(fsm, cell)
     assert kinds_for(trace, 'SCOOP_TARE') == ['weigh_scoop'] * 3 and fsm.state == 'DONE'   # A: 무효+재계량, B: 1회
-    assert not fsm.deviations and fsm.results[0].invalid == 1
+    # 유효해지면 카운터가 0 으로 돌아간다 — 다음 단계의 무효와 합산되지 않는다 (#213 결정 2)
+    assert fsm.results[0].invalid == 0 and fsm.results[0].invalid_step == ''
+    assert not fsm.deviations
 
 
 def test_grip_fail_retries_then_forced():
@@ -561,19 +563,18 @@ def test_213_weigh_residual_무효는_미측정으로_세고_누산하지_않는
     def tap(req):
         if req['kind'] == 'weigh_scoop' and fsm.state == 'WEIGH_RESIDUAL':
             tap_n[0] += 1
-            if tap_n[0] <= 2:                        # 첫 사이클의 잔량 계량만 무효로
+            if tap_n[0] <= 3:                        # 첫 사이클의 잔량 계량만 무효로 (재시도 2회 + 3회째)
                 return {'gross_g': 0.0, 'valid': False}
         return orig(req)
 
     run(fsm, tap)
     d = next(x for x in fsm.deviations if x['step'] == 'WEIGH_RESIDUAL')
-    assert d['kind'] == 'WEIGH_INVALID'
-    # `action` 은 단정하지 않는다 — 결정 3(단계별 정책)이 아직 없어 지금은 'RETRY' 로
-    # 기록되고 실제로는 ERROR 로 떨어진다. 그 불일치가 #213 본체다.
+    # 투입 뒤라 되돌릴 게 없으므로 **QA** 다 (#213 결정 3). 재계량은 이미
+    # max_invalid_retries 가 끝냈으므로 정책표는 즉시 처분만 한다 (결정 1).
+    assert (d['kind'], d['action']) == ('WEIGH_INVALID', 'QA')
     assert '미측정 1회' in d['detail'], d['detail']
-    # 현재 거동에서는 이 일탈이 배치를 ERROR 로 끝내 results 에 안 담긴다 (결정 3 대기).
-    # 진행 중이던 ItemRun 으로 확인한다.
-    r = fsm.cur
+    # QA 승인으로 배치가 이어지므로 그 원료는 results 에 담긴다 (결정 3).
+    r = fsm.results[0]
     assert r.unmeasured == 1, r.unmeasured
     assert r.actual_g < r.target_g          # 미측정분이 빠져 실제보다 작다
 
@@ -610,7 +611,7 @@ def test_213_cleanup_투입전_세_단계의_요청_순서를_고정한다():
     """
     # TARE — 정리 없음
     fsm = _fsm()
-    assert _cleanup_trace(Cell(yields=[100, 50], cup_invalid_first=2), fsm) == []
+    assert _cleanup_trace(Cell(yields=[100, 50], cup_invalid_first=3), fsm) == []
     d, = fsm.deviations
     assert (d['kind'], d['step'], d['action']) == ('WEIGH_INVALID', 'TARE', 'FORCED')
     assert '정리 없음' in d['detail'], d['detail']
@@ -618,7 +619,7 @@ def test_213_cleanup_투입전_세_단계의_요청_순서를_고정한다():
 
     # SCOOP_TARE — 반환 없이 스쿱만 반납
     fsm = _fsm()
-    assert _cleanup_trace(Cell(yields=[100, 50], invalid_first=2), fsm) == ['move', 'move', 'grip']
+    assert _cleanup_trace(Cell(yields=[100, 50], invalid_first=3), fsm) == ['move', 'move', 'grip']
     d, = fsm.deviations
     assert (d['kind'], d['step'], d['action']) == ('WEIGH_INVALID', 'SCOOP_TARE', 'FORCED')
     assert 'return_material' not in d['detail'], d['detail']   # 빈 스쿱을 기울이지 않는다
@@ -627,7 +628,7 @@ def test_213_cleanup_투입전_세_단계의_요청_순서를_고정한다():
 
 def test_213_cleanup_weigh_scoop_은_원료를_먼저_반환한다():
     """#213 4번 — `WEIGH_SCOOP` 은 스쿱에 원료가 있으므로 반환이 맨 앞에 온다."""
-    cell = Cell(yields=[100, 50], invalid_first=2)
+    cell = Cell(yields=[100, 50], invalid_first=3)
     cell.invalid_left = 0                       # SCOOP_TARE 는 통과시키고
     fsm = _fsm()
     trace = []
@@ -637,7 +638,7 @@ def test_213_cleanup_weigh_scoop_은_원료를_먼저_반환한다():
         # WEIGH_SCOOP 두 번을 무효로 돌려준다
         if req['kind'] == 'weigh_scoop' and fsm.state == 'WEIGH_SCOOP':
             tap.n += 1
-            if tap.n <= 2:
+            if tap.n <= 3:
                 return {'gross_g': 0.0, 'valid': False}
         return orig(req)
     tap.n = 0
@@ -653,7 +654,7 @@ def test_213_cleanup_weigh_scoop_은_원료를_먼저_반환한다():
 
 def test_invalid_tare_up_to_limit_raises_weigh_invalid():
     """max_invalid 만큼 무효면 WEIGH_INVALID 일탈로 멈춘다 — 무효 tare 로 배치를 시작하지 않는다."""
-    cell = Cell(yields=[100, 50], cup_invalid_first=2)
+    cell = Cell(yields=[100, 50], cup_invalid_first=3)
     fsm = _fsm()
     run(fsm, cell)
     assert [(d['kind'], d['step']) for d in fsm.deviations] == [('WEIGH_INVALID', 'TARE')]
