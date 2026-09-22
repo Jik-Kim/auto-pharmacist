@@ -147,6 +147,20 @@ class ProcessFSM:
         ratio = remaining / self.cur.scooped_g
         return max(self.dosing_cfg.min_fraction, min(1.0, self.cur.last_fraction * ratio))
 
+    def _first_fraction(self) -> float:
+        """원료의 **첫** 담그기 깊이. 종전에는 1.0 고정이었다 (#221).
+
+        목표가 스쿱 1회량보다 작으면 첫 사이클이 곧장 초과가 되어 반환으로 낭비된다 —
+        목표 30 g 에 1회량 40 g 을 그대로 퍼던 것이 그 경우다. 둘째 사이클부터는
+        `decide()` 가 같은 식으로 깊이를 정하므로 첫 사이클만 예외였다.
+
+        식은 `decide()` 와 **같게** 둔다. 하한(`min_fraction`)에 눌린 요청을 조용히 올리는
+        문제는 여기가 아니라 `decide()` 에 있고 B 소관이다 (#221) — 첫 사이클만 다른 규칙을
+        쓰면 그 문제가 두 곳으로 갈라진다.
+        """
+        cfg = self.dosing_cfg
+        return max(cfg.min_fraction, min(1.0, self.cur.target_g / cfg.scoop_nominal_g))
+
     def _scoop_allowance_g(self) -> float:
         """남은 목표량에 허용하는 스쿱량 여유. 원래 목표량 기준의 절대 허용오차다."""
         return self.cur.target_g * self.cur.tol_pct / 100.0
@@ -248,7 +262,7 @@ class ProcessFSM:
                 return r
             self.cur.scoop_tare_g = res.get('gross_g', 0.0)
             self.state = 'SCOOP'
-            return self._scoop()
+            return self._scoop(self._first_fraction())
         if k == 'scoop' and st == 'SCOOP':
             if not res.get('contact_detected', True):
                 return self._deviate('SCOOP_EMPTY', 'SCOOP', retry=req)

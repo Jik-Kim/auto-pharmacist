@@ -255,6 +255,65 @@ def test_반환_상한은_붓기_상한과_분리돼_있다():
     assert fsm.max_returns == 3 and fsm.dosing_cfg.max_attempts == 8
 
 
+class _DepthCell(Cell):
+    """요청한 깊이(fraction)만큼 퍼올리는 셀 — 첫 깊이의 효과를 본다."""
+    def __init__(self, *a, nominal_g=40.0, **kw):
+        super().__init__(*a, **kw)
+        self.nominal_g, self.fractions = nominal_g, []
+
+    def __call__(self, req):
+        if req['kind'] == 'scoop':
+            self.n['scoop'] += 1
+            f = req.get('fraction', 1.0)
+            self.fractions.append(round(f, 3))
+            self.in_scoop += self.nominal_g * f
+            return {'contact_detected': True}
+        return super().__call__(req)
+
+
+def _one_item(target_g, tol_pct=5.0):
+    return parse({'product': 'x', 'items': [{'material_id': 'A', 'target_g': target_g, 'tol_pct': tol_pct}]})
+
+
+def test_221_첫_담그기_깊이가_목표량을_반영한다():
+    """#221 — 첫 SCOOP 이 1.0 고정이라 작은 목표에서 곧장 초과 반환이 났다.
+
+    목표 30 g 에 1회량 40 g 을 그대로 푸면 남은 목표 + 허용오차(1.5)를 넘어 `RETURN_MATERIAL`
+    로 되돌린다. 깊이를 목표에 맞추면 그 낭비가 사라진다. #216 이 1회량을 65 g 으로 올리면
+    같은 일이 더 큰 목표에서도 생긴다.
+    """
+    fsm = ProcessFSM(_one_item(30.0), DosingConfig(max_attempts=8, scoop_nominal_g=40.0),
+                     WeightModel(ScaleConfig()))
+    cell = _DepthCell(yields=[], residual=0.0, nominal_g=40.0)
+    run(fsm, cell)
+    assert cell.fractions[0] == 0.75, cell.fractions      # 30 ÷ 40
+    assert fsm.results[0].returns == 0, cell.fractions    # 첫 사이클이 헛돌지 않는다
+    assert fsm.state == 'DONE'
+
+
+def test_221_목표가_1회량보다_크면_전량이다():
+    """큰 목표는 종전과 같다 — 첫 깊이 1.0."""
+    fsm = ProcessFSM(_one_item(200.0), DosingConfig(max_attempts=8, scoop_nominal_g=40.0),
+                     WeightModel(ScaleConfig()))
+    cell = _DepthCell(yields=[], residual=0.0, nominal_g=40.0)
+    run(fsm, cell)
+    assert cell.fractions[0] == 1.0, cell.fractions
+    assert fsm.state == 'DONE' and fsm.results[0].returns == 0
+
+
+def test_221_첫_깊이도_min_fraction_하한을_지킨다():
+    """하한 아래 요청은 A 의 profile 이 거부한다 — `decide()` 와 같은 식을 쓴다.
+
+    하한에 눌린 요청을 조용히 올려 과다 채취하는 문제는 `decide()` 쪽이고 B 소관이다 (#221).
+    첫 사이클만 다른 규칙을 쓰면 그 문제가 두 곳으로 갈라지므로 식을 같게 둔다.
+    """
+    fsm = ProcessFSM(_one_item(3.0, tol_pct=50.0), DosingConfig(max_attempts=8, scoop_nominal_g=40.0),
+                     WeightModel(ScaleConfig()))
+    cell = _DepthCell(yields=[], residual=0.0, nominal_g=40.0)
+    run(fsm, cell)
+    assert cell.fractions[0] == 0.15, cell.fractions      # 3 ÷ 40 = 0.075 → 하한
+
+
 def test_verify_규격이탈은_BATCH_OUT_OF_SPEC():
     """① 제품 판정 — 용기 순량이 레시피 총 목표량에서 벗어나면 규격 이탈이다.
     레시피 A 100 + B 50 = 150 g, 허용치 Σ(target×tol) = 7.5 g. 용기에 50 g 이 더 있다."""
