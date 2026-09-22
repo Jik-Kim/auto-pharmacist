@@ -428,7 +428,7 @@ class ProcessNode(Node):
             with self._order_lock:
                 outcome = self._batch_outcome or 'ERROR'
                 result = RunBatch.Result(
-                    success=outcome == 'DONE', items_done=min(255, len(self.fsm.results)),
+                    success=outcome in ('DONE', 'DONE_UNMEASURED'), items_done=min(255, len(self.fsm.results)),
                     deviations=min(255, len(self.fsm.deviations)), result=outcome,
                     message=self.note or outcome)
                 if outcome == 'ABORTED' and self._batch_cancel.is_set():
@@ -438,7 +438,7 @@ class ProcessNode(Node):
                         time.sleep(0.01)
                 if outcome == 'ABORTED' and handle.is_cancel_requested:
                     handle.canceled()
-                elif outcome in ('DONE', 'DISCARDED'):
+                elif outcome in ('DONE', 'DONE_UNMEASURED', 'DISCARDED'):
                     handle.succeed()  # DISCARDED는 완료된 실행이며 result.success는 false
                 else:
                     handle.abort()
@@ -917,6 +917,10 @@ class ProcessNode(Node):
                         self.note = 'RunBatch 취소 — 배치 자동 재개 없음'
                     self._batch_outcome = (fsm.state if fsm.state in ('DONE', 'DISCARDED', 'ABORTED')
                                            else 'ERROR')
+                    if self._batch_outcome == 'DONE' and fsm.verify_unmeasured:
+                        # 완료품이지만 **최종 순량을 모른다** — QA 가 값 없이 승인했다 (#213).
+                        # `result` 는 문자열 필드라 값을 늘려도 계약 변경이 아니다.
+                        self._batch_outcome = 'DONE_UNMEASURED'
                     self._close_attempt('ABORTED')
                     self._drain()
                     self.event('INFO', 'BATCH_END', f'{fsm.mode} / {fsm.state}')

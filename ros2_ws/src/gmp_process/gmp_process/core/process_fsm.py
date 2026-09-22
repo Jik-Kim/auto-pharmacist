@@ -63,6 +63,8 @@ class ItemRun:
     scooped_g: float = 0.0       # 붓기 전 스쿱 안의 원료 (WEIGH_SCOOP)
     residual_g: float = 0.0      # 붓기 후 스쿱에 남은 원료 (WEIGH_RESIDUAL)
     actual_g: float = 0.0        # 용기에 들어간 누적 투입량 = Σ(scooped − residual)
+    unmeasured: int = 0          # 계량 무효로 투입량을 모르는 채 넘어간 사이클 수 (#213).
+                                 # actual_g 에는 안 들어간다 — 그래서 actual_g 가 실제보다 작다
     verdict: str = ''
 
 
@@ -90,6 +92,7 @@ class ProcessFSM:
                                  # **반드시 같은 자세끼리 비교해야 한다** — tool_force 는 자세 의존이라
                                  # 다른 자세의 값을 기준으로 쓰면 자세 차이가 그대로 '영점 이동' 으로 읽힌다
     verify_zero_drift_n: float = 0.0  # VERIFY 직전 영점 이동량 — detail 에 남는다
+    verify_unmeasured: bool = False  # VERIFY 최종 계량이 무효인 채 QA 승인으로 끝났다 (#213)
     verify_detail: str = ''      # VERIFY 판정 근거 한 줄 — ①(판정)과 ②(관측) 수치.
                                  # 일탈이 안 나도 남는다 — process_node 가 CellEvent 로 발행한다
     results: list = field(default_factory=list)
@@ -171,7 +174,11 @@ class ProcessFSM:
             # WEIGH_RESIDUAL 은 이미 부은 뒤라 되돌릴 게 없고 투입량만 모르는 상태다.
             if step in ('SCOOP_TARE', 'WEIGH_SCOOP'):
                 return self._cleanup_then_error('WEIGH_INVALID', step)
-            return self._deviate('WEIGH_INVALID', step)
+            # WEIGH_RESIDUAL — 이미 부은 뒤라 되돌릴 게 없다. 이 사이클의 투입량은 **모른다**.
+            # actual_g 에 0 을 더하지 않고(누산 자체를 건너뛴다) 미측정으로 센다 (#213).
+            self.cur.unmeasured += 1
+            return self._deviate('WEIGH_INVALID', step,
+                                 detail=f'투입량 불확실 — 미측정 {self.cur.unmeasured}회')
         return retry
 
     def _wrong_tool_or(self, res: dict, step: str, expected_mm: float):
@@ -349,7 +356,11 @@ class ProcessFSM:
             if not res.get('valid', False):
                 self._verify_invalid += 1
                 if self._verify_invalid >= self.dosing_cfg.max_invalid:
-                    return self._deviate('WEIGH_INVALID', 'VERIFY')
+                    # 최종 계량을 못 믿는다 → ① 판정 불가. QA 가 승인하면 값 없이 나간다 (#213).
+                    self.verify_unmeasured = True
+                    self.verify_detail = ('최종 계량 미측정 — 용기 순량을 모른다. '
+                                          f'Σ투입량 {self.dosed_total():.1f} g (①규격 판정 불가)')
+                    return self._deviate('WEIGH_INVALID', 'VERIFY', detail=self.verify_detail)
                 return req
             self.verify_net_g = res.get('net_g', 0.0)
             # ① 제품 판정 — 레시피 총 목표량 대비. **유일한 판정이다** (9/22 ② 폐지).

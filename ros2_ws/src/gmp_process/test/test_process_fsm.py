@@ -547,6 +547,60 @@ def _cleanup_trace(cell, fsm):
     return out
 
 
+def test_213_weigh_residual_무효는_미측정으로_세고_누산하지_않는다():
+    """#213 5번 1단계 — 이미 부은 뒤라 되돌릴 게 없고 **투입량만 모른다**.
+
+    0 을 더하면 「안 들어갔다」가 되어 거짓이다. 누산을 건너뛰고 미측정으로 센다 —
+    그래서 `actual_g` 는 실제보다 작고, 그 사실이 `unmeasured` 와 detail 에 남는다.
+    """
+    cell = Cell(yields=[100, 50])
+    fsm = _fsm()
+    tap_n = [0]
+    orig = cell.__call__
+
+    def tap(req):
+        if req['kind'] == 'weigh_scoop' and fsm.state == 'WEIGH_RESIDUAL':
+            tap_n[0] += 1
+            if tap_n[0] <= 2:                        # 첫 사이클의 잔량 계량만 무효로
+                return {'gross_g': 0.0, 'valid': False}
+        return orig(req)
+
+    run(fsm, tap)
+    d = next(x for x in fsm.deviations if x['step'] == 'WEIGH_RESIDUAL')
+    assert d['kind'] == 'WEIGH_INVALID'
+    # `action` 은 단정하지 않는다 — 결정 3(단계별 정책)이 아직 없어 지금은 'RETRY' 로
+    # 기록되고 실제로는 ERROR 로 떨어진다. 그 불일치가 #213 본체다.
+    assert '미측정 1회' in d['detail'], d['detail']
+    # 현재 거동에서는 이 일탈이 배치를 ERROR 로 끝내 results 에 안 담긴다 (결정 3 대기).
+    # 진행 중이던 ItemRun 으로 확인한다.
+    r = fsm.cur
+    assert r.unmeasured == 1, r.unmeasured
+    assert r.actual_g < r.target_g          # 미측정분이 빠져 실제보다 작다
+
+
+def test_213_verify_무효는_최종계량_미측정으로_남는다():
+    """#213 5번 1단계 — `verify_net_g` 를 0.0 으로 남기지 않는다.
+
+    고치기 전에는 QA 승인 시 배치 기록에 순량 0.0 이 찍힌 채 완성품으로 나갔다.
+    이제 `verify_unmeasured` 와 detail 이 「모른다」를 명시한다.
+    """
+    cell = Cell(yields=[100, 50], cup_invalid_first=0)
+    fsm = _fsm()
+    orig = cell.__call__
+
+    def tap(req):
+        if req['kind'] == 'weigh' and fsm.state == 'VERIFY':
+            return {'gross_g': 0.0, 'net_g': 0.0, 'valid': False}
+        return orig(req)
+
+    run(fsm, tap)
+    d = fsm.deviations[-1]
+    assert (d['kind'], d['step']) == ('WEIGH_INVALID', 'VERIFY')
+    assert fsm.verify_unmeasured is True
+    assert '최종 계량 미측정' in fsm.verify_detail, fsm.verify_detail
+    assert '판정 불가' in fsm.verify_detail, fsm.verify_detail
+
+
 def test_213_cleanup_투입전_세_단계의_요청_순서를_고정한다():
     """#213 4번 — 손에 뭐가 있느냐로 정리 경로가 갈린다 (9/22 조장 확인).
 
