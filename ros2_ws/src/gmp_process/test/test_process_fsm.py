@@ -11,10 +11,10 @@ from gmp_process.core.recipe import parse
 SCOOP_TARE, CUP_TARE = 20.0, 30.0
 
 
-def _fsm(min_resolvable_g=30.0, fingerprint=None):
+def _fsm(fingerprint=None):
     spec = parse({'product': 't', 'items': [{'material_id': 'A', 'target_g': 100, 'tol_pct': 5},
                                               {'material_id': 'B', 'target_g': 50, 'tol_pct': 5}]})
-    return ProcessFSM(spec, DosingConfig(scoop_nominal_g=40), WeightModel(ScaleConfig(min_resolvable_g=min_resolvable_g)),
+    return ProcessFSM(spec, DosingConfig(scoop_nominal_g=40), WeightModel(ScaleConfig()),
                       fingerprint=fingerprint or ToolFingerprint())
 
 
@@ -252,7 +252,7 @@ def test_verify_규격이탈은_BATCH_OUT_OF_SPEC():
     """① 제품 판정 — 용기 순량이 레시피 총 목표량에서 벗어나면 규격 이탈이다.
     레시피 A 100 + B 50 = 150 g, 허용치 Σ(target×tol) = 7.5 g. 용기에 50 g 이 더 있다."""
     cell = Cell(yields=[100, 50], cup_bias=50.0)
-    fsm = _fsm(min_resolvable_g=30.0)
+    fsm = _fsm()
     trace = run(fsm, cell)
     d, = fsm.deviations
     assert {k: d[k] for k in ('kind', 'step', 'count', 'action', 'material_id')} == {

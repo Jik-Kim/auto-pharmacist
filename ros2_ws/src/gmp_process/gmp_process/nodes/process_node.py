@@ -81,9 +81,9 @@ class ProcessNode(Node):
             ('robot.vel_scale', 0.0),           # 0 이면 skill_node 의 robot.vel_scale
             ('scale.method', 'tool_force'), ('scale.gain', 0.8859), ('scale.offset_g', 247.091),
             # 런타임 값은 common.yaml 이 단일 출처다. 아래 기본값은 런치 없이 노드를 띄울 때만 쓰인다.
-            # 9/21 영점 재작업의 material_3 재측정값(min_resolvable 5.0 · max_std 8.0)은 조장·A 결정
-            # 전까지 미적용이라, 여기와 ScaleConfig 기본값과 common.yaml 의 숫자가 당분간 서로 다르다.
-            ('scale.min_resolvable_g', 19.0), ('scale.max_std_g', 10.0),
+            # 9/21 영점 재작업의 material_3 재측정값(max_std 8.0)은 조장·A 결정 전까지 미적용이라,
+            # 여기와 ScaleConfig 기본값과 common.yaml 의 숫자가 당분간 서로 다르다.
+            ('scale.max_std_g', 10.0),
             ('scale.samples', 20), ('scale.settle_s', 1.0),
             # max_attempts 는 **붓기 시도** 상한이다. 목표량÷스쿱 1회량에 비례해야 한다
             # (데모 A 200 g ÷ 40 g = 5회가 하한). max_returns 는 **초과 반환** 상한으로 성격이 다르다 (#189).
@@ -98,9 +98,10 @@ class ProcessNode(Node):
         ])
         p = lambda k: self.get_parameter(k).value  # noqa: E731
         self.p = p
-        self.scale = WeightModel(ScaleConfig(p('scale.method'), p('scale.gain'), p('scale.offset_g'),
-                                             p('scale.min_resolvable_g'), p('scale.max_std_g')))
-        # 키워드로 넘긴다 — 필드 사이에 값이 끼면 위치 인자는 조용히 밀린다
+        # **키워드로 넘긴다** — ScaleConfig 는 min_resolvable_g 가 offset_g 와 max_std_g 사이에 있어서,
+        # 위치 인자로 두면 그 필드를 뺄 때 max_std_g 가 조용히 한 칸 밀린다 (AGENTS 규칙, #211).
+        self.scale = WeightModel(ScaleConfig(method=p('scale.method'), gain=p('scale.gain'),
+                                             offset_g=p('scale.offset_g'), max_std_g=p('scale.max_std_g')))
         self.dosing_cfg = DosingConfig(max_attempts=p('dosing.max_attempts'),
                                        scoop_nominal_g=p('dosing.scoop_nominal_g'),
                                        min_fraction=p('dosing.min_fraction'))
