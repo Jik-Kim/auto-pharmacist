@@ -1,6 +1,6 @@
 # Architecture
 
-> 계약 **v1.5.1 (9/21)** 기준. v1.2 `WeighHeld`·v1.3 `ReturnMaterial`(전량 붓기, 초과는 반환)·v1.5 `Scoop.depth_fraction` 은 A 서버·C `process_node`·D HMI 에 반영됐다. v1.4 안전 복구(`RecoverSafety`, HMI→C→A 중계)는 A·C·D 구현 완료, 계약 확정 대기. **반환 뒤 재스쿱 연결 경로는 미구현**이라 실물 `skill_node` 가 후속 `Scoop` 을 거부한다 (v1.5.1) — 그때까지 반환이 나온 배치는 실물에서 `ERROR` 로 끝난다.
+> 계약 **v1.7 (9/22)** 기준(v1.6 안전 복구 확정, v1.7 충돌 감도 자가진단 추가 — `interfaces.md`). v1.2 `WeighHeld`·v1.3 `ReturnMaterial`(전량 붓기, 초과는 반환)·v1.5 `Scoop.depth_fraction` 은 A 서버·C `process_node`·D HMI 에 반영됐다. **9/22 #216**: `Scoop` 이 접촉 측정 → 높이 보정 spline → 털기로 실제 스쿠핑을 하며, `stations.yaml` `scooping.<원료>.calibrated=true` 전에는 이동 전 거부된다(원료 A 만 경로 존재, 실물 미검증). v1.4 안전 복구(`RecoverSafety`, HMI→C→A 중계)는 A·C·D 구현 완료, 계약 확정 대기. **반환 뒤 재스쿱 연결 경로는 미구현**이라 실물 `skill_node` 가 후속 `Scoop` 을 거부한다 (v1.5.1) — 그때까지 반환이 나온 배치는 실물에서 `ERROR` 로 끝난다.
 
 ## 배치 (PC 1대 + 로봇 + 그리퍼)
 
