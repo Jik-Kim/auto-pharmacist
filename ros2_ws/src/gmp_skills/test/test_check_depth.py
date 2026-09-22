@@ -55,12 +55,13 @@ def depth_node(monkeypatch, material='A'):
 @pytest.mark.parametrize('material,x', [('A', 344.0), ('B', 439.0), ('C', 537.0)])
 def test_check_depth_uses_full_taught_target_and_returns_to_weigh_pose(monkeypatch, material, x):
     node, job, calls, feedback = depth_node(monkeypatch, material)
-    result = node._do_scoop(job)
+    result = node._do_check_depth(job)
     weigh = [x, -298.0, 200.0, 90.0, -180.0, -90.0]
     assert calls == [('move', weigh, 1.0), ('on',),
                      ('measure', [x, -334.0, 120.0, 90.0, 160.0, -90.0], 1.0, 30.0),
                      ('off',), ('move', weigh, 1.0)]
-    assert result == dict(contact_detected=True, max_contact_force_n=18.0, insertion_depth_mm=30.0)
+    assert result == dict(contact_detected=True, max_contact_force_n=18.0, insertion_depth_mm=30.0,
+                          contact_pose_base=[x, -334.0, 150.0, 90.0, 160.0, -90.0])
     assert [f[0] for f in feedback] == ['APPROACH', 'DIP', 'DIP', 'LIFT']
 
 

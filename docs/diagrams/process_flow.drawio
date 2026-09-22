@@ -126,7 +126,7 @@
         <mxCell id="c8" value="SCOOP_TARE&lt;br&gt;req: weigh_scoop — 빈 스쿱&lt;br&gt;든 채 (원료마다 1회)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="320" y="400" width="190" height="72" as="geometry" />
         </mxCell>
-        <mxCell id="c9" value="SCOOP&lt;br&gt;req: scoop(material, attempt)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="c9" value="SCOOP&lt;br&gt;req: scoop(material, attempt, depth_fraction)&lt;br&gt;A: 접촉 측정 → 높이 보정 spline → 털기&lt;br&gt;보정 미확인 시 이동 전 거부&lt;br&gt;수동 높이 진단은 Scoop 성공 아님" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="600" y="400" width="190" height="72" as="geometry" />
         </mxCell>
         <mxCell id="c10" value="WEIGH_SCOOP&lt;br&gt;req: weigh_scoop — 붓기 전&lt;br&gt;퍼낸 양 → 붓기 비율" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">

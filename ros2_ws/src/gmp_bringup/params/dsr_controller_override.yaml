@@ -1,0 +1,6 @@
+# 벤더 YAML과 같은 노드 범위. robot.launch.py에서 벤더 설정 다음에 적용한다.
+/**:
+  controller_manager:
+    ros__parameters:
+      dsr_controller2:
+        type: gmp_dsr_controller/RobotController
