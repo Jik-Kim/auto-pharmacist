@@ -204,7 +204,6 @@ class ProcessFSM:
                     return self._deviate('WEIGH_INVALID', 'TARE')
                 return req
             self.tare_g = res.get('gross_g', 0.0)
-            self.scale.set_tare(self.tare_g)
             self.cur = self._item()
             self.state = 'PICK_SCOOP'
             return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}

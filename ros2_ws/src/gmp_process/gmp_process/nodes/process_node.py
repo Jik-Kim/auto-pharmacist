@@ -80,7 +80,10 @@ class ProcessNode(Node):
             ('robot.tool_name', 'tool_weight'), ('robot.tcp_name', 'GripperDA_v1'),
             ('robot.vel_scale', 0.0),           # 0 이면 skill_node 의 robot.vel_scale
             ('scale.method', 'tool_force'), ('scale.gain', 0.8859), ('scale.offset_g', 247.091),
-            ('scale.min_resolvable_g', 19.0), ('scale.max_std_g', 10.0),     # G1 9/19 — common.yaml 과 같은 값
+            # 런타임 값은 common.yaml 이 단일 출처다. 아래 기본값은 런치 없이 노드를 띄울 때만 쓰인다.
+            # 9/21 영점 재작업의 material_3 재측정값(min_resolvable 5.0 · max_std 8.0)은 조장·A 결정
+            # 전까지 미적용이라, 여기와 ScaleConfig 기본값과 common.yaml 의 숫자가 당분간 서로 다르다.
+            ('scale.min_resolvable_g', 19.0), ('scale.max_std_g', 10.0),
             ('scale.samples', 20), ('scale.settle_s', 1.0),
             ('dosing.max_attempts', 3), ('dosing.scoop_nominal_g', 40.0), ('dosing.min_fraction', 0.15),
             ('gripper.cup_width_mm', 60.0),
@@ -461,7 +464,6 @@ class ProcessNode(Node):
             return res
 
     def _reset_batch(self):
-        self.scale.tare_g = 0.0
         self._dev_msgs = []
         self._published_devs = self._published_results = 0
         self._attempt = self._scoop_tare = None

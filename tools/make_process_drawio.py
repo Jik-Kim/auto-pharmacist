@@ -115,7 +115,7 @@ disc = S(5, 3, 'DISCARDED', 'req: (스쿱 반납 →) carry workbench→reject_b
 p2.edge(idle, selfc, 'submit_order 수락\nbatch_id 발급 · event BATCH_START', color=ACC, lpos=(0, -22))
 p2.edge(selfc, pickc, 'measure valid', color=ACC, lpos=(0, -14))
 p2.edge(pickc, tare, 'carry grip_inferred=true', color=ACC, lpos=(0, -14))
-p2.edge(tare, picks, 'tare_g 저장 · scale.set_tare() · cur = 원료 0 · weight 발행', color=ACC,
+p2.edge(tare, picks, 'tare_g 저장 · cur = 원료 0 · weight 발행', color=ACC,
         exit=(0.5, 1), entry=(0.5, 0), points=((cx(3), 300), (cx(0), 300)), lpos=(0, -14))
 p2.edge(picks, stare, 'grip_inferred=true', color=ACC, lpos=(0, 16))
 p2.edge(stare, scoop, 'scoop_tare_g 저장\nattempts=1', color=ACC, lpos=(0, 22))
@@ -237,10 +237,10 @@ KIND = {'n': (ACCS, ACC), 'p': (WARMS, WARM), 'e': (REDS, RED), 'd': (OKS, OK), 
 # (상태, 종류, HMI→, →skill, →dosing, →record, skill→state 역방향 여부)
 ROWS = [
  ('IDLE', 'i', 'SubmitOrder srv\nrecipe → accepted, batch_id\nevent HMI_ORDER(actor) → audit', None,
-  'recipe.parse() / from_msg() 검증\nscale.resolvable(target, tol)', 'state IDLE→ACCEPTED\nevent BATCH_START(product)', False),
+  'recipe.parse() / from_msg() 검증', 'state IDLE→ACCEPTED\nevent BATCH_START(product)', False),
  ('SELF_CHECK', 'n', None, 'MeasureForce srv (빈 그리퍼)\nsamples, settle_s → fz_mean, fz_std, valid', None, 'state · event STEP', False),
  ('PICK_CONTAINER', 'n', None, 'carry = MoveToStation act ×4 + SetGripper srv ×2\npassbox_empty(slot) → workbench, cup_width\n→ grip_inferred', None, 'state\ndeviation(GRIP_FAIL 시)', False),
- ('TARE', 'n', None, 'WeighContainer act (고정 workbench 용기 들어)\ntare 0 → reading(gross, std, valid)', 'scale.set_tare(gross)', 'weight(gross, valid=…) · state', False),
+ ('TARE', 'n', None, 'WeighContainer act (고정 workbench 용기 들어)\ntare 0 → reading(gross, std, valid)', None, 'weight(gross, valid=…) · state', False),
  ('PICK_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT)\nSetGripper srv (close, scoop_width, force)\n→ grip_inferred, final_width_mm', None, 'state\ndeviation(GRIP_FAIL · WRONG_TOOL[v1.2])', False),
  ('SCOOP_TARE', 'n', None, 'WeighHeld act [v1.2] (빈 스쿱, 든 채)\n→ gross, std, valid', None, 'weight(스쿱 풍량, subject=scoop) · state', False),
  ('SCOOP', 'n', None, 'Scoop act\nmaterial_id, attempt → contact_detected', None, 'state\ndeviation(SCOOP_EMPTY · MATERIAL_EMPTY)', False),
