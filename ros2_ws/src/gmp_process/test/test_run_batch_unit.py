@@ -340,7 +340,8 @@ def test_generated_date_id_skips_explicit_used_id(node):
 
 
 def test_refill_exit_between_safe_and_wait_is_not_lost(node):
-    node.fsm = NS(mode='PAUSED', state='PAUSED')
+    # idx 는 _pub_state 가 읽는다 — safe 가 정지 사유를 note 에 실으며 발행한다 (#191). 163행과 같은 규약.
+    node.fsm = NS(mode='PAUSED', state='PAUSED', idx=0)
     assert node._dispatch({'kind': 'safe', 'reason': 'REFILL', 'then': 'wait_interlock'})['success']
     assert node._refill_waiting
     enter = node._srv_interlock(Message(request=0, reason='REFILL'), Message())
@@ -349,6 +350,37 @@ def test_refill_exit_between_safe_and_wait_is_not_lost(node):
     assert node._interlock_exit.is_set()
     node._dispatch({'kind': 'wait_interlock'})
     assert not node._refill_waiting and not node._interlock_exit.is_set()
+
+
+def test_refill_wait_puts_reason_at_head_of_published_note(node):
+    """REFILL 대기 중 CellState.note 앞머리에 FSM 이 만든 사유가 실린다 (#191).
+
+    HMI(gmp_hmi core/pause_context.pause_reason)는 note **앞머리**로 정지 사유를 가른다 —
+    `^REFILL\\b`. 고치기 전에는 이 구간 내내 note 가 비어 있어서(INTERLOCK 도 아니었다)
+    HMI 의 REFILL 분기가 영영 안 떴다.
+    """
+    node.fsm = NS(mode='PAUSED', state='PAUSED', idx=0)
+    node._dispatch({'kind': 'safe', 'reason': 'REFILL', 'then': 'wait_interlock'})
+    assert node.note.startswith('REFILL '), node.note
+    assert node.published['state'][-1].note.startswith('REFILL '), node.published['state'][-1].note
+    assert not node._pause, 'REFILL 대기는 인터락 정지가 아니다'
+
+    # 사유를 하드코딩하지 않으므로 FSM 이 다른 사유를 보내면 그대로 흐른다 (HEIGHT_LOW 등, #192)
+    node._dispatch({'kind': 'safe', 'reason': 'HEIGHT_LOW', 'then': 'wait_interlock'})
+    assert node.published['state'][-1].note.startswith('HEIGHT_LOW '), node.published['state'][-1].note
+
+    # 대기가 끝나면 내린다
+    node._interlock_exit.set()
+    node._dispatch({'kind': 'wait_interlock'})
+    assert node.note == '' and node.published['state'][-1].note == '', node.published['state'][-1].note
+
+
+def test_safe_without_interlock_wait_does_not_touch_note(node):
+    """`then` 이 wait_interlock 이 아닌 safe(예: ERROR 로 가는 길)는 note 를 건드리지 않는다."""
+    node.fsm = NS(mode='RUNNING', state='SCOOP', idx=0)
+    node.note = ''
+    node._dispatch({'kind': 'safe', 'reason': 'RECOVERY'})
+    assert node.note == '' and not node._refill_waiting
 
 
 def test_refill_enter_does_not_grant_on_paused_mode_alone(node):
