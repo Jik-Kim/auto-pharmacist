@@ -41,6 +41,8 @@ from gmp_dosing.core.scale import ScaleConfig, WeightModel
 from gmp_skills.adapters.dsr_arm import DsrArm
 from gmp_skills.adapters.rg2_gripper import Rg2Gripper
 from gmp_skills.core.nudge import NudgeDetector
+from gmp_skills.core.scooping import finite, plan_scoop, tip_offset_local, tip_z
+from gmp_skills.core.transfer import vector6
 from gmp_skills.core.recovery import recovery_step, STANDBY
 from gmp_skills.core.stations import StationTable
 from gmp_skills.core.transfer import MotionAnchor, joints_match, pose_matches, validate_start
@@ -925,9 +927,84 @@ class SkillNode(Node):
         return list(pose)
 
     def _do_scoop(self, job: Job):
-        # 기존 Scoop 계약·작업명은 유지하고 현재 구현된 깊이 확인 동작에 연결한다.
-        # TODO(A): 실제 원료를 퍼 올리는 스쿠핑 동작 구현.
-        return SkillNode._do_check_depth(self, job)
+        """접촉 측정 → WORLD 높이 보정 → TW spline → 털기 → 계량 자세."""
+        if getattr(self, '_return_rescoop_blocked', False):
+            raise RuntimeError('반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
+        self._require_scoop_extracted()
+        material = job.args['material_id']
+        SkillNode._require_held_scoop(self, material)
+        profile = self.stations.scooping.get(material)
+        if not profile or profile.get('calibrated') is not True:
+            raise ValueError('스쿠핑 경로/스쿱 끝 높이 보정 미확인: 원료별 보정 후 실행 필요')
+        fraction = finite(job.args['depth_fraction'], 'depth_fraction')
+        station = self.stations.for_material(material)
+        cancel = lambda: job.cancel or self._cancel_requested()
+        if cancel():
+            raise RuntimeError('cancelled')
+        # 설정과 좌표 변환은 첫 이동 전에 확인한다. WORLD=BASE를 가정하지 않는다.
+        reference = self.arm.transform_pose(profile['reference_pose_base'], to_world=True)
+        offset = tip_offset_local(reference, profile['tip_offset_world_mm'])
+        points = [self.arm.transform_pose(p, to_world=True) for p in profile['waypoints_base']]
+        shake = self.arm.transform_pose(profile['shake_base'], to_world=True)
+        plan_scoop(profile, points, offset, profile['reference_surface_world_z_mm'], fraction)
+        vel = [finite(v, 'spline 속도') * self.vel_scale for v in profile['velocity']]
+        acc = [finite(v, 'spline 가속도') * self.vel_scale for v in profile['acceleration']]
+        if len(vel) != 2 or len(acc) != 2 or min(vel + acc) <= 0:
+            raise ValueError('spline 속도/가속도는 양수 2개여야 한다')
+        amp = vector6(profile['shake_amp'], '털기 진폭')
+        period = vector6(profile['shake_period'], '털기 주기')
+        atime = finite(profile['shake_atime'], '털기 가속시간')
+        repeat = profile['shake_repeat']
+        if (atime <= 0 or type(repeat) is not int or repeat <= 0
+                or any(t < 0 or (a != 0 and t <= 0) for a, t in zip(amp, period))
+                or not any(amp)):
+            raise ValueError('털기 주기/반복 설정 오류')
+        result = SkillNode._do_check_depth(self, job)
+        contact = result.get('contact_pose_base')
+        if contact is None:
+            raise RuntimeError('원료면 접촉 미검출: 스쿠핑을 실행하지 않습니다')
+        surface = tip_z(self.arm.transform_pose(contact, to_world=True), offset)
+        plan = plan_scoop(profile, points, offset, surface, fraction)
+        targets = [self.arm.transform_pose(p, to_world=False) for p in plan.world_poses]
+        shake[2] += plan.shift_mm
+        if tip_z(shake, offset) < plan.floor_z:
+            raise ValueError('털기 위치가 스쿱 끝 높이 하한을 침범한다')
+        shake_target = self.arm.transform_pose(shake, to_world=False)
+        self.get_logger().info(
+            f'[SCOOP_PLAN] material={material} surface_world_z={surface:.2f} '
+            f'depth_mm={plan.depth_mm:.2f} fraction={fraction:.3f} '
+            f'predicted_g={plan.predicted_g:.2f} shift_mm={plan.shift_mm:.2f}')
+
+        def observe():
+            SkillNode._require_held_scoop(self, material)
+            world = self.arm.transform_pose(self.arm.current_posx(), to_world=True)
+            if tip_z(world, offset) < plan.floor_z:
+                raise RuntimeError('스쿠핑 중 스쿱 끝 높이 하한 침범')
+
+        # 취소·미도달·관측 실패 시 어댑터가 정지하고 다음 이동은 수행하지 않는다.
+        job.feedback and job.feedback('DIP', True, result['max_contact_force_n'],
+                                      result['insertion_depth_mm'])
+        self.arm.movesx_cancellable(targets, vel, acc, cancel, self.motion_timeout_s,
+                                    observer=observe)
+        self.arm.movel_cancellable(shake_target, self.vel_scale, cancel,
+                                   self.motion_timeout_s, observer=observe)
+        if cancel():
+            raise RuntimeError('cancelled')
+        job.feedback and job.feedback('LEVEL', True, result['max_contact_force_n'],
+                                      result['insertion_depth_mm'])
+        try:
+            self.arm.amove_periodic(list(amp), list(period), atime, repeat, ref_tool=False)
+            self.arm.wait_motion_cancellable(cancel, self.motion_timeout_s, observer=observe)
+            if not self._pose_matches(self.arm.current_posx(), shake_target):
+                raise RuntimeError('털기 종료 자세 미확인')
+        except Exception:
+            self.arm.stop_motion()
+            raise
+        self.arm.movel_cancellable(station.posx, self.vel_scale, cancel,
+                                   self.motion_timeout_s, observer=observe)
+        job.feedback and job.feedback('LIFT', True, result['max_contact_force_n'],
+                                      result['insertion_depth_mm'])
+        return result
 
     def _wait_compliance_settle(self, job: Job, duration_s: float):
         """순응 진입 응답 후 컨트롤러 전환 시간을 확보하며 취소를 확인한다."""
@@ -960,11 +1037,12 @@ class SkillNode(Node):
         if job.cancel:
             raise RuntimeError('cancelled')
         contact_z = None
+        contact_pose = None
         max_force_n = 0.0
         insertion_mm = 0.0
 
         def observe_depth():
-            nonlocal contact_z, max_force_n, insertion_mm
+            nonlocal contact_z, contact_pose, max_force_n, insertion_mm
             force = self.arm.tool_force()
             if force is None or len(force) != 6 or not all(math.isfinite(float(v)) for v in force):
                 raise RuntimeError('깊이 측정 외력 조회 실패')
@@ -974,6 +1052,7 @@ class SkillNode(Node):
             max_force_n = max(max_force_n, abs(float(force[2])))
             if contact_z is None and self.arm.force_over(float(p('safety.fz_max_n').value)):
                 contact_z = float(current[2])
+                contact_pose = list(current)
             insertion_mm = 0.0 if contact_z is None else abs(float(current[2]) - contact_z)
             job.feedback and job.feedback('DIP', contact_z is not None, abs(float(force[2])), insertion_mm)
 
@@ -994,7 +1073,7 @@ class SkillNode(Node):
         self.arm.movel(start, self.vel_scale)
         job.feedback and job.feedback('LIFT', contact_z is not None, max_force_n, insertion_mm)
         return {'contact_detected': contact_z is not None, 'max_contact_force_n': max_force_n,
-                'insertion_depth_mm': insertion_mm}
+                'insertion_depth_mm': insertion_mm, 'contact_pose_base': contact_pose}
 
     def _do_pour(self, job: Job):
         self._require_scoop_extracted()
@@ -1209,7 +1288,8 @@ class SkillNode(Node):
             fb.insertion_depth_mm = float(insertion_depth_mm)
             gh.publish_feedback(fb)
 
-        job = self._submit('scoop', feedback, material_id=gh.request.material_id, attempt=gh.request.attempt)
+        job = self._submit('scoop', feedback, material_id=gh.request.material_id,
+                           attempt=gh.request.attempt, depth_fraction=gh.request.depth_fraction)
         data = job.result if isinstance(job.result, dict) else {}
         res = Scoop.Result(
             success=not job.error and not job.cancel,

@@ -38,6 +38,9 @@ class StationTable:
     REQUIRED = ('safe', 'workbench')
 
     def __init__(self, data: dict):
+        self.scooping = data.get('scooping', {})
+        if not isinstance(self.scooping, dict):
+            raise ValueError('scooping 설정은 원료별 매핑이어야 한다')
         self.frame = data.get('frame', 'base')
         self.approach_mm = float(data.get('approach_mm', 60.0))
         self.stations = {}

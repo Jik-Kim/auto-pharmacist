@@ -54,3 +54,8 @@ core/transfer.py          관절 이송 티칭값·출발 관절 구성·파지 
 준비·응답은 각각 `robot.startup_timeout_s`로 제한한다. 불일치·실패는 차단하고 자동 변경하지 않는다.
 가상에서는 실물 검증 생략을 명시한다. 새 서비스 정의와 플러그인 빌드가 필요하며,
 SDK 호출 자체의 강제 취소 및 실제 충돌 성능 검증은 이 검사에 포함되지 않는다.
+
+
+### 높이 기반 스쿠핑
+
+`core/scooping.py`가 접촉 자세와 스쿱 끝 오프셋으로 WORLD 표면 높이를 계산하고 TW spline을 Z 보정한다. `Scoop.depth_fraction=1`은 원료 A 기준 순량65 g에 대응하는 기준 깊이이며 실제 질량 보장은 아니다. `stations.yaml:scooping.A.calibrated=false`에서는 이동 전 거부한다. 제공 근사 치수와 실측의 차이를 보정해야 한다. `amovesx` 완료·취소 감시, 털기·계량 복귀를 구현했으며 B/C·반환 후 재스쿱은 미검증이다. 레시피 연동 인계는 `docs/setup.md` 참조.
