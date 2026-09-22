@@ -260,7 +260,9 @@ def test_qa_rejects_wrong_deviation_id_then_approves(cell):
     # 붓을 때 스쿱 투입량의 2배가 약통에 들어간다(흘림·편향 모사). 스쿱 계량(WEIGH_SCOOP·WEIGH_RESIDUAL)은
     # 정상으로 보이므로 배치 끝 VERIFY ① 이 BATCH_OUT_OF_SPEC 으로 잡는다 (D-22 ①). 깊이 계약(v1.5) 뒤로는
     # 정상 스쿱 경로에서 OVERFILL 이 나지 않는다 — 스쿱량이 남은 양+허용오차를 넘으면 붓기 전에 반환하기 때문.
-    fake.transfer = 2.0
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), proc.fsm.state
 
@@ -364,7 +366,9 @@ def test_enter_during_qa_wait_keeps_qa_open(cell):
     """
     from gmp_interfaces.srv import InterlockRequest
     proc, fake, col = cell
-    fake.transfer = 2.0
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION')
     dev = proc._pending_dev()
@@ -396,7 +400,9 @@ def test_forced_deviation_is_not_auto_recovered(cell):
 def test_qa_rejects_invalid_decision_value(cell):
     """승인(1)·폐기(2) 외의 판정값은 거부한다 — 0 을 보냈다고 폐기로 흘러가면 안 된다 (리뷰 3번)."""
     proc, fake, col = cell
-    fake.transfer = 2.0
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION')
     dev = proc._pending_dev()
@@ -583,7 +589,9 @@ def test_two_nudges_inside_one_skill_cancel_out(cell):
 def test_nudge_while_qa_pending_keeps_qa_open(cell):
     """판정 대기 중에는 mode 를 덮지 않는다 — 덮으면 _srv_qa 가 영영 거부한다 (인터락과 같은 함정)."""
     proc, fake, col = cell
-    fake.transfer = 2.0
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION')
     dev = proc._pending_dev()
@@ -745,7 +753,9 @@ def test_discarded_batch_also_parks_at_nudge_wait(cell):
     """폐기도 세트의 끝 — reject_bin 뒤 nudge_wait 에서 기다리고, NUDGE 뒤 상태는 DISCARDED 로 남는다 (record_node 가 본다)."""
     proc, fake, col = cell
     fake.attendant = False
-    fake.transfer = 2.0                            # 약통에 2배 → VERIFY ① BATCH_OUT_OF_SPEC → QA
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), _why(proc)
     dev = proc._pending_dev()
@@ -781,7 +791,9 @@ def test_enter_during_nudge_wait_goes_to_safe_pose(cell):
 def test_shutdown_during_qa_wait_ends_the_batch_via_cancellation(cell):
     """QA 판정 대기 중 종료는 '거부(DISCARDED)'를 지어내지 않는다 — BatchCancelled 로 명확히 취소된다."""
     proc, fake, col = cell
-    fake.transfer = 2.0                            # 약통에 2배 → VERIFY ① BATCH_OUT_OF_SPEC → QA
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), _why(proc)
     n_devs = len(proc.fsm.deviations)
@@ -860,9 +872,16 @@ def test_safety_stop_skips_force_limit_retry(cell):
 
 
 def test_safety_stop_during_qa_wait_ends_batch(cell):
-    """QA 판정을 기다리는 중에 안전 정지가 오면 판정을 기다리지 않고 끝낸다."""
+    """QA 판정을 기다리는 중에 안전 정지가 오면 판정을 기다리지 않고 끝낸다.
+
+    종전 주석은 이 시험이 `과투입 → OVERFILL` 을 쓴다고 적었으나 **사실이 아니었다** —
+    `WEIGH_SCOOP` 의 반환 가드(`scooped > remaining + target×tol/100`)가 과투입을 먼저
+    막으므로 OVERFILL 까지 못 간다. 실제로 걸리던 것은 VERIFY ① BATCH_OUT_OF_SPEC 이다.
+    """
     proc, fake, col = cell
-    fake.transfer = 2.0                              # 과투입 → OVERFILL → QA 대기
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), _why(proc)
     fake.safety_stop('collision while paused')
