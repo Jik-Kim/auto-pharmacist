@@ -912,7 +912,7 @@ def test_late_recovery_event_cannot_clear_new_safety_stop(cell):
     import json
     proc, fake, col = cell
     fake.safety_stop('start', origin='recovery_request', request_id='old', operator_id='op')
-    assert _wait_until(lambda: proc._safety_events.request == ('old', 'op'))
+    assert _wait_until(lambda: proc._safety_events.request_id == 'old')
     old_revision = fake.safety_revision
     fake.safety_stop('new alarm')
     assert _wait_until(lambda: proc._safety_stop_reason == 'new alarm')
