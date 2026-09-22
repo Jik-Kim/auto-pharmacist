@@ -261,6 +261,12 @@ def main(argv=None):
                          "예: workbench(용기 계량) | material_1/2/3(weigh_held 가 실제로 재는 자세 — "
                          "calibration 은 이 자세로 해야 gain/offset 이 운영과 맞는다)")
     ap.add_argument('--vel-scale', type=float, default=0.2, help='--goto-station 속도 스케일')
+    ap.add_argument('--auto-regrip', type=float, default=0.0, metavar='SEC',
+                    help='[9/22 팀장 요청] 세트 경계에서 **사람을 거치지 않고** 로봇만으로 놓고 다시 집는다. '
+                         '--pick-lift-mm 이 필요하다: AT 로 내려가 열고 SEC 초 기다렸다 다시 닫고 ABOVE 로 올린다. '
+                         '물체는 AT 의 받침면에 그대로 놓이므로 사람이 손댈 일이 없다. '
+                         '운영(TARE→VERIFY 사이 로봇이 용기를 내려놓고 다시 집는 것)과 같은 조건이라, '
+                         '사람이 놓던 기존 측정(σ_cup 6.34, 사람 배치 산포 포함)의 상한을 실제값으로 좁힌다')
     ap.add_argument('--goto-posj', default='', metavar='J1,..,J6',
                     help='시작 시 관절각[deg] 6개로 movej. **자세(관절해)를 보장하는 유일한 방법** — '
                          '--goto-station 은 movel 이라 출발 자세를 물려받는다. 저울 보정은 관절해에 딸리므로 '
@@ -337,10 +343,19 @@ def main(argv=None):
             if grip:
                 if a.pick_lift_mm:      # 파지는 AT 에서 — 내려가 있어야 용기를 놓고 잡을 수 있다
                     arm.movel(pick_posx, a.vel_scale)
-                release_gripper(grip, f'[2] 세트 {s}/{a.sets} 시작 —', swallow_interrupt=False)
-                input(f'\n[2] 세트 {s}/{a.sets}: 물체({a.actual_g:g} g) 를 핑거 사이에 대고 → Enter (닫는다) ')
-                grip.send(close_cmd)
-                input('    잡혔는지 눈으로 확인 → Enter (측정 시작) ')
+                if a.auto_regrip > 0:
+                    # 사람을 거치지 않는다 — 물체는 AT 받침면에 그대로 있으므로 열고 닫으면 같은 자리를 다시 잡는다.
+                    # 운영의 로봇 재파지와 같은 조건 (9/22 팀장 요청).
+                    print(f'\n[2] 세트 {s}/{a.sets}: 로봇만으로 재파지 — 엶 → {a.auto_regrip:g} s 대기 → 닫음 (사람 개입 없음)')
+                    grip.send('o')          # Gripper 는 send() 만 있다 — 'o' 가 열기
+                    time.sleep(a.auto_regrip)
+                    grip.send(close_cmd)
+                    time.sleep(a.auto_regrip)
+                else:
+                    release_gripper(grip, f'[2] 세트 {s}/{a.sets} 시작 —', swallow_interrupt=False)
+                    input(f'\n[2] 세트 {s}/{a.sets}: 물체({a.actual_g:g} g) 를 핑거 사이에 대고 → Enter (닫는다) ')
+                    grip.send(close_cmd)
+                    input('    잡혔는지 눈으로 확인 → Enter (측정 시작) ')
                 if a.pick_lift_mm:      # 측정은 ABOVE 에서 — 운영(skill_node._do_weigh)과 같은 경로
                     arm.movel(measure_posx, a.vel_scale)
                     print(f'    측정 자세로 +{a.pick_lift_mm:g} mm 올림 → {measure_posx}')
