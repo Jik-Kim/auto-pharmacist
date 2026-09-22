@@ -26,8 +26,7 @@ def depth_node(monkeypatch, material='A'):
     node.vel_scale, node.motion_timeout_s = 1.0, 30.0
     node.get_logger = lambda: SimpleNamespace(info=lambda _: None)
     params = {'safety.compliance_stx': [3000, 3000, 500, 200, 200, 200],
-              'height_measurement.reference_posx': [344, -298, 200, 90, -180, -90],
-              'height_measurement.tip_offset_base_mm': [0, -120, -20],
+              'height_measurement.reference_station': 'material_1',
               'safety.compliance_settle_s': 0.5, 'safety.fz_max_n': 15.0}
     node.get_parameter = lambda key: SimpleNamespace(value=params[key])
     station = node.stations.for_material(material)

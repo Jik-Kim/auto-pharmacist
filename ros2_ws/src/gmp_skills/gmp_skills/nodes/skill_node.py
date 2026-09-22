@@ -954,8 +954,9 @@ class SkillNode(Node):
         station = self.stations.for_material(job.args['material_id'])
         target = SkillNode._pose_from_extra(station, 'measure_posx')
         start = list(station.posx)
-        reference = list(p('height_measurement.reference_posx').value)
-        tip_offset = list(p('height_measurement.tip_offset_base_mm').value)
+        reference_station = self.stations.get(p('height_measurement.reference_station').value)
+        reference = list(reference_station.posx)
+        tip_offset = list(reference_station.extra['scoop_tip_offset_base_mm'])
         contact_threshold = float(p('safety.fz_max_n').value)
         if not math.isfinite(contact_threshold) or contact_threshold <= 0:
             raise ValueError('접촉 판정 힘은 유한한 양수여야 합니다')
