@@ -24,6 +24,11 @@
       operator_id: ""
       confirmed: false
 
+    height_measurement:
+      # Global_ingredient_1 자세에서 사용자가 제공한 BASE 기준 근사 오프셋.
+      reference_posx: [344.0, -298.0, 200.0, 90.0, -180.0, -90.0]
+      tip_offset_base_mm: [0.0, -120.0, -20.0]
+
     # ── 두산 로봇 ────────────────────────────────────────────────────
     robot:
       id: dsr01

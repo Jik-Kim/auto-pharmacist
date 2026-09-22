@@ -69,7 +69,8 @@ def _control_node():
             {'update_rate': 100},
             os.path.join(get_package_share_directory('dsr_controller2'),
                          'config', 'dsr_controller2.yaml'),
-            # 마지막 설정이 벤더 YAML의 type만 덮어쓴다. 컨트롤러 이름·서비스 경로 유지.
-            {'dsr_controller2.type': 'gmp_dsr_controller/RobotController'},
+            # 일반 dict의 /** 범위 대신 벤더와 같은 controller_manager 범위로 덮어쓴다.
+            os.path.join(get_package_share_directory('gmp_bringup'),
+                         'params', 'dsr_controller_override.yaml'),
         ],
     )

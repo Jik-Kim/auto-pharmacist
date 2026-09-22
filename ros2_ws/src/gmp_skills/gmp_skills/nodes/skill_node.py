@@ -43,6 +43,7 @@ from gmp_skills.adapters.rg2_gripper import Rg2Gripper
 from gmp_skills.core.nudge import NudgeDetector
 from gmp_skills.core.recovery import recovery_step, STANDBY
 from gmp_skills.core.stations import StationTable
+from gmp_skills.core.surface_height import tip_position_base
 from gmp_skills.core.transfer import MotionAnchor, joints_match, pose_matches, validate_start
 
 
@@ -953,6 +954,10 @@ class SkillNode(Node):
         station = self.stations.for_material(job.args['material_id'])
         target = SkillNode._pose_from_extra(station, 'measure_posx')
         start = list(station.posx)
+        reference = list(p('height_measurement.reference_posx').value)
+        tip_offset = list(p('height_measurement.tip_offset_base_mm').value)
+        # 기하 설정 오류는 이동 전에 거부한다.
+        tip_position_base(start, reference, tip_offset)
         if job.cancel:
             raise RuntimeError('cancelled')
         job.feedback and job.feedback('APPROACH')
@@ -960,11 +965,12 @@ class SkillNode(Node):
         if job.cancel:
             raise RuntimeError('cancelled')
         contact_z = None
+        contact_pose = None
         max_force_n = 0.0
         insertion_mm = 0.0
 
         def observe_depth():
-            nonlocal contact_z, max_force_n, insertion_mm
+            nonlocal contact_z, contact_pose, max_force_n, insertion_mm
             force = self.arm.tool_force()
             if force is None or len(force) != 6 or not all(math.isfinite(float(v)) for v in force):
                 raise RuntimeError('깊이 측정 외력 조회 실패')
@@ -974,6 +980,13 @@ class SkillNode(Node):
             max_force_n = max(max_force_n, abs(float(force[2])))
             if contact_z is None and self.arm.force_over(float(p('safety.fz_max_n').value)):
                 contact_z = float(current[2])
+                contact_pose = list(current)
+                # 이후 목표 미도달·취소로 실패해도 최초 표본은 남긴다.
+                self.get_logger().info('[SURFACE_CONTACT_BASE] ' + json.dumps({
+                    'contact_tcp_posx': contact_pose,
+                    'tip_position_mm': tip_position_base(contact_pose, reference, tip_offset),
+                    'approximate_offset': True,
+                }, ensure_ascii=False))
             insertion_mm = 0.0 if contact_z is None else abs(float(current[2]) - contact_z)
             job.feedback and job.feedback('DIP', contact_z is not None, abs(float(force[2])), insertion_mm)
 
@@ -993,8 +1006,16 @@ class SkillNode(Node):
         # 성공한 경로만 계량 자세로 되짚는다. 실패·취소 시 자동 복귀하지 않는다.
         self.arm.movel(start, self.vel_scale)
         job.feedback and job.feedback('LIFT', contact_z is not None, max_force_n, insertion_mm)
+        measurement = {
+            'frame': 'BASE', 'contact_tcp_posx': contact_pose,
+            'tip_position_mm': (tip_position_base(contact_pose, reference, tip_offset)
+                                if contact_pose is not None else None),
+            'approximate_offset': True,
+        }
+        message = json.dumps(measurement, ensure_ascii=False)
+        self.get_logger().info(f'[SURFACE_HEIGHT_BASE] {message}')
         return {'contact_detected': contact_z is not None, 'max_contact_force_n': max_force_n,
-                'insertion_depth_mm': insertion_mm}
+                'insertion_depth_mm': insertion_mm, 'message': message}
 
     def _do_pour(self, job: Job):
         self._require_scoop_extracted()
@@ -1217,7 +1238,7 @@ class SkillNode(Node):
             contact_detected=bool(data.get('contact_detected', job.result if not data else False)),
             max_contact_force_n=float(data.get('max_contact_force_n', 0.0)),
             insertion_depth_mm=float(data.get('insertion_depth_mm', 0.0)),
-            message=job.error or ('cancelled' if job.cancel else ''),
+            message=job.error or ('cancelled' if job.cancel else data.get('message', '')),
         )
         gh.succeed() if res.success else (gh.canceled() if job.cancel else gh.abort())
         return res

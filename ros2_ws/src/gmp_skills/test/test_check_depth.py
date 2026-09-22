@@ -1,5 +1,6 @@
 """티칭한 원료 측정 목표로 이동하며 관측하고 성공한 경우에만 복귀한다."""
 from pathlib import Path
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -23,7 +24,10 @@ def depth_node(monkeypatch, material='A'):
     node._pose_matches = lambda actual, target: pose_matches(actual, target, 2.0, 2.0)
     node.gripper = SimpleNamespace(state=lambda _: dict(busy=False, grip_inferred=True))
     node.vel_scale, node.motion_timeout_s = 1.0, 30.0
+    node.get_logger = lambda: SimpleNamespace(info=lambda _: None)
     params = {'safety.compliance_stx': [3000, 3000, 500, 200, 200, 200],
+              'height_measurement.reference_posx': [344, -298, 200, 90, -180, -90],
+              'height_measurement.tip_offset_base_mm': [0, -120, -20],
               'safety.compliance_settle_s': 0.5, 'safety.fz_max_n': 15.0}
     node.get_parameter = lambda key: SimpleNamespace(value=params[key])
     station = node.stations.for_material(material)
@@ -60,6 +64,11 @@ def test_check_depth_uses_full_taught_target_and_returns_to_weigh_pose(monkeypat
     assert calls == [('move', weigh, 1.0), ('on',),
                      ('measure', [x, -334.0, 120.0, 90.0, 160.0, -90.0], 1.0, 30.0),
                      ('off',), ('move', weigh, 1.0)]
+    measurement = json.loads(result.pop('message'))
+    assert measurement['frame'] == 'BASE'
+    assert measurement['contact_tcp_posx'] == [x, -334, 150, 90, 160, -90]
+    # 최초 접촉의 자세와 회전을 사용한다. 최종 목표 Z=120이나 고정 Z-20이 아니다.
+    assert measurement['tip_position_mm'][2] == pytest.approx(90.1637303852)
     assert result == dict(contact_detected=True, max_contact_force_n=18.0, insertion_depth_mm=30.0)
     assert [f[0] for f in feedback] == ['APPROACH', 'DIP', 'DIP', 'LIFT']
 
@@ -113,3 +122,30 @@ def test_invalid_compliance_settle_rejected_before_motion(monkeypatch, duration)
     with pytest.raises(ValueError):
         node._do_check_depth(job)
     assert calls == []
+
+
+def test_no_contact_has_no_surface_height(monkeypatch):
+    node, job, _, _ = depth_node(monkeypatch)
+    node.arm.force_over = lambda _: False
+    result = node._do_check_depth(job)
+    assert not result['contact_detected']
+    assert json.loads(result['message'])['tip_position_mm'] is None
+
+
+def test_contact_is_logged_even_if_motion_later_times_out(monkeypatch):
+    node, job, calls, _ = depth_node(monkeypatch)
+    logs = []
+    node.get_logger = lambda: SimpleNamespace(info=logs.append)
+    move = node.arm.movel_cancellable
+
+    def timeout(*args, **kwargs):
+        move(*args, **kwargs)
+        raise TimeoutError('motion timed out')
+
+    node.arm.movel_cancellable = timeout
+    with pytest.raises(TimeoutError):
+        node._do_check_depth(job)
+    assert len(logs) == 1
+    assert logs[0].startswith('[SURFACE_CONTACT_BASE] ')
+    assert json.loads(logs[0].split('] ', 1)[1])['contact_tcp_posx'][2] == 150
+    assert calls[-1] == ('off',)
