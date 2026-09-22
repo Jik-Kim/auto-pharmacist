@@ -55,6 +55,7 @@
 | 14 | `FINISH` | **carry**: `workbench` → `passbox_done` → `MoveToStation(nudge_wait)` | 완료품을 용기째 Pass Box 「완성품」 칸으로 (D-24) — QA 가 회수한다 (D-23). 이어 15 |
 | 15 | `NUDGE_WAIT` | `nudge_wait` AT 에서 대기 (mode `PAUSED`, 주문 거부) | **세트 경계 (D-23)** — 사람이 회수하고 로봇을 건드리면(NUDGE, D-21) `DONE`/`DISCARDED` 로 끝나고 다음 주문을 받는다. 폐기도 여기로 온다 |
 | E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료(VERIFY 였으면 FINISH) / DISCARD → 스쿱 반납 → **carry** `workbench` → `reject_bin` → 15 → `DISCARDED`. **`WRONG_TOOL`은 예외**(PR #165) — APPROVE 시 원료를 건너뛰지 않고 같은 원료를 이어간다: `PICK_CONTAINER`는 4 `TARE`, `PICK_SCOOP`는 6 `SCOOP_TARE`로 |
+| E | `CLEANUP` | `ReturnMaterial`(WEIGH_SCOOP 일 때만) → `MoveToStation(material_N, AT)` → `MoveToStation(scoop_N, AT)` → `SetGripper(open)` | **투입 전 계량 무효의 정리 경로** (#213). 진입은 셋이고 손에 뭐가 있느냐로 갈린다 — `TARE`(빈 그리퍼, 용기는 workbench) 는 **정리 없이** 바로 `safe → ERROR`, `SCOOP_TARE`(빈 스쿱) 는 반환 없이 `material_N`(AT) 부터, `WEIGH_SCOOP`(원료 든 스쿱) 은 `ReturnMaterial` 먼저. 중간 경유 `material_N.posx`(AT) 는 원료통 위 충돌 회피 자세다. **재스쿱하지 않는다** (#64). 끝나면 `safe → ERROR`. 일탈은 **정리 시작 전에** `WEIGH_INVALID`(action `FORCED`, detail 에 정리 경로)로 남기고, 정리 중 반환이 실패하면 `FORCE_LIMIT`(FORCED)를 별건으로 더 남긴다 |
 | E | `PAUSED` | `SafePose` | `InterlockRequest(ENTER)` → 안전 자세 도달 후 granted / `EXIT` → 이전 상태 재개 |
 
 **도징 결정은 `gmp_dosing/core/dosing.py` 가 한다** (순수 함수: 목표·실측·이력 → 다음 행동). 상태기계는 그 결정을 스킬 호출로 옮길 뿐이다.

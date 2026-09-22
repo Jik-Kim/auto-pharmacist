@@ -257,6 +257,7 @@ ROWS = [
  ('DEVIATION', 'p', 'QaDecision srv\nAPPROVE / DISCARD, operator_id\nevent HMI_QA_APPROVE/DISCARD → audit', '(로봇 대기 — 호출 없음)', None, 'deviation 재발행\n(decision, operator_id, 같은 id) · state', False),
  ('PAUSED (REFILL)', 'p', 'InterlockRequest srv\nENTER(reason) → granted / EXIT\nevent HMI_INTERLOCK_ENTER/EXIT → audit', 'SafePose srv (ENTER 시)\n진행 중 Action 은 cancel_goal 먼저 (I-004)', None, 'event INTERLOCK_ENTER/EXIT\nstate PAUSED', False),
  ('PAUSED (NUDGE)', 'p', None, 'event NUDGE ← skill_node 발행\n(get_tool_force 폴링, D-21)\nprocess 는 구독 → 루프 게이트 토글', None, 'state PAUSED(note NUDGE)\nevent NUDGE (skill 이 낸 것을 record 가 저장)', True),
+ ('CLEANUP', 'p', None, 'ReturnMaterial act (WEIGH_SCOOP 만)\nMoveToStation act (material_N, AT → scoop_N, AT) · SetGripper srv (open)', '투입 전 계량 무효 — 손에 든 것을 정리한 뒤 멈춘다 (#213)\nTARE 정리 없음 · SCOOP_TARE 반환 없이 · WEIGH_SCOOP 반환부터. 재스쿱 없음(#64)', 'deviation(WEIGH_INVALID/FORCED, 정리 시작 전 기록)\n정리 중 반환 실패 → FORCE_LIMIT/FORCED 별건 · state', False),
  ('ERROR', 'e', None, 'SafePose srv (then None)', None, 'event INTERVENTION_FORCED\nstate ERROR', False),
  ('DISCARDED', 'e', None, 'MoveToStation + SetGripper(open) (스쿱 반납)\ncarry workbench → reject_bin → NUDGE_WAIT 로', None, 'state DISCARDED(mode DONE)\nevent BATCH_END', False),
 ]
