@@ -48,9 +48,15 @@ def test_scoop_empty_retries_then_refills():
     assert policy('SCOOP_EMPTY', 4) == ('REFILL', False)
 
 
-def test_weigh_invalid_retries_then_qa():
-    assert policy('WEIGH_INVALID', 2) == ('RETRY', False)
-    assert policy('WEIGH_INVALID', 3) == ('QA', True)
+def test_weigh_invalid_goes_to_qa_immediately():
+    """재계량은 `max_invalid_retries` 가 전담한다 — 여기 오는 것은 그 상한을 넘긴 뒤다 (#213).
+
+    종전 (2, RETRY, QA) 는 재시도를 두 곳에서 세어 총 횟수가 두 상수의 **합**이 됐고,
+    그 합이 어느 설정에도 적혀 있지 않았다. 게다가 호출부가 `retry` 를 안 넘겨 RETRY 가
+    실제로는 ERROR 로 떨어졌다.
+    """
+    assert policy('WEIGH_INVALID', 1) == ('QA', True)
+    assert policy('WEIGH_INVALID', 2) == ('QA', True)
 
 
 @pytest.mark.parametrize('kind', ['SLIP', 'SAFETY_SWITCH', 'FORCE_LIMIT'])

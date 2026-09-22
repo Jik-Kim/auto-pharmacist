@@ -29,6 +29,7 @@ from gmp_interfaces.srv import SubmitOrder                    # noqa: E402
 
 from fake_skill_node import FakeSkillNode                     # noqa: E402
 from gmp_process.nodes.process_node import ProcessNode        # noqa: E402
+from gmp_process.core.process_fsm import ItemRun             # noqa: E402
 
 STATIONS = os.path.join(os.path.dirname(__file__), '..', '..', 'gmp_bringup', 'params', 'stations.yaml')
 
@@ -520,6 +521,41 @@ def test_scoop_cycle_attempt_numbers_are_unique_per_material(cell):
 
 
 # ── NUDGE 게이트 (추가 기능 7 · D-21) ────────────────────────────────────
+def test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다(cell):
+    """#213·#108 — `decide()` 를 못 거친 원료가 verdict=OK 로 발행되던 구멍.
+
+    계량이 무효라 QA 로 갔다가 승인된 원료는 `ItemRun.verdict` 가 빈 문자열이다.
+    종전 `r.verdict or 'OK'` 는 이걸 **OK 로** 떨어뜨렸다 — 목표 100 g·실제 0 g·
+    오차 −100 % 인데 판정만 OK 라, 판정 필드로 집계하는 소비자는 성공으로 센다.
+
+    `DispenseResult` 에 「모름」을 담을 열거값이 없으므로(#108 INVALID 상수 전까지)
+    **보수적으로 미달로 보고한다** — 미측정분은 actual_g 에 안 들어가 실제보다 작다.
+    계량 경로 전체를 태우지 않고 발행 함수만 직접 부른다 — fake_skill_node 에 무효
+    손잡이를 더하면 test/t6-fault-injection 과 충돌한다.
+    """
+    proc, _fake, col = cell
+    proc.batch_id = 'B-테스트'
+
+    unmeasured = ItemRun(material_id='A', target_g=100.0, tol_pct=5.0, unmeasured=1)
+    proc._publish_result(unmeasured)                 # verdict '' · actual 0.0
+    assert _wait_until(lambda: len(col.results) == 1), '발행이 안 됐다'
+    m = col.results[0]
+    assert (m.verdict, m.actual_g) == (DispenseResult.UNDER, 0.0), m.verdict
+    assert round(m.error_pct) == -100, m.error_pct
+
+    # 불확실성은 이벤트로도 남는다 — record_node 가 배치 기록에 넣는다
+    assert _wait_until(lambda: any(e.code == 'DISPENSE_UNMEASURED' for e in col.events))
+    warn = [e for e in col.events if e.code == 'DISPENSE_UNMEASURED'][-1]
+    assert warn.level == CellEvent.WARN and '불확실' in warn.text, warn.text
+
+    # 대조군 — 정상 원료는 그대로 OK 이고 경고도 없다
+    ok = ItemRun(material_id='B', target_g=100.0, tol_pct=5.0, actual_g=98.0, verdict='OK')
+    proc._publish_result(ok)
+    assert _wait_until(lambda: len(col.results) == 2)
+    assert col.results[1].verdict == DispenseResult.OK
+    assert len([e for e in col.events if e.code == 'DISPENSE_UNMEASURED']) == 1
+
+
 def _wait_until(fn, timeout=20.0):
     t0 = time.time()
     while time.time() - t0 < timeout:

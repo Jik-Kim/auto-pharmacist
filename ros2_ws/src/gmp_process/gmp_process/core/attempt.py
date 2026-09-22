@@ -46,7 +46,9 @@ class Attempt:
         """용기에 실제로 들어간 양. 음수 원시차는 0 으로 접고 두 reading 에 원본을 남긴다."""
         # 원료통으로 회수한 양은 약통 투입량이 아니다. 반환 전후 계량값이 있어도
         # delivered_g 에 섞이면 batch 결과와 회수 기록이 모순된다.
-        if self.outcome in ('RETURNED', 'RETURN_FAILED'):
+        # WEIGH_INVALID 도 0 이다 — 계량을 못 믿으므로 pre−post 를 계산하면 쓰레기가 들어간다.
+        # 「0 이라서 안 들어갔다」가 아니라 「모른다」는 뜻이고, 구분은 valid=false 로 한다 (#213).
+        if self.outcome in ('RETURNED', 'RETURN_FAILED', 'WEIGH_INVALID'):
             return 0.0
         if not (self.pre_pour and self.post_pour):
             return 0.0

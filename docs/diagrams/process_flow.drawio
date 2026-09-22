@@ -590,7 +590,7 @@
     </mxGraphModel>
   </diagram>
   <diagram id="4 상태별 노드·토픽 흐름" name="4 상태별 노드·토픽 흐름">
-    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="3500">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="3650">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -972,37 +972,63 @@
         <mxCell id="c117" value="topic 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c113" target="c116">
           <mxGeometry x="0" y="-10" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c118" value="ERROR" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="c118" value="CLEANUP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="810" y="3000" width="200" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="c119" value="SafePose srv (then None)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="1090" y="3000" width="360" height="31" as="geometry" />
+        <mxCell id="c119" value="ReturnMaterial act (WEIGH_SCOOP 만)&lt;br&gt;MoveToStation act (material_N, AT → scoop_N, AT) · SetGripper srv (open)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1090" y="3000" width="360" height="46" as="geometry" />
         </mxCell>
         <mxCell id="c120" value="호출 → 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c118" target="c119">
           <mxGeometry x="0" y="-10" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c121" value="event INTERVENTION_FORCED&lt;br&gt;state ERROR" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c121" value="투입 전 계량 무효 — 손에 든 것을 정리한 뒤 멈춘다 (#213)&lt;br&gt;TARE 정리 없음 · SCOOP_TARE 반환 없이 · WEIGH_SCOOP 반환부터. 재스쿱 없음(#64)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1510" y="3000" width="340" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="c122" value="import 호출" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.9;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c118" target="c121">
+          <mxGeometry x="0.35" y="12" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1035" y="3095" />
+              <mxPoint x="1680.0" y="3095" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="c123" value="deviation(WEIGH_INVALID/FORCED, 정리 시작 전 기록)&lt;br&gt;정리 중 반환 실패 → FORCE_LIMIT/FORCED 별건 · state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="50" y="3000" width="340" height="46" as="geometry" />
         </mxCell>
-        <mxCell id="c122" value="topic 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c118" target="c121">
+        <mxCell id="c124" value="topic 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c118" target="c123">
           <mxGeometry x="0" y="-10" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c123" value="DISCARDED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="c125" value="ERROR" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="810" y="3150" width="200" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="c124" value="MoveToStation + SetGripper(open) (스쿱 반납)&lt;br&gt;carry workbench → reject_bin → NUDGE_WAIT 로" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="1090" y="3150" width="360" height="46" as="geometry" />
+        <mxCell id="c126" value="SafePose srv (then None)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1090" y="3150" width="360" height="31" as="geometry" />
         </mxCell>
-        <mxCell id="c125" value="호출 → 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c123" target="c124">
+        <mxCell id="c127" value="호출 → 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c125" target="c126">
           <mxGeometry x="0" y="-10" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c126" value="state DISCARDED(mode DONE)&lt;br&gt;event BATCH_END" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c128" value="event INTERVENTION_FORCED&lt;br&gt;state ERROR" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="50" y="3150" width="340" height="46" as="geometry" />
         </mxCell>
-        <mxCell id="c127" value="topic 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c123" target="c126">
+        <mxCell id="c129" value="topic 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c125" target="c128">
           <mxGeometry x="0" y="-10" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c128" value="읽는 법   왼쪽 = 나가는 토픽(D record_node 가 SQLite 에 씀, HMI 는 DB 를 읽는다) · 가운데 왼쪽 = HMI 가 부르는 서비스(들어옴) · 오른쪽 = process 가 부르는 A 스킬(요청 → 결과) · 맨 오른쪽 = B 라이브러리 함수(같은 프로세스 안, 토픽 없음)&lt;br&gt;WeighHeld · ReturnMaterial · ScoopCycle RETURNED/RETURN_FAILED · VERIFY_MISMATCH · BATCH_OUT_OF_SPEC · WRONG_TOOL 은 계약 v1.3. state 는 전 상태에서 2 Hz + 전이 직후 발행. 모든 발행은 /cell/ 아래, QoS 는 docs/interfaces.md 3절.&lt;br&gt;이 페이지의 상자 문구는 docs/process_flow.md 1·2·4절과 같은 내용이다 — 바뀌면 tools/make_process_drawio.py 를 고쳐 다시 생성한다" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c130" value="DISCARDED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="810" y="3300" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="c131" value="MoveToStation + SetGripper(open) (스쿱 반납)&lt;br&gt;carry workbench → reject_bin → NUDGE_WAIT 로" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1090" y="3300" width="360" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="c132" value="호출 → 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c130" target="c131">
+          <mxGeometry x="0" y="-10" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c133" value="state DISCARDED(mode DONE)&lt;br&gt;event BATCH_END" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="50" y="3300" width="340" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="c134" value="topic 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c130" target="c133">
+          <mxGeometry x="0" y="-10" relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="c135" value="읽는 법   왼쪽 = 나가는 토픽(D record_node 가 SQLite 에 씀, HMI 는 DB 를 읽는다) · 가운데 왼쪽 = HMI 가 부르는 서비스(들어옴) · 오른쪽 = process 가 부르는 A 스킬(요청 → 결과) · 맨 오른쪽 = B 라이브러리 함수(같은 프로세스 안, 토픽 없음)&lt;br&gt;WeighHeld · ReturnMaterial · ScoopCycle RETURNED/RETURN_FAILED · VERIFY_MISMATCH · BATCH_OUT_OF_SPEC · WRONG_TOOL 은 계약 v1.3. state 는 전 상태에서 2 Hz + 전이 직후 발행. 모든 발행은 /cell/ 아래, QoS 는 docs/interfaces.md 3절.&lt;br&gt;이 페이지의 상자 문구는 docs/process_flow.md 1·2·4절과 같은 내용이다 — 바뀌면 tools/make_process_drawio.py 를 고쳐 다시 생성한다" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="40" y="3020" width="1820" height="90" as="geometry" />
         </mxCell>
       </root>
