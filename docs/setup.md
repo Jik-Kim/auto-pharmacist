@@ -207,7 +207,7 @@ ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=0.2
 
 - `[DSR_QUERY_FAILED]` 로그의 호출명(`get_robot_state`/`get_tool_force`)과 단계(서비스 준비/응답)를 확인한다. `robot.startup_timeout_s`는 각 단계의 제한 시간이다.
 - 넛지 조회는 자가진단 완료 뒤, 안전 차단이 없는 동안만 실행한다. 조회 실패를 정상 계량값으로 사용하지 않으며 복구 전에는 일반 스킬이 거부된다.
-- `[STARTUP] initialize 시작` 또는 `tool/TCP self_check 시작` 이후 멈추면 두 조회 이외의 설정·자가진단 호출도 확인해야 한다. 응답 제한이 모든 벤더 API에 적용된 것으로 판단하지 않는다.
+- `[STARTUP] initialize 시작` 또는 `tool/TCP/충돌 감도 self_check 시작` 이후 멈추면 두 조회 이외의 설정·자가진단 호출도 확인해야 한다. 응답 제한이 모든 벤더 API에 적용된 것으로 판단하지 않는다.
 - 복구 요청이 실패하면 실제 로봇 상태·컨트롤러 서비스를 먼저 확인한다. 정지·힘제어 해제 미확인 로그는 성공으로 간주하지 않는다.
 
 
@@ -241,3 +241,26 @@ ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=1.0 \
 최신 센서의 실제 미파지·안전 이상은 즉시 거부하며, 대기 후 자세도 다시 확인한다.
 이동·개폐·공정 자동 재개는 하지 않는다. 기본값은 비활성이며 확인 인자를 상시 실행 설정에 저장하지 않는다.
 스쿱 원료 ID는 센서가 식별한 값이 아닌 작업자 확인값이다. 폭 지문 보정 완료를 뜻하지 않는다.
+
+## 충돌 감도 조회 확장 설치 (#76)
+
+벤더 원본은 수정하지 않는다. 새 인터페이스와 C++ 플러그인이 있어 처음에는 빌드가 필요하다.
+정지된 개발 환경에서 아래 순서로 설치한다. 실행 중인 컨트롤러는 이 명령으로 재시작하지 않는다.
+
+```bash
+cd ~/rokey_proj/Automation/auto-pharmacist
+source tools/env.sh
+cd ros2_ws
+colcon build --symlink-install --packages-select gmp_interfaces gmp_dsr_controller gmp_skills gmp_bringup
+source install/local_setup.bash
+ros2 pkg prefix gmp_bringup
+```
+
+마지막 경로가 `auto-pharmacist/ros2_ws/install/gmp_bringup`인지 확인한다. 이전 루트 `install`을
+선택하면 새 플러그인/런치가 적용되지 않는다. 다음 계획된 재기동에는 `gmp_bringup robot.launch.py`
+또는 `cell.launch.py`를 사용한다. 벤더 런치만 실행하면 새 조회 서비스가 없어 실물 자가진단이 실패한다.
+
+실물 기대값은 `safety.collision_sensitivity: 50.0`이다. 자가진단 결과에는 실제값과 기대값을 남긴다.
+불일치 시 펜던트 설정과 승인값을 확인하며 프로그램이 값을 변경하지 않는다. 가상에서는 검증 생략을 표시한다.
+서비스·기대값 의미는 `interfaces.md` 8절, 플러그인 제약은 `gmp_dsr_controller/README.md`를 따른다.
+실물 조회와 새 컨트롤러 기동은 별도 검증이 필요하다.

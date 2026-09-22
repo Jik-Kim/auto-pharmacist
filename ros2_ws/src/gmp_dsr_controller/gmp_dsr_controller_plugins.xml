@@ -1,0 +1,7 @@
+<library path="gmp_dsr_controller">
+  <class name="gmp_dsr_controller/RobotController"
+         type="gmp_dsr_controller::RobotController"
+         base_class_type="controller_interface::ControllerInterface">
+    <description>DSR 기존 연결·서비스 유지, 읽기 전용 충돌 감도 조회 추가</description>
+  </class>
+</library>

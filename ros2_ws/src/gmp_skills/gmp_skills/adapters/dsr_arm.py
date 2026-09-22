@@ -40,10 +40,13 @@ class DsrArm:
         import DSR_ROBOT2 as R   # DR_init 이후에 import (두산 튜토리얼 Caution)
         from DR_common2 import posx, posj
         from dsr_msgs2.srv import MoveStop, SetRobotControl
+        from gmp_interfaces.srv import GetCollisionSensitivity
         self.R, self.posx, self.posj = R, posx, posj
         self._SetRobotControl = SetRobotControl
         self._robot_control_cli = self.node.create_client(
             SetRobotControl, 'dsr_controller2/system/set_robot_control')
+        self._collision_sensitivity_cli = self.node.create_client(
+            GetCollisionSensitivity, 'dsr_controller2/system/get_collision_sensitivity')
         self._MoveStop = MoveStop
         self._move_stop_cli = self.node.create_client(
             MoveStop, 'dsr_controller2/motion/move_stop')
@@ -202,8 +205,9 @@ class DsrArm:
         return self._bounded_call(operation, **fields)
 
     def _bounded_call(self, operation, **fields):
-        """기존 벤더 클라이언트로 조회·실물 초기화만 제한 시간 내 처리한다."""
-        client = getattr(self.R, '_ros2_' + operation, None)
+        """벤더 클라이언트·승인된 감도 조회 확장으로 조회·초기화 응답을 제한한다."""
+        client = (self._collision_sensitivity_cli if operation == 'get_collision_sensitivity'
+                  else getattr(self.R, '_ros2_' + operation, None))
         if client is None or not callable(getattr(client, 'wait_for_service', None)):
             raise RuntimeError(f'{operation}: DSR 조회 클라이언트 준비 확인 기능 없음')
         timeout_s = self.startup_timeout_s
@@ -475,11 +479,20 @@ class DsrArm:
         return bool(self.R.get_digital_input(idx))
 
     # ── 자가진단 ─────────────────────────────────────────────────────────
-    def self_check(self, expect_tool: str, expect_tcp: str):
-        """툴·TCP가 기대값인지 확인한다. 충돌 감도 getter는 현재 래퍼에 없다."""
+    def self_check(self, expect_tool: str, expect_tcp: str, expect_collision: float):
+        """툴·TCP·전역 충돌 감도를 확인한다. 감도를 변경하거나 실물 성능을 보장하지 않는다."""
+        if (isinstance(expect_collision, bool) or not isinstance(expect_collision, (int, float))
+                or not math.isfinite(expect_collision) or not 0 <= expect_collision <= 100):
+            raise ValueError('safety.collision_sensitivity는 유한한 0~100 % 값이어야 한다')
         if self.mode != 'real':
-            return True, 'virtual: skip'
+            return True, 'virtual: 실물 툴/TCP/충돌 감도 검증 생략'
         tool = self._bounded_call('get_current_tool').info
         tcp = self._bounded_call('get_current_tcp').info
-        ok = (not expect_tool or tool == expect_tool) and (not expect_tcp or tcp == expect_tcp)
-        return ok, f'tool={tool} tcp={tcp}'
+        sensitivity = self._bounded_call('get_collision_sensitivity').sensitivity
+        if (isinstance(sensitivity, bool) or not isinstance(sensitivity, (int, float))
+                or not math.isfinite(sensitivity) or not 0 <= sensitivity <= 100):
+            raise RuntimeError(f'충돌 감도 응답 범위 오류: {sensitivity!r}')
+        ok = ((not expect_tool or tool == expect_tool) and (not expect_tcp or tcp == expect_tcp)
+              and sensitivity == expect_collision)
+        return ok, (f'tool={tool} tcp={tcp} collision_sensitivity={sensitivity:g}% '
+                    f'expected={expect_collision:g}%')

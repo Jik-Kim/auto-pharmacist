@@ -1,4 +1,4 @@
-# Interfaces — 계약 v1.6 (2026-09-22)
+# Interfaces — 계약 v1.7 (2026-09-22)
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
@@ -19,6 +19,7 @@
 > A/C/D 구현에 맞춰 아래 8절의 상관관계·역할·차단 해제 조건을 확정한다.
 
 > **상태 요약 (9/22):** v1.2·v1.2.1·v1.3·v1.4·v1.5·v1.5.1·v1.6 확정. v1.4·v1.6은 #45 검토 후 사용자가 영향 담당 승인을 확인했다. 실제 ROS 통신·실물 복구 검증은 이번 확정에 포함하지 않는다.
+> **v1.7 (9/22 사용자 승인):** A 내부 읽기 전용 `GetCollisionSensitivity` 서비스를 추가한다. 벤더 원본을 보존하는 상속 플러그인이 기존 연결로 전역 충돌 감도를 조회하며, `skill_node`는 기대값 50%와 비교해 기동·복구 자가진단을 수행한다. 실물 검증은 별도다.
 > **변경 절차:** 계약을 바꿔야 하면 **먼저 팀 채널에 알리고**, `gmp_interfaces` 와 이 문서를 **같은 커밋에서** 고친다. 리뷰는 영향받는 담당 전원, 최소 2명 승인 (PM 없음 — AGENTS 교차검수).
 
 ---
@@ -238,6 +239,19 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `manual_required` | 현장 조치 또는 상태 재확인 후 새 요청 필요. 복구 모드 진입만 한 경우에도 true다. |
 | `robot_state` | 두산 상태 코드, 조회 불가/가상 미지원은 -1. |
 | `message` | 운영자 안내/실패 원인. 실패는 자동 재시도하지 않는다. |
+
+### 충돌 감도 자가진단 (v1.7)
+
+- 경로: `skill_node` 단일 워커 → `DsrArm` → `/dsr01/dsr_controller2/system/get_collision_sensitivity`.
+  `robot.id` 네임스페이스를 따르며, 서버는 `gmp_dsr_controller/RobotController`다.
+- `srv/GetCollisionSensitivity`: 요청 필드 없음. 응답 `bool success`, `float32 sensitivity`, `string message`.
+  성공 값은 유한한 0~100 %이며 SDK의 전역 `_fCollisionSensitivity`다. 실패 값은 사용하지 않는다.
+- `safety.collision_sensitivity: 50.0`이 기대값이다(9/22 사용자 확정). 실물 기동 및 명시적 안전 복구 때
+  툴/TCP와 함께 확인한다. 정확히 일치해야 통과하며, 불일치·조회 실패·시간 초과는 일반 동작/복구 해제를 허용하지 않는다.
+- 자동 감도 변경·별도 로봇 연결은 없다. 가상 자가진단에서는 실물 감도 확인을 생략했다고 명시한다.
+  조회는 로컬 안전 구역의 감도 재정의·실제 충돌 성능을 검증하지 않는다.
+- 서비스 준비와 응답 대기에 각각 `robot.startup_timeout_s`를 적용하고 자동 재시도하지 않는다.
+  클라이언트 시간 초과가 서버의 SDK 호출을 취소하지는 않는다.
 
 ### 상태별 실행
 

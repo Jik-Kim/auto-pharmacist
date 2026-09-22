@@ -7,6 +7,7 @@
   <maintainer email="jungji0913@khu.ac.kr">Kim Byeongjik</maintainer>
   <license>MIT</license>
   <exec_depend>gmp_skills</exec_depend>
+  <exec_depend>gmp_dsr_controller</exec_depend>
   <exec_depend>gmp_process</exec_depend>
   <exec_depend>gmp_hmi</exec_depend>
   <exec_depend>m0609_rg2_bringup</exec_depend>
