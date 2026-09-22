@@ -503,7 +503,7 @@ def test_sampling_parameter_reaches_all_measurement_paths(monkeypatch, entry):
     params = {'scale.period_s': 0.82, 'scale.samples': 3, 'scale.settle_s': 0.2,
               'scale.method': 'workpiece' if entry == 'workpiece' else 'tool_force',
               'scale.simulated': entry == 'simulated', 'scale.gain': 1,
-              'scale.offset_g': 0, 'scale.min_resolvable_g': 19,
+              'scale.offset_g': 0,
               'scale.max_std_g': 10, 'scale.fz_sign': -1}
     node = SimpleNamespace(
         get_parameter=lambda name: SimpleNamespace(value=params[name]),

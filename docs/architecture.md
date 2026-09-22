@@ -41,7 +41,7 @@
 | 1 | `ACCEPTED` | — | `SubmitOrder` 수락, batch_id 발급 |
 | 2 | `SELF_CHECK` | `MeasureForce`(빈 그리퍼) · 툴/TCP 확인 | 실패 → `ERROR` |
 | 3 | `PICK_CONTAINER` | **carry**: `MoveToStation(passbox_empty, slot)` → `SetGripper(close, cup)` → `MoveToStation(workbench)` → `SetGripper(open)` | 사람이 Pass Box 「빈통」 칸에 넣어 둔 빈 약통을 로봇이 `workbench` 로 가져온다 (D-18·D-24, 매거진 폐지). `grip_inferred=false` → `GRIP_FAIL` 재시도 ≤ 3 |
-| 4 | `TARE` | `WeighContainer(tare_g=0)` | 빈 용기 풍량 기록 |
+| 4 | `TARE` | `MeasureForce` (빈 그리퍼 영점 기준, workbench ABOVE) → `WeighContainer(tare_g=0)` | 빈 용기 풍량 기록. 영점은 VERIFY 직전 대조 기준이 된다 — **같은 자세에서 재야 성립한다** |
 | 5 | `PICK_SCOOP` | `MoveToStation(scoop_N)` → `SetGripper(close, scoop_width)` | `grip_inferred=false` → `Deviation(GRIP_FAIL)` 재시도 ≤ 3 |
 | 6 | `SCOOP_TARE` | **`weigh_scoop`**(빈 스쿱, 든 채로) | 스쿱 풍량 — 원료마다 1회 (D-22) |
 | 7 | `SCOOP` | `Scoop(material_id, depth_fraction)` — 깊이 비율은 v1.5, 실제 Z 변환은 A 실물 뒤 | `contact_detected=false` → `SCOOP_EMPTY` → 재시도, 연속 3회 → `MATERIAL_EMPTY` → 인터락 보충 요청 |
@@ -51,7 +51,7 @@
 | 10 | `WEIGH_RESIDUAL` | `weigh_scoop`(붓기 후) → `dosing.decide()` | 잔량 = gross − 스쿱 풍량, **투입량 += 퍼낸 양 − 잔량**. 시도 1건을 `ScoopCycle`로 발행. `OK` → 11 / `UNDER` → 7 (보정, ≤3) / `OVER` → `Deviation(OVERFILL, requires_decision)` → `DEVIATION` |
 | 11 | `RETURN_SCOOP` | `MoveToStation(scoop_N)` → `SetGripper(open)` | 원료별 전용 스쿱 반납 — **스쿱은 그 원료통 아래에 둔다** (9/18 확정, `scoop_rack` 폐지). 교차오염 경로를 끊고 이동 거리도 줄인다 |
 | 12 | 다음 원료 → 5 | | |
-| 13 | `VERIFY` | `WeighContainer(tare_g)` — **용기를 들어** 계량 (그리퍼 비어 있음) | **두 가지를 본다** (9/17 조장 합의). ① **제품 판정** `\|net − Σtarget\| > Σ(target×tol)` → `Deviation(BATCH_OUT_OF_SPEC)` → QA (폐기 권고) ② **계측 신뢰성** `\|net − Σ투입량\| > min_resolvable_g` → `Deviation(VERIFY_MISMATCH)` → QA. **①이 규격 판정이다** — 원료가 전부 같은 방향으로 치우치면 net 과 Σ투입량이 함께 낮아 ②로는 안 잡힌다 |
+| 13 | `VERIFY` | `MoveToStation(workbench, ABOVE)` → `MeasureForce` (빈 그리퍼 영점 재확인) → `WeighContainer(tare_g)` — **용기를 들어** 계량 (그리퍼 비어 있음) | **들기 전 영점 재확인**: TARE 때와 **같은 자세(workbench ABOVE)** 로 옮긴 뒤 `MeasureForce` 결과를 TARE 의 영점과 대조해 (`tool_force` 는 자세 의존이라 다른 자세끼리 비교하면 자세 차이가 영점 이동으로 둔갑한다) `|이동| > scale.zero_drift_limit_n`(기본 0.5 N, 0 이면 끔)이면 재측정, `max_invalid` 도달 시 `Deviation(WEIGH_INVALID)` → QA. NUDGE 는 정지·재개 장치일 뿐 계량 유효성과 연결돼 있지 않아 오염된 값이 그냥 장부에 들어가던 구멍을 막는다. 통과하면 계량한다. **① 제품 판정 하나만 한다** (9/22 사용자·조장 확정, 종전 ② 폐지). `\|net − Σtarget\| > Σ(target×tol)` → `Deviation(BATCH_OUT_OF_SPEC)` → QA (폐기 권고). ~~② 계측 신뢰성 `\|net − Σ투입량\|`~~ 은 **판정하지 않고 관측만** 한다 — 값은 `verify_detail` 에 담겨 `CellEvent(INFO, VERIFY)` 로 나간다. ② 를 끈다는 것은 **배치 기록 교차검증을 포기한다**는 뜻이다 (제품은 규격 안인데 원료별 투입 기록이 틀린 배치를 검출할 수단이 없어진다) |
 | 14 | `FINISH` | **carry**: `workbench` → `passbox_done` → `MoveToStation(nudge_wait)` | 완료품을 용기째 Pass Box 「완성품」 칸으로 (D-24) — QA 가 회수한다 (D-23). 이어 15 |
 | 15 | `NUDGE_WAIT` | `nudge_wait` AT 에서 대기 (mode `PAUSED`, 주문 거부) | **세트 경계 (D-23)** — 사람이 회수하고 로봇을 건드리면(NUDGE, D-21) `DONE`/`DISCARDED` 로 끝나고 다음 주문을 받는다. 폐기도 여기로 온다 |
 | E | `DEVIATION` | (로봇 대기) | `QaDecision` APPROVE → 다음 원료(VERIFY 였으면 FINISH) / DISCARD → 스쿱 반납 → **carry** `workbench` → `reject_bin` → 15 → `DISCARDED`. **`WRONG_TOOL`은 예외**(PR #165) — APPROVE 시 원료를 건너뛰지 않고 같은 원료를 이어간다: `PICK_CONTAINER`는 4 `TARE`, `PICK_SCOOP`는 6 `SCOOP_TARE`로 |

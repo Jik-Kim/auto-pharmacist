@@ -150,7 +150,7 @@ def main(argv=None):
 def _print_one(method, s):
     print(f"[{method}] 실제 {s['actual_g']:.0f} g · {s['n_sets']}세트 × 회차 {s['n_trials'] // s['n_sets']} × 표본 {s['samples_per_trial'][0]}~{s['samples_per_trial'][1]}")
     print(f"offset_g            = {s['offset_g']:.3f}   (gain 1.0, 단일 무게 → 임시값)")
-    print(f"회차 평균 σ (합산)   = {s['repeat_sigma_g']:.4f}   3σ = {s['three_sigma_g']:.4f}  → min_resolvable_g 는 이 이상")
+    print(f"회차 평균 σ (합산)   = {s['repeat_sigma_g']:.4f}   3σ = {s['three_sigma_g']:.4f}")
     print(f"세트 안 σ 평균       = {s['within_set_sigma_mean_g']:.4f}   (세트 간 흐름 {s['set_drift_g']:.1f} g 는 빠진 값)")
     print(f"회차 내부 σ 평균/p95 = {s['within_trial_sigma_mean_g']:.4f} / {s['within_trial_sigma_p95_g']:.4f}  → max_std_g 는 p95 이상")
     print(f"표본 중 서로 다른 값 = {s['distinct_sample_ratio'] * 100:.0f} %   (낮으면 표본 간격이 센서 갱신보다 짧다)")

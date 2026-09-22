@@ -38,12 +38,16 @@ class FakeSkillNode(Node):
         self.held = None                        # 지금 쥔 스쿱 스테이션 ID
         self.content = {}                       # 스쿱 스테이션 ID → 안에 든 원료 [g]
         self.in_cup = 0.0
+        self.cup_bias = 0.0                     # 용기 계량에만 더하는 편향 (VERIFY ① 유발용).
+                                                # 스쿱에서 빼지 않는다 — TARE 뒤에만 실린다.
         self.calls = []                         # 부른 순서 — 테스트가 본다
         self.safety_revision = 0
         self.fail = {}                          # 스킬 이름 → 앞으로 실패시킬 횟수 (실패 경로 시험용)
         self.empty = 0                          # 앞으로 몇 번 contact_detected=false 로 답할지 (원료 소진 시험용)
         self.delay = {}                         # 스킬 이름 → 응답 전 대기 [s] (인터락 끼어들기 시험용)
-        self.transfer = TRANSFER                # 붓기 전달률. 1 을 넘기면 약통에 스쿱 투입량보다 많이 들어간다
+        self.transfer = TRANSFER                # 붓기 전달률. **1 을 넘기지 않는다** — 넘기면 스쿱 내용물이
+                                                # 음수가 되어 물리적으로 불가능한 잔량이 나온다. VERIFY ① 을
+                                                # 유발하려면 `cup_bias` 를 쓴다 (test_process_fsm 의 Cell 과 같은 규약)
                                                 #   → 스쿱 계량으로는 안 잡히고 VERIFY ① BATCH_OUT_OF_SPEC 이 잡는다
         self.scoop_gain = 1.0                   # 깊이당 퍼올림 배율. 크게 주면 min_fraction 으로도 남은 양을 넘겨
                                                 #   반환만 반복하다 붓기 전에 TIMEOUT 이 난다 (붓기 전 일탈 시험용)
@@ -212,7 +216,7 @@ class FakeSkillNode(Node):
                 gh.abort()
                 return Pour.Result(success=False, message='기울임 중 힘 상한')
             have = self.content.get(self.held, 0.0)
-            moved = max(0.0, have * f * self.transfer)
+            moved = min(have, max(0.0, have * f * self.transfer))   # 스쿱에 있는 것보다 많이 못 붓는다
             self.content[self.held] = have - moved
             self.in_cup += moved
         gh.succeed()
@@ -236,7 +240,7 @@ class FakeSkillNode(Node):
             self.calls.append('weigh_container')
         self._hold('weigh_container')
         with self.lock:
-            gross = CUP_MASS_G + self.in_cup
+            gross = CUP_MASS_G + self.in_cup + (self.cup_bias if self.in_cup > 0 else 0.0)
         gh.succeed()
         return WeighContainer.Result(success=True,
                                      reading=self._reading(gross, gh.request.tare_g, 'container'))

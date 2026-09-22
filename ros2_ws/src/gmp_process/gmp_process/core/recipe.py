@@ -19,9 +19,9 @@ class RecipeSpec:
 def parse(data: dict) -> RecipeSpec:
     # 분해능 게이트(BRD 3.1.3 "target×tol 가 min_resolvable_g 아래인 주문 거부")는 일부러 없다.
     # 원료별 합격 판정이 VERIFY ①(배치 총량 대조)로 옮겨간 SOT Q-11(9/19 조장 확정) 이전 설계의
-    # 요구사항이다. 그대로 넣으면 데모 레시피(200/150/100 g ±5 % → target×tol = 10/7.5/5 g)가
-    # 현재 min_resolvable_g 19 에 세 원료 모두 걸려 거부된다. 배치 단위로 옮겨간 대응 조건은
-    # process_fsm VERIFY ② 주석 참조. BRD 는 v0.1 초안이라 v1.0 에서 3.1.3·FR-01·TR-03 을 같이 고친다.
+    # 요구사항이고, 그대로 넣으면 데모 레시피(200/150/100 g ±5 % → target×tol = 10/7.5/5 g)가
+    # 전부 거부된다. 9/22 로 `min_resolvable_g` 자체가 사라졌으므로(VERIFY ② 폐지) 이 게이트는
+    # 임계조차 없다 — 판정은 VERIFY ① 하나뿐이다. BRD v1.0 3.1.3·FR-01·TR-03 참조.
     if not data.get('items'):
         raise ValueError('레시피에 items 가 없다')
     items = []

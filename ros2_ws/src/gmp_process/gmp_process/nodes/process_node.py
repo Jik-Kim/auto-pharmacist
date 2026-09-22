@@ -81,9 +81,11 @@ class ProcessNode(Node):
             ('robot.vel_scale', 0.0),           # 0 이면 skill_node 의 robot.vel_scale
             ('scale.method', 'tool_force'), ('scale.gain', 0.8859), ('scale.offset_g', 247.091),
             # 런타임 값은 common.yaml 이 단일 출처다. 아래 기본값은 런치 없이 노드를 띄울 때만 쓰인다.
-            # 9/21 영점 재작업의 material_3 재측정값(min_resolvable 5.0 · max_std 8.0)은 조장·A 결정
-            # 전까지 미적용이라, 여기와 ScaleConfig 기본값과 common.yaml 의 숫자가 당분간 서로 다르다.
-            ('scale.min_resolvable_g', 19.0), ('scale.max_std_g', 10.0),
+            # 9/21 영점 재작업의 material_3 재측정값(max_std 8.0)은 조장·A 결정 전까지 미적용이라,
+            # 여기와 ScaleConfig 기본값과 common.yaml 의 숫자가 당분간 서로 다르다.
+            ('scale.max_std_g', 10.0),
+            # VERIFY 직전 빈 그리퍼 영점 재확인 임계 [N] — 0 이면 검사 꺼짐. B 실측 전 잠정값.
+            ('scale.zero_drift_limit_n', 0.5),
             ('scale.samples', 20), ('scale.settle_s', 1.0),
             # max_attempts 는 **붓기 시도** 상한이다. 목표량÷스쿱 1회량에 비례해야 한다
             # (데모 A 200 g ÷ 40 g = 5회가 하한). max_returns 는 **초과 반환** 상한으로 성격이 다르다 (#189).
@@ -98,9 +100,10 @@ class ProcessNode(Node):
         ])
         p = lambda k: self.get_parameter(k).value  # noqa: E731
         self.p = p
-        self.scale = WeightModel(ScaleConfig(p('scale.method'), p('scale.gain'), p('scale.offset_g'),
-                                             p('scale.min_resolvable_g'), p('scale.max_std_g')))
-        # 키워드로 넘긴다 — 필드 사이에 값이 끼면 위치 인자는 조용히 밀린다
+        # **키워드로 넘긴다** — ScaleConfig 는 min_resolvable_g 가 offset_g 와 max_std_g 사이에 있어서,
+        # 위치 인자로 두면 그 필드를 뺄 때 max_std_g 가 조용히 한 칸 밀린다 (AGENTS 규칙, #211).
+        self.scale = WeightModel(ScaleConfig(method=p('scale.method'), gain=p('scale.gain'),
+                                             offset_g=p('scale.offset_g'), max_std_g=p('scale.max_std_g')))
         self.dosing_cfg = DosingConfig(max_attempts=p('dosing.max_attempts'),
                                        scoop_nominal_g=p('dosing.scoop_nominal_g'),
                                        min_fraction=p('dosing.min_fraction'))
@@ -386,7 +389,8 @@ class ProcessNode(Node):
         fingerprint = ToolFingerprint(scoop_widths_mm=self.smap.widths, cup_width_mm=self.p('gripper.cup_width_mm'),
                                       tolerance_mm=self.p('gripper.fingerprint_tolerance_mm'))
         self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale, fingerprint=fingerprint,
-                              max_returns=int(self.p('dosing.max_returns')))
+                              max_returns=int(self.p('dosing.max_returns')),
+                              zero_drift_limit_n=float(self.p('scale.zero_drift_limit_n')))
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name='process-run')
         self._thread.start()
 
@@ -847,6 +851,7 @@ class ProcessNode(Node):
         fsm = self.fsm
         try:
             self.event('INFO', 'BATCH_START', fsm.spec.product)
+            verify_logged = False      # VERIFY 수치 이벤트는 배치당 한 번 (무효 재계량으로 여러 번 돌 수 있다)
             self._pub_state()
             self._check_batch_interrupt()
             req = fsm.start()
@@ -879,6 +884,11 @@ class ProcessNode(Node):
                 nxt = fsm.on_result(req, res)
                 self._after(step, req, res)
                 self._drain()
+                if step == 'VERIFY' and fsm.verify_detail and not verify_logged:
+                    # ② 폐지(9/22) 뒤에도 회계 수치는 남긴다. 판정은 ① 만 하지만, 끈 것이
+                    # 「배치 기록 교차검증」이라 무엇을 포기했는지 감사 추적에서 보여야 한다.
+                    verify_logged = True
+                    self.event('INFO', 'VERIFY', fsm.verify_detail)
                 self.event('INFO', 'STEP', f'{step} → {fsm.state}')
                 req = nxt
             self._check_batch_interrupt()

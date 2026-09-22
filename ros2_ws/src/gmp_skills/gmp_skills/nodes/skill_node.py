@@ -1080,7 +1080,6 @@ class SkillNode(Node):
             method=method,
             gain=float(p('scale.gain').value),
             offset_g=float(p('scale.offset_g').value),
-            min_resolvable_g=float(p('scale.min_resolvable_g').value),
             max_std_g=float(p('scale.max_std_g').value),
             fz_sign=float(p('scale.fz_sign').value),
         ))

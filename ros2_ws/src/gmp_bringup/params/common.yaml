@@ -65,7 +65,7 @@
 
     # ── 로봇 센서 계량 ───────────────────────────────────────────────
     # ⚠️ [조장·A 확인 필요] 2026-09-21 영점 재작업 완료 — 아래 scale.* 는 아직 **폐기된 9/18·9/19 값**이다 (B 도징).
-    #    갱신안(gain 1.03 · offset_g 195.0 · min_resolvable_g 5.0 · max_std_g 8.0)은
+    #    갱신안(gain 1.03 · offset_g 195.0 · max_std_g 8.0)은 — min_resolvable_g 는 9/22 VERIFY ② 폐지로 제거됐다
     #    gmp_dosing/calibration/README.md 의 "common.yaml 갱신안" 절에, 근거는 gmp_dosing/config/scale_reference.yaml 에.
     #    ⚠️ **적용 전에 계량 자세를 먼저 정해야 한다.** skill_node._do_weigh_held 는 원료마다 material_N.posx 에서
     #       재는데, material_1·2 에서는 max_std_g 가 8 이든 10(아래 현재값)이든 계량이 valid 0/15·2/15 로 거의 전부
@@ -77,8 +77,12 @@
       settle_s: 1.0
       gain: 0.8859                  # 9/19 두 점(32 g·132 g) 직선 — 3점째(≈86 g)로 9/21 확인 (gmp_dosing/config/scale_reference.yaml)
       offset_g: 247.091             # tool_force 전용 (같은 직선). 9/18·9/19 단일점 offset 이 2 g 안에서 같아 날짜에 안정
-      min_resolvable_g: 19.0        # 회차 평균 3σ — 기존 0.05 s 조건 18.0 g + 여유. 0.82 s 적용 후 실물 재측정 전까지 유지 (3σ 12.6)
       max_std_g: 10.0               # 독립 표본의 회차 내부 σ p95 7.8 g 위 (9/19)
+      zero_drift_limit_n: 0.1       # 빈 그리퍼 영점 이동 한계 [N]. 0 이면 검사 꺼짐.
+                                    # **같은 자세 반복 산포 기준** — TARE 직전과 VERIFY 직전 모두 workbench
+                                    # ABOVE 에서 재므로 자세 차이는 들어가지 않는다. 0.1 N ≈ 10 g 은 σ_cup
+                                    # 0.91 g 의 11배, ① 허용 22.5 g 의 절반 아래 — 27 g(0.26 N) 계단을 잡는다.
+                                    # B 의 tool_state_check 로 같은 자세 반복 fz 산포를 받아 확정
       fz_sign: -1.0                   # G1 확인: 아래 하중이 +Fz 로 읽혀 -1 로 뒤집는다
       simulated: false              # virtual 은 런치가 true 로
 

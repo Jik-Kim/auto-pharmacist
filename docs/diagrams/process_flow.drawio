@@ -117,7 +117,7 @@
         <mxCell id="c5" value="PICK_CONTAINER&lt;br&gt;req: carry passbox_empty→workbench" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="600" y="120" width="190" height="72" as="geometry" />
         </mxCell>
-        <mxCell id="c6" value="TARE&lt;br&gt;req: weigh — 빈 용기 들어&lt;br&gt;풍량 (배치 1회)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="c6" value="TARE&lt;br&gt;req: measure(영점 기준) → weigh&lt;br&gt;빈 용기 풍량 (배치 1회)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="880" y="120" width="190" height="72" as="geometry" />
         </mxCell>
         <mxCell id="c7" value="PICK_SCOOP&lt;br&gt;req: move(scoop_N) → grip&lt;br&gt;스쿱은 원료통 아래 (D-24)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -144,7 +144,7 @@
         <mxCell id="c14" value="RETURN_SCOOP&lt;br&gt;req: move(scoop_N) → grip(open)&lt;br&gt;전용 스쿱 = 교차오염 방지" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="320" y="680" width="190" height="72" as="geometry" />
         </mxCell>
-        <mxCell id="c15" value="VERIFY&lt;br&gt;req: weigh — 용기 들어 총량 − 풍량&lt;br&gt;배치 끝 1회. ① 레시피 총량 ② Σ투입량" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="c15" value="VERIFY&lt;br&gt;req: move(workbench ABOVE) → measure(영점 재확인) → weigh&lt;br&gt;배치 끝 1회. 판정은 ① 레시피 총량 하나 (② 는 관측)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="880" y="680" width="190" height="72" as="geometry" />
         </mxCell>
         <mxCell id="c16" value="FINISH&lt;br&gt;req: carry workbench→passbox_done" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -220,7 +220,7 @@
         <mxCell id="c34" value="마지막 원료였음 (그리퍼 비어 있음)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="c14" target="c15">
           <mxGeometry x="0" y="-14" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c35" value="① |net − Σtarget| ≤ Σ(target×tol)&lt;br&gt;② |net − Σactual| ≤ min_resolvable_g" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c15" target="c16">
+        <mxCell id="c35" value="① |net − Σtarget| ≤ Σ(target×tol)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c15" target="c16">
           <mxGeometry x="0" y="-22" relative="1" as="geometry" />
         </mxCell>
         <mxCell id="c36" value="carry ok" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c16" target="c17">
@@ -300,7 +300,7 @@
         <mxCell id="c47" value="반환 좌표 없음/실패 · 반환 한도 초과 → TIMEOUT" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" edge="1" parent="1" source="c12" target="c21">
           <mxGeometry x="0" y="-18" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c48" value="① 규격 이탈 → BATCH_OUT_OF_SPEC&lt;br&gt;② 계측 불일치 → VERIFY_MISMATCH" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c15" target="c21">
+        <mxCell id="c48" value="① 규격 이탈 → BATCH_OUT_OF_SPEC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c15" target="c21">
           <mxGeometry x="0" y="14" relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="1013.0" y="870" />
@@ -395,7 +395,7 @@
         <mxCell id="c61" value="루프 게이트 (FSM 밖, D-21 추가 7)&lt;br&gt;&lt;br&gt;skill_node 가 event NUDGE 를 쏘면 run_loop 가 다음 요청 전에 멈추고&lt;br&gt;state.mode = PAUSED(note=&quot;NUDGE&quot;) 발행, 두 번째 NUDGE 로 재개.&lt;br&gt;인터락 중·계량 대기 중에만 감지된다 (블로킹 movel 중은 두산 충돌 감지 담당)&lt;br&gt;&lt;br&gt;세트 끝 NUDGE_WAIT (D-23, 9/19): 그때의 NUDGE 는 정지가 아니라&lt;br&gt;「다음 세트」 신호 — _nudge_go 를 세워 wait_nudge 를 푼다. 이벤트 SET_DONE / SET_NEXT" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1440" y="120" width="380" height="150" as="geometry" />
         </mxCell>
-        <mxCell id="c62" value="일탈 정책 (deviation.py)&lt;br&gt;&lt;br&gt;GRIP_FAIL  3회 RETRY → FORCED&lt;br&gt;SCOOP_EMPTY  3회 RETRY → REFILL&lt;br&gt;MATERIAL_EMPTY  즉시 REFILL&lt;br&gt;OVERFILL / TIMEOUT  즉시 QA&lt;br&gt;WEIGH_INVALID  2회 RETRY → QA&lt;br&gt;VERIFY_MISMATCH [v1.2]  즉시 QA (계측)&lt;br&gt;BATCH_OUT_OF_SPEC [v1.2]  즉시 QA (규격)&lt;br&gt;SLIP 2 · SAFETY_SWITCH 1 · FORCE_LIMIT 1 → FORCED&lt;br&gt;WRONG_TOOL [v1.2]  즉시 QA&lt;br&gt;&lt;br&gt;count = 같은 배치·같은 스텝·같은 kind" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c62" value="일탈 정책 (deviation.py)&lt;br&gt;&lt;br&gt;GRIP_FAIL  3회 RETRY → FORCED&lt;br&gt;SCOOP_EMPTY  3회 RETRY → REFILL&lt;br&gt;MATERIAL_EMPTY  즉시 REFILL&lt;br&gt;OVERFILL / TIMEOUT  즉시 QA&lt;br&gt;WEIGH_INVALID  2회 RETRY → QA&lt;br&gt;VERIFY_MISMATCH  9/22 폐지 — 발생 안 함&lt;br&gt;BATCH_OUT_OF_SPEC [v1.2]  즉시 QA (규격)&lt;br&gt;SLIP 2 · SAFETY_SWITCH 1 · FORCE_LIMIT 1 → FORCED&lt;br&gt;WRONG_TOOL [v1.2]  즉시 QA&lt;br&gt;&lt;br&gt;count = 같은 배치·같은 스텝·같은 kind" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1660" y="880" width="240" height="270" as="geometry" />
         </mxCell>
         <mxCell id="c63" value="D-22 원료 1종 = 6단계: 빈 스쿱 계량 → 퍼올림 → 붓기 전 계량(퍼낸 양 → 붓기 비율, 초과 예방) → 붓기 → 붓기 후 계량(잔량 → 투입량 누적 → 판정) → 반납. 로봇이 저울이라 스쿱을 든 채 재는 것이 가장 싸고, 용기 계량(들어 올림)은 그리퍼가 비어야 해서 배치 끝 VERIFY 한 번.&lt;br&gt;범례   파랑 = 정상 경로   주황 = 일탈·재시도   청록 = 복구·완료   빨강 = 강제 개입·폐기(종료)   회색 = 대기·재계량&lt;br&gt;전이표 밖 조합은 on_result 가 RuntimeError(&quot;전이 없음&quot;) 를 던진다 — 새 상태·kind 를 넣으면 전이와 테스트(test_process_fsm.py)를 같이 넣는다" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
@@ -686,7 +686,7 @@
         <mxCell id="c30" value="TARE" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="810" y="600" width="200" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="c31" value="WeighContainer act (고정 workbench 용기 들어)&lt;br&gt;tare 0 → reading(gross, std, valid)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c31" value="MeasureForce (빈 그리퍼 영점 기준, workbench ABOVE)&lt;br&gt;WeighContainer act — tare 0 → reading(gross, std, valid)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1090" y="600" width="360" height="46" as="geometry" />
         </mxCell>
         <mxCell id="c32" value="호출 → 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c30" target="c31">
@@ -843,14 +843,14 @@
         <mxCell id="c79" value="VERIFY" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="810" y="1950" width="200" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="c80" value="WeighContainer act (고정 workbench 용기 들어, 배치 1회)&lt;br&gt;tare_g → reading(net, subject=container)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c80" value="MoveToStation(workbench, ABOVE) → MeasureForce (영점 재확인 — TARE 와 같은 자세)&lt;br&gt;WeighContainer act — tare_g → reading(net, subject=container)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1090" y="1950" width="360" height="46" as="geometry" />
         </mxCell>
         <mxCell id="c81" value="호출 → 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c79" target="c80">
           <mxGeometry x="0" y="-10" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c82" value="① Σ(target×tol) — 레시피 총량 대조&lt;br&gt;② min_resolvable_g — Σ투입량 대조" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="1510" y="1950" width="340" height="46" as="geometry" />
+        <mxCell id="c82" value="영점 이동 &gt; scale.zero_drift_limit_n → 재계량 → WEIGH_INVALID&lt;br&gt;① Σ(target×tol) — 레시피 총량 대조&lt;br&gt;(② 회계 대조는 9/22 폐지 — 관측만)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1510" y="1950" width="340" height="61" as="geometry" />
         </mxCell>
         <mxCell id="c83" value="import 호출" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.9;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c79" target="c82">
           <mxGeometry x="0.35" y="12" relative="1" as="geometry">
@@ -860,7 +860,7 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c84" value="weight(net) · state&lt;br&gt;deviation(VERIFY_MISMATCH[v1.2])" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c84" value="weight(net) · state&lt;br&gt;event(VERIFY, ①② 수치)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="50" y="1950" width="340" height="46" as="geometry" />
         </mxCell>
         <mxCell id="c85" value="topic 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c79" target="c84">

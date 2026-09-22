@@ -11,16 +11,16 @@ from gmp_process.core.recipe import parse
 SCOOP_TARE, CUP_TARE = 20.0, 30.0
 
 
-def _fsm(min_resolvable_g=30.0, fingerprint=None):
+def _fsm(fingerprint=None):
     spec = parse({'product': 't', 'items': [{'material_id': 'A', 'target_g': 100, 'tol_pct': 5},
                                               {'material_id': 'B', 'target_g': 50, 'tol_pct': 5}]})
-    return ProcessFSM(spec, DosingConfig(scoop_nominal_g=40), WeightModel(ScaleConfig(min_resolvable_g=min_resolvable_g)),
+    return ProcessFSM(spec, DosingConfig(scoop_nominal_g=40), WeightModel(ScaleConfig()),
                       fingerprint=fingerprint or ToolFingerprint())
 
 
 class Cell:
     def __init__(self, yields, residual=2.0, grip=None, qa='APPROVED', spill=False, cup_bias=0.0, invalid_first=0,
-                width_mm=None, cup_invalid_first=0):
+                width_mm=None, cup_invalid_first=0, zero_drift_n=0.0):
         self.yields, self.residual, self.qa, self.spill, self.cup_bias = list(yields), residual, qa, spill, cup_bias
         self.grip = grip or (lambda req, n: True)
         self.width_mm = width_mm                          # 폭 지문 테스트용 — 정지 폭을 고정값으로 돌려준다
@@ -28,9 +28,16 @@ class Cell:
         self.n = {'grip': 0, 'carry': 0, 'scoop': 0, 'weigh_scoop': 0, 'return_material': 0}
         self.invalid_left = invalid_first
         self.cup_invalid_left = cup_invalid_first   # 용기 계량(TARE·VERIFY) 무효 횟수
+        self.zero_drift_n = zero_drift_n            # VERIFY 직전 영점이 이만큼 움직인 것으로 답한다
+        self.n_measure = 0
 
     def __call__(self, req):
         k = req['kind']
+        if k == 'measure':
+            self.n_measure += 1
+            # 1회차 SELF_CHECK(자가진단), 2회차 TARE 직전(영점 기준), 3회차부터 VERIFY 직전 재확인.
+            # 기준과 대조는 둘 다 workbench ABOVE 라 자세가 같다 — 그래서 차이가 곧 영점 이동이다.
+            return {'fz_mean_n': 0.0 if self.n_measure <= 2 else self.zero_drift_n, 'valid': True}
         if k in ('grip', 'carry'):
             self.n[k] += 1
             ok = self.grip(req, self.n[k])
@@ -252,28 +259,72 @@ def test_verify_규격이탈은_BATCH_OUT_OF_SPEC():
     """① 제품 판정 — 용기 순량이 레시피 총 목표량에서 벗어나면 규격 이탈이다.
     레시피 A 100 + B 50 = 150 g, 허용치 Σ(target×tol) = 7.5 g. 용기에 50 g 이 더 있다."""
     cell = Cell(yields=[100, 50], cup_bias=50.0)
-    fsm = _fsm(min_resolvable_g=30.0)
+    fsm = _fsm()
     trace = run(fsm, cell)
-    assert fsm.deviations == [{'kind': 'BATCH_OUT_OF_SPEC', 'step': 'VERIFY', 'count': 1, 'action': 'QA',
-                               'detail': '', 'material_id': 'B'}]
+    d, = fsm.deviations
+    assert {k: d[k] for k in ('kind', 'step', 'count', 'action', 'material_id')} == {
+        'kind': 'BATCH_OUT_OF_SPEC', 'step': 'VERIFY', 'count': 1, 'action': 'QA', 'material_id': 'B'}
+    assert '①규격' in d['detail'] and '②회계' in d['detail'], d['detail']
     assert fsm.state == 'DONE' and ('FINISH', 'carry') in trace          # QA 승인 → 그대로 완료품
 
 
-def test_verify_계측불일치는_VERIFY_MISMATCH():
-    """② 계측 신뢰성 — 제품은 규격 안인데 스쿱 누적과 용기 계량이 어긋난다.
-    ②가 ① 없이 울리려면 min_resolvable_g < Σ(target×tol) 여야 한다 (여기선 3 < 7.5).
-    실제 설정(30 vs 22.5)에서는 ①이 먼저 걸리므로 G1 결과로 임계를 맞춰야 한다 — Q-11."""
-    cell = Cell(yields=[100, 50], cup_bias=5.0)         # 규격(±7.5) 안, 분해능(3) 밖
-    fsm = _fsm(min_resolvable_g=3.0)
+def test_verify_회계불일치는_관측만_하고_판정하지_않는다():
+    """② 폐지 (9/22 사용자·조장 확정) — 제품이 규격 안이면 회계가 어긋나도 배치는 안 멈춘다.
+
+    종전에는 이 상황이 `VERIFY_MISMATCH` 였다. 지금은 **일탈이 아니다** — 값은 `verify_detail`
+    에 관측으로만 남는다. 이것이 「배치 기록 교차검증을 포기한다」의 구체적 모습이다:
+    제품은 합격인데 원료별 투입 기록이 5 g 틀린 배치가 그대로 완료품으로 나간다.
+    """
+    cell = Cell(yields=[100, 50], cup_bias=5.0)         # 규격(±7.5) 안, 회계는 5 g 어긋남
+    fsm = _fsm()
     run(fsm, cell)
-    assert [d['kind'] for d in fsm.deviations] == ['VERIFY_MISMATCH']
+    assert fsm.deviations == [] and fsm.state == 'DONE', fsm.deviations
+    assert '②회계 +5.0 (관측, 판정 안 함)' in fsm.verify_detail, fsm.verify_detail
 
 
-def test_verify_둘_다_통과하면_그대로_완료():
-    cell = Cell(yields=[100, 50])                       # 편향 없음
-    fsm = _fsm(min_resolvable_g=3.0)
+def test_verify_직전_영점이_움직이면_재측정하고_한계를_넘으면_WEIGH_INVALID():
+    """용기를 들기 전 빈 그리퍼 영점을 다시 재서 계량 오염을 거른다.
+
+    NUDGE 는 정지·재개 장치일 뿐 계량 유효성과 연결돼 있지 않다 — 사람이 건드려 생긴 계단이
+    NUDGE 임계를 넘든 못 넘든 오염된 값이 그대로 장부에 들어간다. 이 검사가 그 구멍을 막는다.
+    """
+    cell = Cell(yields=[100, 50], zero_drift_n=2.0)      # 한계 0.1 N 을 크게 넘는다
+    fsm = _fsm()
+    run(fsm, cell)
+    assert [(d['kind'], d['step']) for d in fsm.deviations] == [('WEIGH_INVALID', 'VERIFY')]
+    assert '영점 이동' in fsm.deviations[0]['detail'], fsm.deviations[0]['detail']
+    assert cell.n_measure == 1 + 1 + 2, cell.n_measure   # SELF_CHECK 1 + TARE 영점 1 + VERIFY 재측정 2회
+
+
+def test_verify_직전_영점이_한계_안이면_그대로_잰다():
+    cell = Cell(yields=[100, 50], zero_drift_n=0.05)     # 한계 0.1 N 안
+    fsm = _fsm()
     run(fsm, cell)
     assert fsm.deviations == [] and fsm.state == 'DONE'
+    assert '영점이동 +0.050 N' in fsm.verify_detail, fsm.verify_detail
+
+
+def test_영점_기준과_대조는_같은_자세에서_잰다():
+    """tool_force 는 자세 의존이라 다른 자세끼리 비교하면 자세 차이가 영점 이동으로 둔갑한다.
+
+    기준은 TARE 직전(carry 가 workbench ABOVE·그리퍼 열림으로 끝난 자리), 대조는 VERIFY 직전에
+    같은 workbench ABOVE 로 옮긴 뒤. SELF_CHECK 의 measure 는 자가진단 전용이라 기준이 아니다.
+    """
+    cell = Cell(yields=[100, 50])
+    fsm = _fsm()
+    trace = run(fsm, cell)
+    assert ('TARE', 'measure') in trace, trace          # 기준 — carry 직후 그 자리에서
+    i = trace.index(('VERIFY', 'move'))
+    assert trace[i:i + 3] == [('VERIFY', 'move'), ('VERIFY', 'measure'), ('VERIFY', 'weigh')], trace[i:i + 3]
+
+
+def test_verify_통과해도_판정_근거를_남긴다():
+    cell = Cell(yields=[100, 50])                       # 편향 없음
+    fsm = _fsm()
+    run(fsm, cell)
+    assert fsm.deviations == [] and fsm.state == 'DONE'
+    # 일탈이 없어도 수치는 남는다 — process_node 가 CellEvent 로 발행한다
+    assert fsm.verify_detail.startswith('net ') and '①규격' in fsm.verify_detail, fsm.verify_detail
 
 
 def test_invalid_scoop_weigh_retries():
@@ -482,7 +533,8 @@ def test_invalid_tare_reweighs_and_does_not_keep_the_bad_value():
     trace = run(fsm, cell)
     assert fsm.state == 'DONE' and not fsm.deviations
     assert fsm.tare_g == CUP_TARE                      # 무효값 0.0 이 아니라 재계량한 값이 들어간다
-    assert kinds_for(trace, 'TARE') == ['weigh', 'weigh']
+    # measure 는 영점 기준(같은 자세) — 그 뒤 무효 1회 재계량으로 weigh 가 2번이다
+    assert kinds_for(trace, 'TARE') == ['measure', 'weigh', 'weigh']
     assert fsm.verify_net_g == 146                     # 순량이 정상 경로와 같다 (happy path 와 동일)
 
 

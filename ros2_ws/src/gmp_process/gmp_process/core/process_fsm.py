@@ -22,10 +22,12 @@ kind: move | grip | carry | scoop | pour | weigh | weigh_scoop | measure | safe 
 원료 1종의 흐름 (SOT D-22, 9/17 팀 합의 — 로봇이 저울이므로 스쿱을 든 채 재는 것이 가장 싸다):
   PICK_SCOOP → SCOOP_TARE(빈 스쿱 무게) → SCOOP → WEIGH_SCOOP(붓기 전: 퍼낸 양 → 전량 붓기 or 원료통 반환 — v1.3)
   → POUR → WEIGH_RESIDUAL(붓기 후: 스쿱 잔량 → 실제 투입량 누적 → decide) → RETURN_SCOOP
-원료가 다 끝나면 VERIFY(용기를 들어 계량) → FINISH → NUDGE_WAIT(nudge_wait 로 물러나 NUDGE 대기, D-23) → DONE. VERIFY 는 두 가지를 본다 (9/17 조장 합의):
-  ① 제품 판정   |net − Σtarget| > Σ(target×tol)     → BATCH_OUT_OF_SPEC (규격 이탈)
-  ② 계측 신뢰성 |net − Σ투입량| > min_resolvable_g  → VERIFY_MISMATCH   (스쿱 계량을 못 믿는다)
-②만으로는 개별 원료가 전부 같은 방향으로 치우친 경우를 못 잡는다 — 두 값이 함께 낮아 서로 일치하기 때문이다.
+원료가 다 끝나면 VERIFY(용기를 들어 계량) → FINISH → NUDGE_WAIT(nudge_wait 로 물러나 NUDGE 대기, D-23) → DONE.
+VERIFY 는 **① 제품 판정 하나만** 한다 (9/22 사용자·조장 확정 — ② 폐지):
+  ① |net − Σtarget| > Σ(target×tol) → BATCH_OUT_OF_SPEC (규격 이탈)
+종전 ②(계측 신뢰성, |net − Σ투입량|)는 **판정하지 않는다.** 값은 계속 계산해 detail·CellEvent 에
+**관측으로만** 남긴다 — ② 를 끈다는 것은 **배치 기록 교차검증을 포기한다**는 뜻이고(제품은 규격 안인데
+원료별 투입 기록이 틀린 배치를 검출할 수단이 없어진다), 그 사실이 기록에서 보이도록 수치는 남긴다.
 상태 이름은 CellState.step 에 그대로 실린다 (docs/architecture.md 전이표).
 """
 import math
@@ -74,16 +76,28 @@ class ProcessFSM:
                                  # 붓기 상한은 목표량÷스쿱 1회량에 비례해야 하고(200 g÷40 g = 5회),
                                  # 반환 상한은 깊이 보정이 수렴하는지를 보는 오류 복구 한계다. 한 상수로
                                  # 묶여 있으면 큰 레시피 때문에 붓기 상한을 올릴 때 반환 허용도 같이 올라간다 (#189).
+    zero_drift_limit_n: float = 0.1   # 빈 그리퍼 영점 이동 한계 [N] — 0 이면 검사 꺼짐.
+                                      # **같은 자세(workbench ABOVE) 반복 산포 기준**이다. 잠정값 0.1 N ≈ 10 g
+                                      # 으로 σ_cup 0.91 g 의 11배, ① 허용 22.5 g 의 절반 아래 — 이 검사를 만든
+                                      # 계기인 27 g(0.26 N) 계단을 실제로 잡는다. B 의 tool_state_check 로
+                                      # 같은 자세 반복 시 빈 그리퍼 fz 산포를 받아 확정한다.
     state: str = 'IDLE'
     mode: str = 'IDLE'
     idx: int = 0
     tare_g: float = 0.0          # 빈 용기 (TARE)
     verify_net_g: float = 0.0    # VERIFY 에서 잰 용기 순량
+    zero_fz_n: float = 0.0       # TARE 직전 workbench ABOVE 에서 잰 빈 그리퍼 외력 — VERIFY 직전 대조 기준.
+                                 # **반드시 같은 자세끼리 비교해야 한다** — tool_force 는 자세 의존이라
+                                 # 다른 자세의 값을 기준으로 쓰면 자세 차이가 그대로 '영점 이동' 으로 읽힌다
+    verify_zero_drift_n: float = 0.0  # VERIFY 직전 영점 이동량 — detail 에 남는다
+    verify_detail: str = ''      # VERIFY 판정 근거 한 줄 — ①(판정)과 ②(관측) 수치.
+                                 # 일탈이 안 나도 남는다 — process_node 가 CellEvent 로 발행한다
     results: list = field(default_factory=list)
     deviations: list = field(default_factory=list)
     _counts: dict = field(default_factory=dict)
     _resume: object = None       # 인터락/QA 후 돌아갈 요청
     _qa_step: str = ''           # QA 판정을 기다리는 일탈이 난 스텝 — APPROVED/DISCARDED 뒤 경로를 가른다
+    _zero_recheck: int = 0       # VERIFY 직전 영점 재확인 재측정 횟수
     _tare_invalid: int = 0       # 빈 용기 계량 무효 횟수 — TARE 시점엔 self.cur 가 없어 _invalid_or 를 못 쓴다
     _verify_invalid: int = 0
     _final: str = 'DONE'         # NUDGE_WAIT 뒤 끝나는 상태 — DONE(완성품) | DISCARDED(폐기)
@@ -187,6 +201,8 @@ class ProcessFSM:
             if nxt == 'wait_interlock':
                 return {'kind': 'wait_interlock'}
         if k == 'measure' and st == 'SELF_CHECK':
+            # 자가진단 전용이다. 이 값을 영점 기준으로 쓰지 않는다 — 여기 자세는 배치 시작 자세고
+            # VERIFY 는 workbench 라, 자세 차이가 영점 이동으로 둔갑한다. 기준은 TARE 직전에 잡는다.
             self.state = 'PICK_CONTAINER'
             return self._carry('passbox_empty', 'workbench')
         if k == 'carry' and st == 'PICK_CONTAINER':
@@ -196,6 +212,11 @@ class ProcessFSM:
             if dev is not None:
                 return dev
             self.state = 'TARE'
+            # `carry` 는 dst ABOVE + 그리퍼 열림으로 끝난다(모듈 docstring) — 지금 로봇은
+            # **workbench ABOVE, 빈 그리퍼**다. VERIFY 직전과 같은 자세이므로 여기서 영점을 잡는다.
+            return {'kind': 'measure'}
+        if k == 'measure' and st == 'TARE':
+            self.zero_fz_n = res.get('fz_mean_n', 0.0)
             return self._weigh_cup(0.0)
         if k == 'weigh' and st == 'TARE':
             # 빈 용기 계량도 다른 계량과 같은 유효성 규칙을 받는다. 무효한 tare 가 그냥 통과하면
@@ -265,8 +286,14 @@ class ProcessFSM:
             r = self._invalid_or(res, 'WEIGH_RESIDUAL', req)
             if r is not None:
                 return r
-            self.cur.residual_g = max(0.0, res.get('gross_g', 0.0) - self.cur.scoop_tare_g)
-            self.cur.actual_g += max(0.0, self.cur.scooped_g - self.cur.residual_g)
+            # 클램프하지 않는다 — 붓고 나면 참 잔량이 0 근처라 측정 잡음의 절반이 음수인데,
+            # max(0, ...) 로 자르면 잔량이 체계적으로 과대평가되고 투입량이 그만큼 과소평가된다
+            # (편향 ≈ σ/√(2π)). 회계 누산기는 편향이 없어야 한다. ② 판정이 없어져도 Σ투입량은
+            # 배치 기록(ScoopCycle·dispense_result)에 그대로 남으므로 편향은 여전히 문제다.
+            # TODO(영점 재확인과 같은 묶음): 잔량이 −3σ 보다 더 음수면 회계가 아니라 **유효성**
+            # 문제다 (파지 이동·원료 손실·계량 오염). 재계량 또는 WEIGH_INVALID 로 거른다.
+            self.cur.residual_g = res.get('gross_g', 0.0) - self.cur.scoop_tare_g
+            self.cur.actual_g += self.cur.scooped_g - self.cur.residual_g
             d = decide(self.cur.target_g, self.cur.actual_g, self.cur.tol_pct, self.cur.attempts,
                        True, self.cur.invalid, self.dosing_cfg)
             self.cur.verdict = d.verdict
@@ -286,6 +313,24 @@ class ProcessFSM:
                 self.cur, self.state = self._item(), 'PICK_SCOOP'
                 return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}
             self.state = 'VERIFY'
+            # **TARE 때와 같은 자세로 옮긴 뒤** 빈 그리퍼 영점을 다시 잰다. 지금은 스쿱 거치대에
+            # 서 있어서 그대로 재면 자세 차이가 영점 이동으로 읽힌다 — tool_force 는 자세 의존이다.
+            return {'kind': 'move', 'station': 'workbench', 'approach': 'ABOVE'}
+        if k == 'move' and st == 'VERIFY':
+            # 용기를 들기 전, 그리퍼가 빈 채로 잰다. NUDGE 는 정지·재개 장치일 뿐 계량 유효성과
+            # 연결돼 있지 않다 — 충격이 임계를 넘어 NUDGE 가 떠도 진행 중 계량을 무효화하지 않고,
+            # 못 넘으면 감지조차 안 된다. 어느 쪽이든 오염된 값이 장부에 들어간다. 여기서 막는다.
+            return {'kind': 'measure'}
+        if k == 'measure' and st == 'VERIFY':
+            drift_n = res.get('fz_mean_n', 0.0) - self.zero_fz_n
+            if self.zero_drift_limit_n > 0 and abs(drift_n) > self.zero_drift_limit_n:
+                self._zero_recheck += 1
+                if self._zero_recheck >= self.dosing_cfg.max_invalid:
+                    return self._deviate('WEIGH_INVALID', 'VERIFY',
+                                         detail=f'빈 그리퍼 영점 이동 {drift_n:+.3f} N '
+                                                f'(한계 {self.zero_drift_limit_n:.3f}) — 계량 오염 의심')
+                return req                              # 다시 잰다 — 일시적 흔들림일 수 있다
+            self.verify_zero_drift_n = drift_n
             return self._weigh_cup(self.tare_g)        # 2차 검증 — 용기를 들어 잰다 (그리퍼 비어 있음)
         if k == 'weigh' and st == 'VERIFY':
             if not res.get('valid', False):
@@ -294,15 +339,19 @@ class ProcessFSM:
                     return self._deviate('WEIGH_INVALID', 'VERIFY')
                 return req
             self.verify_net_g = res.get('net_g', 0.0)
-            # ① 제품 판정 — 레시피 총 목표량 대비. 개별 원료가 전부 같은 방향으로 치우치면
-            #    순량과 Σ투입량이 함께 낮아 ②로는 안 잡힌다 (9/17 조장 합의)
-            if abs(self.verify_net_g - self.target_total()) > self.batch_tol_g():
-                return self._deviate('BATCH_OUT_OF_SPEC', 'VERIFY')
-            # ② 계측 신뢰성 — 스쿱 누적 투입량 대비. 흘림·스쿱 풍량 편향을 잡는다.
-            #    min_resolvable_g < Σ(target×tol) 일 때만 의미가 있다 — 아니면 ①이 먼저 걸려 ②는 안 운다.
-            #    G1 확정(9/19, SOT Q-11): 19 < 22.5(데모 레시피) → 살아있다. 표본 간격 조정 후 14 여도 결론은 같다.
-            if abs(self.verify_net_g - self.dosed_total()) > self.scale.cfg.min_resolvable_g:
-                return self._deviate('VERIFY_MISMATCH', 'VERIFY')
+            # ① 제품 판정 — 레시피 총 목표량 대비. **유일한 판정이다** (9/22 ② 폐지).
+            spec_err = self.verify_net_g - self.target_total()
+            spec_tol = self.batch_tol_g()
+            # 종전 ②(회계 대조)는 판정하지 않고 **관측만** 한다. 값을 계속 남기는 것은 ② 폐지가
+            # 「배치 기록 교차검증을 포기한다」는 결정이기 때문이다 — 포기한 것이 무엇인지 기록에서
+            # 보여야 한다. 이 수치가 커도 배치는 멈추지 않는다.
+            acct_err = self.verify_net_g - self.dosed_total()
+            self.verify_detail = (f'net {self.verify_net_g:.1f} g · '
+                                  f'①규격 {spec_err:+.1f}/{spec_tol:.1f} · '
+                                  f'②회계 {acct_err:+.1f} (관측, 판정 안 함) · '
+                                  f'영점이동 {self.verify_zero_drift_n:+.3f} N')
+            if abs(spec_err) > spec_tol:
+                return self._deviate('BATCH_OUT_OF_SPEC', 'VERIFY', detail=self.verify_detail)
             self.state = 'FINISH'
             return self._carry('workbench', 'passbox_done')
         if k == 'carry' and st == 'FINISH':

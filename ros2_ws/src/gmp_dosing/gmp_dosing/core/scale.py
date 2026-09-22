@@ -99,7 +99,6 @@ class ScaleConfig:
     method: str = 'tool_force'       # tool_force | workpiece — 9/21 재측정은 tool_force 로 했다 (workpiece 는 결론 미정)
     gain: float = 1.0                # 실제 저울 대비 선형 보정 — 보정 전 중립값. 값은 common.yaml 이 넣는다 (9/21 실측 1.03)
     offset_g: float = 0.0            # **method 에 종속** — 기본값 0(미보정). 세션마다 ±5 g 움직이지만 tare 가 소거한다 (scale_reference.yaml)
-    min_resolvable_g: float = 5.0    # 회차 평균 3σ — 9/21 운영 조건(samples 20) 실측 4.01 g 에 여유. samples 를 줄이면 나빠진다
     max_std_g: float = 8.0           # **정확도** 게이트. fit_oscillation 의 residual_std 와 비교한다 (적합 전 표본 σ 가 아니다)
     max_hf_std_g: float = 9.5        # **무결성** 게이트 — 재는 중 하중이 바뀌면 고주파가 튄다. 0 이면 끔.
                                      # 9/22 실측 분리: 오염 10.57·12.26·26.45 vs 양성 최대 8.54 (양성 15건·오염 3건)
@@ -137,12 +136,3 @@ class WeightModel:
         if valid and raw_hf_std is not None and self.cfg.max_hf_std_g > 0:
             valid = self.std_to_g(raw_hf_std) <= self.cfg.max_hf_std_g
         return gross, self.tare_g, gross - self.tare_g, std_g, valid
-
-    def resolvable(self, target_g: float, tol_pct: float) -> bool:
-        """허용 오차 폭이 분해능보다 좁으면 이 저울로는 그 목표를 판정할 수 없다.
-
-        min_resolvable_g 는 회차 평균의 실측 3σ 다 — 계량 한 번의 값이 ±3σ 안에서 흔들리므로 허용 폭(±target×tol)
-        이 그보다 좁으면 '맞았다' 도 '틀렸다' 도 말할 수 없다. 레시피는 tol 5 % 라 100 g 이면 ±5 g 다 (Q-11).
-        9/21 실측(3σ 4.01 → 5.0)으로 A(200 g)·B(150 g)·C(100 g) 셋 다 판정 가능하다. C 는 ±5 g 로 경계다.
-        """
-        return target_g * tol_pct / 100.0 >= self.cfg.min_resolvable_g
