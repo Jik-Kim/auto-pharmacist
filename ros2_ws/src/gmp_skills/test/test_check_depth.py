@@ -39,12 +39,15 @@ def depth_node(monkeypatch, material='A'):
         calls.append(('move', list(target), scale))
         state['pose'] = list(target)
 
-    def observed_move(target, scale, cancel, timeout, observer):
+    def observed_move(target, scale, cancel, timeout, observer, stop_requested):
         assert clock[0] >= params['safety.compliance_settle_s']
         calls.append(('measure', list(target), scale, timeout))
         assert not cancel()
         state.update(pose=[target[0], target[1], 150.0, *target[3:]], force=16.0)
         observer()
+        if stop_requested():
+            calls.append(('contact_stop',))
+            return
         state.update(pose=list(target), force=18.0)
         observer()
 
@@ -63,14 +66,15 @@ def test_check_depth_uses_full_taught_target_and_returns_to_weigh_pose(monkeypat
     weigh = [x, -298.0, 200.0, 90.0, -180.0, -90.0]
     assert calls == [('move', weigh, 1.0), ('on',),
                      ('measure', [x, -334.0, 120.0, 90.0, 160.0, -90.0], 1.0, 30.0),
+                     ('contact_stop',),
                      ('off',), ('move', weigh, 1.0)]
     measurement = json.loads(result.pop('message'))
     assert measurement['frame'] == 'BASE'
     assert measurement['contact_tcp_posx'] == [x, -334, 150, 90, 160, -90]
     # 최초 접촉의 자세와 회전을 사용한다. 최종 목표 Z=120이나 고정 Z-20이 아니다.
     assert measurement['tip_position_mm'][2] == pytest.approx(90.1637303852)
-    assert result == dict(contact_detected=True, max_contact_force_n=18.0, insertion_depth_mm=30.0)
-    assert [f[0] for f in feedback] == ['APPROACH', 'DIP', 'DIP', 'LIFT']
+    assert result == dict(contact_detected=True, max_contact_force_n=16.0, insertion_depth_mm=0.0)
+    assert [f[0] for f in feedback] == ['APPROACH', 'DIP', 'LIFT']
 
 
 @pytest.mark.parametrize('fault', ['missing_target', 'cancel', 'compliance_failure', 'motion_failure', 'bad_force', 'wrong_rotation'])
@@ -91,6 +95,7 @@ def test_depth_failure_does_not_continue_or_retreat(monkeypatch, fault):
     elif fault == 'bad_force':
         node.arm.tool_force = lambda: None
     elif fault == 'wrong_rotation':
+        node.arm.force_over = lambda _: False
         original = node.arm.movel_cancellable
         def wrong(*args, **kwargs):
             original(*args, **kwargs)
@@ -149,3 +154,21 @@ def test_contact_is_logged_even_if_motion_later_times_out(monkeypatch):
     assert logs[0].startswith('[SURFACE_CONTACT_BASE] ')
     assert json.loads(logs[0].split('] ', 1)[1])['contact_tcp_posx'][2] == 150
     assert calls[-1] == ('off',)
+
+
+@pytest.mark.parametrize('client_cancel', [False, True])
+def test_scoop_internal_timeout_aborts_unless_client_requested_cancel(monkeypatch, client_cancel):
+    module = _load_skill_node(monkeypatch)
+    node = object.__new__(module.SkillNode)
+    node._submit = lambda *args, **kwargs: SimpleNamespace(
+        error='motion timed out', cancel=True, result=None)
+    endings = []
+    goal = SimpleNamespace(request=SimpleNamespace(material_id='A', attempt=1),
+        is_cancel_requested=client_cancel,
+        succeed=lambda: endings.append('success'),
+        canceled=lambda: endings.append('canceled'),
+        abort=lambda: endings.append('aborted'))
+    result = node._exec_scoop(goal)
+    assert not result.success
+    assert result.message == 'motion timed out'
+    assert endings == ['canceled' if client_cancel else 'aborted']

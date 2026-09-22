@@ -292,13 +292,14 @@ class DsrArm:
             raise RuntimeError('motion stop request failed')
 
     def wait_motion_cancellable(self, cancel_requested, timeout_s: float, observer=None,
-                                target_reached=None):
+                                target_reached=None, stop_requested=None):
         """시작 대기를 완료로 간주하지 않고 정지 상태와 실제 목표 도착을 확인한다."""
         if not math.isfinite(timeout_s) or timeout_s <= 0:
             raise ValueError('motion timeout must be finite and positive')
         deadline = self._now() + timeout_s
         motion_started = False
         last_state = None
+        stopping = False
         try:
             while True:
                 if cancel_requested():
@@ -307,6 +308,12 @@ class DsrArm:
                     raise TimeoutError(f'motion timed out after {timeout_s:.1f}s; last_state={last_state}')
                 if observer is not None:
                     observer()
+                if cancel_requested():
+                    raise RuntimeError('cancelled')
+                if not stopping and stop_requested is not None and stop_requested():
+                    # 접촉 정지는 정상 완료 경로다. 응답만으로 완료하지 않고 IDLE을 확인한다.
+                    self.stop_motion()
+                    stopping = True
                 state = self.motion_state()
                 if state not in (0, 1, 2):
                     raise RuntimeError(f'invalid motion state: {state!r}')
@@ -319,7 +326,7 @@ class DsrArm:
                     motion_started = True
                 # 동일 위치 요청·짧은 이동도 실제 목표 도착을 확인해야 완료한다.
                 reached = (state == self.R.DR_STATE_IDLE and
-                           (target_reached() if target_reached is not None else motion_started))
+                           (stopping or (target_reached() if target_reached is not None else motion_started)))
                 # 조회·관측 중 발생한 취소/시간초과도 완료보다 먼저 처리한다.
                 if cancel_requested():
                     raise RuntimeError('cancelled')
@@ -341,12 +348,13 @@ class DsrArm:
             cancel_requested, timeout_s,
             target_reached=lambda: joints_match(self.current_posj(), j6, self.joint_tolerance))
 
-    def movel_cancellable(self, x6, vel_scale, cancel_requested, timeout_s, observer=None):
+    def movel_cancellable(self, x6, vel_scale, cancel_requested, timeout_s, observer=None,
+                         stop_requested=None):
         if cancel_requested():
             raise RuntimeError('cancelled')
         self.amovel(x6, vel_scale)
         self.wait_motion_cancellable(
-            cancel_requested, timeout_s, observer=observer,
+            cancel_requested, timeout_s, observer=observer, stop_requested=stop_requested,
             target_reached=lambda: pose_matches(self.current_posx(), x6,
                                                 self.pose_xyz_tolerance, self.pose_rotation_tolerance))
 

@@ -942,7 +942,7 @@ class SkillNode(Node):
             time.sleep(min(0.02, remaining))
 
     def _do_check_depth(self, job: Job):
-        """계량 자세에서 티칭 측정 목표로 이동하며 접촉·삽입 깊이를 확인한다."""
+        """티칭 목표로 접근하다 최초 접촉에서 감속 정지하고 계량 자세로 복귀한다."""
         if getattr(self, '_return_rescoop_blocked', False):
             raise RuntimeError('반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
         self._require_scoop_extracted()
@@ -956,6 +956,9 @@ class SkillNode(Node):
         start = list(station.posx)
         reference = list(p('height_measurement.reference_posx').value)
         tip_offset = list(p('height_measurement.tip_offset_base_mm').value)
+        contact_threshold = float(p('safety.fz_max_n').value)
+        if not math.isfinite(contact_threshold) or contact_threshold <= 0:
+            raise ValueError('접촉 판정 힘은 유한한 양수여야 합니다')
         # 기하 설정 오류는 이동 전에 거부한다.
         tip_position_base(start, reference, tip_offset)
         if job.cancel:
@@ -978,7 +981,7 @@ class SkillNode(Node):
             if len(current) != 6 or not all(math.isfinite(float(v)) for v in current):
                 raise RuntimeError('깊이 측정 자세 조회 실패')
             max_force_n = max(max_force_n, abs(float(force[2])))
-            if contact_z is None and self.arm.force_over(float(p('safety.fz_max_n').value)):
+            if contact_z is None and self.arm.force_over(contact_threshold):
                 contact_z = float(current[2])
                 contact_pose = list(current)
                 # 이후 목표 미도달·취소로 실패해도 최초 표본은 남긴다.
@@ -996,12 +999,13 @@ class SkillNode(Node):
             # 목표의 XYZ와 회전을 모두 사용한다. 고정 Z 힘·상대 40 mm 담그기는 사용하지 않는다.
             self.arm.movel_cancellable(
                 target, self.vel_scale, lambda: job.cancel or self._cancel_requested(),
-                self.motion_timeout_s, observer=observe_depth)
-            if not self._pose_matches(self.arm.current_posx(), target):
+                self.motion_timeout_s, observer=observe_depth,
+                stop_requested=lambda: contact_pose is not None)
+            if contact_pose is None and not self._pose_matches(self.arm.current_posx(), target):
                 raise RuntimeError('깊이 측정 목표 자세 미도달')
         finally:
             self.arm.compliance_off()
-        if job.cancel:
+        if job.cancel or self._cancel_requested():
             raise RuntimeError('cancelled')
         # 성공한 경로만 계량 자세로 되짚는다. 실패·취소 시 자동 복귀하지 않는다.
         self.arm.movel(start, self.vel_scale)
@@ -1240,7 +1244,8 @@ class SkillNode(Node):
             insertion_depth_mm=float(data.get('insertion_depth_mm', 0.0)),
             message=job.error or ('cancelled' if job.cancel else data.get('message', '')),
         )
-        gh.succeed() if res.success else (gh.canceled() if job.cancel else gh.abort())
+        # 내부 중단/시간 초과는 ROS 클라이언트의 취소 요청과 다르다.
+        gh.succeed() if res.success else (gh.canceled() if gh.is_cancel_requested else gh.abort())
         return res
 
     def _exec_pour(self, gh):

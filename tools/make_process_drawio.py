@@ -191,7 +191,7 @@ kinds = [
   ('weigh_scoop', 'station · material_id · tare_g(빈 스쿱)', 'WeighHeld act — 해당 material_N.posx에서 들고 있는 스쿱을 계량 (SCOOP_TARE · WEIGH_SCOOP · WEIGH_RESIDUAL)\n계량 후 계량 자세에 머문다 · 빈 그리퍼면 success=false', "{'gross_g','net_g','std_g','valid','subject=scoop'}"),
  ('move', 'station · approach', 'move_to_station(station, ABOVE/AT)', "{'success','reached'} → state.station"),
  ('grip', 'close · target(scoop/cup)', 'set_gripper(close, width = scoop_width | cup_width, force)', "{'grip_inferred','final_width_mm'}"),
- ('scoop', 'material_id · attempt · fraction', 'scoop(material_id, attempt)   fraction 은 담그기 깊이 힌트', "{'contact_detected'}"),
+ ('scoop', 'material_id · attempt · fraction', 'scoop — 1.5N 접촉 → 감속 정지·IDLE → 해제·복귀 (퍼올리기 미구현)', "{'contact_detected'}"),
  ('pour', 'station · fraction=1', 'pour(1)   workbench_pour_start → workbench_pour_end 전량 이동', "{'success'}"),
  ('return_material', 'material_id', 'return_material(material_id)   원료통 반환 start/end 미티칭이면 이동하지 않고 실패', "{'success','message'}"),
  ('safe', 'reason · then', 'safe_pose(reason)   전이는 then 이 정한다', '{}'),
