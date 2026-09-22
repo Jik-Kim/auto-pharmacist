@@ -125,6 +125,7 @@ class Rg2Gripper:
             if self.backend == 'modbus':
                 stale = self._native_stale_locked(now_s)
                 return {'width_mm': self._width_mm,
+                        'fresh': not stale,
                         'busy': stale or self._native_busy or self._native_safety,
                         'grip_inferred': self._native_grip and not stale and not self._native_safety,
                         'safety_triggered': self._native_safety, 'slip': self._slip_latched}

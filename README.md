@@ -45,6 +45,37 @@ ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100
 
 명령·순서·게이트는 [docs/demo_run_procedure.md](docs/demo_run_procedure.md) 가 정본이다.
 
+### 실물 로봇 bringup과 스킬 개별 실행
+
+저장소 루트에서 실행한다. 기존 스킬을 먼저 종료하고 bringup 종료까지 확인한 뒤 재시작한다.
+`cell.launch.py`와 아래 개별 실행을 동시에 띄우지 않는다.
+
+터미널 1 — 로봇 연결·제어권 및 RG2 상태 드라이버:
+
+```bash
+source tools/env.sh
+export ROS_HOME=/tmp/gmp-ros-domain70
+export ROS_LOG_DIR=/tmp/gmp-g2-ros-log
+GMP_DSR_WS="$(dirname "$(dirname "$WS_DSR_SETUP")")"
+export PYTHONPATH="$GMP_DSR_WS/build/onrobot_rg_control${PYTHONPATH:+:$PYTHONPATH}"
+ros2 launch gmp_bringup robot.launch.py mode:=real host:=192.168.1.100 gui:=false
+```
+
+`ROS_HOME`은 다른 도메인의 컨트롤러 spawner 잠금과 분리한다.
+`PYTHONPATH`는 현 언더레이의 RG2 Python 모듈 위치를 보완한다.
+
+터미널 2 — 컨트롤러 활성화 확인 후 스킬 실행:
+
+```bash
+source tools/env.sh
+export ROS_LOG_DIR=/tmp/gmp-g2-ros-log
+ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=0.2
+```
+
+검증된 속도를 지정하려면 `vel_scale`을 변경한다. 스쿱을 잡은 채 재기동할 때는
+[파지 상태 복원 절차](docs/setup.md#인출-완료-스쿱의-기동-시-복원)를 따르며,
+복원 확인 인자를 상시 실행 명령에 넣지 않는다.
+
 ## 상태
 
 **9/21 기준.** 계약 v1.5.1, 패키지 6개(interfaces·skills·dosing·process·hmi·bringup) 구현·단위 테스트 완료, PR #44 까지 머지. 실물 확정: G1 계량 `tool_force` gain 0.886·offset 247.1·분해능 19 g (9/19, SOT D-07·D-08), 레시피 A/B/C = 200/150/100 g ±5 %, G2 그리퍼 상태 비트 전달 (9/20). 남은 것: 스쿱 깊이 실물 적용(v1.5), 반환→재스쿱 연결 경로, 가상 브링업 레시피 완주와 HMI 통합(9/22~23). 현황은 [GitHub Issues](https://github.com/Jik-Kim/auto-pharmacist/issues), 확정 결정은 `docs/SOT.md`.

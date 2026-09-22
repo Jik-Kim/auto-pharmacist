@@ -74,16 +74,87 @@ def _arm(mode='real'):
     arm._now = time.monotonic
     arm._sleep = lambda _seconds: None
     arm.startup_timeout_s = 15.0
+    arm.pose_xyz_tolerance, arm.pose_rotation_tolerance = 2.0, 2.0
+    arm.joint_tolerance = 1.0
     arm._move_stop_cli = type('Client', (), {
         'wait_for_service': lambda self, timeout_sec: True,
     })()
     return arm
 
 
+@pytest.mark.parametrize('result', [0, -1, None])
+def test_compliance_on_logs_response_and_rejects_failure(result):
+    arm = _arm()
+    messages = []
+    arm.log = types.SimpleNamespace(info=messages.append)
+    arm.R.task_compliance_ctrl = lambda stx: result
+    if result == 0:
+        assert arm.compliance_on([3000, 3000, 500, 200, 200, 200]) == 0
+    else:
+        with pytest.raises(RuntimeError, match='task_compliance_ctrl failed'):
+            arm.compliance_on([3000, 3000, 500, 200, 200, 200])
+    assert messages == [f'[COMPLIANCE_ON] task_compliance_ctrl return={result!r}']
+
+
 def test_transfer_joint_speed_is_separate_from_cartesian_speed():
     arm = _arm()
     arm.amovej([0]*6, 0.2, joint_vel=10, joint_acc=20)
     assert arm.R.calls[-1][2] == {'vel': 2.0, 'acc': 4.0}
+
+
+def test_movejx_uses_base_absolute_and_checks_solution():
+    arm = _arm()
+    target = [423, 93, 180, 90, -90, -90]
+    arm.current_posx = lambda: target
+    arm.solution_space = lambda: 3
+    arm.movejx_cancellable(target, 3, .2, lambda: False, 10)
+    assert arm.R.calls[0] == ('amovejx', (tuple(target),),
+                              dict(sol=3, vel=12., acc=12., ref=0, mod=0))
+
+
+@pytest.mark.parametrize('fault', ['wrong_solution', 'wrong_pose', 'query_error', 'cancel'])
+def test_movejx_failed_completion_stops_motion(fault):
+    arm = _arm()
+    target = [423, 93, 180, 90, -90, -90]
+    arm.current_posx = lambda: ([0]*6 if fault == 'wrong_pose' else target)
+    clock = [0.]
+    arm._now = lambda: clock[0]
+    arm._sleep = lambda t: clock.__setitem__(0, clock[0] + t)
+    stops = []
+    arm.stop_motion = lambda: stops.append(True)
+
+    def solution():
+        if fault == 'query_error':
+            raise RuntimeError('query failed')
+        return 2 if fault == 'wrong_solution' else 3
+
+    arm.solution_space = solution
+    cancel = lambda: fault == 'cancel' and bool(arm.R.calls)
+    with pytest.raises((RuntimeError, TimeoutError)):
+        arm.movejx_cancellable(target, 3, .2, cancel, .1)
+    assert stops == [True]
+
+
+@pytest.mark.parametrize('sol,timeout,cancel', [(True, 10, False), (8, 10, False),
+                                             (3, 0, False), (3, 10, True)])
+def test_movejx_bad_request_never_dispatches(sol, timeout, cancel):
+    arm = _arm()
+    with pytest.raises((ValueError, RuntimeError)):
+        arm.movejx_cancellable([0]*6, sol, .2, lambda: cancel, timeout)
+    assert not arm.R.calls
+
+
+@pytest.mark.parametrize('sol', [3, -1, 8, True])
+def test_current_solution_result_is_validated(sol):
+    arm = _arm()
+    calls = []
+    arm._bounded_query = lambda operation: calls.append(operation) or types.SimpleNamespace(sol_space=sol)
+    if sol == 3:
+        assert arm.solution_space() == 3
+    else:
+        with pytest.raises(RuntimeError):
+            arm.solution_space()
+    assert calls == ['get_current_solution_space']
 
 
 @pytest.mark.parametrize('method', ['movej_cancellable', 'movel_cancellable'])
@@ -94,26 +165,84 @@ def test_pre_cancelled_motion_never_starts(method):
     assert arm.R.calls == []
 
 
-def test_initialize_and_self_check_use_installed_wrapper_names():
+def real_startup_arm():
     arm = _arm()
+    state = dict(tool='tool_weight', tcp='GripperDA_v1', mode=1)
+    def call(operation, **fields):
+        arm.R.calls.append((operation, (), fields))
+        if operation == 'get_current_tool':
+            return types.SimpleNamespace(info=state['tool'])
+        if operation == 'get_current_tcp':
+            return types.SimpleNamespace(info=state['tcp'])
+        if operation == 'get_robot_mode':
+            return types.SimpleNamespace(robot_mode=state['mode'])
+        if operation == 'set_robot_mode':
+            state['mode'] = fields['robot_mode']
+        if operation == 'set_current_tool':
+            state['tool'] = fields['name']
+        if operation == 'set_current_tcp':
+            state['tcp'] = fields['name']
+        return types.SimpleNamespace(success=True)
+    arm._bounded_call = call
+    return arm, state
+
+
+def test_real_restart_keeps_matching_settings_and_autonomous_mode():
+    arm, _ = real_startup_arm()
     arm.initialize()
-    assert [name for name, _, _ in arm.R.calls[:10]] == [
-        'set_robot_mode', 'set_tool', 'set_tcp', 'set_robot_mode', 'set_velj',
-        'set_accj', 'set_velx', 'set_accx', 'set_singular_handling', 'set_ref_coord'
-    ]
-    assert arm.R.calls[0][1] == (arm.R.ROBOT_MODE_MANUAL,)
-    assert arm.R.calls[3][1] == (arm.R.ROBOT_MODE_AUTONOMOUS,)
+    assert not any(name.startswith('set_current_') or name == 'set_robot_mode'
+                   for name, _, _ in arm.R.calls)
     assert arm.self_check('tool_weight', 'GripperDA_v1')[0]
-    assert [name for name, _, _ in arm.R.calls[-2:]] == ['get_tool', 'get_tcp']
+
+
+def test_real_restart_restores_manual_mode_to_auto_without_tool_selection():
+    arm, state = real_startup_arm()
+    state['mode'] = 0
+    arm.initialize()
+    assert state['mode'] == 1
+    assert [kw for name, _, kw in arm.R.calls if name == 'set_robot_mode'] == [{'robot_mode': 1}]
+    assert not any(name.startswith('set_current_') for name, _, _ in arm.R.calls)
+
+
+def test_real_mismatched_settings_select_in_manual_then_restore_auto():
+    arm, state = real_startup_arm()
+    state.update(tool='other', tcp='other')
+    arm.initialize()
+    assert state == dict(tool='tool_weight', tcp='GripperDA_v1', mode=1)
+    assert [kw for name, _, kw in arm.R.calls if name == 'set_robot_mode'] == [
+        {'robot_mode': 0}, {'robot_mode': 1}]
 
 
 def test_real_tool_failure_still_restores_autonomous_mode():
-    arm = _arm()
-    arm.R.set_tool = lambda *_args: -1
+    arm, state = real_startup_arm()
+    state['tool'] = 'other'
+    original = arm._bounded_call
+    def call(operation, **fields):
+        if operation == 'set_current_tool':
+            raise RuntimeError('set_tool failed')
+        return original(operation, **fields)
+    arm._bounded_call = call
     with pytest.raises(RuntimeError, match='set_tool failed'):
         arm.initialize()
-    mode_calls = [args[0] for name, args, _ in arm.R.calls if name == 'set_robot_mode']
-    assert mode_calls == [arm.R.ROBOT_MODE_MANUAL, arm.R.ROBOT_MODE_AUTONOMOUS]
+    assert state['mode'] == 1
+
+
+@pytest.mark.parametrize('failure', ['timeout', 'not_applied'])
+def test_mode_failure_blocks_later_initialization(failure):
+    arm, state = real_startup_arm()
+    state['mode'] = 0
+    original = arm._bounded_call
+    def call(operation, **fields):
+        if operation == 'set_robot_mode':
+            if failure == 'timeout':
+                raise TimeoutError('set_robot_mode timeout')
+            return types.SimpleNamespace(success=True)
+        return original(operation, **fields)
+    arm._bounded_call = call
+    with pytest.raises((RuntimeError, TimeoutError)):
+        arm.initialize()
+    assert not any(name in ('set_velj', 'set_singularity_handling', 'set_ref_coord')
+                   for name, _, _ in arm.R.calls)
 
 
 def test_virtual_initialize_keeps_wrapper_default_base_reference():
@@ -183,6 +312,114 @@ def test_async_motion_does_not_finish_on_initial_idle_sample():
     states = iter([arm.R.DR_STATE_IDLE, arm.R.DR_STATE_BUSY, arm.R.DR_STATE_IDLE])
     arm.R.check_motion = lambda: next(states)
     arm.wait_motion_cancellable(lambda: False, 5.0)
+
+
+def motion_clock(arm):
+    clock = [0.0]
+    arm._now = lambda: clock[0]
+    arm._sleep = lambda seconds: clock.__setitem__(0, clock[0] + seconds)
+    stopped = []
+    arm.stop_motion = lambda: stopped.append(True)
+    return clock, stopped
+
+
+def test_delayed_start_beyond_old_grace_period_is_not_completion():
+    arm = _arm()
+    clock, stopped = motion_clock(arm)
+    arm.motion_state = lambda: 0 if clock[0] < 0.5 or clock[0] >= 0.8 else 2
+    arm.wait_motion_cancellable(lambda: False, 2.0, target_reached=lambda: clock[0] >= 0.8)
+    assert clock[0] >= 0.8
+    assert not stopped
+
+
+def test_never_started_motion_times_out_and_stops():
+    arm = _arm()
+    clock, stopped = motion_clock(arm)
+    arm.motion_state = lambda: 0
+    with pytest.raises(TimeoutError):
+        arm.wait_motion_cancellable(lambda: False, 1.0, target_reached=lambda: False)
+    assert clock[0] >= 1.0 and stopped == [True]
+
+
+def test_busy_then_idle_short_of_target_is_not_success():
+    arm = _arm()
+    clock, stopped = motion_clock(arm)
+    arm.motion_state = lambda: 2 if clock[0] < 0.2 else 0
+    with pytest.raises(TimeoutError):
+        arm.wait_motion_cancellable(lambda: False, 0.5, target_reached=lambda: False)
+    assert stopped == [True]
+
+
+def test_same_pose_request_can_complete_without_busy_transition():
+    arm = _arm()
+    _, stopped = motion_clock(arm)
+    target = [344, -298, 200, 90, -180, -90]
+    arm.motion_state = lambda: 0
+    arm.current_posx = lambda: target
+    arm.movel_cancellable(target, 1.0, lambda: False, 1.0)
+    assert not stopped
+
+
+def test_cartesian_completion_requires_rotation_as_well_as_xyz():
+    arm = _arm()
+    _, stopped = motion_clock(arm)
+    target = [344, -334, 120, 90, 160, -90]
+    arm.motion_state = lambda: 0
+    arm.current_posx = lambda: [344, -334, 120, 90, 180, -90]
+    with pytest.raises(TimeoutError):
+        arm.movel_cancellable(target, 1.0, lambda: False, 0.5)
+    assert stopped == [True]
+
+
+@pytest.mark.parametrize('status', [-1, 99])
+def test_invalid_motion_status_stops_instead_of_counting_as_start(status):
+    arm = _arm()
+    _, stopped = motion_clock(arm)
+    arm.motion_state = lambda: status
+    with pytest.raises(RuntimeError, match='invalid motion state'):
+        arm.wait_motion_cancellable(lambda: False, 1.0)
+    assert stopped == [True]
+
+
+def test_cancel_during_target_read_takes_priority_over_arrival():
+    arm = _arm()
+    _, stopped = motion_clock(arm)
+    cancelled = [False]
+    arm.motion_state = lambda: 0
+    def reached():
+        cancelled[0] = True
+        return True
+    with pytest.raises(RuntimeError, match='cancelled'):
+        arm.wait_motion_cancellable(lambda: cancelled[0], 1.0, target_reached=reached)
+    assert stopped == [True]
+
+
+def test_motion_observes_while_busy_and_at_completion():
+    arm = _arm()
+    states = iter([arm.R.DR_STATE_BUSY, arm.R.DR_STATE_IDLE])
+    arm.motion_state = lambda: next(states)
+    observations = []
+    arm.wait_motion_cancellable(lambda: False, 5.0, observer=lambda: observations.append(True))
+    assert observations == [True, True]
+
+
+@pytest.mark.parametrize('failure', ['observation', 'cancel', 'timeout'])
+def test_observation_failure_or_late_cancel_stops_motion(failure):
+    arm = _arm()
+    stopped = []
+    arm.stop_motion = lambda: stopped.append(True)
+    state = {'cancel': False, 'now': 0.0}
+    arm._now = lambda: state['now']
+    def observe():
+        if failure == 'observation':
+            raise RuntimeError('sensor failed')
+        if failure == 'cancel':
+            state['cancel'] = True
+        else:
+            state['now'] = 6.0
+    with pytest.raises((RuntimeError, TimeoutError)):
+        arm.wait_motion_cancellable(lambda: state['cancel'], 5.0, observer=observe)
+    assert stopped == [True]
 
 
 def test_stop_motion_uses_soft_stop_and_checks_response(monkeypatch):
@@ -348,22 +585,72 @@ def test_backdrive_command_is_never_dispatched():
         _arm().recover_control(6, 1.0, lambda operation: operation())
 
 
-@pytest.mark.parametrize('ready', [True, False])
-def test_robot_state_waits_for_wrapper_client_before_query(ready):
+def query_arm(monkeypatch, operation='get_robot_state', *, ready=True, done=True,
+              success=True, payload=None):
     arm = _arm()
+    arm.node = object()
     calls = []
-    arm.R = types.SimpleNamespace(
-        _ros2_get_robot_state=types.SimpleNamespace(
-            wait_for_service=lambda **kw: calls.append(('wait', kw)) or ready),
-        get_robot_state=lambda: calls.append(('query', {})) or 1)
+    cancelled = []
+    response = types.SimpleNamespace(success=success, **(
+        payload if payload is not None else {'robot_state': 1}))
+    future = types.SimpleNamespace(done=lambda: done, cancelled=lambda: False,
+                                   result=lambda: response,
+                                   cancel=lambda: cancelled.append(True))
+    client = types.SimpleNamespace(
+        srv_type=types.SimpleNamespace(Request=types.SimpleNamespace),
+        wait_for_service=lambda **kw: calls.append(('wait', kw)) or ready,
+        call_async=lambda req: calls.append(('query', vars(req))) or future)
+    arm.R = types.SimpleNamespace(DR_BASE=0, **{'_ros2_' + operation: client})
+    logs = []
+    arm.log = types.SimpleNamespace(error=logs.append)
+    monkeypatch.setattr('gmp_skills.adapters.dsr_arm.rclpy', types.SimpleNamespace(
+        spin_until_future_complete=lambda node, fut, **kw: calls.append(('spin', kw))))
+    return arm, calls, cancelled, logs
+
+
+@pytest.mark.parametrize('ready', [True, False])
+def test_robot_state_waits_for_wrapper_client_before_query(monkeypatch, ready):
+    arm, calls, _, _ = query_arm(monkeypatch, ready=ready)
     if ready:
         assert arm.robot_state() == 1
-        assert calls[1][0] == 'query'
+        assert calls[1] == ('query', {})
+        assert calls[2] == ('spin', {'timeout_sec': arm.startup_timeout_s})
     else:
-        with pytest.raises(TimeoutError):
+        with pytest.raises(TimeoutError, match='서비스 준비'):
             arm.robot_state()
         assert len(calls) == 1
     assert calls[0] == ('wait', {'timeout_sec': arm.startup_timeout_s})
+
+
+@pytest.mark.parametrize('operation', ['get_robot_state', 'get_tool_force'])
+def test_query_timeout_cancels_without_retry_and_names_failed_operation(monkeypatch, operation):
+    arm, calls, cancelled, logs = query_arm(monkeypatch, operation, done=False)
+    with pytest.raises(TimeoutError, match=operation + ': 응답 시간 초과'):
+        getattr(arm, 'robot_state' if operation == 'get_robot_state' else 'tool_force')()
+    assert cancelled == [True]
+    assert sum(name == 'query' for name, _ in calls) == 1
+    assert operation in logs[-1] and '응답' in logs[-1]
+
+
+@pytest.mark.parametrize('operation', ['get_robot_state', 'get_tool_force'])
+def test_failed_response_is_never_treated_as_valid_reading(monkeypatch, operation):
+    arm, _, _, _ = query_arm(monkeypatch, operation, success=False)
+    with pytest.raises(RuntimeError, match='조회 실패'):
+        getattr(arm, 'robot_state' if operation == 'get_robot_state' else 'tool_force')()
+
+
+def test_tool_force_keeps_base_reference_and_six_axes(monkeypatch):
+    force = [1., 2., 3., 4., 5., 6.]
+    arm, calls, _, _ = query_arm(monkeypatch, 'get_tool_force', payload={'tool_force': force})
+    assert arm.tool_force() == force
+    assert calls[1] == ('query', {'ref': 0})
+
+
+@pytest.mark.parametrize('force', [[1.] * 5, [float('nan')] * 6, [float('inf')] * 6])
+def test_invalid_force_is_rejected(monkeypatch, force):
+    arm, _, _, _ = query_arm(monkeypatch, 'get_tool_force', payload={'tool_force': force})
+    with pytest.raises(RuntimeError, match='6축 외력'):
+        arm.tool_force()
 
 
 def test_robot_state_missing_private_client_fails_without_query():
@@ -371,3 +658,18 @@ def test_robot_state_missing_private_client_fails_without_query():
     arm.R = types.SimpleNamespace(get_robot_state=lambda: pytest.fail('준비 확인 없이 조회'))
     with pytest.raises(RuntimeError, match='준비 확인 기능'):
         arm.robot_state()
+
+
+@pytest.mark.parametrize('operation,fields', [
+    ('set_robot_mode', {'robot_mode': 1}),
+    ('set_current_tool', {'name': 'tool_weight'}),
+    ('set_current_tcp', {'name': 'GripperDA_v1'}),
+    ('set_ref_coord', {'coord': 0}),
+    ('set_singularity_handling', {'mode': 0}),
+])
+def test_startup_setting_timeout_is_bounded_and_never_retried(monkeypatch, operation, fields):
+    arm, calls, cancelled, _ = query_arm(monkeypatch, operation, done=False)
+    with pytest.raises(TimeoutError, match=operation):
+        arm._bounded_call(operation, **fields)
+    assert [entry for entry in calls if entry[0] == 'query'] == [('query', fields)]
+    assert cancelled == [True]

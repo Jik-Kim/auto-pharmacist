@@ -61,15 +61,10 @@ def test_duplicate_route_rejected():
 def test_shipped_routes_preserve_teaching_but_remain_disabled():
     params = Path(__file__).resolve().parents[2] / 'gmp_bringup' / 'params'
     table = StationTable.from_yaml(params / 'stations.yaml')
-    assert set(table.transfers) == {('workbench', 'passbox_done'), ('passbox_done', 'nudge_wait')}
+    assert set(table.transfers) == {('passbox_done', 'nudge_wait')}
     assert all(not r.enabled for r in table.transfers.values())
-    cup = table.transfers[('workbench', 'passbox_done')]
-    assert cup.source_at_posx == (423, 93, 100, 90, -90, -90)
-    assert cup.source_above_posx == (423, 93, 200, 90, -90, -90)
-    assert cup.exit_posx == (423, 93, 300, 90, -90, -90)
-    assert cup.waypoints_posj[-1] == (9.34, 33.50, 119.09, 10.64, -63.01, 85.03)
     empty = table.transfers[('passbox_done', 'nudge_wait')]
-    assert empty.exit_posx == (717.0, 71.32, 250, 180, -90, -90)
+    assert empty.exit_posx == (717.0, 71.32, 280, 180, -90, -90)
     assert not empty.start_at_posj
     assert empty.start_from == 'above' and empty.arrival == 'at'
     assert empty.waypoints_posj == ((14.57, 35.24, 63.40, -0.12, 81.36, 104.70),)

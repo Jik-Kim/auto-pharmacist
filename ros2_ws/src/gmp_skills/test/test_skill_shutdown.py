@@ -88,7 +88,7 @@ def test_force_sampling_observer_interrupts_on_shutdown(monkeypatch):
         node._observe_force([0]*6)
 
 
-def test_scoop_compliance_entry_failure_still_releases_without_retreat(monkeypatch):
+def test_check_depth_compliance_entry_failure_still_releases_without_retreat(monkeypatch):
     module = _load_skill_node(monkeypatch)
     calls = []
 
@@ -100,14 +100,15 @@ def test_scoop_compliance_entry_failure_still_releases_without_retreat(monkeypat
         _require_scoop_extracted=lambda: None,
         _held_payload='scoop', _held_material_id='A',
         gripper=SimpleNamespace(state=lambda _: {'busy': False, 'grip_inferred': True}),
-        _now_s=lambda: 0, vel_scale=0.3,
+        _now_s=lambda: 0, vel_scale=0.3, motion_timeout_s=30.0,
         get_parameter=lambda _: SimpleNamespace(value=[1]*6),
-        stations=SimpleNamespace(approach_mm=60, for_material=lambda _: SimpleNamespace(above=lambda _: [1]*6)),
+        stations=SimpleNamespace(for_material=lambda _: SimpleNamespace(
+            station_id="material_1", posx=[1]*6, extra={"measure_posx": [2]*6})),
         arm=SimpleNamespace(movel=lambda *_: calls.append('move'), current_posx=lambda: [1]*6,
                             compliance_on=fail, compliance_off=lambda: calls.append('release')))
     node.get_parameter = lambda key: SimpleNamespace(value=[1]*6 if key == 'safety.compliance_stx' else 3.0)
     with pytest.raises(RuntimeError, match='entry failed'):
-        module.SkillNode._do_scoop(node, module.Job('scoop', {'material_id': 'A'}))
+        module.SkillNode._do_check_depth(node, module.Job('scoop', {'material_id': 'A'}))
     assert calls == ['move', 'compliance_on', 'release']
 
 
@@ -124,7 +125,7 @@ def test_cancel_during_container_measurement_keeps_grip_and_pose(monkeypatch):
         _require_scoop_extracted=lambda: None,
         get_parameter=lambda key: SimpleNamespace(value={'scale.simulated': True,
             'gripper.cup_width_mm': 30, 'gripper.force_n': 20}[key]),
-        stations=SimpleNamespace(approach_mm=60, get=lambda _: SimpleNamespace(posx=[1]*6, above=lambda _: [2]*6)),
+        stations=SimpleNamespace(approach_mm=60, get=lambda _: SimpleNamespace(posx=[1]*6, above=lambda _: [2]*6, extra={})),
         arm=SimpleNamespace(movel=lambda target, _: calls.append(target)), vel_scale=0.3,
         gripper=SimpleNamespace(grip=lambda *_: (True, 30, True), release=lambda _: calls.append('release')),
         _measure_weight_reading=measure)

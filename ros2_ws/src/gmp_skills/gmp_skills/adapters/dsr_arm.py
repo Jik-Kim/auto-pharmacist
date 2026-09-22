@@ -17,6 +17,8 @@ import time
 import rclpy
 import DR_init
 
+from gmp_skills.core.transfer import joints_match, pose_matches
+
 
 class DsrArm:
     def __init__(self, robot_id: str, robot_model: str, mode: str, vel: float, acc: float,
@@ -61,19 +63,22 @@ class DsrArm:
             raise TimeoutError(
                 f'DSR controller not ready after {self.startup_timeout_s:.1f}s')
         if self.mode == 'real':
-            # 실물은 티칭 펜던트에 등록된 툴과 TCP를 사용한다 (SOT D-10).
-            # 선택 명령은 수동 모드 전용이므로 초기화 때만 전환하고 반드시 자동으로 복귀한다.
-            self._require_ok(
-                'set_robot_mode(MANUAL)', R.set_robot_mode(R.ROBOT_MODE_MANUAL))
-            try:
-                if self.tool_name:
-                    self._require_ok('set_tool', R.set_tool(self.tool_name))
-                if self.tcp_name:
-                    self._require_ok('set_tcp', R.set_tcp(self.tcp_name))
-            finally:
-                self._require_ok(
-                    'set_robot_mode(AUTONOMOUS)',
-                    R.set_robot_mode(R.ROBOT_MODE_AUTONOMOUS))
+            tool = self._bounded_call('get_current_tool').info
+            tcp = self._bounded_call('get_current_tcp').info
+            change_tool = bool(self.tool_name and tool != self.tool_name)
+            change_tcp = bool(self.tcp_name and tcp != self.tcp_name)
+            if change_tool or change_tcp:
+                self._set_mode_checked(R.ROBOT_MODE_MANUAL)
+                try:
+                    if change_tool:
+                        self._bounded_call('set_current_tool', name=self.tool_name)
+                    if change_tcp:
+                        self._bounded_call('set_current_tcp', name=self.tcp_name)
+                finally:
+                    self._set_mode_checked(R.ROBOT_MODE_AUTONOMOUS)
+            else:
+                # 재기동 시 선택값이 맞으면 수동 전환·동일 설정 재전송을 생략한다.
+                self._set_mode_checked(R.ROBOT_MODE_AUTONOMOUS)
         elif self.virtual_tcp_name:
             if len(self.tcp_offset_mm_deg) != 6:
                 raise ValueError('virtual TCP offset must contain 6 values')
@@ -104,11 +109,14 @@ class DsrArm:
         self._require_ok('set_accj', R.set_accj(self.acc))
         self._require_ok('set_velx', R.set_velx(self.vel, self.vel))
         self._require_ok('set_accx', R.set_accx(self.acc, self.acc))
-        self._require_ok('set_singular_handling', R.set_singular_handling(R.DR_AVOID))
+        if self.mode == 'real':
+            self._bounded_call('set_singularity_handling', mode=R.DR_AVOID)
+        else:
+            self._require_ok('set_singular_handling', R.set_singular_handling(R.DR_AVOID))
         # 래퍼 기본값은 이미 DR_BASE다. 에뮬레이터의 set_ref_coord 서비스는 응답이
         # 와도 Python 래퍼 future가 끝나지 않는 버전이 있어 실물에서만 명시한다.
         if self.mode == 'real':
-            self._require_ok('set_ref_coord', R.set_ref_coord(R.DR_BASE))
+            self._bounded_call('set_ref_coord', coord=R.DR_BASE)
 
     # ── 이동 ────────────────────────────────────────────────────────────
     @staticmethod
@@ -145,6 +153,30 @@ class DsrArm:
                                     acc=self.acc * vel_scale, ref=self.R.DR_BASE,
                                     mod=self.R.DR_MV_MOD_ABS))
 
+    def solution_space(self):
+        """단일 워커에서 현재 관절 구성을 제한 시간 내 조회한다."""
+        sol = self._bounded_query('get_current_solution_space').sol_space
+        if type(sol) is not int or not 0 <= sol <= 7:
+            raise RuntimeError(f'잘못된 solution_space: {sol!r}')
+        return sol
+
+    def movejx_cancellable(self, x6, sol, vel_scale, cancel_requested, timeout_s):
+        """상부 접근점으로 관절 이동하고 TCP와 선택한 관절 구성을 함께 확인한다."""
+        if type(sol) is not int or not 0 <= sol <= 7:
+            raise ValueError('solution_space는 0~7 정수여야 한다')
+        if not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise ValueError('motion timeout must be finite and positive')
+        if cancel_requested():
+            raise RuntimeError('cancelled')
+        self._require_ok('amovejx', self.R.amovejx(
+            self.posx(*x6), sol=sol, vel=self.vel * vel_scale,
+            acc=self.acc * vel_scale, ref=self.R.DR_BASE, mod=self.R.DR_MV_MOD_ABS))
+        self.wait_motion_cancellable(
+            cancel_requested, timeout_s,
+            target_reached=lambda: (
+                pose_matches(self.current_posx(), x6, self.pose_xyz_tolerance,
+                             self.pose_rotation_tolerance) and self.solution_space() == sol))
+
     def movesx(self, poses, vel_scale=1.0):
         return self._require_ok(
             'movesx', self.R.movesx([self.posx(*p) for p in poses], vel=self.vel * vel_scale,
@@ -156,17 +188,60 @@ class DsrArm:
             self.R.amove_periodic(amp, period, atime=atime, repeat=repeat,
                                   ref=self.R.DR_TOOL if ref_tool else self.R.DR_BASE))
 
-    def robot_state(self):
-        # 래퍼는 상태 조회 전에 서비스 준비를 기다리지 않는다. 실제 호출에 쓰는
-        # 클라이언트의 discovery 완료를 확인해야 첫 요청이 무한 대기에 빠지지 않는다.
-        client = getattr(self.R, '_ros2_get_robot_state', None)
+    def _set_mode_checked(self, target):
+        current = self._bounded_call('get_robot_mode').robot_mode
+        if current not in (self.R.ROBOT_MODE_MANUAL, self.R.ROBOT_MODE_AUTONOMOUS):
+            raise RuntimeError(f'기동 중 지원하지 않는 로봇 모드: {current}')
+        if current != target:
+            self._bounded_call('set_robot_mode', robot_mode=target)
+            actual = self._bounded_call('get_robot_mode').robot_mode
+            if actual != target:
+                raise RuntimeError(f'로봇 모드 전환 미확인: expected={target}, actual={actual}')
+
+    def _bounded_query(self, operation, **fields):
+        return self._bounded_call(operation, **fields)
+
+    def _bounded_call(self, operation, **fields):
+        """기존 벤더 클라이언트로 조회·실물 초기화만 제한 시간 내 처리한다."""
+        client = getattr(self.R, '_ros2_' + operation, None)
         if client is None or not callable(getattr(client, 'wait_for_service', None)):
-            raise RuntimeError('DSR 래퍼의 상태 조회 서비스 준비 확인 기능이 없습니다')
-        if not client.wait_for_service(timeout_sec=self.startup_timeout_s):
-            raise TimeoutError('로봇 상태 조회 서비스 준비 시간 초과')
-        state = self.R.get_robot_state()
+            raise RuntimeError(f'{operation}: DSR 조회 클라이언트 준비 확인 기능 없음')
+        timeout_s = self.startup_timeout_s
+        if not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise ValueError('robot.startup_timeout_s는 유한한 양수여야 한다')
+        logger = getattr(self, 'log', None)
+        phase = '서비스 준비'
+        future = None
+        try:
+            if not client.wait_for_service(timeout_sec=timeout_s):
+                raise TimeoutError(f'{operation}: {phase} 시간 초과 ({timeout_s:g}s)')
+            request = client.srv_type.Request()
+            for name, value in fields.items():
+                setattr(request, name, value)
+            phase = '응답'
+            future = client.call_async(request)
+            rclpy.spin_until_future_complete(self.node, future, timeout_sec=timeout_s)
+            if not future.done():
+                raise TimeoutError(f'{operation}: {phase} 시간 초과 ({timeout_s:g}s)')
+            if future.cancelled():
+                raise RuntimeError(f'{operation}: 조회 취소됨')
+            response = future.result()
+            if response is None or not response.success:
+                raise RuntimeError(f'{operation}: 조회 실패 또는 빈 응답')
+            return response
+        except Exception as exc:
+            if logger:
+                logger.error(f'[DSR_QUERY_FAILED] {operation} / {phase}: {exc}')
+            raise
+        finally:
+            if future is not None and not future.done():
+                # 응답 대기만 취소한다. 장치에 전달된 설정·동작 취소를 뜻하지 않는다.
+                future.cancel()
+
+    def robot_state(self):
+        state = self._bounded_query('get_robot_state').robot_state
         if not isinstance(state, int) or state < 0:
-            raise RuntimeError(f'로봇 상태 조회 실패: {state!r}')
+            raise RuntimeError(f'get_robot_state: 잘못된 상태값 {state!r}')
         return state
 
     def recover_control(self, control, timeout_s, dispatch):
@@ -212,45 +287,64 @@ class DsrArm:
         if response is None or not response.success:
             raise RuntimeError('motion stop request failed')
 
-    def wait_motion_cancellable(self, cancel_requested, timeout_s: float):
-        """비동기 모션을 워커에서 감시하고 취소·시간초과 시 감속 정지한다."""
-        started_at = self._now()
-        deadline = started_at + timeout_s
+    def wait_motion_cancellable(self, cancel_requested, timeout_s: float, observer=None,
+                                target_reached=None):
+        """시작 대기를 완료로 간주하지 않고 정지 상태와 실제 목표 도착을 확인한다."""
+        if not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise ValueError('motion timeout must be finite and positive')
+        deadline = self._now() + timeout_s
         motion_started = False
-        while True:
-            if cancel_requested():
-                self.stop_motion()
-                raise RuntimeError('cancelled')
-            if self._now() >= deadline:
-                self.stop_motion()
-                raise TimeoutError(f'motion timed out after {timeout_s:.1f}s')
-            state = self.motion_state()
-            if state != self.R.DR_STATE_IDLE:
-                motion_started = True
-            elif motion_started or self._now() - started_at >= 0.2:
-                return
-            self._sleep(0.02)
+        last_state = None
+        try:
+            while True:
+                if cancel_requested():
+                    raise RuntimeError('cancelled')
+                if self._now() >= deadline:
+                    raise TimeoutError(f'motion timed out after {timeout_s:.1f}s; last_state={last_state}')
+                if observer is not None:
+                    observer()
+                state = self.motion_state()
+                if state not in (0, 1, 2):
+                    raise RuntimeError(f'invalid motion state: {state!r}')
+                if state != last_state:
+                    log = getattr(getattr(self, 'log', None), 'info', None)
+                    if log:
+                        log(f'[MOTION_STATE] {last_state} -> {state}')
+                    last_state = state
+                if state != self.R.DR_STATE_IDLE:
+                    motion_started = True
+                # 동일 위치 요청·짧은 이동도 실제 목표 도착을 확인해야 완료한다.
+                reached = (state == self.R.DR_STATE_IDLE and
+                           (target_reached() if target_reached is not None else motion_started))
+                # 조회·관측 중 발생한 취소/시간초과도 완료보다 먼저 처리한다.
+                if cancel_requested():
+                    raise RuntimeError('cancelled')
+                if self._now() >= deadline:
+                    raise TimeoutError(f'motion timed out after {timeout_s:.1f}s; last_state={last_state}')
+                if reached:
+                    return
+                self._sleep(0.02)
+        except Exception:
+            self.stop_motion()
+            raise
 
     def movej_cancellable(self, j6, vel_scale, cancel_requested, timeout_s,
                           *, joint_vel=None, joint_acc=None):
         if cancel_requested():
             raise RuntimeError('cancelled')
         self.amovej(j6, vel_scale, joint_vel=joint_vel, joint_acc=joint_acc)
-        self.wait_motion_cancellable(cancel_requested, timeout_s)
-        actual = self.current_posj()
-        if len(actual) != 6 or max(abs(float(a) - float(b)) for a, b in zip(actual, j6)) > 1.0:
-            raise RuntimeError(f'movej target not reached: target={list(j6)} actual={actual}')
+        self.wait_motion_cancellable(
+            cancel_requested, timeout_s,
+            target_reached=lambda: joints_match(self.current_posj(), j6, self.joint_tolerance))
 
-    def movel_cancellable(self, x6, vel_scale, cancel_requested, timeout_s):
+    def movel_cancellable(self, x6, vel_scale, cancel_requested, timeout_s, observer=None):
         if cancel_requested():
             raise RuntimeError('cancelled')
         self.amovel(x6, vel_scale)
-        self.wait_motion_cancellable(cancel_requested, timeout_s)
-        actual = self.current_posx()
-        xyz_error = (max(abs(float(a) - float(b)) for a, b in zip(actual[:3], x6[:3]))
-                     if len(actual) == 6 else float('inf'))
-        if xyz_error > 2.0:
-            raise RuntimeError(f'movel target not reached: target={list(x6)} actual={actual}')
+        self.wait_motion_cancellable(
+            cancel_requested, timeout_s, observer=observer,
+            target_reached=lambda: pose_matches(self.current_posx(), x6,
+                                                self.pose_xyz_tolerance, self.pose_rotation_tolerance))
 
     def movel_rel_tool(self, dxyz, vel_scale=1.0):
         """툴 좌표계 상대 이동 (담그기·들어올리기)."""
@@ -269,8 +363,10 @@ class DsrArm:
 
     # ── 관측 ────────────────────────────────────────────────────────────
     def tool_force(self):
-        force = self.R.get_tool_force(self.R.DR_BASE)
-        return list(force) if isinstance(force, (list, tuple)) and len(force) == 6 else None
+        force = list(self._bounded_query('get_tool_force', ref=self.R.DR_BASE).tool_force)
+        if len(force) != 6 or not all(math.isfinite(value) for value in force):
+            raise RuntimeError('get_tool_force: 유효하지 않은 6축 외력')
+        return force
 
     def _settle(self, duration_s: float, period_s: float, observer=None):
         end_s = self._now() + max(0.0, duration_s)
@@ -343,7 +439,11 @@ class DsrArm:
 
     # ── 힘/순응 제어 — 반드시 짝으로 ────────────────────────────────────
     def compliance_on(self, stx):
-        self.R.task_compliance_ctrl(stx)
+        result = self.R.task_compliance_ctrl(stx)
+        logger = getattr(self, 'log', None)
+        if logger is not None:
+            logger.info(f'[COMPLIANCE_ON] task_compliance_ctrl return={result!r}')
+        return self._require_ok('task_compliance_ctrl', result)
 
     def force_z(self, fz: float, rel: bool = True):
         R = self.R
@@ -379,7 +479,7 @@ class DsrArm:
         """툴·TCP가 기대값인지 확인한다. 충돌 감도 getter는 현재 래퍼에 없다."""
         if self.mode != 'real':
             return True, 'virtual: skip'
-        R = self.R
-        tool, tcp = R.get_tool(), R.get_tcp()
+        tool = self._bounded_call('get_current_tool').info
+        tcp = self._bounded_call('get_current_tcp').info
         ok = (not expect_tool or tool == expect_tool) and (not expect_tcp or tcp == expect_tcp)
         return ok, f'tool={tool} tcp={tcp}'

@@ -49,6 +49,18 @@ class StationTable:
                 raise ValueError(f'stations.yaml: {sid} 의 posx 는 6개여야 한다')
             if 'posj' in body and len(body['posj']) != 6:
                 raise ValueError(f'stations.yaml: {sid} 의 posj 는 6개여야 한다')
+            if 'solution_space' in body:
+                sol = body['solution_space']
+                if type(sol) is not int or not 0 <= sol <= 7 or 'posj' in body:
+                    raise ValueError(f'{sid}: solution_space는 0~7 정수이며 posj와 함께 쓸 수 없다')
+                height = body.get('approach_mm', self.approach_mm)
+                exit_height = body.get('exit_mm')
+                if (type(height) not in (int, float) or not math.isfinite(height) or height <= 0
+                        or type(exit_height) not in (int, float)
+                        or not math.isfinite(exit_height) or exit_height < height):
+                    raise ValueError(f'{sid}: solution_space 접근에는 양수 접근 높이와 exit_mm가 필요하다')
+                if self.frame != 'base':
+                    raise ValueError('solution_space 이동은 BASE 좌표만 지원한다')
             self.stations[sid] = Station(sid, [float(v) for v in posx], body.get('note', ''),
                                          {k: v for k, v in body.items() if k not in ('posx', 'note')})
             for key in ('approach_mm', 'exit_mm'):
@@ -58,6 +70,9 @@ class StationTable:
         if missing:
             raise ValueError(f'stations.yaml: 필수 스테이션 없음 {missing}')
         self.transfers = parse_routes(data.get('transfers', []), self.stations, self.approach_mm)
+        if any('solution_space' in self.stations[r.destination].extra
+               for r in self.transfers.values()):
+            raise ValueError('solution_space 목적지에 이전 관절 이송 경로를 중복 등록할 수 없다')
 
     def get(self, station_id: str) -> Station:
         if station_id not in self.stations:
