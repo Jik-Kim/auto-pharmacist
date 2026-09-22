@@ -45,7 +45,7 @@
 | `srv/SafePose` | process → skill. 안전 자세로 후퇴 | 인터락·에러 공통 |
 | `srv/RecoverSafety` | HMI → process → skill. 안전 정지 복구 | A `/cell/recover_safety`. C 중계 서비스 `/cell/request_safety_recovery` 구현 완료(process_node, 9/20). D의 단일 복구 요청 버튼도 구현됐으며 실제 C/A·실물 연동 검증은 별도 |
 | `action/MoveToStation` | 스테이션 이동 (`ABOVE` 접근점 / `AT` 작업점) | 좌표는 `stations.yaml` 단일 출처 |
-| `action/Scoop` | 원료통에서 퍼올리기 | Goal `depth_fraction`(v1.5)이 담그기 깊이 비율. Feedback은 단계·접촉력·삽입 깊이, Result는 최종 접촉 여부·최대 힘·깊이 |
+| `action/Scoop` | 원료통에서 퍼올리기 | Goal `depth_fraction`(v1.5)이 담그기 깊이 비율. Feedback은 단계·접촉력·삽입 깊이, Result는 최종 접촉 여부·최대 힘·깊이. 수동 `height_measure_only` 모드는 높이만 `message`로 보고하고 `success=false`로 종료하므로 자동 공정과 병용하지 않는다 |
 | `action/Pour` | workbench의 용기에 전량 붓기 (`fraction=1.0`만 허용) | 목적지는 skill 설정의 `workbench`; `target_station`은 제거 |
 | `action/ReturnMaterial` | 전용 스쿱 원료를 동일 원료통에 반환 | `/cell/return_material`. 시작 posx·끝 posj 미티칭 또는 파지 원료 불일치 시 이동 전에 실패. 끝 자세 유지, 후속 Scoop은 연결 경로 구현 전까지 차단 |
 | `action/WeighContainer` | 고정 `workbench`의 용기를 들어 계량하고 내려놓기 (복합 스킬) | `container_station`은 제거. 결과는 `WeightReading`. **그리퍼가 비어 있어야 한다** — TARE 와 배치 끝 VERIFY 에서만 (D-22) |
@@ -55,7 +55,7 @@
 ### 1.1 `Scoop`과 `ScoopCycle`의 책임 경계
 
 - `Scoop.Feedback`은 화면 표시와 실행 감시용 실시간 값이다. 전송 중 일부가 유실될 수 있으므로 학습 원본으로 사용하지 않는다.
-- `Scoop.Result`는 퍼올리기 동작이 끝난 시점의 기계적 결과다. 아직 붓기와 잔량 계량 전이므로 실제 투입량을 담지 않는다.
+- `Scoop.Result`는 퍼올리기 동작이 끝난 시점의 기계적 결과다. 아직 붓기와 잔량 계량 전이므로 실제 투입량을 담지 않는다. 예외적으로 수동 `height_measure_only` 모드는 실제 스쿠핑 없이 높이를 `message`의 `HEIGHT_MEASUREMENT_ONLY` 진단 문자열로 보고하고 `success=false`로 종료한다. process는 이를 일반 실패로 해석하므로 자동 공정과 병용하지 않는다.
 - `ScoopCycle`은 `process_node`가 `Scoop.Result`, 빈 스쿱·붓기 전·붓기 후 계량, `Pour` 명령을 합쳐 만드는 **시도 1회의 완결 기록**이다. 실패한 시도는 확정 즉시 발행하고 수집하지 못한 계량을 `valid=false`로 둔다.
 - 원료 1종의 모든 재시도가 끝난 최종 판정은 기존 `DispenseResult`가 담당한다.
 - `scoop_id`는 따로 보내지 않는다. 전용 스쿱은 **원료통 아래에 원료별로** 두고(9/18 확정, `scoop_rack` 폐지) `stations.yaml` 의 `scoop_1`~`scoop_4` 가 `material_id` 로 짝을 이룬다.
@@ -115,7 +115,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | 액션 | 방향 | Goal → Result / Feedback 필드 의미 |
 |---|---|---|
 | `MoveToStation` | process → skill | Goal `station_id`, `approach`(`ABOVE/AT`), `vel_scale`; Result `success`, `message`, 실제 `reached`; Feedback `phase` |
-| `Scoop` | process → skill | Goal `material_id`, `attempt`; Result `success`, 최종 `contact_detected`, `max_contact_force_n`, `insertion_depth_mm`, `message`; Feedback `phase`, 현재 접촉 여부·힘·삽입 깊이 |
+| `Scoop` | process → skill | Goal `material_id`, `attempt`, `depth_fraction`(담그기 깊이 비율); Result `success`, 최종 `contact_detected`, `max_contact_force_n`, `insertion_depth_mm`, `message`; Feedback `phase`, 현재 접촉 여부·힘·삽입 깊이. 수동 `height_measure_only`에서는 실제 스쿠핑 없이 `success=false`와 `message`의 `HEIGHT_MEASUREMENT_ONLY` 진단 문자열로 높이만 보고하며 자동 공정과 병용하지 않는다 |
 | `Pour` | process → skill | Goal `fraction=1.0`(그 외 이동 전 거부); Result `success`, `message`; Feedback `phase`. 목적지는 skill 설정의 고정 `workbench`이다 |
 | `ReturnMaterial` | process → skill | Goal `material_id`; Result `success`, `message`; Feedback `phase`(`APPROACH/TILT/HOLD`; `RETURN` 미발행). 동일 원료의 `return_start_posx` 직선 이동 → `return_end_posj` 관절 이동 후 끝 자세에서 종료. 반환 끝 관절 이동 시도부터 후속 Scoop은 연결 경로 구현 전까지 이동 없이 실패한다. 반환 동작 완료는 완전 배출량의 측정 보증이 아니다 |
 | `WeighHeld` | process → skill | Goal `tare_g`; Result `reading`, `success`, `message`; Feedback `phase`. 파지 이력의 원료를 확인해 `material_N.posx`에서 측정. 원료를 알 수 없으면 실패 |
