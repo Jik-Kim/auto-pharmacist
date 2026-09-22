@@ -538,6 +538,65 @@ def test_invalid_tare_reweighs_and_does_not_keep_the_bad_value():
     assert fsm.verify_net_g == 146                     # 순량이 정상 경로와 같다 (happy path 와 동일)
 
 
+def _cleanup_trace(cell, fsm):
+    """정리 경로에서 나간 요청을 (kind, station) 으로 뽑는다."""
+    out = []
+    for st, k in run(fsm, cell):
+        if st == 'CLEANUP':
+            out.append(k)
+    return out
+
+
+def test_213_cleanup_투입전_세_단계의_요청_순서를_고정한다():
+    """#213 4번 — 손에 뭐가 있느냐로 정리 경로가 갈린다 (9/22 조장 확인).
+
+    `TARE` 빈 그리퍼 → 정리 없음 · `SCOOP_TARE` 빈 스쿱 → 반환 없이 스쿱만 반납 ·
+    `WEIGH_SCOOP` 원료 든 스쿱 → 원료통 반환 후 스쿱 반납. 중간 경유는 `material_N`(AT) 다.
+    빈 스쿱을 원료통에 기울이는 동작(SCOOP_TARE 의 RETURN_MATERIAL)은 넣지 않는다.
+    """
+    # TARE — 정리 없음
+    fsm = _fsm()
+    assert _cleanup_trace(Cell(yields=[100, 50], cup_invalid_first=2), fsm) == []
+    d, = fsm.deviations
+    assert (d['kind'], d['step'], d['action']) == ('WEIGH_INVALID', 'TARE', 'FORCED')
+    assert '정리 없음' in d['detail'], d['detail']
+    assert fsm.state == 'ERROR'
+
+    # SCOOP_TARE — 반환 없이 스쿱만 반납
+    fsm = _fsm()
+    assert _cleanup_trace(Cell(yields=[100, 50], invalid_first=2), fsm) == ['move', 'move', 'grip']
+    d, = fsm.deviations
+    assert (d['kind'], d['step'], d['action']) == ('WEIGH_INVALID', 'SCOOP_TARE', 'FORCED')
+    assert 'return_material' not in d['detail'], d['detail']   # 빈 스쿱을 기울이지 않는다
+    assert fsm.state == 'ERROR'
+
+
+def test_213_cleanup_weigh_scoop_은_원료를_먼저_반환한다():
+    """#213 4번 — `WEIGH_SCOOP` 은 스쿱에 원료가 있으므로 반환이 맨 앞에 온다."""
+    cell = Cell(yields=[100, 50], invalid_first=2)
+    cell.invalid_left = 0                       # SCOOP_TARE 는 통과시키고
+    fsm = _fsm()
+    trace = []
+    orig = cell.__call__
+
+    def tap(req):
+        # WEIGH_SCOOP 두 번을 무효로 돌려준다
+        if req['kind'] == 'weigh_scoop' and fsm.state == 'WEIGH_SCOOP':
+            tap.n += 1
+            if tap.n <= 2:
+                return {'gross_g': 0.0, 'valid': False}
+        return orig(req)
+    tap.n = 0
+    for st, k in run(fsm, tap):
+        if st == 'CLEANUP':
+            trace.append(k)
+    assert trace == ['return_material', 'move', 'move', 'grip'], trace
+    d = fsm.deviations[-1]
+    assert (d['kind'], d['step'], d['action']) == ('WEIGH_INVALID', 'WEIGH_SCOOP', 'FORCED')
+    assert 'return_material' in d['detail'], d['detail']
+    assert fsm.state == 'ERROR'
+
+
 def test_invalid_tare_up_to_limit_raises_weigh_invalid():
     """max_invalid 만큼 무효면 WEIGH_INVALID 일탈로 멈춘다 — 무효 tare 로 배치를 시작하지 않는다."""
     cell = Cell(yields=[100, 50], cup_invalid_first=2)

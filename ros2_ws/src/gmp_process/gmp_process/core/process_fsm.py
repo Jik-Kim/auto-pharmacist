@@ -95,6 +95,7 @@ class ProcessFSM:
     results: list = field(default_factory=list)
     deviations: list = field(default_factory=list)
     _counts: dict = field(default_factory=dict)
+    _cleanup: list = field(default_factory=list)   # CLEANUP 상태에서 아직 안 보낸 정리 요청들 (#213)
     _resume: object = None       # 인터락/QA 후 돌아갈 요청
     _qa_step: str = ''           # QA 판정을 기다리는 일탈이 난 스텝 — APPROVED/DISCARDED 뒤 경로를 가른다
     _zero_recheck: int = 0       # VERIFY 직전 영점 재확인 재측정 횟수
@@ -166,6 +167,10 @@ class ProcessFSM:
             return None
         self.cur.invalid += 1
         if self.cur.invalid >= self.dosing_cfg.max_invalid:
+            # 투입 전(SCOOP_TARE·WEIGH_SCOOP)은 정리 후 ERROR, 투입 뒤(WEIGH_RESIDUAL)는 QA (#213).
+            # WEIGH_RESIDUAL 은 이미 부은 뒤라 되돌릴 게 없고 투입량만 모르는 상태다.
+            if step in ('SCOOP_TARE', 'WEIGH_SCOOP'):
+                return self._cleanup_then_error('WEIGH_INVALID', step)
             return self._deviate('WEIGH_INVALID', step)
         return retry
 
@@ -200,6 +205,14 @@ class ProcessFSM:
                 return None                      # ERROR 종료
             if nxt == 'wait_interlock':
                 return {'kind': 'wait_interlock'}
+        if st == 'CLEANUP':
+            # 정리 중 반환이 실패하면 2차 사고다 — 원인(WEIGH_INVALID)과 따로 FORCE_LIMIT 로 남긴다
+            if k == 'return_material' and not res.get('success', False):
+                return self._return_failed(res.get('message', '정리 중 원료통 반환 실패'), 'CLEANUP')
+            if self._cleanup:
+                return self._cleanup.pop(0)
+            self.state, self.mode = 'ERROR', 'ERROR'
+            return {'kind': 'safe', 'then': None, 'reason': 'RECOVERY'}
         if k == 'measure' and st == 'SELF_CHECK':
             # 자가진단 전용이다. 이 값을 영점 기준으로 쓰지 않는다 — 여기 자세는 배치 시작 자세고
             # VERIFY 는 workbench 라, 자세 차이가 영점 이동으로 둔갑한다. 기준은 TARE 직전에 잡는다.
@@ -226,7 +239,7 @@ class ProcessFSM:
             if not res.get('valid', False):
                 self._tare_invalid += 1
                 if self._tare_invalid >= self.dosing_cfg.max_invalid:
-                    return self._deviate('WEIGH_INVALID', 'TARE')
+                    return self._cleanup_then_error('WEIGH_INVALID', 'TARE')
                 return req
             self.tare_g = res.get('gross_g', 0.0)
             self.cur = self._item()
@@ -415,6 +428,39 @@ class ProcessFSM:
             # A 가 연결 경로(#64)를 구현하면 이 분기는 없어진다.
             return self._return_failed(f'반환 후 재스쿱 차단 — {detail or "스킬 거부"}', step=self.state)
         return self._deviate('FORCE_LIMIT', self.state, retry=req, detail=detail)
+
+    # ── 투입 전 계량 무효: 손에 든 것을 정리한 뒤 멈춘다 (#213) ──────────
+    def _cleanup_path(self, step: str) -> list:
+        """그 단계에서 손에 뭐가 있느냐로 갈린다. 재스쿱은 하지 않는다 (#64).
+
+        중간 경유는 `material_N.posx`(AT) 다 — 원료통 위 충돌 회피 자세이고 새 스테이션이 아니다
+        (9/22 조장 확인). `return_end_posj` 는 `ReturnMaterial` 이 끝나는 자세라 여기서 안 쓴다.
+        """
+        if step == 'TARE':
+            return []                                   # 그리퍼가 비어 있고 용기는 workbench 에 놓여 있다
+        via = [{'kind': 'move', 'station': 'material', 'material_id': self.cur.material_id, 'approach': 'AT'},
+               {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'},
+               {'kind': 'grip', 'close': False}]
+        if step == 'SCOOP_TARE':
+            return via                                  # 빈 스쿱이라 반환할 원료가 없다
+        return [self._return_material()] + via          # WEIGH_SCOOP — 스쿱에 원료가 들어 있다
+
+    def _cleanup_then_error(self, kind: str, step: str, detail: str = ''):
+        """일탈을 먼저 기록하고 정리 경로로 들어간다 — 정리 도중 죽어도 원인이 남아야 한다."""
+        key = (self.idx, step, kind)
+        self._counts[key] = self._counts.get(key, 0) + 1
+        path = self._cleanup_path(step)
+        names = ' → '.join(r['kind'] for r in path) or '없음'
+        self.deviations.append({'kind': kind, 'step': step, 'count': self._counts[key],
+                                'action': 'FORCED',     # 자동 복구가 아니다 — 사람이 와야 한다
+                                'detail': (detail + ' · ' if detail else '') + f'정리 {names}',
+                                'material_id': getattr(self, 'cur', None) and self.cur.material_id})
+        self._cleanup = path
+        if not path:
+            self.state, self.mode = 'ERROR', 'ERROR'
+            return {'kind': 'safe', 'then': None, 'reason': 'RECOVERY'}
+        self.state, self.mode = 'CLEANUP', 'ERROR'      # mode 는 이미 되돌릴 수 없다는 뜻으로 ERROR
+        return self._cleanup.pop(0)
 
     def _return_failed(self, detail: str, step: str = 'RETURN_MATERIAL'):
         """반환·반환 후 재스쿱 실패는 재시도·재투입하지 않고 FORCED 로 기록한 뒤 안전 자세로 간다."""
