@@ -145,7 +145,7 @@ function renderCompletion(s){
 }
 let recoveryGeneration=null,recoveryPhase=null;
 const recoveryButton=document.createElement('button');
-recoveryButton.id='openRecovery';recoveryButton.className='session-button';recoveryButton.textContent='안전 복구';
+recoveryButton.id='openRecovery';recoveryButton.className='session-button warn';recoveryButton.textContent='안전 복구';
 $('utilityButtons').appendChild(recoveryButton);
 recoveryButton.onclick=()=>{$('recoveryDialog').showModal();renderRecovery(snapshot);};
 $('closeRecovery').onclick=()=>$('recoveryDialog').close();
@@ -154,7 +154,7 @@ function renderRecovery(s){
  const allowed=[1,3,5,8,9,10].includes(r.robot_state);
  if(session.authenticated&&r.active&&r.generation!==recoveryGeneration&&!$('recoveryDialog').open)$('recoveryDialog').showModal();
  recoveryGeneration=r.generation;recoveryPhase=r.phase;
- recoveryButton.disabled=!session.authenticated||source.demo;
+ recoveryButton.disabled=!session.authenticated;
  const phaseNames={unobserved:'안전 상태 미확인',stopped:'안전정지 감지',pending:'복구 응답 대기',uncertain:'복구 결과 미확인',manual_required:'현장 수동 조치 필요',failed:'복구 미완료',recovered:'로봇 복구 확인 · 배치 재개 아님'};
  const stateNames={1:'대기 · STANDBY',2:'이동 중 · MOVING',3:'안전 전원 차단 · SAFE_OFF',4:'티칭 · TEACHING',5:'안전정지 · SAFE_STOP',6:'비상정지 · EMERGENCY_STOP',8:'복구 모드 · RECOVERY',9:'안전정지 2 · SAFE_STOP2',10:'안전 전원 차단 2 · SAFE_OFF2'};
  $('recoveryPhaseLabel').textContent=phaseNames[r.phase]||'안전 상태 미확인';
