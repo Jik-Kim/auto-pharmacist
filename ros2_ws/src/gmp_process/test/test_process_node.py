@@ -442,10 +442,14 @@ def test_refill_wait_puts_reason_at_head_of_note(cell):
     assert _wait_mode(proc, 'PAUSED'), proc.fsm.state
     assert proc.fsm.deviations[-1]['action'] == 'REFILL', proc.fsm.deviations
 
+    # **폴링으로 먼저 기다린다.** `_wait_mode` 가 True 가 되는 시점(`on_result` 안, REFILL 판정 즉시)과
+    # note 가 실리는 시점(`_run_loop` 스레드가 그 다음 `safe` 를 dispatch 할 때)이 달라서, 여기서
+    # `proc.note` 를 바로 읽으면 스레드 스케줄링 창에 빈 값으로 걸린다 (정합성 검토: 14회 중 4회 실패).
+    # 발행까지 돼야 HMI 가 본다 — proc.note 만 맞고 CellState 에 안 실리면 소용없다.
+    assert _wait_state_note(col, r'^REFILL\b'), [t.note for t in col.states[-5:]]
+    # 발행됐으면 그 값은 EXIT 전까지 유지된다 — 이제 동기적으로 읽어도 안전하다
     assert re.match(r'^REFILL\b', proc.note), f'note 앞머리가 REFILL 이어야 한다: {proc.note!r}'
     assert not proc._pause, 'REFILL 대기는 인터락 정지가 아니다 — _pause 가 서면 안 된다'
-    # 발행까지 돼야 HMI 가 본다 — proc.note 만 맞고 CellState 에 안 실리면 소용없다
-    assert _wait_state_note(col, r'^REFILL\b'), [t.note for t in col.states[-5:]]
 
     assert _lock(col, InterlockRequest.Request.EXIT).granted
     assert _wait_done(proc) == 'DONE', f'{proc.fsm.state} / {proc.note}'
