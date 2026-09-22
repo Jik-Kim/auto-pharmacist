@@ -112,9 +112,9 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
    │ GRIP_FAIL ×3           (빈 스쿱 무게)             ▲  │ SCOOP_EMPTY ×3   (퍼낸 양 →                 (fraction=1.0)  │ (잔량 → 투입량 누적
    ▼ ×4 ERROR                                          │  ▼ 연속 3회 = MATERIAL_EMPTY  전량 붓기 / 원료통 반환)            │  → decide)
                                                        │ PAUSED ──interlock EXIT──▶ _resume(scoop)                    ├─ OK ────────▶ RETURN_SCOOP
-                                                       └──────────────── UNDER, attempts<3 → scoop(attempt+1) ◀───────┤                 │ 다음 원료 → PICK_SCOOP
+                                                       └──────────────── UNDER, attempts<8 → scoop(attempt+1) ◀───────┤                 │ 다음 원료 → PICK_SCOOP
                                                                                                                       ├─ OVER ──────▶ RETURN_MATERIAL(material_id) → SCOOP 재시도
-   계량 무효(valid=false): 각 계량 상태에서 같은 요청 재시도 ≤2, 3회째 WEIGH_INVALID → DEVIATION                       └─ 4회째 UNDER ▶ DEVIATION(TIMEOUT)
+   계량 무효(valid=false): 각 계량 상태에서 같은 요청 재시도 ≤2, 3회째 WEIGH_INVALID → DEVIATION                       └─ 9회째 UNDER ▶ DEVIATION(TIMEOUT)
 
  RETURN_SCOOP ──마지막 원료였음──▶ VERIFY ──move(workbench ABOVE) · measure(영점 재확인) · weigh(용기를 들어) · ① 규격 OK──▶ FINISH ──carry(workbench→passbox_done)──▶ NUDGE_WAIT ──move(nudge_wait) · wait_nudge(사람이 건드림)──▶ DONE
                                      (폐기도 같다: DISCARDED ──carry(→reject_bin)──▶ NUDGE_WAIT ──▶ DISCARDED)
@@ -142,7 +142,7 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 | `POUR` | `pour(fraction=1)` | workbench의 pour start→end 전량 이동 | `weigh_scoop(material_N)` | — |
 | `WEIGH_RESIDUAL` | `weigh_scoop` → gross, valid | `residual = gross − scoop_tare`, **`actual += scooped − residual`** (실제 투입량 누적). `decide(target, actual, tol, attempts, True, invalid, cfg)` → DONE / SCOOP(fraction 힌트) / DEVIATION(kind). 무효 ≤2 재계량 | DONE→`move(scoop_N)` · SCOOP→`scoop(attempt+1)` · DEVIATION→`wait_qa` | `weight` · **`scoop_cycle`** · `dispense_result` (DONE·DEVIATION 시) · `deviation` |
 | `RETURN_SCOOP` | `move` / `grip(open)` | idx+1. 남았으면 다음 원료, 없으면 VERIFY | `move(scoop_N)` → `grip(open)` → `move(scoop_N)`(다음) 또는 `weigh(workbench, tare)` | `state` |
-| `VERIFY` | `move(workbench, ABOVE)` → `measure` → `weigh` → net, valid | **TARE 때와 같은 자세로 옮긴 뒤** 빈 그리퍼 영점을 다시 잰다 (`tool_force` 는 자세 의존이라 다른 자세끼리 비교하면 자세 차이가 영점 이동으로 둔갑한다). TARE 의 `zero_fz_n` 과 대조해 `\|이동\| > scale.zero_drift_limit_n`(기본 0.5 N, 0 이면 끔)이면 재측정, `max_invalid` 도달 시 `WEIGH_INVALID` → QA. NUDGE 는 정지·재개 장치일 뿐 계량 유효성과 연결돼 있지 않아 오염된 값이 그냥 장부에 들어가던 구멍을 막는다. 통과하면 **용기를 들어** 순량 계량 (그리퍼 비어 있음). **판정은 ① 하나뿐이다** — `\|net − Σspec.target\| > Σ(target×tol)` → BATCH_OUT_OF_SPEC → QA(폐기 권고). 종전 ②(`\|net − Σresults.actual\|`)는 **9/22 폐지** — 값은 `verify_detail` 에 관측으로만 남기고 영점 이동량과 함께 `CellEvent(INFO, VERIFY)` 로 발행한다. 무효 ≤2 재계량 | `carry(workbench→passbox_done)` | `weight` · `deviation` |
+| `VERIFY` | `move(workbench, ABOVE)` → `measure` → `weigh` → net, valid | **TARE 때와 같은 자세로 옮긴 뒤** 빈 그리퍼 영점을 다시 잰다 (`tool_force` 는 자세 의존이라 다른 자세끼리 비교하면 자세 차이가 영점 이동으로 둔갑한다). TARE 의 `zero_fz_n` 과 대조해 `\|이동\| > scale.zero_drift_limit_n`(기본 0.1 N — 같은 자세 반복 산포 기준, 0 이면 끔)이면 재측정, `max_invalid` 도달 시 `WEIGH_INVALID` → QA. NUDGE 는 정지·재개 장치일 뿐 계량 유효성과 연결돼 있지 않아 오염된 값이 그냥 장부에 들어가던 구멍을 막는다. 통과하면 **용기를 들어** 순량 계량 (그리퍼 비어 있음). **판정은 ① 하나뿐이다** — `\|net − Σspec.target\| > Σ(target×tol)` → BATCH_OUT_OF_SPEC → QA(폐기 권고). 종전 ②(`\|net − Σresults.actual\|`)는 **9/22 폐지** — 값은 `verify_detail` 에 관측으로만 남기고 영점 이동량과 함께 `CellEvent(INFO, VERIFY)` 로 발행한다. 무효 ≤2 재계량 | `carry(workbench→passbox_done)` | `weight` · `deviation` |
 | `FINISH` | `carry` → grip_inferred | 실패 → GRIP_FAIL 재시도 | `move(nudge_wait)` | — |
 | `NUDGE_WAIT` | `move(nudge_wait)` → 도착 · `wait_nudge` → 사람이 건드림 | **세트 경계 (D-23)** — 반송 뒤 nudge_wait 로 물러나 서서 기다린다. 이동 중 RUNNING, 대기 중 **PAUSED**(주문 거부 · HMI 는 note 로 사유). `safety.nudge_enabled=false` 면 대기 없이 통과. 이 대기의 NUDGE 는 정지 토글이 아니라 「다음 세트」 신호 | `wait_nudge` → None (끝: DONE 또는 DISCARDED) | `event SET_DONE`(대기 진입) · `SET_NEXT`(건드림) · `BATCH_END`, `state DONE` |
 | `DEVIATION` | `wait_qa` → decision | APPROVED → (원료 일탈) 결과에 남기고 RETURN_SCOOP / (VERIFY) FINISH. DISCARDED → 스쿱 든 채면 먼저 반납 → 용기째 폐기 | `move(scoop_N)` / `carry(workbench→passbox_done)` / `carry(workbench→reject_bin)` | `deviation` 재발행(decision·operator_id 채움) |
@@ -234,9 +234,7 @@ ENTER 가 어려운 이유: 루프가 블로킹 Action 을 기다리는 중일 �
 | 10 | **[D-22]** `weigh_scoop` 계약 v1.2 — `WeighHeld` Action, `Deviation.kind` 3종 | `gmp_interfaces`, `docs/interfaces.md` | 계약 확정 (PR #10) | ✅ 9/18 |
 | 11 | **[D-22]** `_pour_fraction` 을 `gmp_dosing/core/dosing.py` 로 이관 (B 와) | `process_fsm.py`, `dosing.py` | `test_prepour_check_prevents_overfill` | ✅ 9/18 |
 
-**남은 의존**: A 의 `skill_node` 에 **`weigh_held` Action 서버가 아직 없다** (A todo, 마감 9/21). 그래서 진짜 가상 브링업으로는
-`SCOOP_TARE` 에서 선다 — 이때 서버 없음은 FORCE_LIMIT 일탈로 잡혀 ERROR 로 끝난다(무한 대기가 아니다, `test_missing_skill_server_does_not_hang`).
-그때까지의 배선 검증은 가짜 skill_node 가 대신한다.
+**(해소됨)** 한때 A 의 `skill_node` 에 `weigh_held` Action 서버가 없어 진짜 가상 브링업이 `SCOOP_TARE` 에서 섰다 — 지금은 구현돼 있다(`skill_node` `WeighHeld`, 9/21 이후). 서버 없음이 FORCE_LIMIT 일탈로 잡혀 ERROR 로 끝나는 방어(무한 대기가 아니다, `test_missing_skill_server_does_not_hang`)는 그대로 남아 있고, FSM 배선 검증은 여전히 가짜 skill_node 로 한다.
 
 가상 모드 기동: `source ~/auto-pharmacist/tools/env.sh && ros2 launch gmp_bringup cell.launch.py mode:=virtual` (Flask 미설치면 `hmi:=false`). 주문은 HMI 없이도 `ros2 service call /cell/submit_order gmp_interfaces/srv/SubmitOrder "{recipe: {product: DEMO, items: [{material_id: A, target_g: 200, tol_pct: 5}]}}"` 로 넣을 수 있다.
 

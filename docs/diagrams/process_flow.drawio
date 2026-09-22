@@ -232,7 +232,7 @@
         <mxCell id="c38" value="carry ok — 폐기도 세트의 끝&lt;br&gt;같은 자리에서 기다린다" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c22" target="c17">
           <mxGeometry x="0.2" y="0" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c39" value="UNDER, attempts&lt;3 → scoop(attempt+1, fraction 힌트)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c13" target="c9">
+        <mxCell id="c39" value="UNDER, attempts&lt;max_attempts(8) → scoop(attempt+1, fraction 힌트)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c13" target="c9">
           <mxGeometry x="0" y="-14" relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="1497.0" y="340" />
@@ -272,7 +272,7 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c44" value="UNDER 4회째 → TIMEOUT" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c13" target="c21">
+        <mxCell id="c44" value="UNDER max_attempts(8) 초과 → TIMEOUT" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c13" target="c21">
           <mxGeometry x="-0.5" y="-60" relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="1690" y="438" />

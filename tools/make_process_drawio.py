@@ -132,7 +132,7 @@ p2.edge(finish, nudgew, 'carry ok', color=OK, lpos=(0, -14))
 p2.edge(nudgew, done, 'NUDGE (사람이 건드림)\n→ DONE · 폐기면 DISCARDED', color=OK, lpos=(0, -22))
 p2.edge(disc, nudgew, 'carry ok — 폐기도 세트의 끝\n같은 자리에서 기다린다', color=RED, exit=(0.5, 0), entry=(0.5, 1), lpos=(0.2, 0))
 # ── 보정·재계량 (주황·회색) — 1행 위 복도 (y 340)
-p2.edge(wres, scoop, 'UNDER, attempts<3 → scoop(attempt+1, fraction 힌트)', color=WARM,
+p2.edge(wres, scoop, 'UNDER, attempts<max_attempts(8) → scoop(attempt+1, fraction 힌트)', color=WARM,
         exit=(0.3, 0), entry=(0.75, 0), points=((cx(5, 0.3), 340), (cx(2, 0.75), 340)), lpos=(0, -14))
 # 계량 무효 자기 루프 (회색) — 상자 아래 y+H+35
 def rew(node, c):
@@ -142,7 +142,7 @@ rew(stare, 1); rew(wscoop, 3); rew(wres, 5)
 p2.edge(verify, verify, 'INVALID ≤2 → 재계량', color=GRAY, exit=(0.3, 0), entry=(0.7, 0),
         points=((cx(3, 0.3), Y[2] - 30), (cx(3, 0.7), Y[2] - 30)), lpos=(0, -12))
 # ── 일탈 → DEVIATION (주황) — 오른쪽 복도 x=1690, 2·3행 사이 복도 y=840
-p2.edge(wres, dev, 'UNDER 4회째 → TIMEOUT', color=WARM,
+p2.edge(wres, dev, 'UNDER max_attempts(8) 초과 → TIMEOUT', color=WARM,
         exit=(1, 0.6), entry=(0.7, 0), points=((X[5] + W + 60, Y[1] + 38), (X[5] + W + 60, 840), (cx(4, 0.7), 840)), lpos=(-0.5, -60))
 p2.edge(wscoop, wreturn, 'OVER → return_material(material_id)', color=WARM,
         exit=(0.5, 1), entry=(0.5, 0), points=((cx(3), 860), (cx(3), Y[3] - 20)), lpos=(0.5, 10))
