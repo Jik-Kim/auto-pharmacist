@@ -20,10 +20,12 @@
 | 레이아웃 | `body` 가 `display:flex; height:100dvh; overflow:hidden` — **스크롤은 `main` 안에서만** 일어난다. 기록·통계 탭은 grid 4행 `1fr` 로 카드 3개 하단 정렬 | PR #229 (`hmi.css:1`·`:73`) |
 | 시연 기기 | 로봇 PC 1대 + **휴대폰 브라우저 HMI 기본**, 같은 네트워크(`http://<로봇 PC Wi-Fi IP>:5000`) | PR #259, `docs/demo_run_procedure.md` T0·G6 |
 | ROS 도메인 | 본운영 70, 격리 시험 88 | `docs/demo_run_procedure.md:38` |
+| 통신 검증 기준선 | `tools/verify_ros_http.py` **20 항목 PASS** (실제 DDS, `/hmi_test`). v1.8 `INVALID`·`BATCH_UNMEASURED`·`DONE_UNMEASURED`·KPI 두 지표·`MATERIAL_EMPTY` 포함 | 9/23 실행, PR(이 변경) |
+| 시험 시나리오 | `normal`·`overfill`·`batch_out_of_spec`·`wrong_tool`·`weigh_invalid`·`material_empty` | `gmp_hmi/nodes/hmi_test_process.py` |
 
 ## 열린 과제 (이슈 번호)
 - **G6 휴대폰 리허설** — `body overflow:hidden`(#229) 이 모바일(≤ 760 px)에도 걸린다. 헤더 줄바꿈으로 `main` 이 좁아질 수 있음. 휴대폰에서 스크롤·승인/폐기·안전 복구 버튼을 실제로 눌러 볼 것 (PR #259 G6, **미검증**).
-- **#261 실물/가상 통합 확인** — `record_node` 가 `BATCH_UNMEASURED` 를 받아 DB 에 `DONE_UNMEASURED` 를 남기는지, KPI 카드·필터 표시. 샌드박스엔 ROS·flask 가 없어 **core 단위 시험만 통과**(test_db +5).
+- **#261 실제 `/cell` 확인** — `/hmi_test` DDS 경로는 **9/23 검증 완료**(아래 통신 검증 20 항목). 남은 것은 **실제 C 공정·로봇**에서 같은 경로가 도는지다. 가상 `/cell` 은 파지에서 막히므로(아래 함정) 실물이어야 한다.
 - `docs/interfaces.md:188` KPI 이름이 아직 「배치 성공률」 — 계약 문서라 조장 몫(#261 본문에 적음).
 - `tools/test_safety_popup.cjs` 는 main 에서도 실패(`$(...).appendChild is not a function` — DOM 스텁에 `appendChild` 없음). 살릴지 지울지 D 판단(#238 검토 코멘트). `tools/test_frontend_render.cjs` 는 **환경 문제였다** — playwright·Chromium 이 있는 샌드박스에서 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium node tools/test_frontend_render.cjs` 로 9/23 PASS. 심볼릭 링크 불필요.
 
