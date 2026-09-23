@@ -82,3 +82,15 @@ def test_test_process_and_demo_emit_only_known_steps():
     emitted = _emitted_steps()
     assert {'SCOOP', 'DEVIATION', 'FINISH'} <= emitted, emitted   # 추출이 비어 통과하는 것을 막는다
     assert not emitted - _hmi_step_keys(), f'steps 맵에 없는 시험·데모 단계: {sorted(emitted - _hmi_step_keys())}'
+
+
+def test_comm_test_launch_accepts_same_scenarios_as_test_process():
+    # #266 이 시험 노드 시나리오를 6 종으로 바꿨는데 launch 인자 검사는 옛 4 종(verify_mismatch 포함)에
+    # 남아, 새 시나리오를 launch 인자로 주면 기동이 거부됐다.
+    root = Path(__file__).resolve().parents[1]
+    node = (root / 'gmp_hmi/nodes/hmi_test_process.py').read_text(encoding='utf-8')
+    launch = (root / 'launch/hmi_comm_test.launch.py').read_text(encoding='utf-8')
+    in_node = re.search(r"if scenario not in \(([^)]*)\)", node).group(1)
+    in_launch = re.search(r"scenarios = \(([^)]*)\)", launch).group(1)
+    names = lambda text: set(re.findall(r"'([a-z_]+)'", text))
+    assert names(in_node) and names(in_node) == names(in_launch), (sorted(names(in_node)), sorted(names(in_launch)))
