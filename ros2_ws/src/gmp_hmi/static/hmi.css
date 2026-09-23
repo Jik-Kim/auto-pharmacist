@@ -116,6 +116,9 @@ body:has(#loginOverlay:not([hidden]))>.safety-banner{visibility:hidden}.login-ca
  header .connection{gap:6px}
  nav button{min-height:40px;padding:6px 10px}
  .session-button{min-height:44px;padding:8px 12px;font-size:12px}
- header .connection{flex-wrap:wrap}.connection-group{flex-wrap:wrap}
- .connection-group+.connection-group{padding-left:0;border-left:0}
+ /* 버튼 4개(설정·계정 관리·안전 복구·계정)를 2×2 로 — 한 개만 다음 줄로 떨어지지 않게 */
+ header .connection{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:100%;align-items:stretch}
+ header .connection>.connection-group:first-child{grid-column:1/-1;justify-content:flex-start}
+ header .connection>.connection-group+.connection-group{display:contents}
+ header .connection .session-button{width:100%}
 }
