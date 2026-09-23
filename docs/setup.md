@@ -59,9 +59,10 @@ cd ~/auto-pharmacist/ros2_ws/src && python3 -m pytest gmp_dosing gmp_process -q
 
 관절 이송을 포함한 스킬 단위 테스트는 저장소 루트에서 실행한다.
 가상·실물 검증은 사용자가 수행한다. 개발 검증은 아래 단위 테스트로 한정한다.
+`test_check_depth.py` 가 `gmp_dosing.core.scale` 을 참조하므로 `gmp_dosing` 도 경로에 넣어야 한다.
 
 ```bash
-PYTHONPATH=ros2_ws/src/gmp_skills python3 -m pytest ros2_ws/src/gmp_skills/test -q
+PYTHONPATH=ros2_ws/src/gmp_skills:ros2_ws/src/gmp_dosing python3 -m pytest ros2_ws/src/gmp_skills/test -q
 ```
 
 ## 확인 명령

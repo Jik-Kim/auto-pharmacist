@@ -424,7 +424,11 @@ def test_refill_wait_then_enter_resumes_with_one_exit(cell):
     _submit(col, [('A', 100.0, 5.0)])
     assert _wait_mode(proc, 'PAUSED'), proc.fsm.state
     kinds = [d['kind'] for d in proc.fsm.deviations]
-    assert kinds == ['SCOOP_EMPTY'] * 4 and proc.fsm.deviations[-1]['action'] == 'REFILL'
+    # #111 A안 — 보충으로 넘어가는 4회째부터 kind 가 MATERIAL_EMPTY 다.
+    # `ScoopCycle.outcome` 은 둘 다 SCOOP_EMPTY 로 남는다 (`DEV_TO_OUTCOME` 이 합쳐서 매핑) —
+    # 스쿱 시도의 결과는 같은 사실이고, 달라진 것은 일탈 기록이다.
+    assert kinds == ['SCOOP_EMPTY'] * 3 + ['MATERIAL_EMPTY'], kinds
+    assert proc.fsm.deviations[-1]['action'] == 'REFILL'
 
     r = _lock(col, InterlockRequest.Request.ENTER)
     assert r.granted and r.message.startswith('이미'), r.message      # 이미 안전 자세 — safe_pose 재호출 없음
@@ -558,17 +562,131 @@ def test_scoop_cycle_attempt_numbers_are_unique_per_material(cell):
 
 
 # ── NUDGE 게이트 (추가 기능 7 · D-21) ────────────────────────────────────
-def test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다(cell):
-    """#213·#108 — `decide()` 를 못 거친 원료가 verdict=OK 로 발행되던 구멍.
+# ── 계량 무효 — 실제 스킬 왕복으로 태운다 (#213·#108) ──────────────────────
+# 종전에는 판정 로직을 순수 파이썬(FSM)으로, 발행을 `_publish_result` 직접 호출로만 고정했다.
+# 그 둘 **사이**는 아무 시험도 안 지나가는데, 9/23 에 고친 버그(verdict 빈 값 → OK)가 정확히
+# 거기 있었다. `fake.weigh_invalid` 로 스킬이 `valid=false` 를 돌려주게 해 전 구간을 태운다.
+
+
+def test_213_붓기_전_계량_무효는_원료를_되돌리고_ERROR_로_끝난다(cell):
+    """#213 결정 3 — 아직 약통에 넣지 않았으므로 **되돌릴 수 있다**. QA 로 가지 않는다."""
+    proc, fake, col = cell
+    fake.weigh_invalid = {'WEIGH_SCOOP': 3}          # 최초 1 + 재시도 2
+    _submit(col, [('A', 40.0, 5.0)])
+
+    assert _wait_done(proc) == 'ERROR', _why(proc)
+    assert 'return_material:A' in fake.calls, fake.calls   # 원료를 원료통에 되돌린다
+    devs = [d for d in col.devs if d.kind == Deviation.WEIGH_INVALID]
+    assert devs, [d.kind for d in col.devs]
+    assert devs[-1].decision == Deviation.FORCED, devs[-1].decision
+    # 되돌렸으므로 그 원료는 결과에 남지 않는다 — 「0 g 넣었다」가 아니라 「안 넣었다」다
+    assert not [r for r in col.results if r.material_id == 'A'], col.results
+
+
+def test_213_붓기_뒤_계량_무효는_QA_승인으로_미측정이_기록된다(cell):
+    """#213 결정 3 · #108 — 이미 부은 뒤라 되돌릴 게 없다. 승인하면 **모른 채** 배치를 잇는다.
+
+    9/23 에 고친 경로를 실제 스킬 왕복으로 처음 태우는 시험이다. 종전에는 FSM 이
+    「verdict 가 비었다」까지만 알고, 발행부가 그 빈 값을 `'OK'` 로 떨어뜨리는 것을
+    아무도 보지 못했다.
+    """
+    proc, fake, col = cell
+    fake.weigh_invalid = {'WEIGH_RESIDUAL': 3}
+    _submit(col, [('A', 40.0, 5.0)])
+
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    dev = proc._pending_dev()
+    assert dev.kind == Deviation.WEIGH_INVALID and dev.requires_decision, dev.kind
+    assert _qa(col, dev.deviation_id, Deviation.APPROVED).accepted
+    assert _wait_done(proc) == 'DONE', _why(proc)
+    # 원료 하나라도 미측정이면 배치 결과도 DONE_UNMEASURED 다 (9/23 조장 결정).
+    # 종전에는 VERIFY 미측정만 봐서 이 배치가 그냥 DONE 으로 나갔다.
+    assert proc._batch_outcome == 'DONE_UNMEASURED', proc._batch_outcome
+
+    r = [x for x in col.results if x.material_id == 'A'][-1]
+    assert r.verdict == DispenseResult.INVALID, r.verdict     # 「모른다」 — UNDER 도 OK 도 아니다
+    assert any(e.code == 'DISPENSE_UNMEASURED' for e in col.events), [e.code for e in col.events]
+
+    # 무효 계량 3건이 기록에 남는다. σ 가 게이트 위라 **왜 무효인지**가 기록만 봐도 보인다
+    bad = [w for w in col.weights if not w.valid]
+    assert len(bad) == 3, [(w.subject, w.valid, w.std_g) for w in col.weights]
+    assert all(w.subject == 'scoop' and w.std_g > 8.0 for w in bad), [(w.subject, w.std_g) for w in bad]
+
+
+def test_배치_미측정은_BATCH_UNMEASURED_이벤트로도_나간다(cell):
+    """`DONE_UNMEASURED` 는 `RunBatch.result` 에만 실려 **DB 에 닿지 않는다**.
+
+    `record_node` 는 배치 결과를 `CellState` 에서 만들고 `RunBatch.result` 는 보지 않는다.
+    그래서 조건만 넓히면 기록·KPI 는 그대로다 — 이벤트가 그 틈을 잇는다 (D 발견, 9/23).
+
+    순서는 **최선의 노력**이다. `_pub_state` 가 0.5 s 타이머로도 돌아 DONE 상태가 먼저
+    나갈 수 있고, 그 역전은 D 가 UPDATE 로 흡수한다. 여기서는 **이벤트가 나간다는 것과
+    내용**을 고정한다.
+    """
+    proc, fake, col = cell
+    fake.weigh_invalid = {'WEIGH_RESIDUAL': 3}
+    _submit(col, [('A', 40.0, 5.0)])
+
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    assert _qa(col, proc._pending_dev().deviation_id, Deviation.APPROVED).accepted
+    assert _wait_done(proc) == 'DONE', _why(proc)
+
+    warn = [e for e in col.events if e.code == 'BATCH_UNMEASURED']
+    assert len(warn) == 1, [e.code for e in col.events]
+    assert warn[0].level == CellEvent.WARN
+    assert "'A'" in warn[0].text and 'VERIFY 미측정 False' in warn[0].text, warn[0].text
+    assert warn[0].batch_id == proc.batch_id, warn[0].batch_id
+
+    # BATCH_END 가 outcome 을 달고 나간다 — 로그만 봐도 어떤 완료인지 구분된다
+    end = [e for e in col.events if e.code == 'BATCH_END'][-1]
+    assert end.text.endswith('DONE_UNMEASURED'), end.text
+
+
+def test_정상_배치는_BATCH_UNMEASURED_를_내지_않는다(cell):
+    """모르는 데가 없으면 경고가 없어야 한다 — 있으면 D 가 멀쩡한 배치를 미측정으로 기록한다."""
+    proc, _fake, col = cell
+    _submit(col, [('A', 40.0, 5.0)])
+    assert _wait_done(proc) == 'DONE', _why(proc)
+    assert proc._batch_outcome == 'DONE', proc._batch_outcome
+    assert not [e for e in col.events if e.code == 'BATCH_UNMEASURED'], col.events
+    end = [e for e in col.events if e.code == 'BATCH_END'][-1]
+    assert end.text.endswith('DONE'), end.text
+
+
+def test_213_최종_계량_무효는_배치를_DONE_UNMEASURED_로_남긴다(cell):
+    """#213 5번 — 완제품인데 **최종 순량을 모른다**. 원료 단위 미측정과 다른 사건이다.
+
+    원료 미측정은 `DispenseResult.verdict=INVALID`(원료별 투입량을 모름), 최종 계량
+    미측정은 `RunBatch.result='DONE_UNMEASURED'`(배치 순량을 모름)로 갈라진다.
+    """
+    proc, fake, col = cell
+    fake.weigh_invalid = {'VERIFY': 3}
+    _submit(col, [('A', 40.0, 5.0)])
+
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    dev = proc._pending_dev()
+    assert dev.kind == Deviation.WEIGH_INVALID, dev.kind
+    assert _qa(col, dev.deviation_id, Deviation.APPROVED).accepted
+    assert _wait_done(proc) == 'DONE', _why(proc)
+    assert proc._batch_outcome == 'DONE_UNMEASURED', proc._batch_outcome
+
+    # 원료는 정상으로 끝났다 — 모르는 것은 **최종 순량**뿐이다
+    r = [x for x in col.results if x.material_id == 'A'][-1]
+    assert r.verdict != DispenseResult.INVALID, r.verdict
+    bad = [w for w in col.weights if not w.valid]
+    assert all(w.subject == 'container' for w in bad), [(w.subject, w.valid) for w in bad]
+
+
+def test_108_투입량_불명은_INVALID_로_나간다(cell):
+    """#108 (계약 v1.8) — 「모른다」를 담을 열거값이 생겼다.
 
     계량이 무효라 QA 로 갔다가 승인된 원료는 `ItemRun.verdict` 가 빈 문자열이다.
-    종전 `r.verdict or 'OK'` 는 이걸 **OK 로** 떨어뜨렸다 — 목표 100 g·실제 0 g·
-    오차 −100 % 인데 판정만 OK 라, 판정 필드로 집계하는 소비자는 성공으로 센다.
+    종전 `r.verdict or 'OK'` 는 이걸 **OK 로** 떨어뜨렸다(#213 이 처음 연 경로) —
+    목표 100 g·실제 0 g·오차 −100 % 인데 판정만 OK 라 소비자가 성공으로 센다.
+    #225 가 임시로 UNDER 로 되매겼고, 이제 **INVALID** 로 정확히 말한다.
 
-    `DispenseResult` 에 「모름」을 담을 열거값이 없으므로(#108 INVALID 상수 전까지)
-    **보수적으로 미달로 보고한다** — 미측정분은 actual_g 에 안 들어가 실제보다 작다.
-    계량 경로 전체를 태우지 않고 발행 함수만 직접 부른다 — fake_skill_node 에 무효
-    손잡이를 더하면 test/t6-fault-injection 과 충돌한다.
+    계량 경로 전체를 태우지 않고 발행 함수만 직접 부른다 — fake_skill_node 에
+    무효 손잡이를 더하면 다른 브랜치와 같은 파일에서 충돌한다.
     """
     proc, _fake, col = cell
     proc.batch_id = 'B-테스트'
@@ -577,10 +695,9 @@ def test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다(cell):
     proc._publish_result(unmeasured)                 # verdict '' · actual 0.0
     assert _wait_until(lambda: len(col.results) == 1), '발행이 안 됐다'
     m = col.results[0]
-    assert (m.verdict, m.actual_g) == (DispenseResult.UNDER, 0.0), m.verdict
-    assert round(m.error_pct) == -100, m.error_pct
+    assert (m.verdict, m.actual_g) == (DispenseResult.INVALID, 0.0), m.verdict
 
-    # 불확실성은 이벤트로도 남는다 — record_node 가 배치 기록에 넣는다
+    # 불확실성의 **정도**는 열거값이 못 담는다 — 이벤트가 담고 record_node 가 기록한다
     assert _wait_until(lambda: any(e.code == 'DISPENSE_UNMEASURED' for e in col.events))
     warn = [e for e in col.events if e.code == 'DISPENSE_UNMEASURED'][-1]
     assert warn.level == CellEvent.WARN and '불확실' in warn.text, warn.text
@@ -591,6 +708,23 @@ def test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다(cell):
     assert _wait_until(lambda: len(col.results) == 2)
     assert col.results[1].verdict == DispenseResult.OK
     assert len([e for e in col.events if e.code == 'DISPENSE_UNMEASURED']) == 1
+
+
+def test_108_안_들어간_것은_INVALID_가_아니라_UNDER_다(cell):
+    """#108 — 「모른다」와 「안 들어갔다」를 섞지 않는다.
+
+    첫 사이클에서 반환 한도를 넘겨 TIMEOUT 이 나면 퍼낸 것을 **전부 되돌린 뒤**라
+    `decide()` 를 못 거쳐 verdict 가 비어 있지만 `actual_g` 0 은 **참값**이다.
+    미측정이 아니므로 INVALID 로 적으면 거짓이 된다 — 되매김으로 UNDER 가 나가야 한다.
+    """
+    proc, _fake, col = cell
+    proc.batch_id = 'B-테스트'
+
+    nothing = ItemRun(material_id='A', target_g=100.0, tol_pct=5.0)   # verdict '' · unmeasured 0
+    proc._publish_result(nothing)
+    assert _wait_until(lambda: len(col.results) == 1)
+    assert col.results[0].verdict == DispenseResult.UNDER, col.results[0].verdict
+    assert not [e for e in col.events if e.code == 'DISPENSE_UNMEASURED'], '미측정이 아니다'
 
 
 def _wait_until(fn, timeout=20.0):

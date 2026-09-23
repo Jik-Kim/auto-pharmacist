@@ -34,7 +34,7 @@ import math
 from dataclasses import dataclass, field
 
 from gmp_dosing.core.dosing import decide
-from gmp_process.core.deviation import policy
+from gmp_process.core.deviation import RULES, policy
 
 
 @dataclass
@@ -295,7 +295,7 @@ class ProcessFSM:
             return self._scoop(self._first_fraction())
         if k == 'scoop' and st == 'SCOOP':
             if not res.get('contact_detected', True):
-                return self._deviate('SCOOP_EMPTY', 'SCOOP', retry=req)
+                return self._scoop_empty(req)
             self.state = 'WEIGH_SCOOP'
             return self._weigh_scoop()                 # 붓기 전 — 퍼낸 양
         if k == 'weigh_scoop' and st == 'WEIGH_SCOOP':
@@ -506,6 +506,27 @@ class ProcessFSM:
                                 'material_id': getattr(self, 'cur', None) and self.cur.material_id})
         self.state, self.mode = 'ERROR', 'ERROR'
         return {'kind': 'safe', 'then': None, 'reason': 'RECOVERY'}
+
+    def _scoop_empty(self, retry: dict):
+        """접촉 실패. **보충으로 넘어가는 그 순간부터 kind 를 `MATERIAL_EMPTY` 로 올린다** (#111 A안).
+
+        종전에는 kind 가 끝까지 `SCOOP_EMPTY` 이고 **action 만** REFILL 로 올라가서,
+        BRD FR-14·3.5.4·흐름도·HMI 이름표·`DEV_TO_OUTCOME` 이 모두 전제하는 `MATERIAL_EMPTY` 를
+        **아무도 내지 않았다.** 거동은 맞는데 기록이 틀린 상태였다 (9/23 조장 결정으로 A안 확정).
+
+        「한 번 못 펐다」와 「원료통이 비었다」는 다른 사실이다 — 앞은 재시도로 풀리고 뒤는
+        사람이 채워야 풀린다. 넘어가는 지점은 여기서 정하지 않고 **정책표에 물어본다**
+        (`RULES['SCOOP_EMPTY']` 의 재시도 상한을 고치면 이 경계도 같이 따라온다).
+
+        보충 뒤에도 접촉이 없으면 `SCOOP_EMPTY` 카운터는 상한에 멈춰 있으므로 계속
+        `MATERIAL_EMPTY` 가 나간다 — 「채웠는데 또 비었다」가 그대로 기록된다.
+        """
+        step = 'SCOOP'
+        nxt = self._counts.get((self.idx, step, 'SCOOP_EMPTY'), 0) + 1
+        if policy('SCOOP_EMPTY', nxt)[0] == 'RETRY':
+            return self._deviate('SCOOP_EMPTY', step, retry=retry)
+        return self._deviate('MATERIAL_EMPTY', step, retry=retry,
+                             detail=f'재시도 {RULES["SCOOP_EMPTY"][0]}회 뒤에도 원료에 닿지 않는다 — 보충 필요')
 
     def _deviate(self, kind: str, step: str, retry: dict | None = None, detail: str = ''):
         key = (self.idx, step, kind)

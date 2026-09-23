@@ -917,13 +917,24 @@ class ProcessNode(Node):
                         self.note = 'RunBatch 취소 — 배치 자동 재개 없음'
                     self._batch_outcome = (fsm.state if fsm.state in ('DONE', 'DISCARDED', 'ABORTED')
                                            else 'ERROR')
-                    if self._batch_outcome == 'DONE' and fsm.verify_unmeasured:
-                        # 완료품이지만 **최종 순량을 모른다** — QA 가 값 없이 승인했다 (#213).
+                    unmeasured = [r.material_id for r in fsm.results if r.unmeasured]
+                    if self._batch_outcome == 'DONE' and (fsm.verify_unmeasured or unmeasured):
+                        # 완료품이지만 **어딘가는 얼마나 들어갔는지 모른다** — QA 가 값 없이 승인했다.
+                        # 원료 단위(`ItemRun.unmeasured`)와 최종 계량(`verify_unmeasured`)은 **다른
+                        # 사건**이고 둘 다 여기 걸린다 (9/23 조장 결정). 종전에는 뒤엣것만 봐서,
+                        # 「원료 투입량은 모르는데 VERIFY 는 멀쩡한」 배치가 그냥 DONE 으로 나갔다.
                         # `result` 는 문자열 필드라 값을 늘려도 계약 변경이 아니다.
                         self._batch_outcome = 'DONE_UNMEASURED'
+                        # ⚠️ 이 값은 `RunBatch.result` 에만 실리고 **DB 에 닿지 않는다** —
+                        # `record_node` 는 배치 결과를 `CellState` 에서 만든다. 그래서 따로 알린다.
+                        # 최종 `CellState(DONE)` 보다 먼저 내보내려 하지만 `_pub_state` 는 0.5 s
+                        # 타이머로도 돌아 앞질러 나갈 수 있다 — 순서 역전은 D 가 UPDATE 로 흡수한다.
+                        self.event('WARN', 'BATCH_UNMEASURED',
+                                   f'미측정 원료 {unmeasured or "없음"} / '
+                                   f'VERIFY 미측정 {bool(fsm.verify_unmeasured)}')
                     self._close_attempt('ABORTED')
                     self._drain()
-                    self.event('INFO', 'BATCH_END', f'{fsm.mode} / {fsm.state}')
+                    self.event('INFO', 'BATCH_END', f'{fsm.mode} / {fsm.state} / {self._batch_outcome}')
                     self._batch_done.set()
             except Exception as e:
                 self._execution_uncertain = True
@@ -1043,30 +1054,35 @@ class ProcessNode(Node):
         m.batch_id, m.material_id = self.batch_id, r.material_id
         m.target_g, m.actual_g = float(r.target_g), float(r.actual_g)
         m.error_pct = (r.actual_g - r.target_g) / r.target_g * 100.0 if r.target_g else 0.0
-        # DispenseResult 는 OK/UNDER/OVER 뿐이라 QA 승인된 'INVALID' 는 담을 곳이 없다 (I-008 · #108).
-        # ⚠️ 빈 verdict 를 'OK' 로 떨어뜨리지 않는다 — `decide()` 를 못 거친 원료(계량 무효 뒤 QA
-        # 승인, 첫 사이클 TIMEOUT 등)가 **목표 100 g · 실제 0 g · 오차 −100 % 인데 판정 OK** 로
-        # 나가던 구멍이었다. 미측정분은 `actual_g` 에 안 들어가 실제보다 작으므로, 같은 규칙으로
-        # 다시 매기면 UNDER 가 된다. 「모르는 것을 OK」 대신 **「확인 안 된 것은 미달」**로 보고한다.
-        # 원료가 다음 사이클로 넘어갔다는 것 자체가 직전 `decide()` 에서 허용오차 밖이었다는 뜻이라
-        # 이 되매김은 항상 OK 가 아니다. target 0 은 `error_pct` 와 같은 방식으로 막는다.
-        fallback = verdict_of(r.target_g, r.actual_g, r.tol_pct)[0] if r.target_g else 'OK'
-        m.verdict = getattr(DispenseResult, r.verdict or fallback, DispenseResult.OK)
+        # 판정은 세 단계다 (v1.8, #108).
+        #   ① 계량 무효로 **투입량을 모르면** INVALID — 목표와 비교할 수 있는 값이 아니다.
+        #   ② `decide()` 가 낸 판정.
+        #   ③ `decide()` 를 못 거쳤으면 같은 규칙으로 되매김한다 — 빈 verdict 를 'OK' 로
+        #      떨어뜨리면 **목표 100 g · 실제 0 g · 오차 −100 % 인데 판정 OK** 가 나간다.
+        # ③ 을 INVALID 로 합치지 않는 이유: `verdict` 가 비는 경우가 미측정만이 아니다.
+        # 첫 사이클에서 반환 한도를 넘겨 TIMEOUT 이 나면 퍼낸 것을 **전부 되돌린 뒤**라
+        # `actual_g` 0 이 참값이다 — 「안 들어갔다」지 「모른다」가 아니므로 INVALID 는 거짓이
+        # 된다(실측 확인: TIMEOUT ×2 → verdict '' · unmeasured 0 · actual 0). UNDER 가 맞다.
+        # target 0 은 `error_pct` 와 같은 방식으로 막는다.
+        if r.unmeasured:
+            m.verdict = DispenseResult.INVALID
+        else:
+            fallback = verdict_of(r.target_g, r.actual_g, r.tol_pct)[0] if r.target_g else 'OK'
+            m.verdict = getattr(DispenseResult, r.verdict or fallback, DispenseResult.OK)
         m.attempts = min(255, int(r.attempts))
         m.duration_s = max(0.0, self._now() - self._item_t0) if self._item_t0 else 0.0
         self._item_t0 = 0.0
         self._last_result = deepcopy(m)
         self.pub_result.publish(m)
         if r.unmeasured:
-            # 계량이 무효였던 사이클은 `decide()` 를 못 거쳐 `ItemRun.verdict` 가 빈 문자열이고,
-            # 열거값에 「모름」이 없어 위에서 **UNDER 로 되매겨 나간다** (#108 INVALID 상수 전까지).
-            # #213 결정 3 이 WEIGH_RESIDUAL 무효를 QA 로 보내면서 **이 경로가 처음으로 실제로 밟힌다**
-            # (그 전에는 ERROR 로 끝나 여기까지 오지 못했다). UNDER 는 「모자랐다」지 「모른다」가
-            # 아니므로 그 차이를 이벤트로 남긴다 — `record_node` 가 배치 기록에 넣는다.
+            # verdict 는 위에서 INVALID 로 나갔다. 열거값은 「모른다」만 말하고 **몇 번 모르는지,
+            # `actual_g` 를 왜 믿으면 안 되는지**는 못 말하므로 이벤트로 남긴다 —
+            # `record_node` 가 배치 기록에 넣어 감사 추적이 된다.
+            # #213 결정 3 이 WEIGH_RESIDUAL 무효를 QA 로 보내면서 이 경로가 처음 열렸다.
             self.event('WARN', 'DISPENSE_UNMEASURED',
                        f'{r.material_id}: 계량 무효 {r.unmeasured}회로 투입량 불확실 — '
-                       f'actual_g {m.actual_g:.1f} 은 미측정분이 빠진 값이라 실제보다 작고, '
-                       f'verdict 는 「모름」을 담을 열거값이 없어 UNDER 로 보고된다 (#108)')
+                       f'verdict=INVALID. actual_g {m.actual_g:.1f} 은 미측정분이 빠진 값이라 '
+                       f'실제보다 작고 목표와 비교할 수 없다 (#108)')
 
     def _close_attempt(self, outcome: str):
         a, self._attempt = self._attempt, None

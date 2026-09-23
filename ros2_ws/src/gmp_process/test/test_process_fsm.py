@@ -484,12 +484,37 @@ def test_wrong_tool_container_width_mismatch_discarded():
 
 
 def test_material_empty_refill_resumes_scoop():
+    """#111 A안 — 재시도 3회는 `SCOOP_EMPTY`, **보충으로 넘어가는 4회째는 `MATERIAL_EMPTY`**.
+
+    「한 번 못 펐다」와 「원료통이 비었다」는 다른 사실이고, 기록에도 다르게 남아야 한다.
+    고치기 전에는 kind 가 끝까지 SCOOP_EMPTY 이고 action 만 REFILL 로 올라가서,
+    BRD·흐름도·HMI 가 전제하는 MATERIAL_EMPTY 를 아무도 내지 않았다.
+    """
     cell = Cell(yields=[0, 0, 0, 0, 100, 50])           # 4번 빈 스쿱 → REFILL → 보충 후 재개
     fsm = _fsm()
     trace = run(fsm, cell)
     kinds = [d['kind'] for d in fsm.deviations]
-    assert kinds == ['SCOOP_EMPTY'] * 4 and fsm.deviations[-1]['action'] == 'REFILL'
+    assert kinds == ['SCOOP_EMPTY'] * 3 + ['MATERIAL_EMPTY'], kinds
+    assert fsm.deviations[-1]['action'] == 'REFILL'
+    assert '보충' in fsm.deviations[-1]['detail'], fsm.deviations[-1]['detail']
+    assert fsm.deviations[-1]['count'] == 1, 'MATERIAL_EMPTY 카운터는 따로 센다'
     assert ('PAUSED', 'wait_interlock') in trace and fsm.state == 'DONE' and len(fsm.results) == 2
+
+
+def test_material_empty_repeats_when_refill_did_not_help():
+    """#111 — 채웠는데 또 비면 `SCOOP_EMPTY` 로 되돌아가지 않는다.
+
+    SCOOP_EMPTY 카운터가 상한에 멈춰 있으므로 이후 접촉 실패는 계속 MATERIAL_EMPTY 다.
+    「채웠는데 또 비었다」가 그대로 기록돼야 사람이 같은 통을 다시 들여다본다.
+    """
+    cell = Cell(yields=[0] * 8 + [100, 50])            # 보충 뒤에도 4번 더 빈 스쿱
+    fsm = _fsm()
+    run(fsm, cell)
+    kinds = [d['kind'] for d in fsm.deviations]
+    assert kinds[:3] == ['SCOOP_EMPTY'] * 3, kinds
+    assert set(kinds[3:]) == {'MATERIAL_EMPTY'}, kinds
+    assert all(d['action'] == 'REFILL' for d in fsm.deviations[3:])
+    assert [d['count'] for d in fsm.deviations[3:]] == list(range(1, len(kinds) - 2)), kinds
 
 
 def test_prepour_boundary_uses_original_target_tolerance_after_prior_delivery():
@@ -636,11 +661,10 @@ def test_213_weigh_residual_무효는_미측정으로_세고_누산하지_않는
     r = fsm.results[0]
     assert r.unmeasured == 1, r.unmeasured
     assert r.actual_g < r.target_g          # 미측정분이 빠져 실제보다 작다
-    # ⚠️ `decide()` 를 못 거쳐 verdict 가 **비어 있다.** `process_node._publish_result` 가
-    # 이걸 `verdict_of` 로 되매겨 DispenseResult 는 **UNDER 로 보고한다** — 「모름」을 담을
-    # 열거값이 없는 동안의 보수적 처리다 (#108). 발행 쪽 고정은 `test_process_node.py` 의
-    # `test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다` 가 한다.
-    # 계약이 INVALID 를 갖게 되면 이 assert 가 먼저 깨져야 한다.
+    # ⚠️ `decide()` 를 못 거쳐 verdict 가 **비어 있다.** FSM 은 여기까지만 안다 —
+    # 「모름」을 어떻게 발행할지는 `process_node._publish_result` 가 정하고, `unmeasured` 가
+    # 서 있으므로 **INVALID** 로 나간다 (계약 v1.8 · #108). 발행 쪽 고정은
+    # `test_process_node.py` 의 `test_108_투입량_불명은_INVALID_로_나간다` 가 한다.
     assert r.verdict == '', r.verdict
 
 

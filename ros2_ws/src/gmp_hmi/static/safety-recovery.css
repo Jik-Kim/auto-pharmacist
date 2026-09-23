@@ -11,8 +11,6 @@
 #recoveryDialog #recoveryForm{margin-top:18px}
 #recoveryDialog label{font-size:13px;margin:0 0 6px}
 #recoveryDialog select{width:100%;min-width:0;height:auto;min-height:42px;margin:0;font-size:13px}
-#recoveryDialog .recovery-confirm{display:flex;align-items:flex-start;gap:10px;padding:12px;margin:16px 0;background:#f4f7fc;border:1px solid #dce5f1;border-radius:7px;cursor:pointer}
-#recoveryDialog #recoveryConfirmed{flex:0 0 18px;width:18px;height:18px;min-height:18px;margin:2px 0 0;padding:0;accent-color:#1957ed}
 #recoveryDialog .recovery-blocked{padding:10px 14px;margin:12px 0;border:1px solid #efd29a;border-radius:7px;background:#fff9ee;color:#805415;font-size:12px}
 #recoveryDialog .recovery-blocked[hidden]{display:none}
 #recoveryDialog ul{margin:5px 0 0;padding-left:18px}

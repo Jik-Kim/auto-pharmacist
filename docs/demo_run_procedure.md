@@ -6,14 +6,14 @@
 
 | 순서 | 창 | 띄우는 것 | 기다릴 것 |
 |---|---|---|---|
-| T0 | — | 로봇 전원 · 컴퓨트박스 · 랜선 · 비상정지 해제 · **툴 `tool_weight` / TCP `GripperDA_v1` 선택 확인**(9/22: `tool_weight` 의 cz 는 89.0 이어야 한다 — 공구 자동측정을 다시 돌리면 2.32 로 덮이므로 A 정식 반영 전에는 돌리지 않는다) · **스쿠핑 보정 확인** — `stations.yaml` `scooping.A.calibrated` 가 `true` 여야 자동 스쿱이 실행된다(#216, G5). `false` 면 첫 `SCOOP` 이 이동 전 거부되어 배치가 진행되지 않는다 · 실물 첫 PC 는 `python3 -c 'import pymodbus'` — 없으면 `sudo apt install python3-pymodbus` (없으면 OnRobot 드라이버가 뜨자마자 죽고 `/onrobot/sendCommand` 가 안 보인다, 9/19) | 티치펜던트 Auto 모드 |
+| T0 | — | **기기 구성(9/23 팀 합의): 로봇 PC 1대(브링업·노드 4개·HMI 서버 전부) + QA 기기 = 휴대폰(브라우저)**. 다른 PC 브라우저는 추가 시연. 휴대폰은 「인터넷」이 아니라 **로봇 PC 와 같은 네트워크**에 있어야 한다(BRD 3.7.1 「동일 네트워크」) — Flask :5000 은 로봇 PC 안에서만 뜬다. 로봇 PC 는 유선(로봇 LAN 192.168.1.0/24, 게이트웨이 없음 — 9/20 수정) + Wi-Fi(휴대폰과 같은 AP 또는 휴대폰 핫스팟) 두 인터페이스로 붙이고, 휴대폰에서 `http://<로봇 PC Wi-Fi IP>:5000` 접속을 **G6 에서 미리** 확인한다 · 로봇 전원 · 컴퓨트박스 · 랜선 · 비상정지 해제 · **툴 `tool_weight` / TCP `GripperDA_v1` 선택 확인**(9/23: `tool_weight` 는 **1.36 kg · CoG [5.31, −34.68, 8.28] mm** 로 펜던트에 **동결** — 9/22 의 「cz 89」와 「자동측정 금지」는 모두 철회됐다(PR #235, cz 89 는 무게중심이 아니라 1.079 Nm 보정항). 값이 다르면 바꾸지 말고 A 에게 알린다) · ⚠️ **실물 계량은 재보정 전 「미검증」** — `common.yaml` `scale.gain 0.8859`·`offset_g`·`max_std_g` 는 우드락 공구(9/19~21) 조건 값이고 PLA 공구에서는 9/23 실측이 용기 경로 gain ≈ 1.076 을 가리킨다(#187, 확정 전). 재보정 전 리허설 계량이 이상해도 설비·보정 어느 쪽인지 가를 수 없으므로 결과를 「미검증」으로 기록한다 · **스쿠핑 보정 확인** — `stations.yaml` `scooping.A.calibrated` 가 `true` 여야 자동 스쿱이 실행된다(#216, G5). `false` 면 첫 `SCOOP` 이 이동 전 거부되어 배치가 진행되지 않는다 · 실물 첫 PC 는 `python3 -c 'import pymodbus'` — 없으면 `sudo apt install python3-pymodbus` (없으면 OnRobot 드라이버가 뜨자마자 죽고 `/onrobot/sendCommand` 가 안 보인다, 9/19) | 티치펜던트 Auto 모드 |
 | T1 | 브링업 | `ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100` | `[skill_node] SELF_CHECK OK` 로그 (툴·TCP·충돌 감도 일치) |
-| T2 | HMI | (T1 에 포함) HMI 창 | 상태 `IDLE`, 그리퍼 폭 표시 |
+| T2 | HMI | (T1 에 포함) HMI 서버 기동 → **휴대폰 브라우저**로 `http://<로봇 PC Wi-Fi IP>:5000` 접속, 로그인 | 휴대폰 화면에 상태 `IDLE`, 그리퍼 폭 표시 |
 | T3 | 사람 | 원료통 A·B·C(판 바깥 아래)와 **각 원료통 아래 전용 스쿱 3개**, **빈 약통을 Pass Box 「빈통」 칸(`passbox_empty`, slots 1)** 에 넣었는지. 완성품은 로봇이 Pass Box 「완성품」 칸(`passbox_done`)에 놓고 QA 가 회수한다 (D-23·D-24). 판 위 매거진·트레이·스쿱랙은 없다 (9/18 폐지). 이후 용기는 사람이 만지지 않는다 (D-18) | — |
-| T4 | HMI | 레시피 `recipe-01`(「레시피 1」) 선택 → 주문 제출 — `demo_batch.yaml` 은 운영 목록에서 삭제됐고 현재 운영 레시피는 `recipe-01`~`03`(9/22 #217) | 상태 `RUNNING` |
+| T4 | HMI(휴대폰) | 레시피 `recipe-01`(「레시피 1」) 선택 → 주문 제출 — `demo_batch.yaml` 은 운영 목록에서 삭제됐고 현재 운영 레시피는 `recipe-01`~`03`(9/22 #217) | 상태 `RUNNING` |
 | T5 | — | 자율 운전. **공정 중에는 손대지 않는다** (건드리면 NUDGE 정지, 한 번 더 건드리면 재개 — D-21). 원료 3종이 끝나면 완성품을 Pass Box 「완성품」 칸에 놓고 `nudge_wait` 로 물러나 **PAUSED 로 선다(`NUDGE_WAIT`)** | 원료 3종 `OK` → 상태 `NUDGE_WAIT` |
 | T5' | 사람 | **완성품을 Pass Box 에서 회수하고 로봇을 한 번 건드린다** (D-23 세트 경계). 이 NUDGE 없이는 `DONE` 이 되지 않고 다음 주문도 받지 않는다 | `DONE`, 상태 `IDLE` |
-| T6 | 시연 | 일탈 시나리오: (a) 스쿱을 빼둔 채 시작 → `GRIP_FAIL` 자동 재시도 ×3, **4 회째 FORCED → `ERROR`**(자동 복구 아님) (b) 원료통 비움 → `SCOOP_EMPTY` ×3 뒤 4 회째 action=REFILL → 인터락 보충 → 재개. **기록 kind 는 현재 `SCOOP_EMPTY` 그대로다** — `MATERIAL_EMPTY` 를 내는 코드가 없어(#111) 조장 결정 뒤 kind 가 바뀐다 (c) 초과 스쿱 유도(원료를 수북이) → `RETURN_MATERIAL` 로 원료통에 반환 후 더 얕게 재스쿱 — **일탈이 뜨지 않는 정상 경로**이고 `ScoopCycle.outcome=RETURNED` 로만 남는다. 실물은 반환→재스쿱 연결 경로 구현 전까지 여기서 `ERROR` 로 끝난다(#64). `TIMEOUT` 은 깊이 보정이 수렴하지 않아 `max_returns`(3) 를 넘을 때만 나며 가상에서는 거의 재현되지 않는다(9/22 재현: 공칭 9 배를 줘도 반환 1 회) (d) 배치 끝 VERIFY 규격 이탈 → `BATCH_OUT_OF_SPEC` → HMI QA 판정. `OVERFILL` 은 v1.3 뒤 정상 경로에서 나오지 않는다(초과는 붓기 전에 반환) | (a)(b)(d) 는 `deviation` 이 뜨고 기록에 남는다, (c) 는 `ScoopCycle` 기록으로만 확인 |
+| T6 | 시연 | 일탈 시나리오: (a) 스쿱을 빼둔 채 시작 → `GRIP_FAIL` 자동 재시도 ×3, **4 회째 FORCED → `ERROR`**(자동 복구 아님) (b) 원료통 비움 → `SCOOP_EMPTY` ×3 재시도 뒤 **4 회째는 kind 가 `MATERIAL_EMPTY`** 로 바뀌며 action=REFILL → 인터락 보충 → 재개 (#111 A안, 9/23 조장 결정). 보충 뒤에도 접촉이 없으면 계속 `MATERIAL_EMPTY` 다. `ScoopCycle.outcome` 은 둘 다 `SCOOP_EMPTY` 로 남는다 — 스쿱 시도의 결과는 같은 사실이고 달라진 것은 일탈 기록이다 (c) 초과 스쿱 유도(원료를 수북이) → `RETURN_MATERIAL` 로 원료통에 반환 후 더 얕게 재스쿱 — **일탈이 뜨지 않는 정상 경로**이고 `ScoopCycle.outcome=RETURNED` 로만 남는다. 실물은 반환→재스쿱 연결 경로 구현 전까지 여기서 `ERROR` 로 끝난다(#64). `TIMEOUT` 은 깊이 보정이 수렴하지 않아 `max_returns`(3) 를 넘을 때만 나며 가상에서는 거의 재현되지 않는다(9/22 재현: 공칭 9 배를 줘도 반환 1 회) (d) 배치 끝 VERIFY 규격 이탈 → `BATCH_OUT_OF_SPEC` → **휴대폰 HMI 에서 QA 판정**(셀 밖 원격 승인 장면, D-16·BR-05). `OVERFILL` 은 v1.3 뒤 정상 경로에서 나오지 않는다(초과는 붓기 전에 반환) | (a)(b)(d) 는 `deviation` 이 뜨고 기록에 남는다, (c) 는 `ScoopCycle` 기록으로만 확인 |
 | T7 | — | 종료: HMI 에서 `SafePose` → 런치 Ctrl-C | |
 
 규칙
@@ -29,12 +29,14 @@
 | G2 그리퍼 modbus | `SetGripper close width:=20 force:=20` → 폭 피드백 | 폭이 목표 근처에서 멈추고 `busy` 가 풀린다 | `gripper.backend:=dio` 로 전환 (Q-02·Q-03) |
 | G3 스테이션 티칭 | `stations.yaml` 9곳 | `MoveToStation` 9곳 왕복 무충돌 | — |
 | G4 힘제어 접촉 | 비드 통 위에서 `Scoop` | `contact_detected=true`, 담금 깊이 상한 안 | 강성·목표력 파라미터 조정 |
+| G6 휴대폰 HMI 리허설 (9/23 팀 합의) | 로봇 PC 를 유선(로봇 LAN)+Wi-Fi 로 붙인 상태에서 휴대폰 브라우저로 `http://<로봇 PC Wi-Fi IP>:5000` 접속 → 로그인 → 레시피 선택·주문 → 상태·계량 그래프·진행 스트립 → 일탈 카드에서 승인/폐기 → 인터락 → 안전 복구 버튼까지 **휴대폰 화면 폭(≤ 760 px, `hmi.css` 모바일 분기)** 에서 한 번씩 눌러 본다. 인터넷 유무는 무관, 같은 네트워크 여부가 관건. 다른 PC 브라우저 동시 접속도 1회 | 휴대폰에서 전 기능 조작 가능, QA 판정 → 로봇 재개 2 s 이내(BRD 3.6) |
 | G5 스쿠핑 보정 (보류, 9/22 #216) | 힘 측정 불안정과 파지부 스쿱 상대 회전 문제로 최초 접촉 정지·높이 측정·`calibrated: true` 전환은 수행하지 않는다. 관련 설정·파라미터와 단위 테스트만 유지하고 전체 노드 통합·공정 플로우 검증을 우선한다 | `stations.yaml:scooping.A.calibrated=false` 유지, 접촉 정지·자동 높이 보정 경로가 실행되지 않음 | 통합·플로우 검증 뒤 힘 측정과 파지 회전 재현성을 해결하고 G5를 재개 |
 
 
 ## HMI 관리자 및 통신 환경 (V4)
 
 본운영은 `ROS_DOMAIN_ID=70`, 격리 시험은 `ROS_DOMAIN_ID=88`을 사용한다.
+**시연 기기(9/23 팀 합의)**: 노드는 전부 로봇 PC 1대(`docs/architecture.md` 「배치」). HMI 조작은 **휴대폰 브라우저**가 기본이고 다른 PC 는 추가 시연이다. 휴대폰은 로봇 PC 와 같은 네트워크(같은 Wi-Fi AP 또는 휴대폰 핫스팟에 로봇 PC 접속)여야 하며, 로봇 LAN(유선 192.168.1.0/24)에는 게이트웨이를 두지 않는다(두면 인터넷·Wi-Fi 경로가 로봇 LAN 으로 빨려 들어간다, 9/20). 접속 주소는 로봇 PC 의 **Wi-Fi 인터페이스 IP**(`ip -4 addr show` 로 확인) 이며 시연 전 G6 에서 확인한다. 외부 인터넷을 통한 접속(포트 포워딩·터널)은 범위 밖이다.
 아래 계정 환경은 HMI를 기동할 터미널에서 먼저 설정한다. 비밀번호는 Git에 저장하지 않는다.
 
 ```bash
