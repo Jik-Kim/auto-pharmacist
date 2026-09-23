@@ -72,19 +72,15 @@ def test_check_depth_uses_full_taught_target_and_returns_to_weigh_pose(monkeypat
                      ('measure', [x, -334.0, 120.0, 90.0, 160.0, -90.0], 1.0, 30.0),
                      ('contact_stop',),
                      ('off',), ('move', weigh, 1.0)]
-<<<<<<< HEAD
     measurement = json.loads(result.pop('message'))
     assert measurement['frame'] == 'BASE'
     assert measurement['contact_tcp_posx'] == [x, -334, 150, 90, 160, -90]
     # 최초 접촉의 자세와 회전을 사용한다. 최종 목표 Z=120이나 고정 Z-20이 아니다.
     assert measurement['tip_position_mm'][2] == pytest.approx(90.1637303852)
-    assert result == dict(contact_detected=True, max_contact_force_n=16.0, insertion_depth_mm=0.0)
-    assert [f[0] for f in feedback] == ['APPROACH', 'DIP', 'LIFT']
-=======
-    assert result == dict(contact_detected=True, max_contact_force_n=18.0, insertion_depth_mm=30.0,
+    assert result == dict(contact_detected=True, max_contact_force_n=16.0,
+                          insertion_depth_mm=0.0,
                           contact_pose_base=[x, -334.0, 150.0, 90.0, 160.0, -90.0])
-    assert [f[0] for f in feedback] == ['APPROACH', 'DIP', 'DIP', 'LIFT']
->>>>>>> 9b1fc970137eefcbc5de3009df176c2b84bf04fc
+    assert [f[0] for f in feedback] == ['APPROACH', 'DIP', 'LIFT']
 
 
 @pytest.mark.parametrize('fault', ['missing_target', 'cancel', 'compliance_failure', 'motion_failure', 'bad_force', 'wrong_rotation'])
@@ -173,7 +169,8 @@ def test_scoop_internal_timeout_aborts_unless_client_requested_cancel(monkeypatc
     node._submit = lambda *args, **kwargs: SimpleNamespace(
         error='motion timed out', cancel=True, result=None)
     endings = []
-    goal = SimpleNamespace(request=SimpleNamespace(material_id='A', attempt=1),
+    goal = SimpleNamespace(request=SimpleNamespace(
+        material_id='A', attempt=1, depth_fraction=1.0),
         is_cancel_requested=client_cancel,
         succeed=lambda: endings.append('success'),
         canceled=lambda: endings.append('canceled'),

@@ -84,13 +84,8 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 | `weigh_scoop` | `station`, `material_id`, `tare_g`(빈 스쿱) | `weigh_held(tare_g)` — **해당 `material_N.posx`에서** 들고 있는 스쿱을 계량 (SCOOP_TARE · WEIGH_SCOOP · WEIGH_RESIDUAL) | `{'gross_g', 'net_g', 'std_g', 'valid'}` + `weight` 발행 (`station=material_N`, `subject='scoop'`) |
 | `move` | `station`, `approach`('AT'/'ABOVE') | `move_to_station(station_id, approach)` — `station='scoop'` 이면 `material_id` 로 `stations.yaml` 의 `scoop_N` 을 찾아 넣는다 (`core/station_map.py`, D-24) | `{'success', 'reached'}` — `reached` 는 `CellState.station` 이 된다 |
 | `grip` | `close`, `target`('scoop'/'cup') | `set_gripper(close, width=scoop_width 또는 cup_width, force)` | `{'grip_inferred', 'final_width_mm'}` |
-<<<<<<< HEAD
-| `scoop` | `material_id`, `attempt`, `fraction` | `scoop(material_id, attempt, depth_fraction=fraction)` — 계약 v1.5: `fraction` 이 담그기 깊이 비율 [`min_fraction`, 1.0] 로 전달된다. `attempt` 는 기록용. 실제 Z 변환식은 A 실물 뒤. 현재 A 실물 구현은 빈 스쿱 Fz 대비 최초 BASE 변화량 접촉(1.5N)에서 감속 정지 → IDLE 확인 → 힘제어 해제 → 계량 자세 복귀하는 높이 측정이며 퍼올리기는 미구현 | `{'contact_detected', 'max_contact_force_n', 'insertion_depth_mm'}` — 뒤 둘은 FSM 이 안 쓰고 `ScoopCycle` 에 실린다. WEIGH_SCOOP 은 퍼낸 양으로 **전량 붓기와 원료통 반환**을 가른다 — 부분 붓기는 v1.3 으로 폐기됐고, 양 조절은 이 `fraction`(담그기 깊이)이 한다 |
+| `scoop` | `material_id`, `attempt`, `fraction` | `scoop(material_id, attempt, depth_fraction=fraction)` — 계약 v1.5: `fraction` 은 담그기 깊이 비율 [`min_fraction`, 1.0], `attempt` 는 기록용이다. A의 TW spline·높이 보정 파라미터는 구현됐지만 `calibrated=false` 차단을 유지한다. 힘 측정 불안정과 스쿱 상대 회전 때문에 최초 접촉 정지·원료 높이 측정은 운영에서 비활성화하고 전체 통합·플로우 검증을 우선한다 | `{'contact_detected', 'max_contact_force_n', 'insertion_depth_mm'}` — 뒤 둘은 FSM 이 안 쓰고 `ScoopCycle` 에 실린다. WEIGH_SCOOP 은 퍼낸 양으로 **전량 붓기와 원료통 반환**을 가른다 — 부분 붓기는 v1.3 으로 폐기됐고, 양 조절은 이 `fraction`(담그기 깊이)이 한다 |
 | `pour` | `station`, `fraction=1` | `pour(1)` — 붓기 시작점의 ABOVE에 도착 후 `workbench_pour_start`로 하강하고 `workbench_pour_end`까지 전량 붓는다. | `{'success'}` |
-=======
-| `scoop` | `material_id`, `attempt`, `fraction` | `scoop(material_id, attempt, depth_fraction=fraction)` — 계약 v1.5: `fraction` 이 담그기 깊이 비율 [`min_fraction`, 1.0] 로 전달된다. `attempt` 는 기록용. A는 접촉 스쿱 끝 WORLD 높이와 기준 깊이×fraction으로 TW spline Z를 보정한다. 원료 A 보정 미확인 상태에서는 이동 전 거부하며 B/C는 미티칭 | `{'contact_detected', 'max_contact_force_n', 'insertion_depth_mm'}` — 뒤 둘은 FSM 이 안 쓰고 `ScoopCycle` 에 실린다. WEIGH_SCOOP 은 퍼낸 양으로 **전량 붓기와 원료통 반환**을 가른다 — 부분 붓기는 v1.3 으로 폐기됐고, 양 조절은 이 `fraction`(담그기 깊이)이 한다 |
-| `pour` | `station`, `fraction=1` | `pour(1)` — `workbench_pour_start`에서 `workbench_pour_end`까지 전량 붓는다. | `{'success'}` |
->>>>>>> 9b1fc970137eefcbc5de3009df176c2b84bf04fc
 | `return_material` | `material_id` | `return_material(material_id)` — `return_start_posx`·`return_end_posj` 가 없으면 실패 | `{'success', 'message'}` |
 | `safe` | `reason`, `then` | `safe_pose(reason)` | `{'success'}` — 전이는 요청의 `then` 이 정한다 |
 | `wait_qa` | `deviation` | 아무 스킬도 안 부름. `_qa.wait()` | `{'decision': 'APPROVED'/'DISCARDED', 'operator_id'}` |
