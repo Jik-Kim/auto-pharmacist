@@ -10,7 +10,8 @@ sys.modules.setdefault('rclpy', types.SimpleNamespace())
 from gmp_skills.adapters.dsr_arm import DsrArm  # noqa: E402
 
 
-def test_dr_init_names_are_not_class_name_mangled(monkeypatch):
+@pytest.mark.parametrize('task_options', [{}, {'task_vel': [250., 80.625], 'task_acc': [1000., 322.5]}])
+def test_dr_init_names_are_not_class_name_mangled(monkeypatch, task_options):
     fake_dr = types.SimpleNamespace()
     fake_node = types.SimpleNamespace(create_client=lambda *_args, **_kwargs: object())
     calls = []
@@ -26,7 +27,9 @@ def test_dr_init_names_are_not_class_name_mangled(monkeypatch):
     monkeypatch.setitem(sys.modules, 'gmp_interfaces.srv',
                         types.SimpleNamespace(GetCollisionSensitivity=object()))
 
-    DsrArm('dsr01', 'm0609', 'virtual', 60.0, 60.0)
+    arm = DsrArm('dsr01', 'm0609', 'virtual', 60.0, 60.0, **task_options)
+    assert arm.task_vel == task_options.get('task_vel', [60., 60.])
+    assert arm.task_acc == task_options.get('task_acc', [60., 60.])
 
     assert fake_dr.__dsr__id == 'dsr01'
     assert fake_dr.__dsr__model == 'm0609'
@@ -39,6 +42,7 @@ class FakeApi:
     DR_BASE = 0
     DR_TOOL = 1
     DR_MV_MOD_ABS = 0
+    DR_MV_MOD_REL = 1
     DR_FC_MOD_REL = 10
     DR_FC_MOD_ABS = 11
     DR_AXIS_Z = 2
@@ -67,7 +71,8 @@ class FakeApi:
 def _arm(mode='real'):
     arm = DsrArm.__new__(DsrArm)
     arm.mode = mode
-    arm.vel, arm.acc = 60.0, 60.0
+    arm.vel, arm.acc = 60.0, 100.0
+    arm.task_vel, arm.task_acc = [250.0, 80.625], [1000.0, 322.5]
     arm.tool_name, arm.tcp_name = 'tool_weight', 'GripperDA_v1'
     arm.virtual_tcp_name = 'GripperDA_v1'
     arm.tcp_offset_mm_deg = [0.0, 0.0, 208.0, 0.0, 0.0, 0.0]
@@ -112,7 +117,7 @@ def test_movejx_uses_base_absolute_and_checks_solution():
     arm.solution_space = lambda: 3
     arm.movejx_cancellable(target, 3, .2, lambda: False, 10)
     assert arm.R.calls[0] == ('amovejx', (tuple(target),),
-                              dict(sol=3, vel=12., acc=12., ref=0, mod=0))
+                              dict(sol=3, vel=12., acc=20., ref=0, mod=0))
 
 
 @pytest.mark.parametrize('fault', ['wrong_solution', 'wrong_pose', 'query_error', 'cancel'])
@@ -260,6 +265,11 @@ def test_virtual_initialize_keeps_wrapper_default_base_reference():
     assert arm.R.calls[0][1] == (arm.R.ROBOT_MODE_MANUAL,)
     assert arm.R.calls[1][1] == ('GripperDA_v1', [0.0, 0.0, 208.0, 0.0, 0.0, 0.0])
     assert arm.R.calls[3][1] == (arm.R.ROBOT_MODE_AUTONOMOUS,)
+    settings = {name: args for name, args, _ in arm.R.calls if name.startswith('set_')}
+    assert settings['set_velj'] == (60.,)
+    assert settings['set_accj'] == (100.,)
+    assert settings['set_velx'] == (250., 80.625)
+    assert settings['set_accx'] == (1000., 322.5)
 
 
 def test_virtual_initialize_selects_existing_tcp_without_deleting_it():
@@ -770,3 +780,36 @@ def test_cancel_wins_over_contact_stop():
         arm.wait_motion_cancellable(lambda: cancelled[0], 1.0, observer=observe,
                                     stop_requested=lambda: True)
     assert stopped == [True]
+
+
+@pytest.mark.parametrize('scale', [1.0, 0.2])
+@pytest.mark.parametrize('method', ['movej', 'amovej', 'movel', 'amovel', 'movesx', 'movel_rel_tool'])
+def test_drl_motion_speeds_keep_joint_and_cartesian_units_separate(method, scale):
+    arm = _arm()
+    target = [[0.] * 6, [1.] * 6] if method == 'movesx' else [1.] * 6
+    getattr(arm, method)(target, scale)
+    kwargs = arm.R.calls[-1][2]
+    if method in ('movej', 'amovej'):
+        assert kwargs['vel'] == pytest.approx(60. * scale)
+        assert kwargs['acc'] == pytest.approx(100. * scale)
+    else:
+        assert kwargs['vel'] == pytest.approx([250. * scale, 80.625 * scale])
+        assert kwargs['acc'] == pytest.approx([1000. * scale, 322.5 * scale])
+
+
+def test_operating_config_matches_drl_motion_defaults():
+    from pathlib import Path
+    import yaml
+    params = Path(__file__).resolve().parents[2] / 'gmp_bringup' / 'params'
+    common = yaml.safe_load((params / 'common.yaml').read_text())
+    robot = common['/**']['ros__parameters']['robot']
+    assert (robot['vel'], robot['acc']) == (60., 100.)
+    assert robot['transfer_joint_vel_deg_s'] == robot['vel']
+    assert robot['transfer_joint_acc_deg_s2'] == robot['acc']
+    assert robot['task_vel'] == [250., 80.625]
+    assert robot['task_acc'] == [1000., 322.5]
+    stations = yaml.safe_load((params / 'stations.yaml').read_text())
+    for material in ('A', 'B', 'C'):
+        path = stations['scooping'][material]['fixed_path']
+        assert path['velocity'] == robot['task_vel']
+        assert path['acceleration'] == robot['task_acc']

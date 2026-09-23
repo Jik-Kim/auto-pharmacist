@@ -43,8 +43,10 @@
       tcp_name: GripperDA_v1        # 실물 컨트롤러에 등록된 TCP
       virtual_tcp_name: GripperDA_v1 # 가상에서도 실물과 같은 이름으로 아래 오프셋을 등록
       tcp_offset_mm_deg: [0.0, 0.0, 208.0, 0.0, 0.0, 0.0]  # 툴 좌표계 +Z 208 mm
-      vel: 60.0                     # set_velx 병진 mm/s · 회전 deg/s 상한
-      acc: 60.0
+      vel: 60.0                     # DRL 관절 속도 deg/s (movej/movejx)
+      acc: 100.0                    # DRL 관절 가속도 deg/s²
+      task_vel: [250.0, 80.625]      # DRL 작업공간 [병진 mm/s, 회전 deg/s]
+      task_acc: [1000.0, 322.5]      # DRL 작업공간 [병진 mm/s², 회전 deg/s²]
       vel_scale: 0.3                # 런치가 덮어쓴다. 실물 첫 기동 0.2
       shutdown_timeout_s: 5.0       # 종료 정리 대기 한도. 초과 시 해제 성공으로 처리하지 않음
       motion_timeout_s: 30.0        # 비동기 이동 제한. 초과·취소 시 MoveStop(DR_SSTOP)
