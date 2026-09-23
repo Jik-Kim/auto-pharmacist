@@ -15,7 +15,8 @@
 | QA 폐기 대사 | `reconcile_discard` 는 `result IN ('DONE','DONE_UNMEASURED')` | PR #261 |
 | KPI | `batch_success_pct` = **DONE 만**(카드 이름 「계량 검증 완료율」), `unmeasured_done`·`unmeasured_done_pct` = 미측정 승인 완료, `run_complete_pct` = 둘의 합(완주율). 카드 수 5개 불변 | PR #261, SOT D-32 (5) |
 | 결과 필터 | 전체·정상 종료·**미측정 승인 완료**·폐기·오류·진행 중 | `templates/index.html` `#reportResult`, PR #261 |
-| `hmi.js steps` 맵 | FSM 상태와 1:1 (CLEANUP 포함) | PR #232 |
+| `hmi.js steps` 맵 | FSM 상태와 1:1 (CLEANUP 포함). 시험 공정·데모가 내는 단계도 이 맵 안에서만 쓴다(`test_v3_frontend_contract.py` 대조) | PR #232, 통합 전 정리 PR |
+| 계약 이름표 대조 | `db.py` `KINDS`·`DECISIONS`·`VERDICTS`·`LEVELS`, `hmi.js` `outcomeNames` 를 `gmp_interfaces/msg/*.msg` 와 시험으로 대조(`test_db.py`). 통신 시험 launch 의 시나리오 목록도 시험 노드와 대조 | 통합 전 정리 PR |
 | 프런트 시험 2 종 | `tools/test_safety_popup.cjs`(DOM 스텁·안전 복구 팝업 가드)·`tools/test_frontend_render.cjs`(playwright) **둘 다 PASS**. 후자는 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium` 필요 | 9/23 실행, PR #267 |
 | 재고 차감 `session_inventory.observe` | OK·OVER 만 차감(UNDER·INVALID 제외) — 「재고를 모른다」 표현은 별건 | `core/session_inventory.py:39`, #108 논의 |
 | 레이아웃 | `body` 가 `display:flex; height:100dvh; overflow:hidden` — **스크롤은 `main` 안에서만** 일어난다. 기록·통계 탭은 grid 4행 `1fr` 로 카드 3개 하단 정렬 | PR #229 (`hmi.css:1`·`:73`) |
@@ -38,7 +39,7 @@
 - **배치가 즉시 ERROR/CANCELLED 면 먼저 도메인 충돌을 의심** — 9/22 공유 `ROS_DOMAIN_ID=70` 에서 다른 팀원 노드가 우리 배치를 취소했다(`BATCH_CANCEL_REQUEST` 감사 기록 없이 `BATCH_CANCELLED`). 격리 도메인에서 재현되면 우리 문제.
 - `ros2 node list`·`service list` 가 옛 목록이면 `ros2 daemon stop && ros2 daemon start`.
 - `static/*` 를 고친 뒤 화면이 그대로면 `colcon build --symlink-install --packages-select gmp_hmi` + HMI 재시작, `curl http://127.0.0.1:5000/static/hmi.css | grep <바꾼 문자열>` 로 서빙 확인.
-- **ROS 없는 샌드박스에서 `gmp_hmi` pytest 는 `PYTHONPATH` 없이 돌리면 거짓 기준선이 된다** — `gmp_process` import 실패로 `test_v4_process.py` 등 69 건이 ERROR 로 빠지고 「55 passed」만 보인다. 9/23 #266 에서 이것을 「회귀 없음」으로 적었다가 조장 검토에서 실패 1 건이 드러났다. `PYTHONPATH=../gmp_process:.:../gmp_dosing python3 -m pytest -q test` 로 **127 passed** 가 기준(PR #276 에서 사본↔운영 대조 시험 1 건 추가).
+- **ROS 없는 샌드박스에서 `gmp_hmi` pytest 는 `PYTHONPATH` 없이 돌리면 거짓 기준선이 된다** — `gmp_process` import 실패로 `test_v4_process.py` 등 69 건이 ERROR 로 빠지고 「55 passed」만 보인다. 9/23 #266 에서 이것을 「회귀 없음」으로 적었다가 조장 검토에서 실패 1 건이 드러났다. `PYTHONPATH=../gmp_process:.:../gmp_dosing python3 -m pytest -q test` 로 **131 passed** 가 기준(PR #276 사본↔운영 대조 1 건, 통합 전 정리 PR 계약 대조 4 건 추가).
 - gmp_hmi 와 gmp_process 시험을 같은 pytest 실행에 넣지 않는다 — 노드 경합으로 process 시험이 깨진다(C CURRENT).
 - **가상 모드로는 `PICK_CONTAINER` 를 통과 못 한다** — 파지 판정이 `grip = w > width_mm + grip_margin_mm`(`gmp_skills/adapters/rg2_gripper.py:246`)인데 `virtual` 백엔드(`:175`)는 명령한 관절각으로 그대로 이동해 `w ≈ width_mm` 이라 `grip_margin_mm`(`common.yaml`)을 못 넘는다. 9/23 실행에서 `GRIP_FAIL` ×4 → ERROR. **가상은 이동·상태 전이·기록 확인용이고 전체 사이클 완주 검증에는 못 쓴다.**
 - **가상 모드 `NUDGE_WAIT` 은 안 풀린다** — `skill_node.py:126` 이 `scale.simulated` 면 NUDGE 감지를 끄는데 `process_node` 쪽 `safety.nudge_enabled`(`common.yaml`)는 이 조건을 모르고 `_await` 에 타임아웃이 없다(`process_node.py:315-318`). 우회: `/cell/event` 에 `code='NUDGE'` 를 한 번 발행하면 사람이 건드린 것과 같은 경로로 풀린다(파라미터 변경 불필요).
