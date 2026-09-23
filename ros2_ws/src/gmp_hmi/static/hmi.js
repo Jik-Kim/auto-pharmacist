@@ -8,10 +8,11 @@ const badge=(text,type='neutral')=>`<span class="badge ${type}">${escapeHtml(tex
 const verdict=v=>badge(v||'진행',v==='OK'||v==='DONE'||v==='AUTO_RECOVERED'?'good':v==='ERROR'||v==='DISCARDED'||v==='INVALID'?'bad':v==='OVER'||v==='UNDER'||v==='PENDING'||v==='DONE_UNMEASURED'?'warn':'info');
 let cancelBatchId='';
 let session={authenticated:false,user:null},userEdit='',currentSettings=null,alarmRows=[],alarmBusy=false;
-let snapshot={},fresh=false,inFlight=false,selectedBatch='',detailTab='items',detailData=null,detailVersion=0,recordBusy=false,page='operation',lastWeights=[],selectedRecipe=null,recipeVersion=0,lastBatchMode='',acknowledgedShortages=new Set(),refillMaterial='',completionKey='',completionUntil=0,completionClosed='';
+let snapshot={},fresh=false,inFlight=false,selectedBatch='',detailTab='items',detailData=null,detailVersion=0,recordBusy=false,page='operation',lastWeights=[],selectedRecipe=null,recipeVersion=0,lastBatchMode='',acknowledgedShortages=new Set(),refillMaterial='',completionKey='',completionUntil=0,completionClosed='',completionSeen=new Set();
 // 배치 완료·폐기 알림은 칸 사이에 끼우지 않고 떠 있는 알림으로 잠깐만 보인다 — 끼워 두면 아래 카드를 전부 밀어 화면이
-// 오르내렸다(9/23 동권님). 같은 배치·결과로는 다시 뜨지 않는다. 내용은 기록·통계와 이벤트 로그에 남는다.
-const COMPLETION_SHOW_MS=8000;
+// 오르내렸다(9/23 동권님). 한 자리만 쓰므로 새 알림이 오면 이전 알림을 대신하고, 한 번 보인 배치·결과는
+// 옛 상태를 다시 받아도 다시 뜨지 않는다. 내용은 기록·통계와 이벤트 로그에 남는다.
+const COMPLETION_SHOW_MS=5000;
 const modes={IDLE:'주문 대기',RUNNING:'운전 중',PAUSED:'일시 정지',DEVIATION:'QA 판정 대기',ERROR:'공정 오류',DONE:'배치 완료',DISCARDED:'QA 폐기 종료',FINISH_PENDING:'완료 확인 대기'};
 function arrangeOperationColumns(){
  const operation=$('operation'),columns=operation?[...operation.children].filter(el=>el.classList.contains('column')):[];
@@ -144,8 +145,8 @@ function renderProgress(s){const recipe=s.active_recipe,st=s.state||{},items=rec
 function renderDiagnostics(s){const d=s.diagnostics||{},topics=d.topics||{},actions=d.actions||{},services=d.services||{};$('diagHint').textContent=source.demo?'데모 데이터 · ROS 미연결':fresh?'상태 수신 중':'상태 수신 대기';$('diagNote').textContent=source.demo?'아래 값은 화면 검증용 예시입니다. 실제 ROS 통신 확인은 실시간 화면에서 진행하세요.':`네임스페이스 ${d.namespace||'—'} · 액션·서비스는 서버 발견 여부, 토픽은 HMI 수신 횟수와 마지막 수신 경과시간입니다.`;const names={state:'공정 상태',weight:'계량값',gripper:'그리퍼',dispense_result:'분주 결과',deviation:'일탈',scoop_cycle:'스쿱 시도',event:'공정 이벤트'},actionNames={run_batch:'배치 실행'},serviceNames={qa_decision:'QA 판정',interlock:'진입·복귀'};if(s.inventory?.enforced){names.test_inventory='시험 재고';for(const id of ['A','B','C'])serviceNames['test_refill_'+id]='시험 '+id+' 개별 보충';}const rows=Object.entries(names).map(([k,label])=>{const t=topics[k]||{};return [escapeHtml(label),'토픽',t.count?badge('수신 '+t.count+'회','info'):t.age_s!=null?badge('수신','info'):badge('미수신'),t.age_s==null?'—':number(t.age_s,1)+'초 전'];});rows.push(...Object.entries(actionNames).map(([k,label])=>[label,'액션',actions[k]===true?badge('서버 발견','good'):actions[k]===false?badge('서버 없음','warn'):badge('확인 전'),'—']));rows.push(...Object.entries(serviceNames).map(([k,label])=>[label,'서비스',services[k]===true?badge('서버 발견','good'):services[k]===false?badge('서버 없음','warn'):badge('확인 전'),'—']));$('diagnostics').innerHTML=table(['항목','방식','상태','마지막 수신'],rows);}
 function renderCompletion(s){
  const st=s.state||{},status=completionState(s),toast=status.pending?'pending':status.terminal?(status.discarded?'discarded':'done'):'',tkey=toast&&st.batch_id+':'+toast;
- if(tkey&&tkey!==completionKey){completionKey=tkey;completionUntil=Date.now()+COMPLETION_SHOW_MS;}
- $('completion').hidden=!tkey||!fresh||tkey===completionClosed||Date.now()>completionUntil;
+ if(tkey&&!completionSeen.has(tkey)){completionSeen.add(tkey);if(completionSeen.size>50)completionSeen.delete(completionSeen.values().next().value);completionKey=tkey;completionUntil=Date.now()+COMPLETION_SHOW_MS;}
+ $('completion').hidden=!tkey||!fresh||tkey!==completionKey||tkey===completionClosed||Date.now()>completionUntil;
  if(status.pending){$('completion').className='completion pending';$('completion').innerHTML=`<button type="button" class="completion-close" aria-label="알림 닫기">✕</button><strong>완료 확인 대기</strong><span>${escapeHtml(st.batch_id)} · 종료 상태가 먼저 도착했습니다. 용기 배출·폐기 등 물리적 작업 완료를 확인할 때까지 새 주문을 보낼 수 없습니다.</span>`;}
  else if(status.terminal){const results=latestBatchResults(s),sum=results.reduce((n,r)=>n+(Number(r.actual_g)||0),0);$('completion').className='completion'+(status.discarded?' discarded':'');$('completion').innerHTML=`<button type="button" class="completion-close" aria-label="알림 닫기">✕</button><strong>${status.discarded?'QA 폐기 · 배치 종료':'✓ 배치 완료'}</strong><span>${escapeHtml(st.batch_id)} · 결과 수신 ${results.length}종 / 사용량 합계 ${number(sum)} g${status.discarded?' · 사용한 원료는 재고로 복원되지 않습니다.':' · 배치 상세는 기록·통계에서 확인하세요.'}</span>`;}
  const key=st.batch_id+':'+st.mode+':'+st.step+':'+status.discarded;if(status.terminal&&key!==lastBatchMode)refreshRecords();lastBatchMode=key;
