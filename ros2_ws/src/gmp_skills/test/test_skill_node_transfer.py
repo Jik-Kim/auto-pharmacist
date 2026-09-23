@@ -344,7 +344,7 @@ def test_worker_clears_anchor_when_cancel_arrives_during_final_record(setup, mon
 
 
 @pytest.mark.parametrize('kind', ['scoop', 'pour', 'weigh', 'weigh_held', 'safe'])
-def test_other_motion_skills_invalidate_previous_anchor(setup, monkeypatch, kind):
+def test_weigh_keeps_entry_anchor_other_motion_skills_invalidate(setup, monkeypatch, kind):
     node, _, module = setup
     node._poll_safety = lambda **_: None
     node._safety_latched = False
@@ -359,10 +359,11 @@ def test_other_motion_skills_invalidate_previous_anchor(setup, monkeypatch, kind
     node._q.put(job)
     turns = iter([True, False])
     monkeypatch.setattr(module.rclpy, 'ok', lambda: next(turns))
+    original_anchor = node._motion_anchor
     anchors = []
     setattr(node, '_do_' + kind, lambda _: anchors.append(node._motion_anchor))
     node._worker()
-    assert anchors == [None]
+    assert anchors == ([original_anchor] if kind == 'weigh' else [None])
     if kind == 'weigh':
         assert node._held_payload == 'unknown'
 

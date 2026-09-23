@@ -43,7 +43,7 @@ def main():
                GMP_HMI_ADMIN_USER='admin', GMP_HMI_ADMIN_PASSWORD=secrets.token_urlsafe(18))
     command = ['ros2', 'launch', 'gmp_hmi', 'hmi_comm_test.launch.py']
     if args.auto:
-        command += ['test_initial_g:=[80.0,1000.0,1000.0]', 'item_duration_s:=2.0']
+        command += ['test_initial_g:=[170.0,1000.0,1000.0]', 'item_duration_s:=2.0']
     server = checker = None
     try:
         server = subprocess.Popen(command, env=env, start_new_session=True)

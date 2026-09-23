@@ -1,6 +1,7 @@
 """벤더 원본을 유지하고 DSR 감도 조회·실물 RG2 상태 발행 확장을 선택한다."""
 import importlib.util
 import os
+import yaml
 from pathlib import Path
 
 from ament_index_python.packages import get_package_prefix, get_package_share_directory
@@ -35,19 +36,26 @@ def generate_launch_description():
         raise RuntimeError('벤더 controller_manager 구성이 변경되어 자동 교체할 수 없습니다')
     if replaced != 1:
         raise RuntimeError('벤더 RG2 서버 구성이 변경되어 자동 교체할 수 없습니다')
-    actions.append(Node(
-        package='gmp_skills', executable='rg2_status_driver',
-        name='OnRobotRGControllerServer', namespace=LaunchConfiguration('name'),
-        output='screen',
-        additional_env={'PYTHONPATH': _gripper_pythonpath()},
-        condition=IfCondition(PythonExpression(["'", LaunchConfiguration('mode'), "' == 'real'"])),
-        # offset=5는 벤더 계승값이며 현재 서버는 장치에 쓰지 않는다.
-        # 실제 offset은 /onrobot/status.gfof로 읽는다(9/20 실측 2.0 mm).
-        parameters=[{'/onrobot/control': 'modbus', '/onrobot/ip': '192.168.1.1',
-                     '/onrobot/port': 502, '/onrobot/changer_addr': 65,
-                     '/onrobot/gripper': 'rg2', '/onrobot/offset': 5}],
-        remappings=[('/joint_states', '/onrobot_joint_states')],
-    ))
+    common = Path(get_package_share_directory('gmp_bringup')) / 'params/common.yaml'
+    with common.open(encoding='utf-8') as stream:
+        backend = yaml.safe_load(stream)['/**']['ros__parameters']['gripper']['backend']
+    if backend not in ('dio', 'modbus'):
+        raise ValueError('실물 gripper.backend는 dio 또는 modbus여야 한다')
+    # DIO 운용에서는 별도 Modbus 서버의 기동 명령·상태 연결도 만들지 않는다.
+    if backend == 'modbus':
+        actions.append(Node(
+            package='gmp_skills', executable='rg2_status_driver',
+            name='OnRobotRGControllerServer', namespace=LaunchConfiguration('name'),
+            output='screen',
+            additional_env={'PYTHONPATH': _gripper_pythonpath()},
+            condition=IfCondition(PythonExpression(["'", LaunchConfiguration('mode'), "' == 'real'"])),
+            # offset=5는 벤더 계승값이며 현재 서버는 장치에 쓰지 않는다.
+            # 실제 offset은 /onrobot/status.gfof로 읽는다(9/20 실측 2.0 mm).
+            parameters=[{'/onrobot/control': 'modbus', '/onrobot/ip': '192.168.1.1',
+                         '/onrobot/port': 502, '/onrobot/changer_addr': 65,
+                         '/onrobot/gripper': 'rg2', '/onrobot/offset': 5}],
+            remappings=[('/joint_states', '/onrobot_joint_states')],
+        ))
     return LaunchDescription(actions)
 
 

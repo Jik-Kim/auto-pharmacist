@@ -2,8 +2,10 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
 const code=fs.readFileSync(path.join(__dirname,'../static/hmi.js'),'utf8');
 const elements=new Map();
+// hmi.js 가 쓰는 DOM 메서드는 전부 여기 있어야 한다 — 하나라도 없으면 팝업 로직이 아니라
+// 스텁이 TypeError 로 터진다. 9/22 f349fe2 가 hmi.js:151 에 appendChild 를 더하면서 그랬다.
 function element(){return {value:'',checked:false,textContent:'',hidden:false,disabled:false,
- classList:{toggle(){}},before(){},showModal(){this.open=true;},close(){this.open=false;},querySelector(){return this.small||(this.small=element());}};}
+ classList:{toggle(){}},appendChild(){},before(){},showModal(){this.open=true;},close(){this.open=false;},querySelector(){return this.small||(this.small=element());}};}
 const $=id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);};
 const context=vm.createContext({$,document:{createElement:element},session:{authenticated:true},source:{demo:false},
  fresh:true,inFlight:false,can:()=>true,snapshot:{},command:async()=>{}});

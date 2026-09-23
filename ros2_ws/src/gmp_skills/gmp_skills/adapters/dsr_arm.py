@@ -511,10 +511,13 @@ class DsrArm:
 
     # ── IO (dio 그리퍼 백엔드) ───────────────────────────────────────────
     def dout(self, idx: int, on: bool):
-        self.R.set_digital_output(idx, 1 if on else 0)
+        self._require_ok('set_digital_output', self.R.set_digital_output(idx, 1 if on else 0))
 
     def din(self, idx: int) -> bool:
-        return bool(self.R.get_digital_input(idx))
+        value = self.R.get_digital_input(idx)
+        if value not in (0, 1):
+            raise RuntimeError(f'get_digital_input({idx}) 실패: {value}')
+        return bool(value)
 
     # ── 자가진단 ─────────────────────────────────────────────────────────
     def self_check(self, expect_tool: str, expect_tcp: str, expect_collision: float):

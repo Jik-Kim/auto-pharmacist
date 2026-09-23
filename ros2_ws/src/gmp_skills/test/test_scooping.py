@@ -46,6 +46,7 @@ def test_insufficient_material_rejected_not_clamped():
 def test_supplied_approximate_geometry_cannot_be_enabled_blindly(monkeypatch):
     node, job, calls, _ = depth_node(monkeypatch)
     p = node.stations.scooping['A']
+    p['execution_mode'] = 'height_compensated'
     off = tip_offset_local(p['reference_pose_base'], p['tip_offset_world_mm'])
     with pytest.raises(ValueError, match='재확인'):
         plan_scoop(p, p['waypoints_base'], off, 72.5, 1)
@@ -58,7 +59,7 @@ def prepared(monkeypatch):
     node, job, calls, _ = depth_node(monkeypatch)
     p = deepcopy(node.stations.scooping['A'])
     # 테스트용 보정 모델이며 실물 보정값이 아니다.
-    p.update(profile(), calibrated=True, tip_offset_world_mm=[0,0,0],
+    p.update(profile(), execution_mode="height_compensated", calibrated=True, tip_offset_world_mm=[0,0,0],
              waypoints_base=[[0,0,z,0,0,0] for z in (80,70,60,55,70)],
              shake_base=[0,0,85,0,0,0])
     node.stations.scooping['A'] = p

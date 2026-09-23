@@ -3,8 +3,9 @@
 
 외부망/실제 /cell 조작을 막기 위해 loopback:5002, /hmi_test 및 시험 노드만 허용.
 관리자 비밀번호는 GMP_HMI_ADMIN_PASSWORD 환경변수로만 입력한다. 로그에는 출력하지 않는다.
-검증용 새 launch: test_initial_g:='[80.0,1000.0,1000.0]' item_duration_s:=2.0
-만충 용량은 1,000g이며 최초 A만 80g으로 시작하여 실제 부족 차단을 재현한다.
+검증용 새 launch: test_initial_g:='[170.0,1000.0,1000.0]' item_duration_s:=2.0
+만충 용량은 1,000g이며 최초 A만 170g으로 시작하여 실제 부족 차단을 재현한다
+(recipe-01 이 A 85g 을 쓰면 85g 이 남아 recipe-02 의 A 170g 을 못 채운다).
 """
 import argparse
 import http.cookiejar
@@ -123,9 +124,9 @@ class RosHttpCheck:
 
     def direct_order_rejected(self, requirements=None):
         # HMI를 우회해도 같은 공정 재고/높이 차단이 적용되어야 한다.
-        requirements = requirements or {'A':80.0,'B':40.0}
+        requirements = requirements or {'A':170.0,'B':85.0}
         data={'recipe':{'product':'BYPASS_TEST','items':[
-            {'material_id':mid,'target_g':float(amount),'tol_pct':5.0}
+            {'material_id':mid,'target_g':float(amount),'tol_pct':10.0}
             for mid,amount in requirements.items()]}}
         output=self.ros('action','send_goal','/hmi_test/run_batch','gmp_interfaces/action/RunBatch',json.dumps(data))
         if not re.search(r'goal(?: was)? rejected',output,re.IGNORECASE):
@@ -220,16 +221,16 @@ class RosHttpCheck:
         if self.guard().get('state',{}).get('mode')!='IDLE' or self.get('/history'):
             raise CheckFailed('새 DB의 시험 세션이 필요합니다. launch를 종료 후 재실행하세요.')
         if any(abs(stock[mid]['capacity_g']-1000.0)>1e-6 or
-               abs(stock[mid]['remaining_g']-amount)>1e-6 for mid,amount in [('A',80),('B',1000),('C',1000)]):
-            raise CheckFailed("검증용 초기 재고가 필요합니다. 새 launch에 test_initial_g:='[80.0,1000.0,1000.0]' 를 지정하세요. 만충은 1,000g 그대로입니다.")
+               abs(stock[mid]['remaining_g']-amount)>1e-6 for mid,amount in [('A',170),('B',1000),('C',1000)]):
+            raise CheckFailed("검증용 초기 재고가 필요합니다. 새 launch에 test_initial_g:='[170.0,1000.0,1000.0]' 를 지정하세요. 만충은 1,000g 그대로입니다.")
         self.report('시험 네임스페이스·노드3·RunBatch 액션1·서비스5·토픽9 및 인증 전 접근 차단')
         catalog={r['name']:r for r in self.get('/recipes')}
-        expected={'recipe-01':{'A':40,'B':40,'C':40},'recipe-02':{'A':80,'B':40},'recipe-03':{'A':40,'B':40,'C':80}}
+        expected={'recipe-01':{'A':85,'B':85,'C':85},'recipe-02':{'A':170,'B':85},'recipe-03':{'A':85,'B':85,'C':170}}
         for name,items in expected.items():
             if name not in catalog or {it['material_id']:it['target_g'] for it in catalog[name]['items']}!=items:
                 raise CheckFailed('레시피 원료/목표량 불일치: '+name)
-            if any(it['tol_pct']!=5.0 for it in catalog[name]['items']): raise CheckFailed('허용 오차 불일치: '+name)
-        self.report('레시피3종 목표량·원료 A/B/C·허용오차5% 및 recipe-02 C 생략')
+            if any(it['tol_pct']!=10.0 for it in catalog[name]['items']): raise CheckFailed('허용 오차 불일치: '+name)
+        self.report('레시피3종 목표량(D-33 85/170g)·원료 A/B/C·허용오차10% 및 recipe-02 C 생략')
         for role,name in [('operator',self.operator),('qa',self.qa),('viewer',self.viewer)]:
             self.http('POST','/users',{'username':name,'password':self.test_password,'role':role,'active':True},expected=201)
         self.http('POST','/settings',{},expected=403,csrf=False)
@@ -272,7 +273,7 @@ class RosHttpCheck:
         subjects={w.get('subject') for w in rec['weights']}
         if not {'scoop','container'}<=subjects or not all(w.get('samples')==20 for w in rec['weights']):
             raise CheckFailed('subject/samples 저장 누락')
-        self.wait('recipe-01 소비 반영',lambda:abs(self.stock()['A']['remaining_g']-40.0)<1e-6)
+        self.wait('recipe-01 소비 반영',lambda:abs(self.stock()['A']['remaining_g']-85.0)<1e-6)
         self.report('WeightReading subject/samples·ScoopCycle·결과3·SQLite 완료 저장')
         self.order_rejected('recipe-02')
         self.direct_order_rejected()
@@ -286,12 +287,12 @@ class RosHttpCheck:
         if {it['material_id'] for it in rec2['items']}!={'A','B'} or self.amounts()['C']!=before_c:
             raise CheckFailed('recipe-02에서 C가 처리 또는 차감됨')
         a_cycles=sorted((c for c in rec2['scoop_cycles'] if c['material_id']=='A'),key=lambda c:c['attempt'])
-        if [(c['attempt'],c['actual_before_g'],c['delivered_g']) for c in a_cycles]!=[(1,0.0,40.0),(2,40.0,40.0)]:
-            raise CheckFailed('80g 시험 스쿠핑의 40g×2 시도·누적량 기록 불일치')
+        if [(c['attempt'],c['actual_before_g'],c['delivered_g']) for c in a_cycles]!=[(1,0.0,85.0),(2,85.0,85.0)]:
+            raise CheckFailed('170g 시험 스쿠핑의 85g×2 시도·누적량 기록 불일치')
         a_result=next(it for it in rec2['items'] if it['material_id']=='A')
         if a_result['attempts']!=2 or any(c['payload']['weigh_pose_id']!='workbench' for c in a_cycles):
-            raise CheckFailed('80g 결과 attempts2 또는 공용 계량 위치 ID 불일치')
-        self.report('80g 시험 분주 → 40g×2 시도·누적40g·attempts2·workbench 기록')
+            raise CheckFailed('170g 결과 attempts2 또는 공용 계량 위치 ID 불일치')
+        self.report('170g 시험 분주 → 85g×2 시도·누적85g·attempts2·workbench 기록')
         third=self.order('normal','recipe-03')
         self.wait('recipe-03 DONE',lambda:self.mode('DONE',third))
         self.wait('recipe-03 원료3 기록',lambda:self.record(third))
@@ -303,13 +304,13 @@ class RosHttpCheck:
         if not any(d.get('decision')=='APPROVED' and d.get('operator_id')==self.qa for d in rec4['deviations']):
             raise CheckFailed('QA 판정자 또는 승인 기록 누락')
         self.report('OVERFILL → QA 승인 → 후속 원료 처리·로그인 판정자 기록')
-        fifth=self.order('verify_mismatch','recipe-03')
-        pending=self.pending(fifth,'VERIFY_MISMATCH')
+        fifth=self.order('batch_out_of_spec','recipe-03')
+        pending=self.pending(fifth,'BATCH_OUT_OF_SPEC')
         before_discard=self.amounts()
         self.decide(fifth,pending,2)
         self.wait('검증 일탈 폐기 기록',lambda:self.record(fifth,'DISCARDED'))
         if self.amounts()!=before_discard: raise CheckFailed('폐기 시 이미 사용한 재고가 복구됨')
-        self.report('VERIFY_MISMATCH → QA 폐기 → 반송 완료 뒤 DISCARDED · 소비 재고 유지')
+        self.report('BATCH_OUT_OF_SPEC → QA 폐기 → 반송 완료 뒤 DISCARDED · 소비 재고 유지')
         before_wrong=self.amounts()
         sixth=self.order('wrong_tool','recipe-02')
         pending=self.pending(sixth,'WRONG_TOOL')
@@ -317,6 +318,34 @@ class RosHttpCheck:
         self.wait('도구 일탈 폐기 기록',lambda:self.record(sixth,'DISCARDED',0))
         if self.amounts()!=before_wrong: raise CheckFailed('미투입 폐기에서 원료가 소비되거나 복구됨')
         self.report('WRONG_TOOL → QA 폐기 · 미사용 예약 해제·원료 소비 없음')
+        # 계량 무효를 QA 가 승인해 투입량을 모르는 채 끝난 배치 (계약 v1.8 INVALID · SOT D-32).
+        kpi_before=self.get('/kpi')
+        seventh=self.order('weigh_invalid')
+        pending=self.pending(seventh,'WEIGH_INVALID')
+        self.decide(seventh,pending,1)
+        rec7=self.wait('미측정 승인 완료 기록',lambda:self.record(seventh,'DONE_UNMEASURED'))
+        invalid=[i for i in rec7['items'] if i.get('verdict')=='INVALID']
+        if len(invalid)!=1: raise CheckFailed(f'INVALID 판정 원료가 1건이 아님: {len(invalid)}')
+        if not any(e.get('code')=='BATCH_UNMEASURED' for e in rec7.get('events',[])):
+            raise CheckFailed('BATCH_UNMEASURED 이벤트가 기록되지 않음')
+        if not any(not w.get('valid') for w in rec7.get('weights',[])):
+            raise CheckFailed('무효 계량(valid=false)이 기록되지 않음')
+        self.report('계량 무효 → QA 승인 → verdict=INVALID·BATCH_UNMEASURED·DONE_UNMEASURED 기록')
+        kpi=self.get('/kpi')
+        if kpi.get('unmeasured_done',0)!=kpi_before.get('unmeasured_done',0)+1:
+            raise CheckFailed('KPI 미측정 승인 완료 건수가 늘지 않음')
+        if kpi.get('batch_success_pct') is None or kpi.get('run_complete_pct') is None:
+            raise CheckFailed('KPI 두 지표(batch_success_pct·run_complete_pct)가 없음')
+        if kpi['run_complete_pct']<kpi['batch_success_pct']-1e-6:
+            raise CheckFailed('완주율이 계량 검증 완료율보다 작음 — 미측정이 합산되지 않음')
+        self.report('KPI 두 지표 — 계량 검증 완료율(DONE만)·미측정 승인 완료·완주율(합)')
+        before_empty=self.amounts()
+        eighth=self.order('material_empty','recipe-02')
+        pending=self.pending(eighth,'MATERIAL_EMPTY')
+        self.decide(eighth,pending,2)
+        self.wait('원료 소진 폐기 기록',lambda:self.record(eighth,'DISCARDED',0))
+        if self.amounts()!=before_empty: raise CheckFailed('미투입 폐기에서 원료가 소비되거나 복구됨')
+        self.report('MATERIAL_EMPTY(kind 5) → QA 폐기 · 원료 소비 없음')
         self.login(self.operator,self.test_password)
         self.height('A',19.9); self.height('B',19.9)
         self.wait('원료2개 높이 부족',lambda:self.blocked(['A','B']))
@@ -369,7 +398,7 @@ class RosHttpCheck:
         if first.encode() not in csv_data or json.loads(json_data).get('batch_id')!=first: raise CheckFailed('CSV/JSON 다운로드 내용 불일치')
         if self.get('/kpi').get('batches',0)<len(self.batches): raise CheckFailed('KPI 배치 집계 누락')
         self.wait('개별 보충 감사 기록',lambda:any(row.get('actor')==self.operator and row.get('action')=='TEST_REFILL' for row in self.get('/audit')))
-        self.report('배치 이력7·KPI·개별 보충 감사 기록·actor 위조 방지·CSV/JSON 다운로드')
+        self.report(f'배치 이력{len(self.batches)}·KPI·개별 보충 감사 기록·actor 위조 방지·CSV/JSON 다운로드')
         summary={'result':'PASS','transport':self.transport,'checks':len(self.passed),'check_details':self.passed,'batches':self.batches,
                  'scope':'actual HMI/record/mock code + HTTP + SQLite; fake process only, no physical robot'}
         print(json.dumps(summary,ensure_ascii=False,indent=2))

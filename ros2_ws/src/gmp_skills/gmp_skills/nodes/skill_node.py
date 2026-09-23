@@ -107,7 +107,8 @@ class SkillNode(Node):
                           tcp_offset_mm_deg=g('robot.tcp_offset_mm_deg'))
 
         backend = 'virtual' if self.mode == 'virtual' else g('gripper.backend')
-        self._grip_cli = self.create_client(SetCommand, '/onrobot/sendCommand')
+        self._grip_cli = (self.create_client(SetCommand, '/onrobot/sendCommand')
+                          if backend != 'dio' else None)
         self.gripper = Rg2Gripper(backend, self._send_gripper_command, self.arm,
                                   float(g('gripper.grip_margin_mm')), float(g('gripper.slip_mm')),
                                   float(g('gripper.open_width_mm')), tuple(g('gripper.dio_pins')),
@@ -118,7 +119,7 @@ class SkillNode(Node):
             self.create_subscription(OnRobotRGInput, '/onrobot/status',
                                      lambda msg: self.gripper.on_native_status(msg, self._now_s()),
                                      QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
-        else:
+        elif backend == 'virtual':
             self.create_subscription(JointState, f"/{g('robot.id')}/gripper_joint_states", self._on_js,
                                      QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
 
@@ -143,6 +144,7 @@ class SkillNode(Node):
         if not math.isfinite(self.shutdown_timeout_s) or self.shutdown_timeout_s <= 0:
             raise ValueError('robot.shutdown_timeout_s는 유한한 양수여야 한다')
         self.arm.cancel_requested = self._cancel_requested
+        self.gripper.cancel_requested = self._cancel_requested
         self.arm.motion_timeout_s = self.motion_timeout_s
         self.arm.pose_xyz_tolerance = self.pose_xyz_tolerance
         self.arm.pose_rotation_tolerance = self.pose_rotation_tolerance
@@ -522,6 +524,11 @@ class SkillNode(Node):
                     job = self._q.get(timeout=0.1)
                 except queue.Empty:
                     self._poll_safety()
+                    if getattr(self, '_configured', False) and getattr(getattr(self, 'gripper', None), 'backend', '') == 'dio':
+                        try:
+                            self.gripper.refresh_dio()
+                        except Exception as exc:
+                            self._latch_safety(f'그리퍼 DI 조회 실패: {exc}')
                     self._poll_nudge()
                     continue
                 with self._job_lock:
@@ -533,7 +540,7 @@ class SkillNode(Node):
                         self._poll_safety(force=True)
                     if job.cancel or (self._safety_latched and job.kind not in ('startup', 'recover')):
                         raise RuntimeError(f'SAFETY_STOP: {self._safety_reason}' if self._safety_latched else 'cancelled')
-                    if job.kind in ('scoop', 'pour', 'return_material', 'weigh', 'weigh_held', 'safe'):
+                    if job.kind in ('scoop', 'pour', 'return_material', 'weigh_held', 'safe'):
                         self._motion_anchor = None
                     if job.kind == 'weigh':
                         self._held_payload = 'unknown'
@@ -591,6 +598,9 @@ class SkillNode(Node):
                                      self.get_parameter('safety.collision_sensitivity').value)
         if result[0] and restore_requested:
             SkillNode._restore_extracted_scoop(self, job)
+        if result[0] and getattr(self.gripper, 'backend', '') == 'dio':
+            if self.gripper.confirm_open_dio():
+                self._held_payload = 'empty'
         self._configured = bool(result[0])
         return result
 
@@ -694,6 +704,8 @@ class SkillNode(Node):
             raise ValueError('approach는 ABOVE(0) 또는 AT(1)이어야 한다')
         st = self.stations.get(station_id or job.args['station_id'])
         # 티칭 관절 경로만 가상에서 직선 폴백한다. solution_space 접근은 양 모드에 적용한다.
+        if 'approach_posj' in st.extra or 'return_entry_posx' in st.extra:
+            return SkillNode._move_taught_station(self, job, st, approach)
         transfers = self.stations.transfers if self.mode != 'virtual' else {}
         incoming = [r for r in transfers.values() if r.destination == st.station_id]
         if incoming and all(r.arrival == 'at' for r in incoming) and approach != MoveToStation.Goal.AT:
@@ -729,6 +741,7 @@ class SkillNode(Node):
                         self._cartesian_ready = True
                         return st.station_id
                 raise ValueError('등록된 출발 이력이 없는 보호 대상 이송이다')
+        SkillNode._leave_taught_station(self, job, st.station_id)
         safe_posj = st.extra.get('posj') if approach != MoveToStation.Goal.ABOVE else None
         if safe_posj is not None:
             job.feedback and job.feedback('HOMING')
@@ -758,6 +771,111 @@ class SkillNode(Node):
             raise RuntimeError('cancelled')
         self._record_arrival(st.station_id, approach, target)
         return st.station_id
+
+    def _taught_linear(self, job, target):
+        scale = job.args.get('vel_scale') or self.vel_scale
+        if not math.isfinite(scale) or not 0 < scale <= 1:
+            raise ValueError('vel_scale은 0 초과 1 이하여야 한다')
+        if not self._cartesian_ready:
+            joints = list(vector6(self.stations.get('safe').extra['posj'], 'safe.posj'))
+            self.arm.movej_cancellable(joints, scale,
+                lambda: job.cancel or self._cancel_requested(), self.motion_timeout_s,
+                joint_vel=self.transfer_joint_vel, joint_acc=self.transfer_joint_acc)
+            self._cartesian_ready = True
+        self.arm.movel_cancellable(list(target), scale,
+                                   lambda: job.cancel or self._cancel_requested(), self.motion_timeout_s)
+
+    def _leave_taught_station(self, job, destination):
+        source = self.stations.stations.get(self._station_id)
+        if source is None or source.station_id == destination:
+            return
+        if 'approach_posj' not in source.extra and 'return_entry_posx' not in source.extra:
+            return
+        anchor = self._motion_anchor
+        if (anchor is None or anchor.station != source.station_id
+                or not self._pose_matches(self.arm.current_posx(), anchor.pose)
+                or not joints_match(self.arm.current_posj(), anchor.joints, self.joint_tolerance)):
+            raise RuntimeError('티칭 경로 출발 이력이 불확실하다')
+        if self._held_payload not in ('cup', 'empty'):
+            raise RuntimeError('티칭 경로 출발 전 인출·파지 확인이 필요하다')
+        self._require_transfer_payload(self._held_payload)
+        target = list(anchor.pose)
+        target[2] = source.posx[2] + source.extra['exit_mm']
+        if not self._pose_matches(self.arm.current_posx(), target):
+            SkillNode._taught_linear(self, job, target)
+        self._motion_anchor = None
+
+    def _move_taught_station(self, job, station, approach):
+        """DRL 관절 진입·직선 하강과 거치대 측면 반납을 외부 AT/ABOVE에 연결한다."""
+        scale = job.args.get('vel_scale') or self.vel_scale
+        if not math.isfinite(scale) or not 0 < scale <= 1:
+            raise ValueError('vel_scale은 0 초과 1 이하여야 한다')
+        if any(not math.isfinite(v) or v <= 0
+               for v in (self.transfer_joint_vel, self.transfer_joint_acc)):
+            raise ValueError('티칭 관절 속도·가속도는 유한한 양수여야 한다')
+        anchor = self._motion_anchor
+        local = (anchor is not None and anchor.station == station.station_id)
+        if local and (not self._pose_matches(self.arm.current_posx(), anchor.pose)
+                      or not joints_match(self.arm.current_posj(), anchor.joints, self.joint_tolerance)):
+            raise RuntimeError('티칭 스테이션 도착 후 위치/관절이 변경되었다')
+        if 'return_entry_posx' in station.extra:
+            if self._held_payload == 'scoop':
+                SkillNode._require_held_scoop(self, station.extra['material_id'])
+                if approach != MoveToStation.Goal.AT:
+                    raise ValueError('스쿱 반납은 AT 요청으로 실행해야 한다')
+                entry = SkillNode._pose_from_extra(station, 'return_entry_posx')
+                lower = list(entry)
+                lower[2] -= finite(station.extra['return_lower_mm'], '반납 하강량')
+                for target in (entry, lower, station.posx):
+                    SkillNode._taught_linear(self, job, target)
+            else:
+                self._require_transfer_payload('empty')
+                SkillNode._leave_taught_station(self, job, station.station_id)
+                target = (station.offset_z(station.extra['exit_mm']) if local
+                          and approach == MoveToStation.Goal.ABOVE else station.above(self.stations.approach_mm))
+                if not local or approach == MoveToStation.Goal.ABOVE:
+                    SkillNode._taught_linear(self, job, target)
+                if approach == MoveToStation.Goal.AT:
+                    SkillNode._taught_linear(self, job, station.posx)
+        else:
+            if self._held_payload not in ('cup', 'empty'):
+                raise RuntimeError('용기 스테이션 진입 전 파지/열림 이력이 필요하다')
+            self._require_transfer_payload(self._held_payload)
+            if local:
+                target = list(anchor.pose)
+                if approach == MoveToStation.Goal.AT:
+                    # 빈 그리퍼의 workbench 진입 관절각은 놓기와 다르다.
+                    target[2] = station.posx[2]
+                    if self._held_payload == 'cup':
+                        target = list(station.posx)
+                else:
+                    target[2] = station.posx[2] + station.extra['exit_mm']
+                SkillNode._taught_linear(self, job, target)
+            else:
+                SkillNode._leave_taught_station(self, job, station.station_id)
+                empty_entry = self._held_payload == 'empty' and 'empty_approach_posj' in station.extra
+                if empty_entry:
+                    SkillNode._taught_linear(self, job, SkillNode._pose_from_extra(station, 'middle_posx'))
+                key = 'empty_approach_posj' if empty_entry else 'approach_posj'
+                joints = list(vector6(station.extra[key], key))
+                self.arm.movej_cancellable(joints, scale,
+                    lambda: job.cancel or self._cancel_requested(), self.motion_timeout_s,
+                    joint_vel=self.transfer_joint_vel, joint_acc=self.transfer_joint_acc)
+                self._cartesian_ready = True
+                self._require_transfer_payload(self._held_payload)
+                if approach == MoveToStation.Goal.AT:
+                    if empty_entry:
+                        target = list(self.arm.current_posx())
+                        target[2] -= station.extra['empty_descent_mm']
+                    else:
+                        target = station.posx
+                    SkillNode._taught_linear(self, job, target)
+            self._require_transfer_payload(self._held_payload)
+        if job.cancel or self._cancel_requested():
+            raise RuntimeError('cancelled')
+        # 각 어댑터는 실제 관절/직선 목표 도달을 확인한다. 관절각 TCP를 임의 합성하지 않는다.
+        self._record_arrival(station.station_id, approach, self.arm.current_posx())
+        return station.station_id
 
     def _require_solution(self, station):
         sol = self.arm.solution_space()
@@ -809,6 +927,14 @@ class SkillNode(Node):
         self._require_solution(station)
 
     def _require_transfer_payload(self, expected):
+        if getattr(self.gripper, 'backend', '') == 'dio':
+            self.gripper.refresh_dio()
+            state = self.gripper.state(self._now_s())
+            if (state['busy'] or self._held_payload != expected
+                    or (expected == 'cup' and not state['grip_inferred'])
+                    or (expected == 'empty' and not state['open_confirmed'])):
+                raise RuntimeError('이송 파지 이력 또는 DI 완료 상태가 불확실하다')
+            return
         state = self.gripper.state(self._now_s())
         if state['busy'] or state['width_mm'] is None or self._held_payload != expected:
             raise RuntimeError('이송 파지 이력 또는 그리퍼 피드백이 불확실하다')
@@ -869,7 +995,6 @@ class SkillNode(Node):
         if a['close']:
             if self._scoop_extract_uncertain:
                 raise RuntimeError('스쿱 인출 상태가 불확실하여 재파지할 수 없다')
-            result = self.gripper.grip(a['width_mm'], a['force_n'], a['timeout_s'] or 3.0)
             anchor = getattr(self, '_motion_anchor', None)
             scoop_at = (
                 anchor is not None
@@ -879,6 +1004,8 @@ class SkillNode(Node):
                 and self._pose_matches(self.arm.current_posx(), anchor.pose)
                 and joints_match(self.arm.current_posj(), anchor.joints, self.joint_tolerance)
             )
+            options = {'scoop': scoop_at} if getattr(self.gripper, 'backend', '') == 'dio' else {}
+            result = self.gripper.grip(a['width_mm'], a['force_n'], a['timeout_s'] or 3.0, **options)
             self._pending_scoop_extract = bool(result[0] and result[2] and scoop_at)
             self._scoop_extract_uncertain = False
             if result[0] and result[2]:
@@ -904,6 +1031,13 @@ class SkillNode(Node):
             self._held_material_id = ''
             self._empty_scoop_force_baseline = None
             self._empty_scoop_baseline_pending = False
+        anchor = getattr(self, '_motion_anchor', None)
+        if released and anchor is not None and anchor.station.startswith('scoop_'):
+            station = self.stations.get(anchor.station)
+            if 'return_entry_posx' in station.extra:
+                target = station.offset_z(station.extra['exit_mm'])
+                SkillNode._taught_linear(self, job, target)
+                self._record_arrival(station.station_id, MoveToStation.Goal.ABOVE, target)
         return released, self.gripper.width_mm() or -1.0, False
 
     def _scale_period_s(self):
@@ -944,6 +1078,8 @@ class SkillNode(Node):
             raise RuntimeError('원료 ID가 확인된 스쿱 파지 이력이 필요하다')
         if material_id is not None and self._held_material_id != material_id:
             raise RuntimeError('반환 요청 원료와 파지한 스쿱의 원료 ID가 다르다')
+        if getattr(self.gripper, 'backend', '') == 'dio':
+            self.gripper.refresh_dio()
         state = self.gripper.state(self._now_s())
         if state.get('busy', False) or not state.get('grip_inferred', False):
             raise RuntimeError('스쿱 파지 상태가 불확실하다')
@@ -958,7 +1094,7 @@ class SkillNode(Node):
         return list(pose)
 
     def _do_scoop(self, job: Job):
-        """접촉 측정 → WORLD 높이 보정 → TW spline → 털기 → 계량 자세."""
+        """고정 BASE 티칭 또는 보정된 WORLD 경로로 스쿠핑 후 계량 자세에 복귀한다."""
         if getattr(self, '_return_rescoop_blocked', False):
             raise RuntimeError('반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
         self._require_scoop_extracted()
@@ -967,6 +1103,10 @@ class SkillNode(Node):
         if getattr(self, 'height_measure_only', False):
             return SkillNode._measure_surface_world(self, job)
         profile = self.stations.scooping.get(material)
+        if profile and profile.get('execution_mode', 'height_compensated') == 'taught_fixed':
+            return SkillNode._do_fixed_scoop(self, job, profile)
+        if profile and profile.get('execution_mode', 'height_compensated') != 'height_compensated':
+            raise ValueError('알 수 없는 스쿠핑 실행 모드')
         if not profile or profile.get('calibrated') is not True:
             raise ValueError('스쿠핑 경로/스쿱 끝 높이 보정 미확인: 원료별 보정 후 실행 필요')
         fraction = finite(job.args['depth_fraction'], 'depth_fraction')
@@ -1038,6 +1178,59 @@ class SkillNode(Node):
         job.feedback and job.feedback('LIFT', True, result['max_contact_force_n'],
                                       result['insertion_depth_mm'])
         return result
+
+    def _do_fixed_scoop(self, job, profile):
+        """검증된 BASE 경로만 실행한다. 원료면/끝 높이/담금량을 계산하지 않는다."""
+        fixed = profile.get('fixed_path', {})
+        if fixed.get('verified') is not True or self.stations.frame != 'base':
+            raise ValueError('BASE 고정 경로의 실물 검증 확인이 필요하다')
+        fraction = finite(job.args['depth_fraction'], 'depth_fraction')
+        if fraction != 1.0:
+            raise ValueError('고정 티칭 경로는 depth_fraction=1.0만 지원한다')
+        points = [list(vector6(p, '고정 경유점')) for p in fixed['waypoints_base']]
+        if len(points) != 5:
+            raise ValueError('고정 스쿠핑은 검증된 경유점 5개가 필요하다')
+        shake = list(vector6(fixed['shake_base'], '털기 위치'))
+        vel = [finite(v, '속도') * self.vel_scale for v in fixed['velocity']]
+        acc = [finite(v, '가속도') * self.vel_scale for v in fixed['acceleration']]
+        amp = list(vector6(fixed['shake_amp'], '털기 진폭'))
+        period = list(vector6(fixed['shake_period'], '털기 주기'))
+        atime, repeat = finite(fixed['shake_atime'], '털기 가속시간'), fixed['shake_repeat']
+        if (len(vel) != 2 or len(acc) != 2 or min(vel + acc) <= 0
+                or atime <= 0 or type(repeat) is not int or repeat <= 0
+                or not any(amp) or any(t < 0 or (a != 0 and t <= 0) for a, t in zip(amp, period))):
+            raise ValueError('고정 경로 속도/주기 운동 설정 오류')
+        material = job.args['material_id']
+        station = self.stations.for_material(material)
+        cancel = lambda: job.cancel or self._cancel_requested()
+
+        def observe():
+            SkillNode._require_held_scoop(self, material)
+
+        if cancel():
+            raise RuntimeError('cancelled')
+        if not self._pose_matches(self.arm.current_posx(), station.posx):
+            raise RuntimeError('고정 스쿠핑은 해당 원료 계량 자세에서 시작해야 한다')
+        observe()
+        job.feedback and job.feedback('DIP')
+        self.arm.movesx_cancellable(points, vel, acc, cancel, self.motion_timeout_s, observer=observe)
+        self.arm.movel_cancellable(shake, self.vel_scale, cancel, self.motion_timeout_s, observer=observe)
+        if cancel():
+            raise RuntimeError('cancelled')
+        job.feedback and job.feedback('LEVEL')
+        try:
+            self.arm.amove_periodic(amp, period, atime, repeat, ref_tool=False)
+            self.arm.wait_motion_cancellable(cancel, self.motion_timeout_s, observer=observe)
+            if not self._pose_matches(self.arm.current_posx(), shake):
+                raise RuntimeError('털기 종료 자세 미확인')
+        except Exception:
+            self.arm.stop_motion()
+            raise
+        job.feedback and job.feedback('LIFT')
+        self.arm.movel_cancellable(station.posx, self.vel_scale, cancel,
+                                   self.motion_timeout_s, observer=observe)
+        return dict(contact_detected=False, max_contact_force_n=0.0, insertion_depth_mm=0.0,
+                    message='TAUGHT_FIXED: 검증된 full 경로 완료; 접촉력·삽입 깊이 미측정')
 
     def _measure_surface_world(self, job: Job):
         """측정 전용: 기존 접촉 경로와 복귀만 실행하고 스쿠핑은 하지 않는다."""
@@ -1220,11 +1413,13 @@ class SkillNode(Node):
         self._empty_scoop_baseline_pending = False
         self._require_scoop_extracted()
         SkillNode._require_held_scoop(self)
-        p = self.get_parameter
         fraction = float(job.args['fraction'])
         if not math.isfinite(fraction) or fraction != 1.0:
             raise ValueError('Pour는 전체 스쿱 투입(fraction=1.0)만 허용한다')
         workbench = self.stations.get('workbench')
+        if 'pour_above_posx' in workbench.extra:
+            return SkillNode._do_taught_pour(self, job, workbench)
+        p = self.get_parameter
         start = SkillNode._pose_from_extra(workbench, 'pour_start_posx')
         end = SkillNode._pose_from_extra(workbench, 'pour_end_posx')
         height = workbench.extra.get('approach_mm', self.stations.approach_mm)
@@ -1256,6 +1451,26 @@ class SkillNode(Node):
             if completed and not job.cancel:
                 job.feedback and job.feedback('RETURN')
                 self.arm.movel(start, self.vel_scale)
+        return True
+
+    def _do_taught_pour(self, job, station):
+        middle = SkillNode._pose_from_extra(station, 'middle_posx')
+        above = SkillNode._pose_from_extra(station, 'pour_above_posx')
+        start = SkillNode._pose_from_extra(station, 'pour_start_posx')
+        end = SkillNode._pose_from_extra(station, 'pour_end_posx')
+        exit_mm = finite(station.extra['pour_exit_mm'], '붓기 후 상승량')
+        if exit_mm <= 0:
+            raise ValueError('붓기 후 상승량은 양수여야 한다')
+        high = list(above)
+        high[2] += exit_mm
+        cancel = lambda: job.cancel or self._cancel_requested()
+        for phase, target in [('APPROACH', middle), ('APPROACH', above), ('APPROACH', start),
+                              ('TILT', end), ('RETURN', above), ('RETURN', high), ('RETURN', middle)]:
+            if cancel():
+                raise RuntimeError('cancelled')
+            SkillNode._require_held_scoop(self)
+            job.feedback and job.feedback(phase)
+            self.arm.movel_cancellable(target, self.vel_scale, cancel, self.motion_timeout_s)
         return True
 
     def _do_return_material(self, job: Job):
@@ -1355,7 +1570,18 @@ class SkillNode(Node):
         station = self.stations.get('workbench')
         pick_posx = station.posx
         measure_posx = station.above(self.stations.approach_mm)
-        if 'solution_space' in station.extra:
+        if 'approach_posj' in station.extra:
+            if getattr(self.gripper, 'backend', '') == 'dio':
+                self.gripper.refresh_dio()
+            state = self.gripper.state(self._now_s())
+            if state.get('busy', True) or state.get('grip_inferred', False):
+                raise RuntimeError('용기 계량 전 열린 그리퍼 확인이 필요하다')
+            self._held_payload = 'empty'
+            self._do_move(job, station_id='workbench', approach=MoveToStation.Goal.AT)
+            pick_posx = list(self.arm.current_posx())
+            measure_posx = list(pick_posx)
+            measure_posx[2] += station.extra['approach_mm']
+        elif 'solution_space' in station.extra:
             # Weigh의 내부 이동도 MoveToStation과 같은 상부 접근 정책을 따른다.
             self._do_move(job, station_id='workbench', approach=MoveToStation.Goal.ABOVE)
         else:
@@ -1382,8 +1608,12 @@ class SkillNode(Node):
             if completed and grip_commanded and not job.cancel:
                 job.feedback and job.feedback('PLACE')
                 self.arm.movel(pick_posx, self.vel_scale)
-                self.gripper.release(3.0)
+                if not self.gripper.release(3.0):
+                    raise RuntimeError('용기 계량 후 열림 미확인')
                 self.arm.movel(measure_posx, self.vel_scale)
+                if 'approach_posj' in station.extra:
+                    self._held_payload = 'empty'
+                    self._record_arrival(station.station_id, MoveToStation.Goal.ABOVE, measure_posx)
         return reading
 
     def _do_weigh_held(self, job: Job):

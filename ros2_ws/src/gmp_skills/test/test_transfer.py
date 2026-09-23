@@ -64,7 +64,7 @@ def test_shipped_routes_preserve_teaching_but_remain_disabled():
     assert set(table.transfers) == {('passbox_done', 'nudge_wait')}
     assert all(not r.enabled for r in table.transfers.values())
     empty = table.transfers[('passbox_done', 'nudge_wait')]
-    assert empty.exit_posx == (717.0, 71.32, 280, 180, -90, -90)
+    assert empty.exit_posx == (705.0, 77.0, 330, 180, -90, -90)
     assert not empty.start_at_posj
     assert empty.start_from == 'above' and empty.arrival == 'at'
     assert empty.waypoints_posj == ((14.57, 35.24, 63.40, -0.12, 81.36, 104.70),)

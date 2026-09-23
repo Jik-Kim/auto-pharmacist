@@ -99,7 +99,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `DispenseResult` | process → HMI·record | `batch_id`·`material_id`, `target_g`·`actual_g`, `error_pct`, `verdict`(`OK/UNDER/OVER/INVALID`), `attempts`, `duration_s` |
 | `Deviation` | process → HMI·record | `deviation_id`: 판정 대상 ID, 배치·원료 ID, `kind`: 일탈 종류, `detail`: 설명, `requires_decision`: QA 필요 여부, `decision`: 판정, `operator_id`: 판정자 |
 | `CellEvent` | 모든 노드 → record; `NUDGE`는 process도 수신 | `level`: INFO/WARN/ERROR, `code`: 기계 판독용 이벤트 코드, `text`: 사람용 상세, `batch_id`: 관련 배치 |
-| `GripperState` | skill → process·HMI | `width_mm`: 현재 폭, `busy`: 동작 중, `grip_inferred`: 파지 판정 — `modbus` 는 드라이버 gSTA grip 비트(9/20 PR #38 `rg2_status_driver`), `virtual`·`dio` 는 폭 추론(필드명은 유지), `safety_triggered`: 안전 상태 비트(modbus)·그 외 false, `force_cmd_n`: 명령 파지력, `backend`: modbus/dio/virtual |
+| `GripperState` | skill → process·HMI | `width_mm`: 현재 폭, `busy`: 동작 중, `grip_inferred`: 파지 판정 — `modbus` 는 드라이버 gSTA grip 비트(9/20 PR #38 `rg2_status_driver`), `virtual`은 폭 추론, `dio`는 DI 완료 확인(9/23, 아래 운용 주석), `safety_triggered`: 안전 상태 비트(modbus)·그 외 false, `force_cmd_n`: 명령 파지력, `backend`: modbus/dio/virtual |
 
 서비스는 요청 후 즉시 단일 응답을 돌려준다.
 
@@ -108,7 +108,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `SubmitOrder` | HMI → process | `recipe` → `accepted`, process가 정한 `batch_id`, `message`. 실행 완료가 아니라 **접수 결과**다 |
 | `QaDecision` | HMI → process | `deviation_id`, `decision`, `operator_id` → `accepted`, `message`. 배치는 해당 `Deviation`에서 확인한다 |
 | `InterlockRequest` | HMI → process | `request`(`ENTER/EXIT`), `reason` → `granted`, `message`. ENTER는 안전 자세 도달 뒤 승인한다 |
-| `SetGripper` | process → skill | `close`, `width_mm`, `force_n`, `timeout_s` → `success`, 실제 정지 폭 `final_width_mm`, `grip_inferred`(modbus 는 grip 비트, 그 외 폭 추론), `message` |
+| `SetGripper` | process → skill | `close`, `width_mm`, `force_n`, `timeout_s` → `success`, 실제 정지 폭 `final_width_mm`, `grip_inferred`(modbus는 grip 비트, virtual은 폭 추론, dio는 DI 완료 확인), `message` |
 | `MeasureForce` | process → skill | `samples`, `settle_s` → `force[6]`, `fz_mean_n`, `fz_std_n`, `valid`, `message`. `force`는 `get_tool_force(DR_BASE)`의 tool 외력 wrench `[Fx,Fy,Fz,Mx,My,Mz]`; 앞 3개는 N, 뒤 3개는 N·m이며 관절 토크가 아니다. 작용점은 컨트롤러의 설정 tool/TCP 기준으로 사용하고 실물 G1에서 확인한다 |
 | `SafePose` | process → skill | `reason` → `success`, `message`. 인터락·오류 시 공통 안전 자세로 후퇴한다 |
 
@@ -282,3 +282,15 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 ### 감지 한계
 
 A 워커는 작업 전·유휴·이동/계량 취소 확인 구간에서 상태를 조회하며 벤더 `/{robot.id}/dsr_controller2/error`도 수신한다. 콜백은 플래그/큐만 바꾸고 DSR 호출은 워커에 맡긴다. ERROR 알람 또는 안전 제어기 WARN 이상은 보수적으로 동작 차단한다. 상태·알람이 모두 유실된 순간 정지를 검출한다고 보장하지 않으며, 벤더 자체 자동 리셋 정책은 별도 실물 확인 대상이다. 가상 모드의 복구 요청은 성공 처리하지 않는다.
+
+
+### 9/23 DIO·고정 티칭 경로 운용 주석 (필드·열거값 변경 없음)
+
+- DIO `SetGripper`는 close만 개폐에 사용하고 width_mm/force_n은 무시한다.
+  `final_width_mm`/`GripperState.width_mm`은 -1(미측정), `force_cmd_n`은 0(명령 없음).
+  파지는 스쿱 DI1=DI2=1, 약통 DI1=1로 판단한다. 지문 검사는 현행 설정에서 비활성이다.
+- `Scoop`의 고정 경로 모드는 depth_fraction=1만 지원하며 success는 경로 완료다.
+  접촉 측정은 하지 않아 contact_detected=false, 힘·깊이=0과 `TAUGHT_FIXED` 미측정
+  message를 반환한다. 센서값 0이나 접촉 실패의 증거로 사용하지 않는다.
+  현 C FSM은 false를 SCOOP_EMPTY로 처리하므로 자동 공정 연계는 후속 합의·수정이 필요하다.
+  인계 대상과 지원 범위는 [실행 안내](setup.md)의 B/C 인계 절을 따른다.
