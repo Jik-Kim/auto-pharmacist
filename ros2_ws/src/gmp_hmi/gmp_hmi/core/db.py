@@ -12,7 +12,7 @@ import threading
 from pathlib import Path
 
 LEVELS = {0: 'INFO', 1: 'WARN', 2: 'ERROR'}
-VERDICTS = {0: 'OK', 1: 'UNDER', 2: 'OVER'}
+VERDICTS = {0: 'OK', 1: 'UNDER', 2: 'OVER', 3: 'INVALID'}   # 3: 투입량 미측정 (계약 v1.8, #108)
 DECISIONS = {0: 'PENDING', 1: 'APPROVED', 2: 'DISCARDED', 3: 'AUTO_RECOVERED', 4: 'FORCED'}   # 4: 강제 개입 종료 (v1.2.1)
 KINDS = {0: 'OVERFILL', 1: 'GRIP_FAIL', 2: 'SLIP', 3: 'SAFETY_SWITCH', 4: 'SCOOP_EMPTY',
          5: 'MATERIAL_EMPTY', 6: 'FORCE_LIMIT', 7: 'TIMEOUT', 8: 'WEIGH_INVALID',
