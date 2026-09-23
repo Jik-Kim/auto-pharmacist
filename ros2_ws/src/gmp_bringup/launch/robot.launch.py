@@ -51,8 +51,6 @@ def generate_launch_description():
     return LaunchDescription(actions)
 
 
-<<<<<<< HEAD
-=======
 def _gripper_pythonpath():
     """벤더 develop 설치의 egg-link를 드라이버 프로세스에만 반영한다."""
     prefix = Path(get_package_prefix('onrobot_rg_control'))
@@ -68,7 +66,6 @@ def _gripper_pythonpath():
     return os.pathsep.join(paths + [os.environ.get('PYTHONPATH', '')])
 
 
->>>>>>> 9b1fc970137eefcbc5de3009df176c2b84bf04fc
 def _control_node():
     """벤더와 같은 하드웨어·파라미터를 쓰고 컨트롤러 플러그인 종류만 덮어쓴다."""
     xacro = os.path.join(get_package_share_directory('m0609_rg2_bringup'),
@@ -89,12 +86,8 @@ def _control_node():
             {'update_rate': 100},
             os.path.join(get_package_share_directory('dsr_controller2'),
                          'config', 'dsr_controller2.yaml'),
-<<<<<<< HEAD
-            # 일반 dict의 /** 범위 대신 벤더와 같은 controller_manager 범위로 덮어쓴다.
-=======
             # 벤더의 /**/controller_manager와 같은 범위로 type만 덮어쓴다.
             # 일반 dict는 /** 범위가 되어 더 구체적인 벤더 설정에 밀린다.
->>>>>>> 9b1fc970137eefcbc5de3009df176c2b84bf04fc
             os.path.join(get_package_share_directory('gmp_bringup'),
                          'params', 'dsr_controller_override.yaml'),
         ],
