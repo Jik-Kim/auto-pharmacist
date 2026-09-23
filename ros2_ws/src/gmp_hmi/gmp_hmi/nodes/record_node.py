@@ -78,7 +78,11 @@ class RecordNode(Node):
             if m.mode == CellState.ERROR:
                 result = 'ERROR'
             else:
-                result = 'DISCARDED' if m.step == 'DISCARDED' or self.db.has_discard_decision(m.batch_id) else 'DONE'
+                if m.step == 'DISCARDED' or self.db.has_discard_decision(m.batch_id):
+                    result = 'DISCARDED'
+                else:
+                    # 미측정 승인 완료는 CellState 만으로 구분되지 않는다 — C 의 이벤트·원료 판정으로 가른다 (#228).
+                    result = 'DONE_UNMEASURED' if self.db.has_unmeasured(m.batch_id) else 'DONE'
             self.db.finish_batch(m.batch_id, t, result, m.note)
             # 보류 사유는 완료가 확인되면 해제한다.
             if m.batch_id in self._held_completion:
@@ -101,6 +105,7 @@ class RecordNode(Node):
         self._ensure_batch(batch_id, t)
         self.db.item(batch_id, m.material_id, m.target_g, m.actual_g, m.error_pct,
                      m.verdict, m.attempts, t)
+        self.db.reconcile_unmeasured(batch_id)   # INVALID 결과가 종료 뒤 도착한 경우
         self._refresh_export(batch_id)
 
     def _on_cycle(self, m):
@@ -124,6 +129,10 @@ class RecordNode(Node):
         # 배치 ID 없는 로그인/설정 등의 전역 HMI 감사 이벤트는 현재 배치에 붙이지 않는다.
         batch_id = m.batch_id or None
         self.db.event(t, batch_id, m.level, m.code, m.text)
+        if m.code == 'BATCH_UNMEASURED' and batch_id:
+            # 최종 CellState(DONE) 보다 늦게 오면 이미 DONE 으로 닫힌 행을 고친다 (순서 비보장, PR #257).
+            # 먼저 오면 이 UPDATE 는 아무것도 안 하고 종료 처리 때 has_unmeasured 가 잡는다.
+            self.db.reconcile_unmeasured(batch_id)
         if m.code == 'BATCH_START' and batch_id:
             product = m.text
             try:

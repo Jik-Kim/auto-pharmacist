@@ -100,12 +100,40 @@ class CellDB:
             self.con.execute('UPDATE batches SET note=? WHERE batch_id=?', (note, batch_id))
 
     def reconcile_discard(self, batch_id):
-        """토픽 순서가 바뀌어 QA 폐기 판정이 DONE 뒤 도착해도 종료 시각은 유지한다."""
+        """토픽 순서가 바뀌어 QA 폐기 판정이 DONE 뒤 도착해도 종료 시각은 유지한다.
+
+        미측정 승인 완료(`DONE_UNMEASURED`)도 폐기되면 DISCARDED 다 (#228) — 종전 `result='DONE'`
+        정확 일치는 미측정 배치를 QA 가 폐기해도 완료로 남겼다.
+        """
         with self._lock, self.con:
             self.con.execute(
-                "UPDATE batches SET result='DISCARDED' WHERE batch_id=? AND result='DONE' "
+                "UPDATE batches SET result='DISCARDED' WHERE batch_id=? AND result IN ('DONE','DONE_UNMEASURED') "
                 "AND finished_at IS NOT NULL AND EXISTS(SELECT 1 FROM deviations "
                 "WHERE batch_id=? AND decision='DISCARDED')", (batch_id, batch_id))
+
+    def has_unmeasured(self, batch_id):
+        """투입량이나 최종 순량을 모르는 채 승인된 배치인가 (SOT D-32, #228).
+
+        근거 둘 중 하나면 된다: C 의 `BATCH_UNMEASURED` 이벤트(원료·VERIFY 미측정 모두), 또는
+        원료 결과 `verdict='INVALID'`(보조 — 이벤트를 놓쳐도 원료 미측정은 잡는다).
+        메모리가 아니라 DB 에서 보므로 record_node 가 재시작해도 판정이 같다.
+        """
+        return bool(self._rows(
+            "SELECT 1 WHERE EXISTS(SELECT 1 FROM events WHERE batch_id=? AND code='BATCH_UNMEASURED') "
+            "OR EXISTS(SELECT 1 FROM items WHERE batch_id=? AND verdict='INVALID')", (batch_id, batch_id)))
+
+    def reconcile_unmeasured(self, batch_id):
+        """미측정 근거가 DONE 기록 **뒤**에 도착해도 `DONE_UNMEASURED` 로 바로잡는다.
+
+        C 는 `BATCH_UNMEASURED` 를 최종 CellState(DONE) 보다 먼저 보내려 하지만 순서를 보장하지 않는다
+        (PR #257). 폐기(DISCARDED)·오류(ERROR)는 건드리지 않는다 — 폐기가 미측정보다 우선이다.
+        """
+        with self._lock, self.con:
+            self.con.execute(
+                "UPDATE batches SET result='DONE_UNMEASURED' WHERE batch_id=? AND result='DONE' "
+                "AND finished_at IS NOT NULL AND (EXISTS(SELECT 1 FROM events WHERE batch_id=? "
+                "AND code='BATCH_UNMEASURED') OR EXISTS(SELECT 1 FROM items WHERE batch_id=? "
+                "AND verdict='INVALID'))", (batch_id, batch_id, batch_id))
 
     def has_discard_decision(self, batch_id):
         return bool(self._rows("SELECT 1 FROM deviations WHERE batch_id=? AND decision='DISCARDED' LIMIT 1",
@@ -306,8 +334,11 @@ class CellDB:
         """기존 KPI 정의 유지. 운전시간은 완료 배치 경과시간의 합(정지 구간 미분리)."""
         where, args = self._batch_filter(start, end, result, query)
         selected = 'SELECT b.batch_id FROM batches b' + where
+        # KPI 두 지표 (SOT D-32): DONE 만 「계량 검증 완료」, DONE_UNMEASURED 는 「미측정 승인 완료」.
+        # `batch_success_pct` 는 기존 키를 유지하되 뜻은 계량 검증 완료율이다. 실행 완주율은 둘의 합.
         batch = self._rows(
             "SELECT COUNT(*) AS total, COALESCE(SUM(result='DONE'),0) AS done, "
+            "COALESCE(SUM(result='DONE_UNMEASURED'),0) AS unmeasured, "
             'COALESCE(SUM(MAX(0,finished_at-started_at)),0) AS run_s FROM batches '
             f'WHERE finished_at IS NOT NULL AND batch_id IN ({selected})', args)[0]
         dev = self._rows("SELECT COUNT(*) AS total,COALESCE(SUM(decision='AUTO_RECOVERED'),0) AS auto "
@@ -315,7 +346,11 @@ class CellDB:
         forced = self._rows("SELECT COUNT(*) AS n FROM events WHERE code='INTERVENTION_FORCED' "
                             f'AND batch_id IN ({selected})', args)[0]['n']
         total, done, run_s = batch['total'], batch['done'], batch['run_s']
+        unmeasured = batch['unmeasured']
         return {'batches': total, 'batch_success_pct': 100.0 * done / total if total else None,
+                'unmeasured_done': unmeasured,
+                'unmeasured_done_pct': 100.0 * unmeasured / total if total else None,
+                'run_complete_pct': 100.0 * (done + unmeasured) / total if total else None,
                 'deviations': dev['total'],
                 'auto_recovery_pct': 100.0 * dev['auto'] / dev['total'] if dev['total'] else None,
                 'run_time_s': run_s, 'forced_interventions': forced,
