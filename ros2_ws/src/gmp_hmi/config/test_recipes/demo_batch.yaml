@@ -1,7 +1,0 @@
-# HMI 가짜 공정 시험 전용 값. 실제 운전 설정·계량 분해능 확정값이 아니다.
-# 최신 RecipeItem에는 material_id / target_g / tol_pct만 있다.
-product: DEMO-01
-items:
-  - {material_id: A, target_g: 200.0, tol_pct: 5.0}
-  - {material_id: B, target_g: 150.0, tol_pct: 5.0}
-  - {material_id: C, target_g: 100.0, tol_pct: 5.0}
