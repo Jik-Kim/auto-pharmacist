@@ -35,7 +35,8 @@ def test_invalid_then_deviation():
 def test_scale_tare_and_reading():
     m = WeightModel(ScaleConfig(method='workpiece', offset_g=0.0, max_std_g=5.0))
     m.set_tare(m.raw_to_g(0.05))            # 50 g 용기
-    gross, tare, net, std, valid = m.reading(0.08, 0.001, True)
+    gross, tare, net, std, valid = m.reading(
+        0.08, 0.001, True, raw_hf_std=0.0)
     assert abs(net - 30.0) < 1e-6 and valid
 
 
@@ -135,8 +136,10 @@ def test_offset_cancels_out_in_net_weight():
         m = WeightModel(ScaleConfig(gain=1.03, offset_g=offset))
         tare_g = m.raw_to_g(raw_tare)
         m.set_tare(tare_g)
-        nets_a.append(m.reading(raw_gross, 0.0, True)[2])
-        gross_g = m.reading(raw_gross, 0.0, True)[0]
+        nets_a.append(m.reading(
+            raw_gross, 0.0, True, raw_hf_std=0.0)[2])
+        gross_g = m.reading(
+            raw_gross, 0.0, True, raw_hf_std=0.0)[0]
         nets_b.append(gross_g - tare_g)       # FSM 방식
     assert max(nets_a) - min(nets_a) < 1e-9   # offset 이 6.6 g 달라져도 순량은 같다
     assert max(nets_b) - min(nets_b) < 1e-9
@@ -185,5 +188,21 @@ def test_reading_hf_gate_catches_load_change_but_passes_oscillation():
     assert m.reading(0.100, 0.005, True, raw_hf_std=0.006)[4] is True
     # 재는 중 하중이 바뀌어 고주파가 튀었다 → 거부
     assert m.reading(0.100, 0.005, True, raw_hf_std=0.012)[4] is False
-    # hf 를 안 주면 기존 동작 그대로 (하위호환)
-    assert m.reading(0.100, 0.005, True)[4] is True
+
+
+def test_reading_requires_raw_hf_std():
+    """고주파 표준편차 누락이 무결성 게이트를 조용히 끄면 안 된다."""
+    import pytest
+    m = WeightModel(ScaleConfig(method='workpiece'))
+
+    with pytest.raises(TypeError, match='raw_hf_std'):
+        m.reading(0.100, 0.005, True)
+
+
+def test_reading_rejects_none_raw_hf_std():
+    """호출부가 None을 명시해 필수 인자 검사를 우회하면 안 된다."""
+    import pytest
+    m = WeightModel(ScaleConfig(method='workpiece'))
+
+    with pytest.raises(ValueError, match='raw_hf_std가 None'):
+        m.reading(0.100, 0.005, True, raw_hf_std=None)
