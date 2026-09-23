@@ -1,4 +1,4 @@
-# Interfaces — 계약 v1.7 (2026-09-22)
+# Interfaces — 계약 v1.8 (2026-09-23)
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
@@ -20,6 +20,8 @@
 
 > **상태 요약 (9/22):** v1.2·v1.2.1·v1.3·v1.4·v1.5·v1.5.1·v1.6 확정. v1.4·v1.6은 #45 검토 후 사용자가 영향 담당 승인을 확인했다. 실제 ROS 통신·실물 복구 검증은 이번 확정에 포함하지 않는다.
 > **v1.7 (9/22 사용자 승인):** A 내부 읽기 전용 `GetCollisionSensitivity` 서비스를 추가한다. 벤더 원본을 보존하는 상속 플러그인이 기존 연결로 전역 충돌 감도를 조회하며, `skill_node`는 기대값 50%와 비교해 기동·복구 자가진단을 수행한다. 실물 검증은 별도다.
+> **v1.8 (9/23 조장 결정, #108):** `DispenseResult.verdict` 에 **`INVALID=3`** 을 추가한다. 계량 무효를 QA 가 승인해 **투입량을 모르는 채** 끝난 원료를 위한 값이다 — `UNDER`(모자랐다)와 다르다. **상수 추가이며 필드 레이아웃은 바뀌지 않는다**(기존 구독자의 역직렬화에 영향 없음). 다만 **모르는 열거값을 받는 쪽이 어떻게 보이는지는 소비자 문제**라 D 쪽 **두 곳이 같은 시점에 머지돼야 한다**. (1) `gmp_hmi/core/db.py:15` `VERDICTS` 에 `3: 'INVALID'` — 없으면 `db.py:122` 가 배치 기록에 문자열 `'3'` 을 저장하고 `hmi_web_node:339` 가 `'?'` 를 내보낸다. **기록 문제라 이것이 먼저다.** (2) `static/hmi.js:8` `verdict()` 의 배지 분류·한국어 라벨 — (1) 이 없으면 `hmi.js` 는 `'INVALID'` 가 아니라 `'?'` 를 받으므로 **(2) 는 (1) 에 딸린다**. 재고(`core/session_inventory.py` `observe`)는 `OK`·`OVER` 만 차감하므로 **거동이 바뀌지 않는다** — 지금 `UNDER` 도 제외되고 있다. 「미측정분만큼 재고가 실제보다 많게 보인다」는 전부터 있던 문제이고 v1.8 이 만들지 않는다(별건으로 D·조장이 정할 사안).
+> 배경: #213 결정 3 이 `WEIGH_RESIDUAL` 무효를 QA 로 보내면서 **「투입량을 모르는 원료」가 처음으로 도달 가능해졌고**, 그때까지 `verdict` 가 빈 채 `OK` 로 떨어지고 있었다(I-008). #225 가 임시로 `UNDER` 되매김을 넣어 막았고, v1.8 이 그것을 정확한 값으로 바꾼다. `INVALID` 는 `unmeasured > 0` 일 때만 나가며, 「안 들어갔다」(첫 사이클 TIMEOUT 등)는 그대로 `UNDER` 다.
 > **변경 절차:** 계약을 바꿔야 하면 **먼저 팀 채널에 알리고**, `gmp_interfaces` 와 이 문서를 **같은 커밋에서** 고친다. 리뷰는 영향받는 담당 전원, 최소 2명 승인 (PM 없음 — AGENTS 교차검수).
 
 ---
@@ -33,7 +35,7 @@
 | `msg/CellState` | 공정 상태 (모드·배치·스텝·현재 스테이션) | `process_node` 단독 발행, 2 Hz + 변화 시 |
 | `msg/WeightReading` | 1회 계량 결과 (총량·풍량·순량·표준편차·표본 수·유효·**대상**) | `valid=false` 면 값을 쓰지 않는다 — 정착 실패·힘 조회 실패. **v1.2 에서 `subject`(`scoop`/`container`) 추가** — 스쿱은 `material_N`, 용기는 `workbench`에서 계량하며 `subject`도 함께 기록한다 |
 | `msg/ScoopCycle` | 스쿠핑 1회 시도의 동작·계량·붓기 결과를 묶은 학습 원본 | `process_node`가 성공·실패로 시도가 종료될 때 1건 발행. `Scoop.Feedback`을 학습 기록으로 쓰지 않는다 |
-| `msg/DispenseResult` | 원료 1종 분주 결과 (목표·실측·오차·판정·시도 횟수) | 판정 `OK/UNDER/OVER`. **`OVER` 는 되돌릴 수 없으므로 일탈** |
+| `msg/DispenseResult` | 원료 1종 분주 결과 (목표·실측·오차·판정·시도 횟수) | 판정 `OK/UNDER/OVER/INVALID`. **`OVER` 는 되돌릴 수 없으므로 일탈**, **`INVALID`(v1.8) 은 투입량을 모른다는 뜻이라 `actual_g`·`error_pct` 를 목표와 비교하면 안 된다** |
 | `msg/Deviation` | 일탈 1건 (종류·상세·판정 필요 여부·판정·**판정자**) | 자동 복구된 것도 기록한다 — 지속성 평가의 근거. `operator_id` 는 QA 판정 후 process 가 채운다 (v1.1). **v1.2 에서 `VERIFY_MISMATCH`(계측 신뢰성)·`BATCH_OUT_OF_SPEC`(제품 규격)·`WRONG_TOOL`(폭 지문) 추가.** `decision` 은 `PENDING`(QA 대기) / `APPROVED` / `DISCARDED` / `AUTO_RECOVERED`(RETRY·REFILL) / **`FORCED`(강제 개입 종료, v1.2.1)** — FORCED 는 자동 복구도 QA 대상도 아니다 |
 | `msg/CellEvent` | 로그 이벤트 (레벨·코드·문장) | 배치 기록의 원천. 모든 노드가 발행 가능 |
 | `msg/GripperState` | 폭·busy·파지 추론·안전 스위치·명령 파지력 | `skill_node` 10 Hz. 파지는 **추론**이다 (SOT D-05) |
@@ -94,7 +96,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `CellState` | process → HMI·record | `mode`: 셀 운전 모드, `batch_id`: 현재 배치, `step`: FSM 상태, `item_index`: 0 기반 원료 순번, `station`: 마지막 도착 위치, `note`: 화면용 보충 설명 |
 | `WeightReading` | skill → process (`WeighContainer.Result`), process → HMI·record (`weight`) | `gross_g`: 기준 차감 전 값, `tare_g`: 동일 자세·파지의 빈 용기/스쿱 기준, `net_g`: 차감값, `std_g`·`samples`: 분산과 표본 수, `valid`: 사용 가능 여부, `station`: 계량 자세 ID |
 | `ScoopCycle` | process → record | 스쿠핑 시도 한 건의 완결 기록. 세부 필드는 1.1 표를 따른다 |
-| `DispenseResult` | process → HMI·record | `batch_id`·`material_id`, `target_g`·`actual_g`, `error_pct`, `verdict`(`OK/UNDER/OVER`), `attempts`, `duration_s` |
+| `DispenseResult` | process → HMI·record | `batch_id`·`material_id`, `target_g`·`actual_g`, `error_pct`, `verdict`(`OK/UNDER/OVER/INVALID`), `attempts`, `duration_s` |
 | `Deviation` | process → HMI·record | `deviation_id`: 판정 대상 ID, 배치·원료 ID, `kind`: 일탈 종류, `detail`: 설명, `requires_decision`: QA 필요 여부, `decision`: 판정, `operator_id`: 판정자 |
 | `CellEvent` | 모든 노드 → record; `NUDGE`는 process도 수신 | `level`: INFO/WARN/ERROR, `code`: 기계 판독용 이벤트 코드, `text`: 사람용 상세, `batch_id`: 관련 배치 |
 | `GripperState` | skill → process·HMI | `width_mm`: 현재 폭, `busy`: 동작 중, `grip_inferred`: 파지 판정 — `modbus` 는 드라이버 gSTA grip 비트(9/20 PR #38 `rg2_status_driver`), `virtual`·`dio` 는 폭 추론(필드명은 유지), `safety_triggered`: 안전 상태 비트(modbus)·그 외 false, `force_cmd_n`: 명령 파지력, `backend`: modbus/dio/virtual |

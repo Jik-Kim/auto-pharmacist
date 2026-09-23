@@ -661,11 +661,10 @@ def test_213_weigh_residual_무효는_미측정으로_세고_누산하지_않는
     r = fsm.results[0]
     assert r.unmeasured == 1, r.unmeasured
     assert r.actual_g < r.target_g          # 미측정분이 빠져 실제보다 작다
-    # ⚠️ `decide()` 를 못 거쳐 verdict 가 **비어 있다.** `process_node._publish_result` 가
-    # 이걸 `verdict_of` 로 되매겨 DispenseResult 는 **UNDER 로 보고한다** — 「모름」을 담을
-    # 열거값이 없는 동안의 보수적 처리다 (#108). 발행 쪽 고정은 `test_process_node.py` 의
-    # `test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다` 가 한다.
-    # 계약이 INVALID 를 갖게 되면 이 assert 가 먼저 깨져야 한다.
+    # ⚠️ `decide()` 를 못 거쳐 verdict 가 **비어 있다.** FSM 은 여기까지만 안다 —
+    # 「모름」을 어떻게 발행할지는 `process_node._publish_result` 가 정하고, `unmeasured` 가
+    # 서 있으므로 **INVALID** 로 나간다 (계약 v1.8 · #108). 발행 쪽 고정은
+    # `test_process_node.py` 의 `test_108_투입량_불명은_INVALID_로_나간다` 가 한다.
     assert r.verdict == '', r.verdict
 
 
