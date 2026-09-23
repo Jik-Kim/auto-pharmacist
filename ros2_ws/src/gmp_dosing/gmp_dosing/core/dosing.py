@@ -97,5 +97,8 @@ def decide(target_g: float, actual_g: float, tol_pct: float, attempts: int, vali
         return Decision('DEVIATION', v, 'TIMEOUT', error_pct=err,
                         detail=f'보정 {attempts}회 후에도 미달')
     need = target_g - actual_g
-    frac = max(cfg.min_fraction, min(1.0, need / cfg.scoop_nominal_g))
+    # 고정 스쿱에서는 깊이를 못 고른다 — 언제나 한 스쿱 전량이다. 여기서 need/nominal 로
+    # 부분 깊이를 내면 A 의 고정 경로(depth_fraction != 1.0 거부)가 보충 스쿱을 튕겨
+    # 배치가 ERROR 로 죽는다. 넘겨도 되는지는 위 min_add 분기가 이미 판정했다.
+    frac = 1.0 if cfg.fixed_scoop else max(cfg.min_fraction, min(1.0, need / cfg.scoop_nominal_g))
     return Decision('SCOOP', v, fraction=frac, error_pct=err)

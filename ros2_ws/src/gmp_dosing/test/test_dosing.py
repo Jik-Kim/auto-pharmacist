@@ -271,6 +271,26 @@ def test_fixed_scoop_gives_up_when_one_more_scoop_would_overshoot():
     assert '보충 불가' in d.detail
 
 
+def test_fixed_scoop_always_asks_for_a_full_scoop():
+    """고정 스쿱이 SCOOP 을 내면 깊이는 **언제나 1.0** 이어야 한다.
+
+    A 의 고정 경로는 `depth_fraction != 1.0` 을 거부한다 — 부분 깊이가 나오면 보충 스쿱이
+    튕겨 배치가 ERROR 로 죽는다. 위 두 시험이 이것을 못 잡은 이유는 고른 actual 이
+    우연히 frac 1.0 을 내는 값(83 → need 87 > 85)이었고, frac 을 아예 안 봤기 때문이다.
+    아래 범위는 **첫 스쿱이 공칭 85 g 언저리에 떨어지는 정상 회차** 전체를 덮는다.
+    """
+    for actual in (0.0, 50.0, 85.0, 85.1, 90.0, 95.0, 102.0):
+        d = decide(170.0, actual, 10.0, 1, True, 0, FIXED)
+        assert d.action == 'SCOOP', (actual, d)
+        assert d.fraction == 1.0, f'actual {actual} g 에서 깊이 {d.fraction} — 고정 경로가 거부한다'
+
+
+def test_depth_control_still_asks_for_a_partial_scoop():
+    """짝 시험 — 깊이 제어에서는 부분 깊이가 그대로 나와야 한다. 위 수정이 여기까지 덮으면 안 된다."""
+    d = decide(170.0, 90.0, 10.0, 1, True, 0, DEPTH)
+    assert d.action == 'SCOOP' and abs(d.fraction - 80.0 / 85.0) < 1e-9
+
+
 def test_depth_control_never_gives_up_while_deadlock_condition_holds():
     """깊이 제어 모드에서 이 분기는 **교착 조건과 동치**라, 조건이 지켜지면 발동하지 않는다.
 
