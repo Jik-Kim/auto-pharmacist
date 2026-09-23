@@ -61,3 +61,36 @@ def test_progress_strip_never_calls_invalid_item_complete():
     assert "'투입량 미확인'" in source
     # v1.8 의 INVALID 는 재계량 예정이 아니라 「모른 채 넘어감」이다.
     assert "'재계량'" not in source
+
+
+def _emitted_steps():
+    """시험 공정 노드와 브라우저 데모가 CellState.step 으로 내는 이름."""
+    node = (Path(__file__).resolve().parents[1] / 'gmp_hmi/nodes/hmi_test_process.py').read_text(encoding='utf-8')
+    demo = (Path(__file__).resolve().parents[1] / 'static/data-source.js').read_text(encoding='utf-8')
+    names = set()
+    for line in node.splitlines():
+        if re.search(r"\bself\.step\b[^=]*=(?!=)", line):
+            names |= set(re.findall(r"'([A-Z][A-Z_]{2,})'", line))
+    for segment in re.findall(r"step\s*[:=]\s*([^;,}]*)", demo):
+        names |= set(re.findall(r"'([A-Z][A-Z_]{2,})'", segment))
+    return names
+
+
+def test_test_process_and_demo_emit_only_known_steps():
+    # /hmi_test·/demo 화면도 같은 steps 맵으로 그린다. 없는 이름은 영문 원시 문자열로 보인다 —
+    # 9/23 까지 WAIT_QA·INTERLOCK·MOVING_TO_SAFE·DISCARD_MOVING·WEIGH·VERIFY_FINAL·DISCARD_FINISH 가 그랬다.
+    emitted = _emitted_steps()
+    assert {'SCOOP', 'DEVIATION', 'FINISH'} <= emitted, emitted   # 추출이 비어 통과하는 것을 막는다
+    assert not emitted - _hmi_step_keys(), f'steps 맵에 없는 시험·데모 단계: {sorted(emitted - _hmi_step_keys())}'
+
+
+def test_comm_test_launch_accepts_same_scenarios_as_test_process():
+    # #266 이 시험 노드 시나리오를 6 종으로 바꿨는데 launch 인자 검사는 옛 4 종(verify_mismatch 포함)에
+    # 남아, 새 시나리오를 launch 인자로 주면 기동이 거부됐다.
+    root = Path(__file__).resolve().parents[1]
+    node = (root / 'gmp_hmi/nodes/hmi_test_process.py').read_text(encoding='utf-8')
+    launch = (root / 'launch/hmi_comm_test.launch.py').read_text(encoding='utf-8')
+    in_node = re.search(r"if scenario not in \(([^)]*)\)", node).group(1)
+    in_launch = re.search(r"scenarios = \(([^)]*)\)", launch).group(1)
+    names = lambda text: set(re.findall(r"'([a-z_]+)'", text))
+    assert names(in_node) and names(in_node) == names(in_launch), (sorted(names(in_node)), sorted(names(in_launch)))

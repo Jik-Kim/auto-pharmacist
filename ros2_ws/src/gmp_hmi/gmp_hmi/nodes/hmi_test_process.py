@@ -23,6 +23,10 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from gmp_hmi.core.trial_inventory import TrialInventory
 
+# overfill 시나리오의 과다 투입 배율. 허용오차(D-33 ±10 %)를 확실히 넘어야 OVER 가 말이 된다 —
+# 옛 1.10 은 ±5 % 시절 값이라 ±10 % 에서는 경계값이 된다.
+OVERFILL_RATIO = 1.15
+
 
 class HmiTestProcess(Node):
     def __init__(self):
@@ -167,7 +171,7 @@ class HmiTestProcess(Node):
             return False, '시험 item_duration_s는 2초 이상이어야 합니다.', None
         # 과다 투입 시나리오도 실제 생성할 시험량 전체를 미리 예약한다.
         requirements = {item.material_id: float(item.target_g * (
-            1.10 if scenario == 'overfill' and i == min(1, len(items) - 1) else 1.0))
+            OVERFILL_RATIO if scenario == 'overfill' and i == min(1, len(items) - 1) else 1.0))
             for i, item in enumerate(items)}
         if self.inventory.blocked_materials:
             return False, ('원료 높이 부족: ' + ', '.join(self.inventory.blocked_materials) +
@@ -293,11 +297,12 @@ class HmiTestProcess(Node):
                 return res
             self.previous = (self.mode, self.step, self.station, self.note)
             # 가상 안전 자세 이동 완료 후에만 응답한다. 실제 하드웨어 안전 검증은 아니다.
-            self.step, self.station = 'MOVING_TO_SAFE', 'test_moving'
+            # 단계 이름은 실제 FSM 과 같게 둔다 — 실제는 이동 중에도 단계를 바꾸지 않는다(hmi.js steps 맵에 없는 이름은 영문 그대로 보인다).
+            self.station = 'test_moving'
             self._state()
             time.sleep(0.3)
             self._previous_tick = time.monotonic()
-            self.mode, self.step, self.station = CellState.PAUSED, 'INTERLOCK', 'test_safe'
+            self.mode, self.step, self.station = CellState.PAUSED, 'PAUSED', 'test_safe'
             self.note = '시험 안전 위치를 가정한 일시정지 · 실제 구역 진입 허가 아님'
             self._event('INTERLOCK_ENTER', 'TEST_ONLY ' + req.reason)
             self._state()
@@ -395,13 +400,13 @@ class HmiTestProcess(Node):
             kind=kind, detail='TEST_ONLY ' + text, requires_decision=True,
             decision=Deviation.PENDING, operator_id='')
         self.pub_dev.publish(self._stamp(self.pending))
-        self.mode, self.step, self.phase = CellState.DEVIATION, 'WAIT_QA', 'qa'
+        self.mode, self.step, self.phase = CellState.DEVIATION, 'DEVIATION', 'qa'
         self.note = '시험 일탈 · QA 승인 또는 폐기 대기'
         self._state()
 
     def _finish(self, result):
         self.phase, self.elapsed, self.finish_result = 'finish', 0.0, result
-        self.step, self.station = ('DISCARD_MOVING', 'reject_bin') if result == 'DISCARDED' else ('FINISH', 'passbox_done')
+        self.step, self.station = ('DISCARDED', 'reject_bin') if result == 'DISCARDED' else ('FINISH', 'passbox_done')
         self.note = '시험 배치 결과 정리 중 · ' + result
         self._state()  # RUNNING을 유지한다. 가상 반송 완료는 다음 tick에서만 확정한다.
 
@@ -451,9 +456,9 @@ class HmiTestProcess(Node):
             return
         item = self.items[self.index]
         overfill = self.active_scenario == 'overfill' and self.index == min(1, len(self.items) - 1)
-        actual = float(item.target_g * (1.10 if overfill else 1.0))
+        actual = float(item.target_g * (OVERFILL_RATIO if overfill else 1.0))
         fraction = min(1.0, self.elapsed / self.item_duration)
-        self.step = 'SCOOP' if fraction < 0.4 else ('POUR' if fraction < 0.7 else 'WEIGH')
+        self.step = 'SCOOP' if fraction < 0.4 else ('POUR' if fraction < 0.7 else 'WEIGH_RESIDUAL')
         self.station = self._material_station(item.material_id) if fraction < 0.4 else 'workbench'
         self.note = f'시험 {item.material_id} · 목표 {item.target_g:g} g · 생성 계량값'
         if self.elapsed - self.last_weight >= 0.4:
@@ -477,7 +482,8 @@ class HmiTestProcess(Node):
         self._weight(actual)
         attempts = max(1, math.ceil(actual / self.test_scoop_nominal_g))
         delivered_before = 0.0
-        # 원료 완료 시 40 g 기준 시험 사이클을 생성한다. 실제 로봇 계량/횟수 검증은 아니다.
+        # 원료 완료 시 test_scoop_nominal_g 기준 시험 사이클을 생성한다(통신 시험 launch 는 85 g, D-33).
+        # 실제 로봇 계량/횟수 검증은 아니다.
         for attempt in range(1, attempts + 1):
             portion = min(self.test_scoop_nominal_g, actual - delivered_before)
             self._cycle(item, portion, attempt, delivered_before, self.item_duration / attempts)

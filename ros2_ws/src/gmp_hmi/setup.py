@@ -15,7 +15,6 @@ setup(
         (os.path.join('share', package_name, 'templates'), glob('templates/*.html')),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config', 'test_recipes', 'v4'), glob('config/test_recipes/v4/*.yaml')),
-        (os.path.join('share', package_name, 'config', 'test_recipes'), glob('config/test_recipes/*.yaml')),
         (os.path.join('share', package_name, 'docs'), glob('docs/*.md')),
         (os.path.join('share', package_name, 'tools'), glob('tools/*.py')),
         (os.path.join('share', package_name, 'static'), glob('static/*')),

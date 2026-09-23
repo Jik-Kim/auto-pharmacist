@@ -348,7 +348,10 @@ class ProcessFSM:
             if d.action == 'SCOOP':
                 self.state = 'SCOOP'
                 return self._scoop(d.fraction)
-            return self._deviate(d.kind, 'WEIGH_RESIDUAL')
+            # `detail` 은 **같은 kind 가 덮는 여러 사실을 가르는 유일한 근거**다 —
+            # TIMEOUT 하나가 「보정 소진」과 「보충 불가」를 함께 쓴다 (9/23 합의).
+            # 여기서 문구를 새로 만들지 않는다: 술어가 `decide()` 에 있으므로 사유도 거기서 온다.
+            return self._deviate(d.kind, 'WEIGH_RESIDUAL', detail=d.detail)
         if k == 'move' and st == 'RETURN_SCOOP':
             return {'kind': 'grip', 'close': False}
         if k == 'grip' and st == 'RETURN_SCOOP':

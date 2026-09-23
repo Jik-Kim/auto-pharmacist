@@ -3,7 +3,9 @@
 Cell 오라클: 스쿱 풍량 20 g, 용기 풍량 30 g. scoop 마다 yields 에서 퍼올림량을 꺼내고, pour 는 fraction 만큼 옮기되
 residual 만큼 스쿱에 남긴다. weigh_scoop 은 스쿱 총량, weigh 는 용기 총량·순량을 돌려준다.
 """
-from gmp_dosing.core.dosing import DosingConfig
+import pytest
+
+from gmp_dosing.core.dosing import DosingConfig, decide
 from gmp_dosing.core.scale import ScaleConfig, WeightModel
 from gmp_process.core.process_fsm import ProcessFSM, ToolFingerprint
 from gmp_process.core.recipe import parse
@@ -20,7 +22,7 @@ def _fsm(fingerprint=None):
 
 class Cell:
     def __init__(self, yields, residual=2.0, grip=None, qa='APPROVED', spill=False, cup_bias=0.0, invalid_first=0,
-                width_mm=None, cup_invalid_first=0, zero_drift_n=0.0):
+                width_mm=None, cup_invalid_first=0, zero_drift_n=0.0, contact_blind=False):
         self.yields, self.residual, self.qa, self.spill, self.cup_bias = list(yields), residual, qa, spill, cup_bias
         self.grip = grip or (lambda req, n: True)
         self.width_mm = width_mm                          # 폭 지문 테스트용 — 정지 폭을 고정값으로 돌려준다
@@ -30,6 +32,7 @@ class Cell:
         self.cup_invalid_left = cup_invalid_first   # 용기 계량(TARE·VERIFY) 무효 횟수
         self.zero_drift_n = zero_drift_n            # VERIFY 직전 영점이 이만큼 움직인 것으로 답한다
         self.n_measure = 0
+        self.contact_blind = contact_blind   # 접촉을 아예 못 재는 경로 — 늘 '닿았다'고 답한다 (#277 고정 티칭)
 
     def __call__(self, req):
         k = req['kind']
@@ -51,7 +54,7 @@ class Cell:
             self.n['scoop'] += 1
             amt = self.yields.pop(0) if self.yields else 0.0
             self.in_scoop += amt
-            return {'contact_detected': amt > 0}
+            return {'contact_detected': True if self.contact_blind else amt > 0}
         if k == 'pour':
             f = 1.0 if self.spill else req['fraction']
             moved = max(0.0, self.in_scoop * f - self.residual) if f >= 1.0 else self.in_scoop * f
@@ -521,6 +524,57 @@ def test_material_empty_repeats_when_refill_did_not_help():
     assert [d['count'] for d in fsm.deviations[3:]] == list(range(1, len(kinds) - 2)), kinds
 
 
+# ── 접촉 신호를 못 믿는 경로 (#277) ──────────────────────────────────────────
+# A 의 고정 DRL 티칭 경로는 힘을 아예 재지 않는다. 지금 코드(`skill_node._do_fixed_scoop`)는
+# `contact_detected=False` 를 돌려주는데, 그 값은 「안 닿았다」가 아니라 **「안 재봤다」**는
+# 뜻이다 — 계약에 그 구분을 적을 자리가 없다.
+#
+# 가는 길은 **아직 SOT 에 없다.** 두 안이 올라가 있다:
+#   (a) 계약 v1.9 에 `Scoop.Result.contact_measured` 신설 (권고안)
+#   (b) A 가 `contact_detected=True` 를 돌려준다 — 9/23 조장 **조건부 차선**:
+#       「(a) 가 시연 전에 어려우면 (b) 로 간다」. 확정되면 SOT 항목으로 올라온다.
+#
+# ⚠️ **어느 쪽이 되든 이 시험이 필요하다.** (b) 면 늘 참이라 `_scoop_empty()` 가 영영 안 불리고,
+#    (a) 면 C 가 「안 재봤다」를 받으므로 역시 접촉으로는 못 잡는다. 원료가 없다는 사실은 퍼낸
+#    무게로 드러난다 — **무게 그물은 두 안의 공통 요구**다.
+#    `contact_blind=True` 는 그 공통 상황, 즉 「접촉 신호로는 판단할 수 없다」를 세운 것이다.
+#
+# ⚠️ 문턱값은 **아직 정하지 않았다** — #272 의 스쿱 1회량 σ 실측이 나와야 근거가 붙는다.
+#    그래서 아래 두 시험은 **0 g**(누가 봐도 빈 스쿱)과 **정상 채취량**만 쓰고 경계는 건드리지 않는다.
+#    경계를 지금 박으면 σ 가 나왔을 때 시험부터 고치게 되고, 그러면 정작 값을 안 보게 된다.
+
+
+@pytest.mark.xfail(strict=True, reason='#277 — 무게 기반 빈 스쿱 감지 미구현. 구현되면 strict 가 이 표식을 떼라고 알린다')
+def test_접촉을_못_믿는_경로에서_원료_소진은_보충_요청으로_간다():
+    """접촉 신호를 못 믿는 경로에서 원료통이 비면, 지금은 **사람을 부르지 않고** 배치를 태운다.
+
+    실측한 현재 거동은 `['TIMEOUT', 'BATCH_OUT_OF_SPEC']` 이다. 셋 다 틀렸다 —
+    QA 가 받는 사유가 「보정 3회 후에도 미달」이라 **원료를 채우라는 말이 어디에도 없고**,
+    `wait_interlock` 을 안 거치므로 **보충 기회 자체가 없으며**, 배치는 규격 이탈로 끝난다.
+    접촉을 재든 못 재든 같은 사실에는 같은 결론이 나와야 한다
+    (대조군: `test_material_empty_refill_resumes_scoop`, 같은 yields 에 접촉만 살아 있다).
+    """
+    cell = Cell(yields=[0, 0, 0, 0, 100, 50], contact_blind=True)
+    fsm = _fsm()
+    trace = run(fsm, cell)
+    kinds = [d['kind'] for d in fsm.deviations]
+    assert kinds == ['SCOOP_EMPTY'] * 3 + ['MATERIAL_EMPTY'], kinds
+    assert ('PAUSED', 'wait_interlock') in trace, '사람에게 보충을 요청하지 않았다'
+    assert fsm.state == 'DONE' and len(fsm.results) == 2
+
+
+def test_접촉을_못_믿어도_멀쩡한_스쿱은_빈_스쿱이_아니다():
+    """반대쪽 오류를 막는다 — 무게로 잡기 시작하면 정상 채취를 빈 스쿱으로 몰 수 있다.
+
+    지금은 감지가 없어 당연히 통과하지만, 감지가 들어온 **뒤에도** 통과해야 한다.
+    문턱값을 고를 때 이 시험이 상한을 잡아 준다.
+    """
+    fsm = _fsm()
+    run(fsm, Cell(yields=[100, 50], contact_blind=True))
+    assert fsm.state == 'DONE' and not fsm.deviations
+    assert [r.attempts for r in fsm.results] == [1, 1]
+
+
 def test_prepour_boundary_uses_original_target_tolerance_after_prior_delivery():
     fsm = _fsm()
     req = fsm.start()
@@ -752,3 +806,137 @@ def test_invalid_tare_up_to_limit_raises_weigh_invalid():
     run(fsm, cell)
     assert [(d['kind'], d['step']) for d in fsm.deviations] == [('WEIGH_INVALID', 'TARE')]
     assert fsm.state == 'ERROR' and fsm.tare_g == 0.0
+
+
+# ── 고정 스쿱 (9/23 조장 결정: 공칭 85 · min_fraction 0.10 · 레시피 85/85/170 ±10 %) ──────
+# 시연은 **끝까지 담그는 고정 스쿱**이라 `depth_fraction` 이 실제로 안 먹는다. 그때 무슨 일이
+# 벌어지는지를 고정한다 — 깊이 제어가 붙거나 `fixed_scoop` 분기가 들어오면 **먼저 깨져야** 한다.
+
+NOMINAL_85, MINFRAC_10 = 85.0, 0.10
+
+
+def _fixed_scoop_run(target, tol, per_scoop, first=None, *, flag=False):
+    """매번 같은 양을 퍼는 스쿱으로 원료 1종을 끝까지 돌린다 — 깊이 요청은 무시된다.
+
+    `flag` 는 `DosingConfig.fixed_scoop`. 끄면 **현장 설정을 안 바꿨을 때**의 거동이고,
+    켜면 `decide()` 가 보충 불가를 미리 판정한다.
+    """
+    spec = parse({'product': 'demo', 'items': [{'material_id': 'A', 'target_g': target, 'tol_pct': tol}]})
+    fsm = ProcessFSM(spec, DosingConfig(scoop_nominal_g=NOMINAL_85, min_fraction=MINFRAC_10,
+                                        fixed_scoop=flag),
+                     WeightModel(ScaleConfig()), fingerprint=ToolFingerprint())
+    run(fsm, Cell(yields=[per_scoop if first is None else first] + [per_scoop] * 40))
+    r = fsm.results[0] if fsm.results else fsm.cur
+    return r, [d['kind'] for d in fsm.deviations], fsm.deviations
+
+
+def test_고정스쿱_첫_스쿱_미달은_반환만_반복하다_TIMEOUT_으로_끝난다():
+    """보충 요청이 **항상 초과**가 되어 스쿱↔반환을 돌다 반환 한도에서 멈춘다.
+
+    고정 스쿱이면 `decide()` 가 몇 g 을 요청하든 85 g 이 온다. 남은 목표량이 그보다
+    작으므로 반환 가드가 매번 걸리고, `max_returns` 를 넘겨 TIMEOUT 이 난다.
+
+    ⚠️ **일탈이 둘이다.** TIMEOUT 을 QA 가 승인하면 배치가 이어지고, 투입량이 모자란 채
+    VERIFY 에 도달해 `BATCH_OUT_OF_SPEC` 이 또 난다 — 시연자가 QA 를 **두 번** 누른다.
+    """
+    r, kinds, _devs = _fixed_scoop_run(85, 10, NOMINAL_85, first=70.0)
+    assert kinds == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], kinds
+    assert r.returns == 3, r.returns          # max_returns 를 소진한다
+    assert r.attempts == 2, r.attempts        # 반환은 붓기 시도를 소모하지 않는다
+    assert r.actual_g < 85 * 0.9, r.actual_g  # 허용 하한에도 못 미친 채 끝난다
+
+
+@pytest.mark.parametrize('target,scoops,threshold', [(85, 1, 78.5), (170, 2, 77.5)])
+def test_고정스쿱_임계는_스쿱_1회량으로_정해진다(target, scoops, threshold):
+    """깨지는 지점이 **스쿱 1회량**으로 정해진다. 실측한 경계를 고정한다.
+
+        투입 = 스쿱수 × 1회량 − 잔량      ← 잔량은 **마지막 사이클 것만** 잃는다
+        (중간 사이클의 잔량은 다음 스쿱에 섞여 회수된다)
+
+    그래서 스쿱이 많을수록 임계가 **내려간다** — 잃는 잔량이 한 번뿐이라 목표가 커질수록
+    비율로는 작아진다. 85 g 1스쿱 78.5 g · 170 g 2스쿱 77.5 g.
+
+    ⚠️ **운영을 묶는 것은 더 높은 쪽(78.5 g)** 이다. 공칭 85 대비 여유가 6.5 g(7.6 %)뿐이고,
+    잔량이 커지면 그대로 줄어든다.
+    """
+    below, above = round(threshold - 0.1, 1), threshold
+    r_bad, kinds_bad, _ = _fixed_scoop_run(target, 10, below)
+    assert kinds_bad == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], (target, below, kinds_bad)
+
+    r_ok, kinds_ok, _ = _fixed_scoop_run(target, 10, above)
+    assert kinds_ok == [], (target, above, kinds_ok, r_ok.actual_g)
+    assert abs(r_ok.actual_g - target) <= target * 0.10, r_ok.actual_g
+    # 잔량을 한 번만 잃는다는 것이 이 경계의 이유다
+    assert r_ok.actual_g == pytest.approx(scoops * above - 2.0), (r_ok.actual_g, scoops, above)
+
+
+def test_고정스쿱_170g_은_첫_스쿱이_미달이어도_보충으로_합격한다():
+    """**「첫 미달이면 QA」로 단순화하면 이 경우를 잘못 죽인다** (9/23 B 지적, C 원안 철회).
+
+    170 g ±10 % 는 스쿱 두 번이 목표다. 첫 스쿱이 83 g 이면 투입 81 g 으로 미달이지만,
+    한 번 더 퍼면 166 g 으로 **허용 안에 들어온다** — 보충이 상한(187 g)을 넘지 않기 때문이다.
+
+    그래서 보충 중단 조건은 「미달이다」가 아니라 **「보충하면 상한을 넘는다」**여야 한다:
+
+        actual + min_add > target × (1 + tol)      min_add = 고정 스쿱이면 공칭 전량
+
+    85 g 은 1스쿱이 목표라 미달이면 보충이 곧 초과라 사실상 전 구간이 걸리지만,
+    170 g 은 `actual ≤ 102 g` 까지 보충이 허용된다. **한 레시피로 일반화하면 틀린다.**
+    """
+    r, kinds, _devs = _fixed_scoop_run(170, 10, NOMINAL_85, first=83.0)
+    assert kinds == [], kinds
+    assert r.attempts == 2 and r.returns == 0, (r.attempts, r.returns)
+    assert abs(r.actual_g - 170) <= 17.0, r.actual_g      # 83 + 85 − 잔량 2 = 166
+
+    # 경계 — 보충이 상한을 넘기 시작하는 지점. `fixed_scoop` 분기는 여기서 갈려야 한다
+    over_limit = 170 * 1.10 - NOMINAL_85                  # = 102.0
+    assert over_limit == pytest.approx(102.0)
+    assert 81.0 + NOMINAL_85 <= 170 * 1.10, '81 g 에서는 보충이 아직 상한 안이다'
+
+
+def test_fixed_scoop_플래그는_반환_루프를_없애지만_QA_횟수는_그대로다():
+    """`DosingConfig.fixed_scoop` 를 켜면 **헛도는 반환이 사라진다** — 그게 전부다.
+
+    ⚠️ **QA 는 여전히 두 번이다.** 투입량이 모자란 사실은 그대로라 배치 끝 VERIFY ① 이
+    `BATCH_OUT_OF_SPEC` 을 또 낸다. 플래그가 바꾸는 것은 **가는 길**이지 **결과**가 아니다
+    (C 가 「QA 가 한 번으로 준다」고 잘못 전달했던 부분 — 9/23 실측으로 정정).
+
+    얻는 것은 셋이다: 반환 3회만큼 시연이 짧아지고, `ScoopCycle` 에 의미 없는 RETURNED
+    3건이 안 쌓이고, 일탈 detail 이 **왜 멈췄는지**를 말한다.
+    """
+    off_r, off_kinds, _ = _fixed_scoop_run(85, 10, NOMINAL_85, first=70.0, flag=False)
+    on_r, on_kinds, on_devs = _fixed_scoop_run(85, 10, NOMINAL_85, first=70.0, flag=True)
+
+    assert off_kinds == on_kinds == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], (off_kinds, on_kinds)
+    assert off_r.actual_g == on_r.actual_g, (off_r.actual_g, on_r.actual_g)   # 결과는 같다
+    assert (off_r.returns, on_r.returns) == (3, 0), (off_r.returns, on_r.returns)
+
+    # 사유가 기록에 남는다 — 같은 kind 를 가르는 유일한 근거다
+    timeout = next(d for d in on_devs if d['kind'] == 'TIMEOUT')
+    assert '보충 불가' in timeout['detail'] and '93.5' in timeout['detail'], timeout['detail']
+
+
+def test_fixed_scoop_플래그를_켜도_맞출_수_있는_배치는_안_죽인다():
+    """보충으로 도달 가능한 경우는 플래그와 무관하게 그대로 간다 — 안전망이지 차단기가 아니다."""
+    for target, first in ((170, 83.0), (85, 85.0)):
+        on = _fixed_scoop_run(target, 10, NOMINAL_85, first=first, flag=True)
+        off = _fixed_scoop_run(target, 10, NOMINAL_85, first=first, flag=False)
+        assert on[1] == off[1] == [], (target, first, on[1], off[1])
+        assert on[0].actual_g == off[0].actual_g, (target, first)
+
+
+def test_고정스쿱_보충요청이_최소채취보다_작아지는_구간은_없다():
+    """「보충 요청량 < 최소채취면 QA」 분기는 **발동하지 못한다** (9/23 팀장 제안 검토).
+
+    최소채취 = `min_fraction × scoop_nominal_g` = 8.5 g 인데 목표 85 의 허용오차도
+    8.5 g 이라, 보충 요청량이 8.5 g 아래로 내려가기 전에 `decide()` 가 먼저 OK 를 낸다.
+    그래서 조건은 「요청량이 작다」가 아니라 **「깊이 제어가 없다」**여야 한다.
+    """
+    cfg = DosingConfig(scoop_nominal_g=NOMINAL_85, min_fraction=MINFRAC_10)
+    floor_g = cfg.min_fraction * cfg.scoop_nominal_g
+    assert round(floor_g, 6) == 8.5
+    for actual in (70.0, 76.0, 76.4):                     # 아직 보충을 요청한다
+        assert decide(85.0, actual, 10.0, 1, True, 0, cfg).action == 'SCOOP', actual
+        assert 85.0 - actual > floor_g, actual            # 요청량은 늘 최소채취보다 크다
+    for actual in (76.5, 80.0, 85.0):                     # 여기서 이미 끝난다
+        assert decide(85.0, actual, 10.0, 1, True, 0, cfg).action == 'DONE', actual
