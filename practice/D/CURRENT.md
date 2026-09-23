@@ -1,4 +1,4 @@
-# D HMI·기록 현행 상태 (갱신: 2026-09-23 16:10, D 본인 — 팀장 초안 보완)
+# D HMI·기록 현행 상태 (갱신: 2026-09-23 16:30, D 본인 — 가상 모드 함정·cjs 시험 정정)
 
 **담당**: aszx4880-star
 
@@ -25,7 +25,7 @@
 - **G6 휴대폰 리허설** — `body overflow:hidden`(#229) 이 모바일(≤ 760 px)에도 걸린다. 헤더 줄바꿈으로 `main` 이 좁아질 수 있음. 휴대폰에서 스크롤·승인/폐기·안전 복구 버튼을 실제로 눌러 볼 것 (PR #259 G6, **미검증**).
 - **#261 실물/가상 통합 확인** — `record_node` 가 `BATCH_UNMEASURED` 를 받아 DB 에 `DONE_UNMEASURED` 를 남기는지, KPI 카드·필터 표시. 샌드박스엔 ROS·flask 가 없어 **core 단위 시험만 통과**(test_db +5).
 - `docs/interfaces.md:188` KPI 이름이 아직 「배치 성공률」 — 계약 문서라 조장 몫(#261 본문에 적음).
-- `gmp_hmi/tools/test_frontend_render.cjs`(playwright 없음)·`tools/test_safety_popup.cjs`(appendChild TypeError) 는 main 에서도 실패 — 살릴지 지울지.
+- `tools/test_safety_popup.cjs` 는 main 에서도 실패(`$(...).appendChild is not a function` — DOM 스텁에 `appendChild` 없음). 살릴지 지울지 D 판단(#238 검토 코멘트). `tools/test_frontend_render.cjs` 는 **환경 문제였다** — playwright·Chromium 이 있는 샌드박스에서 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium node tools/test_frontend_render.cjs` 로 9/23 PASS. 심볼릭 링크 불필요.
 
 ## 알려진 함정
 - HMI 는 판정 정수를 직접 받지 않는다 — `hmi_web_node:339` 가 `VERDICTS` 로 바꾼 문자열을 받는다. 새 열거값은 `db.py:15` 가 본체.
@@ -35,6 +35,8 @@
 - `ros2 node list`·`service list` 가 옛 목록이면 `ros2 daemon stop && ros2 daemon start`.
 - `static/*` 를 고친 뒤 화면이 그대로면 `colcon build --symlink-install --packages-select gmp_hmi` + HMI 재시작, `curl http://127.0.0.1:5000/static/hmi.css | grep <바꾼 문자열>` 로 서빙 확인.
 - gmp_hmi 와 gmp_process 시험을 같은 pytest 실행에 넣지 않는다 — 노드 경합으로 process 시험이 깨진다(C CURRENT).
+- **가상 모드로는 `PICK_CONTAINER` 를 통과 못 한다** — 파지 판정이 `grip = w > width_mm + grip_margin_mm`(`gmp_skills/adapters/rg2_gripper.py:246`)인데 `virtual` 백엔드(`:175`)는 명령한 관절각으로 그대로 이동해 `w ≈ width_mm` 이라 마진 2.0 mm(`common.yaml:61`)를 못 넘는다. 9/23 실행에서 `GRIP_FAIL` ×4 → ERROR. **가상은 이동·상태 전이·기록 확인용이고 전체 사이클 완주 검증에는 못 쓴다.**
+- **가상 모드 `NUDGE_WAIT` 은 안 풀린다** — `skill_node.py:126` 이 `scale.simulated` 면 NUDGE 감지를 끄는데 `process_node` 의 `safety.nudge_enabled` 는 `true` 그대로이고(`common.yaml:118`) `_await` 에 타임아웃이 없다(`process_node.py:315-318`). 우회: `/cell/event` 에 `code='NUDGE'` 를 한 번 발행하면 사람이 건드린 것과 같은 경로로 풀린다(파라미터 변경 불필요).
 
 ## 철회 이력 (최근 것 위)
 - 2026-09-23 ~~KPI 완료율에서 DONE_UNMEASURED 「제외」만~~ → 두 지표로 분리(계량 검증 완료율 / 미측정 승인 완료, 완주율은 합). SOT D-32, PR #261.
