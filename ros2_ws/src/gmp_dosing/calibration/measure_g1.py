@@ -169,20 +169,42 @@ def setup_tool(arm, tool: str, tcp: str, need_motion: bool):
                 raise RuntimeError(f'{name} 실패 return={r} — Auto 모드·서보 ON 확인')
 
 
-def baseline(arm, n: int, period: float):
-    """빈 그리퍼 기준값 — workpiece 가 여기서 0 근처가 아니면 컨트롤러 추정에 편향이 있다 (등록 툴 질량·CoG 확인)."""
+def baseline(arm, n: int, period: float, *, no_workpiece: bool = False,
+             writer=None, row=None, t0: float = None):
+    """빈 그리퍼 기준값 — workpiece 가 여기서 0 근처가 아니면 컨트롤러 추정에 편향이 있다 (등록 툴 질량·CoG 확인).
+
+    ⚠️ **2026-09-23 이전에는 이 값이 쓸 수 없는 상태였다.** 세 가지를 고쳤다:
+      · **자세** — `--pick-lift-mm` 을 줘도 영점을 AT 에서 잡고 측정만 ABOVE 에서 했다.
+        영점과 측정이 **다른 자세**면 자세 편향이 그대로 순량에 실린다. 이제 호출자가
+        측정 자세로 올린 뒤 부른다.
+      · **표본 수** — 10 으로 하드코딩돼 `--samples` 가 안 먹었다. 0.82 s 간격이면 8.2 s 라
+        13~22 s 저주파 진동을 **한 번도 못 덮는다** (「samples 20 아래로 내리지 않는다」 절).
+        이제 호출자가 `--samples` 를 넘긴다.
+      · **기록** — 화면에만 찍고 CSV 에 안 남겨 **나중에 검증할 수 없었다.** 이제 `writer` 를
+        받으면 표본마다 한 줄씩 남긴다(측정 본문과 같은 열 구성).
+    `no_workpiece` 는 폐기된 `get_workpiece_weight()` 호출을 건너뛴다 — 본문의 `--no-workpiece`
+    가 여기에는 안 걸려 있던 것도 같은 결함이었다.
+    """
     fz, kg = [], []
-    for _ in range(n):
-        f = arm.tool_force(); w = arm.R.get_workpiece_weight()
+    for i in range(1, n + 1):
+        f = arm.tool_force()
+        w = None if no_workpiece else arm.R.get_workpiece_weight()
+        wp_v = float(w) if isinstance(w, (int, float)) and w >= 0 else ''
+        if writer is not None and row is not None:
+            ts = (time.monotonic() - t0) if t0 is not None else 0.0
+            writer.writerow([*row, i, f'{ts:.3f}', *(list(f) if f else [''] * 6), wp_v])
         if f:
             fz.append(f[2])
-        if isinstance(w, (int, float)) and w >= 0:
-            kg.append(float(w))
+        if wp_v != '':
+            kg.append(wp_v)
         time.sleep(period)
     fz_g = -sum(fz) / len(fz) / 9.80665 * 1000 if fz else float('nan')
     wp_g = sum(kg) / len(kg) * 1000 if kg else float('nan')
-    print(f'    빈 그리퍼 기준값 ({n}표본): Fz→ {fz_g:.1f} g (offset 전)   workpiece {wp_g:.1f} g'
+    sd = (sum((-z / 9.80665 * 1000 - fz_g) ** 2 for z in fz) / len(fz)) ** 0.5 if len(fz) > 1 else float('nan')
+    print(f'    빈 그리퍼 기준값 ({n}표본): Fz→ {fz_g:.1f} g (offset 전, 표본σ {sd:.1f} g)'
+          + ('' if no_workpiece else f'   workpiece {wp_g:.1f} g')
           + ('   ⚠ 빈 상태인데 0 이 아니다 — 등록 툴 무게와 실제가 다르거나 영점 미적용' if kg and abs(wp_g) > 50 else ''))
+    return fz_g
 
 
 def probe(arm, grip, close_cmd, sec: float, actual_g: float):
@@ -283,6 +305,10 @@ def main(argv=None):
                          'actual_g 에 들어가는 값이 gross1−gross2 라 스쿱 tare 와 파지 오프셋이 같이 빠진다')
     ap.add_argument('--out', required=True, help='CSV 경로 (records/ 는 git 밖. 확정되면 calibration/ 으로 복사)')
     ap.add_argument('--no-reset', action='store_true', help='reset_workpiece_weight 를 건너뛴다 (이미 한 세션)')
+    ap.add_argument('--no-baseline', action='store_true',
+                    help='[1] 빈 그리퍼 기준값 측정을 건너뛴다. 기본은 측정한다 — '
+                         '--samples 만큼, **측정 자세에서**, <out>_baseline.csv 에 기록. '
+                         '--no-reset 은 reset_workpiece_weight 만 끄고 기준값은 그대로 잰다.')
     ap.add_argument('--no-workpiece', action='store_true',
                     help='get_workpiece_weight 를 안 부른다 (호출 0.7 s — 9/19 실측). 빠른 표본 간격으로 센서 갱신 주기를 잴 때')
     ap.add_argument('--probe', type=float, default=0.0, metavar='SEC',
@@ -396,15 +422,48 @@ def main(argv=None):
     w = csv.writer(f)
     if new:
         w.writerow(COLUMNS)
+    # 영점은 **별도 파일**에 남긴다 — 빈 그리퍼는 하중점이 아니라서, 본문에 섞으면
+    # core/calib.py 의 직선 적합이 0 g 을 실제 하중점으로 읽어 gain 을 망친다.
+    bf = bout = None
+    if not a.no_baseline:
+        bout = out.with_name(out.stem + '_baseline' + out.suffix)
+        bnew = not bout.exists()
+        bf = bout.open('a', newline='', encoding='utf-8')
+        if bnew:
+            csv.writer(bf).writerow(COLUMNS)
 
-    if not a.no_reset:
+    t0 = time.monotonic()
+    # ── [1] 영점 ─────────────────────────────────────────────────────
+    # ⚠️ `--no-reset` 은 **reset_workpiece_weight 호출만** 건너뛴다. 기준값 측정까지 같이
+    #    꺼지던 것이 9/23 이전 동작이었고, 그래서 `--no-reset` 으로 돌린 측정에는 영점이
+    #    아예 없었다. 기준값을 끄려면 `--no-baseline` 을 쓴다.
+    if not (a.no_reset and a.no_baseline):
         release_gripper(grip, '[1] 영점 전 —', swallow_interrupt=False)
-        input('\n[1] 빈 그리퍼(열림)로 계량 자세에서 정지 → Enter (reset_workpiece_weight) ')
+        input('\n[1] 빈 그리퍼(열림)로 정지 → Enter ')
+        # **영점 작업 전체를 측정과 같은 자세에서 한다.** 자세가 다르면 자세 편향이 순량에 실린다.
+        # ⚠️ reset_workpiece() 도 이 뒤에 부른다 — 앞에 두면 컨트롤러의 workpiece 영점만
+        #    옛 자세(AT)에서 잡혀 「영점도 측정 자세에서」가 반만 성립한다 (9/23 D 지적).
+        #    운영은 --no-workpiece 라 지금은 무관하지만, 자세를 나눠 둘 이유가 없다.
+        if a.pick_lift_mm:
+            arm.movel(measure_posx, a.vel_scale)
+            print(f'    영점을 측정 자세에서 잡는다 → {measure_posx}')
+    if not a.no_reset:
         r = arm.reset_workpiece()
         print(f'    reset_workpiece_weight return={r!r}' + ('  OK' if r == 0 else '  ⚠ 실패 — workpiece 영점이 안 잡혔다'))
+    if not a.no_baseline:
         time.sleep(a.settle)
-        baseline(arm, 10, a.period)
-    t0 = time.monotonic()
+        bw = csv.writer(bf) if bf else None
+        baseline(arm, a.samples, a.period, no_workpiece=a.no_workpiece, writer=bw, t0=t0,
+                 row=[f'{a.object}_baseline_{stamp}', 'empty', cond, '0', 1])
+        if bf:
+            bf.flush()
+            print(f'    영점 원시 표본 {a.samples}개 → {bout}')
+    if not (a.no_reset and a.no_baseline) and a.pick_lift_mm:
+        # 파지 자세로 돌려놓고 세트를 시작한다 — 이 하강을 세트 루프에 맡기면 조작자에게는
+        # 「왜 갑자기 내려가지」로 보인다. 여기서 알리고 내려가면 [1] 의 일부로 읽힌다.
+        # ⚠️ 실물 첫 세트에서 받침 위 물체와 핑거 간섭을 한 번 눈으로 확인할 것 (9/23 D 요청).
+        arm.movel(pick_posx, a.vel_scale)
+        print(f'    파지 자세로 복귀 → {pick_posx} (세트 1 시작 준비)')
     try:
         for s in range(1, a.sets + 1):
             if grip:
@@ -468,6 +527,8 @@ def main(argv=None):
         print('\n중단 — 지금까지 기록은 남는다')
     finally:
         f.close()
+        if bf:
+            bf.close()
         if grip and a.pick_lift_mm and pick_posx:
             try:                           # ABOVE 에서 놓으면 떨어뜨린다 — AT 로 내려가서 연다
                 arm.movel(pick_posx, a.vel_scale)
