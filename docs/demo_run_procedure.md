@@ -29,7 +29,7 @@
 | G2 그리퍼 modbus | `SetGripper close width:=20 force:=20` → 폭 피드백 | 폭이 목표 근처에서 멈추고 `busy` 가 풀린다 | `gripper.backend:=dio` 로 전환 (Q-02·Q-03) |
 | G3 스테이션 티칭 | `stations.yaml` 9곳 | `MoveToStation` 9곳 왕복 무충돌 | — |
 | G4 힘제어 접촉 | 비드 통 위에서 `Scoop` | `contact_detected=true`, 담금 깊이 상한 안 | 강성·목표력 파라미터 조정 |
-| G5 스쿠핑 보정 (9/22 #216) | ① `skill.launch.py height_measure_only:=true` 로 원료 A 접촉 높이만 측정(스쿠핑 없음, `success=false`+`HEIGHT_MEASUREMENT_ONLY` 메시지가 정상) → WORLD/BASE 변환·스쿱 끝 오프셋(`tip_offset_world_mm`)·기준 표면(`reference_surface_world_z_mm`) 실측으로 확정 ② `stations.yaml` `scooping.A` 갱신 후 `calibrated: true` ③ 원료 A `depth_fraction` 1.0·0.5 로 실물 스쿠핑, 스쿱 끝이 바닥 하한(`material_bottom_world_z_mm`+`clearance_mm`)을 안 넘고 계량 자세로 복귀 | 채취량이 기준 순량(65 g)×fraction 의 ±20 % 안, 바닥 침범 없음, 털기 뒤 자세 확인 통과 | 오프셋·기준 표면 재측정. B/C 원료는 경로 자체가 없어 A 확정 뒤 별도 티칭 |
+| G5 스쿠핑 보정 (보류, 9/22 #216) | 힘 측정 불안정과 파지부 스쿱 상대 회전 문제로 최초 접촉 정지·높이 측정·`calibrated: true` 전환은 수행하지 않는다. 관련 설정·파라미터와 단위 테스트만 유지하고 전체 노드 통합·공정 플로우 검증을 우선한다 | `stations.yaml:scooping.A.calibrated=false` 유지, 접촉 정지·자동 높이 보정 경로가 실행되지 않음 | 통합·플로우 검증 뒤 힘 측정과 파지 회전 재현성을 해결하고 G5를 재개 |
 
 
 ## HMI 관리자 및 통신 환경 (V4)

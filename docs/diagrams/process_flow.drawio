@@ -502,7 +502,7 @@
         <mxCell id="c32" value="material_id · attempt · fraction" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="200" y="436" width="260" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="c33" value="scoop — 빈 스쿱 대비 ΔFz 1.5N → 감속 정지·IDLE → 해제·복귀 (퍼올리기 미구현; 힘 CSV 진단은 접촉 정지 생략)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c33" value="scoop — 높이 보정 파라미터만 유지, 힘 측정 불안정·스쿱 회전으로 접촉 정지/높이 측정 비활성 (통합·플로우 우선)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="460" y="436" width="760" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c34" value="{'contact_detected'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">

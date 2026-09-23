@@ -70,12 +70,9 @@ class SkillNode(Node):
         g = lambda k: self.get_parameter(k).value  # noqa: E731
         self._scale_period_s()  # 장치 생성 전에 잘못된 계량 설정을 거부한다.
         self.mode = g('mode')
-<<<<<<< HEAD
-=======
         self.height_measure_only = g('scoop.height_measure_only')
         if type(self.height_measure_only) is not bool:
             raise ValueError('scoop.height_measure_only는 bool이어야 한다')
->>>>>>> 9b1fc970137eefcbc5de3009df176c2b84bf04fc
         collision = g('safety.collision_sensitivity')
         if (isinstance(collision, bool) or not isinstance(collision, (int, float))
                 or not math.isfinite(collision) or not 0 <= collision <= 100):
@@ -1141,16 +1138,12 @@ class SkillNode(Node):
             self.get_logger().info(f'[FORCE_TRACE_CSV] {trace_path}')
 
         def observe_depth():
-<<<<<<< HEAD
             nonlocal contact_z, contact_pose, max_force_n, insertion_mm, next_trace_at
             sample_at = self._now_s()
             if trace_only:
                 if sample_at < next_trace_at:
                     return
                 next_trace_at += (math.floor((sample_at - next_trace_at) * trace_hz) + 1) / trace_hz
-=======
-            nonlocal contact_z, contact_pose, max_force_n, insertion_mm
->>>>>>> 9b1fc970137eefcbc5de3009df176c2b84bf04fc
             force = self.arm.tool_force()
             if force is None or len(force) != 6 or not all(math.isfinite(float(v)) for v in force):
                 raise RuntimeError('깊이 측정 외력 조회 실패')
@@ -1164,7 +1157,6 @@ class SkillNode(Node):
             if phase != 'RETURN' and contact_z is None and abs(delta_fz) >= contact_threshold:
                 contact_z = float(current[2])
                 contact_pose = list(current)
-<<<<<<< HEAD
                 # 이후 목표 미도달·취소로 실패해도 최초 표본은 남긴다.
                 self.get_logger().info('[SURFACE_CONTACT_BASE] ' + json.dumps({
                     'baseline_fz_n': baseline_fz,
@@ -1173,8 +1165,6 @@ class SkillNode(Node):
                     'tip_position_mm': tip_position_base(contact_pose, reference, tip_offset),
                     'approximate_offset': True,
                 }, ensure_ascii=False))
-=======
->>>>>>> 9b1fc970137eefcbc5de3009df176c2b84bf04fc
             insertion_mm = 0.0 if contact_z is None else abs(float(current[2]) - contact_z)
             if trace_writer is not None:
                 trace_writer.writerow([sample_at, sample_at - trace_start, force_read_end, pose_read_end,
@@ -1220,21 +1210,11 @@ class SkillNode(Node):
             message = json.dumps(measurement, ensure_ascii=False)
             self.get_logger().info(f'[SURFACE_HEIGHT_BASE] {message}')
             return {'contact_detected': contact_z is not None, 'max_contact_force_n': max_force_n,
-                    'insertion_depth_mm': insertion_mm, 'message': message}
+                    'insertion_depth_mm': insertion_mm, 'contact_pose_base': contact_pose,
+                    'message': message}
         finally:
-<<<<<<< HEAD
             if trace_file is not None:
                 trace_file.close()
-=======
-            self.arm.compliance_off()
-        if job.cancel:
-            raise RuntimeError('cancelled')
-        # 성공한 경로만 계량 자세로 되짚는다. 실패·취소 시 자동 복귀하지 않는다.
-        self.arm.movel(start, self.vel_scale)
-        job.feedback and job.feedback('LIFT', contact_z is not None, max_force_n, insertion_mm)
-        return {'contact_detected': contact_z is not None, 'max_contact_force_n': max_force_n,
-                'insertion_depth_mm': insertion_mm, 'contact_pose_base': contact_pose}
->>>>>>> 9b1fc970137eefcbc5de3009df176c2b84bf04fc
 
     def _do_pour(self, job: Job):
         self._empty_scoop_baseline_pending = False
@@ -1488,11 +1468,8 @@ class SkillNode(Node):
             contact_detected=bool(data.get('contact_detected', job.result if not data else False)),
             max_contact_force_n=float(data.get('max_contact_force_n', 0.0)),
             insertion_depth_mm=float(data.get('insertion_depth_mm', 0.0)),
-<<<<<<< HEAD
-            message=job.error or ('cancelled' if job.cancel else data.get('message', '')),
-=======
-            message=job.error or ('cancelled' if job.cancel else data.get('measurement_message', '')),
->>>>>>> 9b1fc970137eefcbc5de3009df176c2b84bf04fc
+            message=job.error or ('cancelled' if job.cancel else
+                                  data.get('measurement_message', data.get('message', ''))),
         )
         # 내부 중단/시간 초과는 ROS 클라이언트의 취소 요청과 다르다.
         gh.succeed() if res.success else (gh.canceled() if gh.is_cancel_requested else gh.abort())
