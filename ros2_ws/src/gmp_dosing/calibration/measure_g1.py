@@ -440,14 +440,17 @@ def main(argv=None):
     if not (a.no_reset and a.no_baseline):
         release_gripper(grip, '[1] 영점 전 —', swallow_interrupt=False)
         input('\n[1] 빈 그리퍼(열림)로 정지 → Enter ')
+        # **영점 작업 전체를 측정과 같은 자세에서 한다.** 자세가 다르면 자세 편향이 순량에 실린다.
+        # ⚠️ reset_workpiece() 도 이 뒤에 부른다 — 앞에 두면 컨트롤러의 workpiece 영점만
+        #    옛 자세(AT)에서 잡혀 「영점도 측정 자세에서」가 반만 성립한다 (9/23 D 지적).
+        #    운영은 --no-workpiece 라 지금은 무관하지만, 자세를 나눠 둘 이유가 없다.
+        if a.pick_lift_mm:
+            arm.movel(measure_posx, a.vel_scale)
+            print(f'    영점을 측정 자세에서 잡는다 → {measure_posx}')
     if not a.no_reset:
         r = arm.reset_workpiece()
         print(f'    reset_workpiece_weight return={r!r}' + ('  OK' if r == 0 else '  ⚠ 실패 — workpiece 영점이 안 잡혔다'))
     if not a.no_baseline:
-        # **측정과 같은 자세에서 잰다.** 자세가 다르면 자세 편향이 순량에 그대로 실린다.
-        if a.pick_lift_mm:
-            arm.movel(measure_posx, a.vel_scale)
-            print(f'    영점도 측정 자세에서 잰다 → {measure_posx} (세트 시작 때 파지하러 다시 내려간다)')
         time.sleep(a.settle)
         bw = csv.writer(bf) if bf else None
         baseline(arm, a.samples, a.period, no_workpiece=a.no_workpiece, writer=bw, t0=t0,
@@ -455,6 +458,12 @@ def main(argv=None):
         if bf:
             bf.flush()
             print(f'    영점 원시 표본 {a.samples}개 → {bout}')
+    if not (a.no_reset and a.no_baseline) and a.pick_lift_mm:
+        # 파지 자세로 돌려놓고 세트를 시작한다 — 이 하강을 세트 루프에 맡기면 조작자에게는
+        # 「왜 갑자기 내려가지」로 보인다. 여기서 알리고 내려가면 [1] 의 일부로 읽힌다.
+        # ⚠️ 실물 첫 세트에서 받침 위 물체와 핑거 간섭을 한 번 눈으로 확인할 것 (9/23 D 요청).
+        arm.movel(pick_posx, a.vel_scale)
+        print(f'    파지 자세로 복귀 → {pick_posx} (세트 1 시작 준비)')
     try:
         for s in range(1, a.sets + 1):
             if grip:
