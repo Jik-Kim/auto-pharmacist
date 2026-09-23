@@ -1,8 +1,9 @@
 # #161: gmp_hmi/config/test_recipes/v4/recipe-01.yaml 를 운영 경로에 등록.
-# 목표량·허용오차는 B 도징 보정(min_resolvable_g 재검토, PR #44 후속) 확정 전 잠정값이다 —
-# 조장 승인(#161 코멘트, 9/21): 등록·로딩 검증은 먼저 진행하고 값 정합성은 보정 확정 뒤 재확인한다.
+# 목표량·허용오차는 **9/23 조장 결정**으로 확정했다 — 고정 스쿱 85 g 에 맞춰 목표량을 올리고
+# 허용오차를 ±10 % 로 넓혔다. 교착 조건(min_fraction × scoop_nominal_g ≤ 2 × target × tol)을
+# 만족한다: 8.5 g ≤ 17 g(85 g) · 34 g(170 g). 종전 40 g·±5 % 조합은 이 조건을 위반했다.
 product: "레시피 1"
 items:
-  - {material_id: A, target_g: 40.0, tol_pct: 5.0}
-  - {material_id: B, target_g: 40.0, tol_pct: 5.0}
-  - {material_id: C, target_g: 40.0, tol_pct: 5.0}
+  - {material_id: A, target_g: 85.0, tol_pct: 10.0}
+  - {material_id: B, target_g: 85.0, tol_pct: 10.0}
+  - {material_id: C, target_g: 85.0, tol_pct: 10.0}

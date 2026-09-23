@@ -70,7 +70,7 @@ scooping:
     clearance_mm: 5.0  # 실측 4~5 중 보수적 여유, 실제 경로 검증 필요
     reference_gross_g: 100.0
     empty_scoop_g: 35.0
-    min_fraction: 0.15  # 현행 dosing.min_fraction과 같아야 한다
+    min_fraction: 0.10  # 현행 dosing.min_fraction과 같아야 한다 (9/23 조장 결정, 종전 0.15)
     waypoints_base:
       - [344.0, -291.0, 203.0, 90.0, 124.54, -90.0]  # enter
       - [344.0, -320.0, 165.0, 90.0, 128.18, -90.0]  # start

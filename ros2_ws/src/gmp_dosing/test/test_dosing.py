@@ -1,3 +1,7 @@
+from pathlib import Path
+
+import yaml
+
 from gmp_dosing.core.dosing import DosingConfig, decide, verdict_of
 from gmp_dosing.core.scale import ScaleConfig, WeightModel
 
@@ -187,3 +191,55 @@ def test_reading_hf_gate_catches_load_change_but_passes_oscillation():
     assert m.reading(0.100, 0.005, True, raw_hf_std=0.012)[4] is False
     # hf 를 안 주면 기존 동작 그대로 (하위호환)
     assert m.reading(0.100, 0.005, True)[4] is True
+
+
+# ── 교착 조건 — 파라미터 파일을 직접 읽는다 (9/23 조장 결정) ──────────────
+# 값이 바뀌면 이 시험이 먼저 깨진다. 주석이 아니라 시험으로 고정하는 이유는,
+# 9/23 까지 min_fraction 0.15 × scoop_nominal_g 40 = 6.0 g 이 40 g·±5 % 의 한계
+# 4.0 g 을 넘겨 **recipe-01 세 원료 전부가 교착이었는데도 아무도 못 봤기** 때문이다.
+_PARAMS = Path(__file__).resolve().parents[2] / 'gmp_bringup' / 'params'   # …/ros2_ws/src/
+assert _PARAMS.is_dir(), f'파라미터 경로를 못 찾는다: {_PARAMS} — 패키지 배치가 바뀌었는지 볼 것'
+
+
+def _dosing_params():
+    common = yaml.safe_load((_PARAMS / 'common.yaml').read_text(encoding='utf-8'))
+    node = next(iter(common.values()))
+    return node['ros__parameters']['dosing']
+
+
+def _recipes():
+    for path in sorted((_PARAMS / 'recipes').glob('recipe-*.yaml')):
+        yield path.name, yaml.safe_load(path.read_text(encoding='utf-8'))['items']
+
+
+def test_min_scoop_cannot_overshoot_tolerance():
+    """UNDER 뒤 **최소 채취**가 허용 상한을 넘으면 스쿱↔반환이 끝없이 반복된다.
+
+    조건: min_fraction × scoop_nominal_g ≤ 2 × target × tol/100
+    (허용 구간 폭이 2×target×tol 이므로, 최소 채취가 그보다 크면 UNDER 에서 한 번에
+     건너뛸 수밖에 없는 구간이 생긴다.)
+    """
+    d = _dosing_params()
+    min_scoop = d['min_fraction'] * d['scoop_nominal_g']
+    for name, items in _recipes():
+        for it in items:
+            limit = 2.0 * it['target_g'] * it['tol_pct'] / 100.0
+            assert min_scoop <= limit, (
+                f"{name} {it['material_id']}: 최소 채취 {min_scoop:.1f} g 이 한계 {limit:.1f} g 을 넘어 "
+                f"교착한다 (target {it['target_g']:g} g, tol {it['tol_pct']:g} %)")
+
+
+def test_min_fraction_matches_across_param_files():
+    """stations.yaml 의 스쿠핑 min_fraction 은 dosing 과 같아야 한다 — 파일이 둘이라 갈라지기 쉽다."""
+    stations = yaml.safe_load((_PARAMS / 'stations.yaml').read_text(encoding='utf-8'))
+    assert stations['scooping']['A']['min_fraction'] == _dosing_params()['min_fraction']
+
+
+def test_dosing_defaults_match_operational_params():
+    """DosingConfig 기본값이 운영값과 갈라지면, 기본값으로 돈 시험이 운영을 대변하지 못한다."""
+    d = _dosing_params()
+    cfg = DosingConfig()
+    assert cfg.scoop_nominal_g == d['scoop_nominal_g']
+    assert cfg.min_fraction == d['min_fraction']
+    # max_invalid_retries 는 common.yaml dosing 절에 없다 — process_node 가 따로 선언한다.
+    # 여기서 단언하면 KeyError 라, 그 값의 정합은 gmp_process 쪽 시험이 본다.

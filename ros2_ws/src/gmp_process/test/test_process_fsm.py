@@ -307,11 +307,15 @@ def test_221_첫_깊이도_min_fraction_하한을_지킨다():
     하한에 눌린 요청을 조용히 올려 과다 채취하는 문제는 `decide()` 쪽이고 B 소관이다 (#221).
     첫 사이클만 다른 규칙을 쓰면 그 문제가 두 곳으로 갈라지므로 식을 같게 둔다.
     """
-    fsm = ProcessFSM(_one_item(3.0, tol_pct=50.0), DosingConfig(max_attempts=8, scoop_nominal_g=40.0),
-                     WeightModel(ScaleConfig()))
+    cfg = DosingConfig(max_attempts=8, scoop_nominal_g=40.0)
+    fsm = ProcessFSM(_one_item(3.0, tol_pct=50.0), cfg, WeightModel(ScaleConfig()))
     cell = _DepthCell(yields=[], residual=0.0, nominal_g=40.0)
     run(fsm, cell)
-    assert cell.fractions[0] == 0.15, cell.fractions      # 3 ÷ 40 = 0.075 → 하한
+    # 하한값을 리터럴로 박지 않는다 — `min_fraction` 기본값이 바뀌면 이 시험이 **설정 변경만으로**
+    # 깨져서, 정작 검사하려던 「하한에 눌린다」는 성질은 보지 못한 채 숫자만 고치게 된다.
+    # 3 ÷ 40 = 0.075 로 하한보다 작다는 것이 전제이므로 그것도 같이 단언한다.
+    assert 3.0 / cfg.scoop_nominal_g < cfg.min_fraction, cfg
+    assert cell.fractions[0] == cfg.min_fraction, (cell.fractions, cfg.min_fraction)
 
 
 def test_verify_규격이탈은_BATCH_OUT_OF_SPEC():
