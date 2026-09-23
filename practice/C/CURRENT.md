@@ -8,7 +8,7 @@
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 계약 | **v1.8** — `DispenseResult.verdict` OK/UNDER/OVER/**INVALID=3** | PR #241(C 발행) · #240(D 소비), `docs/interfaces.md` |
-| 계량 무효(WEIGH_INVALID) 정책 | `max_invalid_retries: 2`(총 3회); 카운터는 단계별·유효 시 초기화; 투입 전(TARE·SCOOP_TARE·WEIGH_SCOOP) → **CLEANUP → ERROR**, 투입 후(WEIGH_RESIDUAL·VERIFY) → QA; QA 승인 시 미측정 기록(`ItemRun.unmeasured`, `RunBatch.result='DONE_UNMEASURED'`, verdict INVALID) | #213 결정 1~5, PR #225·#227·#241 |
+| 계량 무효(WEIGH_INVALID) 정책 | `max_invalid_retries: 2`(총 3회); 카운터는 단계별·유효 시 초기화; 투입 전(TARE·SCOOP_TARE·WEIGH_SCOOP) → **CLEANUP → ERROR**, 투입 후(WEIGH_RESIDUAL·VERIFY) → QA; QA 승인 시 미측정을 기록한다. **원료 미측정과 최종 계량 미측정은 다른 사건이다** — `WEIGH_RESIDUAL` 무효는 `ItemRun.unmeasured` → `DispenseResult.verdict=INVALID`(그 원료의 투입량을 모름), `VERIFY` 무효는 `fsm.verify_unmeasured` → `RunBatch.result='DONE_UNMEASURED'`(배치 최종 순량을 모름, `process_node.py:921`). 한 배치에서 따로 일어난다 | #213 결정 1~5, PR #225·#227·#241 |
 | VERIFY | ① `\|net − Σtarget\| > Σ(target×tol)` → BATCH_OUT_OF_SPEC 만. ② 는 기록만 | SOT D-26, PR #209 |
 | 원료 소진 | SCOOP_EMPTY 재시도 ×3, **4회째 MATERIAL_EMPTY** → REFILL 인터락. 보충 뒤 재소진도 MATERIAL_EMPTY | #111 A안, PR #233·#234 |
 | 첫 SCOOP 깊이 | `max(min_fraction, min(1, 남은 목표 ÷ scoop_nominal_g))` — 둘째 사이클부터 `decide()` 와 같은 식 | #221 C 몫, PR #224 |
@@ -29,6 +29,7 @@
 - 스크래치패드는 통째로 지워질 수 있다 — 멈추기 전 커밋·푸시.
 
 ## 철회 이력 (최근 것 위)
+- 2026-09-23 ~~「문서에만 있고 코드에 없는 것」 9/23 **네 건**~~ → **둘.** BRD 3.1.3 은 애초에 불일치가 아니었고(폐기 표시·SOT Q-11 근거가 이미 달려 있음), `depth_fraction` 은 전날 #216 이 고쳤다(`skill_node.py:972`). **기억에서 꺼낸 목록을 근거로 썼다** — 항목마다 현행 main 에서 다시 확인해야 했다.
 - 2026-09-23 ~~「`verdict` 가 비면 INVALID」~~ → **`unmeasured > 0` 으로 가른다.** 첫 사이클 TIMEOUT 뒤 전량 반환은 `actual_g` 0 이 참값이라 UNDER 가 맞다(실측). `test_108_안_들어간_것은_INVALID_가_아니라_UNDER_다` 가 고정.
 - 2026-09-23 ~~「`hmi.js` 에 INVALID 이 영문 원문으로 뜬다」~~ → **`'?'` 가 뜬다.** `hmi.js` 는 정수 verdict 가 아니라 `hmi_web_node:339` 가 `VERDICTS` 로 변환한 문자열을 받는다 → `hmi.js` 수정은 `db.py:15` 에 딸린다.
 - 2026-09-23 ~~「`session_inventory` 도 v1.8 과 동시 머지 필요」~~ → **거동 무변경.** `observe` 는 `OK`·`OVER` 만 차감하고 `UNDER` 도 이미 제외라 v1.8 전후가 같다. 별건(재고 과대표시는 전부터 있던 문제).
