@@ -104,3 +104,18 @@ body:has(#loginOverlay:not([hidden]))>.safety-banner{visibility:hidden}.login-ca
 #orderForm button,#openCancelBatch,#refreshRestart{margin-top:20px}
 .monitor canvas{height:260px}
 .deviation .button-pair button{min-height:68px}
+
+/* 휴대폰(≤760px): 헤더가 화면을 계속 차지하지 않게 페이지 전체를 스크롤한다. 고정 영역이 화면 절반(데모)~30 %(운영)를
+ * 먹어 아래 영역만 스크롤되던 것(9/23 G6 사전 확인). 비상정지 안내띠는 sticky 라 스크롤해도 맨 위에 남는다.
+ * 안전 복구 등 헤더 버튼은 손가락 터치 최소 크기(44px)로 키운다. */
+@media(max-width:760px){
+ body{height:auto;min-height:100dvh;overflow:auto}
+ main{flex:none;overflow:visible}
+ header{min-height:0;padding:10px 12px;gap:8px 10px}
+ .brand{font-size:17px;gap:8px}.brand small{display:none}.brand-mark{width:30px;height:32px;font-size:18px}
+ header .connection{gap:6px}
+ nav button{min-height:40px;padding:6px 10px}
+ .session-button{min-height:44px;padding:8px 12px;font-size:12px}
+ header .connection{flex-wrap:wrap}.connection-group{flex-wrap:wrap}
+ .connection-group+.connection-group{padding-left:0;border-left:0}
+}
