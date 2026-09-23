@@ -91,6 +91,8 @@ class ProcessNode(Node):
             # (데모 A 200 g ÷ 40 g = 5회가 하한). max_returns 는 **초과 반환** 상한으로 성격이 다르다 (#189).
             ('dosing.max_attempts', 8), ('dosing.max_returns', 3),
             ('dosing.scoop_nominal_g', 40.0), ('dosing.min_fraction', 0.15),
+            # 실물 시연은 끝까지 담그는 고정 스쿱(D-33). 런치 없이 단독 시험할 때만 깊이 제어 기본값을 둔다.
+            ('dosing.fixed_scoop', False),
             ('gripper.cup_width_mm', 60.0),
             ('gripper.open_width_mm', 100.0), ('gripper.force_n', 20.0),
             ('gripper.fingerprint_tolerance_mm', 0.0),   # [추가 1] WRONG_TOOL 폭 지문 margin. 0 이면 검사 꺼짐
@@ -106,7 +108,8 @@ class ProcessNode(Node):
                                              offset_g=p('scale.offset_g'), max_std_g=p('scale.max_std_g')))
         self.dosing_cfg = DosingConfig(max_attempts=p('dosing.max_attempts'),
                                        scoop_nominal_g=p('dosing.scoop_nominal_g'),
-                                       min_fraction=p('dosing.min_fraction'))
+                                       min_fraction=p('dosing.min_fraction'),
+                                       fixed_scoop=p('dosing.fixed_scoop'))
         # 스테이션 이름표 — 없으면 원료 → scoop_N 을 못 찾는다. 경로가 비면 주문 때 거부한다
         self.smap = StationMap.from_yaml(p('stations_file')) if p('stations_file') else StationMap()
 

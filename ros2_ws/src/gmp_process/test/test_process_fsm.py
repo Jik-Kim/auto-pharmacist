@@ -925,6 +925,21 @@ def test_fixed_scoop_플래그를_켜도_맞출_수_있는_배치는_안_죽인�
         assert on[0].actual_g == off[0].actual_g, (target, first)
 
 
+def test_fixed_scoop_첫_스쿱과_반환_뒤에도_전량_깊이만_요청한다():
+    """고정 경로에서는 첫·반환 뒤·보충의 출처와 무관하게 부분 깊이를 보내지 않는다.
+
+    30 g 목표에 40 g 고정 스쿱을 쓰면 매번 초과해 반환한다. 깊이 제어라면 첫 0.75와
+    그보다 얕은 재스쿱이 나와야 하지만, 고정 모드에서는 반환 한도까지 모두 1.0 이어야 한다.
+    """
+    fsm = ProcessFSM(_one_item(30.0),
+                     DosingConfig(max_attempts=8, scoop_nominal_g=40.0, min_fraction=0.15,
+                                  fixed_scoop=True),
+                     WeightModel(ScaleConfig()), max_returns=3)
+    cell = DepthCell(nominal=40.0, residual=0.0)
+    run(fsm, cell)
+    assert depths(cell, 'A') == [1.0, 1.0, 1.0], depths(cell, 'A')
+
+
 def test_고정스쿱_보충요청이_최소채취보다_작아지는_구간은_없다():
     """「보충 요청량 < 최소채취면 QA」 분기는 **발동하지 못한다** (9/23 팀장 제안 검토).
 
