@@ -23,10 +23,14 @@
       material_id: ""
       operator_id: ""
       confirmed: false
+      empty_scoop_confirmed: false # 복원 스쿱이 비어 있음을 이번 기동에 명시할 때만 기준 재계량 허용
 
     height_measurement:
       # 기준 자세와 스쿱 끝 오프셋은 stations.yaml에서 읽는다.
       reference_station: material_1
+      force_trace_only: false      # 진단 시 접촉 정지를 생략하고 힘·자세 CSV 기록
+      trace_hz: 10.0
+      trace_directory: records/force_traces
 
     # ── 두산 로봇 ────────────────────────────────────────────────────
     robot:
@@ -98,7 +102,7 @@
       state_poll_s: 0.2             # 워커 안전 상태 조회 간격(장치 호출 시간 별도)
       recovery_timeout_s: 5.0       # 복구 후 기대 상태 확인 대기 한도
       recovery_cache_size: 256      # 기동 세션의 중복 복구 요청 기록 상한, 초과 시 새 요청 거부
-      fz_max_n: 1.5                 # BASE |Fz| 접촉 판정 → 감속 정지 요청. 실제 힘 상한 보장은 아님
+      fz_max_n: 1.5                 # BASE |Fz-빈 스쿱 Fz| 접촉 판정 → 감속 정지 요청. 실제 힘 상한 보장은 아님
       compliance_stx: [3000.0, 3000.0, 500.0, 200.0, 200.0, 200.0]   # Z 만 부드럽게
       compliance_settle_s: 0.5     # check_depth 순응 진입 응답 뒤 이동 전 전환 대기
       scoop_force_n: -8.0           # set_desired_force Z (베이스 기준 아래 방향은 음수 — G4 에서 부호 확인)

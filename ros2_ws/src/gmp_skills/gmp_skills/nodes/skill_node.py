@@ -14,6 +14,8 @@
 종료 시 ROS 문맥을 유지한 채 워커에서 정지·힘제어 해제를 시도한다.
 """
 import queue
+import csv
+from pathlib import Path
 import json
 import signal
 import math
@@ -80,6 +82,8 @@ class SkillNode(Node):
         self._motion_anchor = None
         self._held_payload = 'unknown'
         self._held_material_id = ''
+        self._empty_scoop_force_baseline = None
+        self._empty_scoop_baseline_pending = False
         self.transfer_joint_vel = float(g('robot.transfer_joint_vel_deg_s'))
         self.transfer_joint_acc = float(g('robot.transfer_joint_acc_deg_s2'))
         self.pose_xyz_tolerance = float(g('robot.pose_xyz_tolerance_mm'))
@@ -160,7 +164,8 @@ class SkillNode(Node):
                                              'expect_tcp': g('robot.tcp_name'),
                                              'restore_material_id': g('restore.material_id'),
                                              'restore_operator_id': g('restore.operator_id'),
-                                             'restore_confirmed': g('restore.confirmed')})
+                                             'restore_confirmed': g('restore.confirmed'),
+                                             'restore_empty_scoop_confirmed': g('restore.empty_scoop_confirmed')})
         self._q.put(self._startup_job)
 
         # 서버 객체를 멤버로 유지해야 가비지 컬렉션 뒤에도 ROS 그래프에 계속 남는다.
@@ -275,6 +280,8 @@ class SkillNode(Node):
             self._motion_anchor = None
             self._held_payload = 'unknown'
             self._held_material_id = ''
+            self._empty_scoop_force_baseline = None
+            self._empty_scoop_baseline_pending = False
             self._scoop_extract_uncertain = True
             if self._current and self._current.kind != 'startup':
                 self._current.cancel = True
@@ -372,6 +379,8 @@ class SkillNode(Node):
             self._cartesian_ready = False
             self._held_payload = 'unknown'
             self._held_material_id = ''
+            self._empty_scoop_force_baseline = None
+            self._empty_scoop_baseline_pending = False
             self._pending_scoop_extract = False
             # 자동 재개는 금지하고 이후 명시적 SafePose/현장 재설정을 요구한다.
             self._scoop_extract_uncertain = True
@@ -524,11 +533,15 @@ class SkillNode(Node):
                     if job.kind == 'weigh':
                         self._held_payload = 'unknown'
                         self._held_material_id = ''
+                        self._empty_scoop_force_baseline = None
+                        self._empty_scoop_baseline_pending = False
                     job.result = getattr(self, f'_do_{job.kind}')(job)
                 except Exception as e:  # noqa: BLE001
                     self._motion_anchor = None
                     self._held_payload = 'unknown'
                     self._held_material_id = ''
+                    self._empty_scoop_force_baseline = None
+                    self._empty_scoop_baseline_pending = False
                     job.error = f'{type(e).__name__}: {e}'
                     if not self._stopping.is_set():
                         if isinstance(e, TimeoutError):
@@ -540,6 +553,8 @@ class SkillNode(Node):
                             self._motion_anchor = None
                             self._held_payload = 'unknown'
                             self._held_material_id = ''
+                            self._empty_scoop_force_baseline = None
+                            self._empty_scoop_baseline_pending = False
                         self._current = None
                         job.done.set()
         finally:
@@ -576,6 +591,8 @@ class SkillNode(Node):
 
     def _restore_extracted_scoop(self, job: Job):
         """작업자가 확인한 인출 완료 스쿱만 계량 자세에서 복원한다. 이동·개폐는 없다."""
+        self._empty_scoop_force_baseline = None
+        self._empty_scoop_baseline_pending = False
         material_id = job.args.get('restore_material_id', '')
         operator_id = job.args.get('restore_operator_id', '')
         if (not isinstance(material_id, str) or not material_id.strip()
@@ -624,6 +641,7 @@ class SkillNode(Node):
                     or self._safety_revision != revision):
                 raise RuntimeError('복원 확인 중 취소 또는 안전 상태 변경 발생')
             self._held_payload = 'scoop'
+            self._empty_scoop_baseline_pending = job.args.get('restore_empty_scoop_confirmed') is True
             self._held_material_id = material_id
             self._station_id = station.station_id
             self._cartesian_ready = True
@@ -648,6 +666,8 @@ class SkillNode(Node):
             self._motion_anchor = None
             self._held_payload = 'unknown'
             self._held_material_id = ''
+            self._empty_scoop_force_baseline = None
+            self._empty_scoop_baseline_pending = False
             raise
 
     def _pose_matches(self, actual, target):
@@ -839,6 +859,8 @@ class SkillNode(Node):
         a = job.args
         self._held_payload = 'unknown'
         self._held_material_id = ''
+        self._empty_scoop_force_baseline = None
+        self._empty_scoop_baseline_pending = False
         if a['close']:
             if self._scoop_extract_uncertain:
                 raise RuntimeError('스쿱 인출 상태가 불확실하여 재파지할 수 없다')
@@ -862,6 +884,7 @@ class SkillNode(Node):
                         raise ValueError(f'{self._station_id}.material_id가 필요하다')
                     self._held_payload = 'scoop'
                     self._held_material_id = material_id
+                    self._empty_scoop_baseline_pending = True
                 elif (anchor is not None and anchor.station == self._station_id and anchor.approach == MoveToStation.Goal.AT
                       and self._station_id in ('workbench', 'passbox_empty', 'passbox_done', 'reject_bin')
                       and self._pose_matches(self.arm.current_posx(), anchor.pose)
@@ -874,6 +897,8 @@ class SkillNode(Node):
         if released:
             self._held_payload = 'empty'
             self._held_material_id = ''
+            self._empty_scoop_force_baseline = None
+            self._empty_scoop_baseline_pending = False
         return released, self.gripper.width_mm() or -1.0, False
 
     def _scale_period_s(self):
@@ -905,6 +930,8 @@ class SkillNode(Node):
         self._pending_scoop_extract = False
         self._scoop_extract_uncertain = False
         self._held_material_id = ''
+        self._empty_scoop_force_baseline = None
+        self._empty_scoop_baseline_pending = False
         return True
 
     def _require_held_scoop(self, material_id=None):
@@ -952,11 +979,26 @@ class SkillNode(Node):
         if not math.isfinite(settle_s) or not 0 < settle_s <= self.motion_timeout_s:
             raise ValueError('순응 전환 대기는 양수이며 이동 제한 시간 이하여야 합니다')
         station = self.stations.for_material(job.args['material_id'])
+        baseline = getattr(self, '_empty_scoop_force_baseline', None)
+        if (baseline is None or baseline['material_id'] != job.args['material_id']
+                or baseline['station_id'] != station.station_id
+                or baseline['safety_revision'] != getattr(self, '_safety_revision', 0)
+                or not self._pose_matches(baseline['pose'], station.posx)):
+            raise RuntimeError('현재 파지·자세의 유효한 빈 스쿱 Fz 계량 기준이 필요합니다')
+        baseline_fz = baseline['fz_mean_n']
+        if not math.isfinite(baseline_fz):
+            raise ValueError('빈 스쿱 기준 Fz가 유효하지 않습니다')
+        # 한번 접근한 뒤의 계량을 빈 스쿱 영점으로 다시 저장하지 않는다.
+        self._empty_scoop_baseline_pending = False
         target = SkillNode._pose_from_extra(station, 'measure_posx')
         start = list(station.posx)
         reference_station = self.stations.get(p('height_measurement.reference_station').value)
         reference = list(reference_station.posx)
         tip_offset = list(reference_station.extra['scoop_tip_offset_base_mm'])
+        trace_only = bool(p('height_measurement.force_trace_only').value)
+        trace_hz = float(p('height_measurement.trace_hz').value)
+        if not math.isfinite(trace_hz) or trace_hz <= 0:
+            raise ValueError('힘 기록 주파수는 유한한 양수여야 합니다')
         contact_threshold = float(p('safety.fz_max_n').value)
         if not math.isfinite(contact_threshold) or contact_threshold <= 0:
             raise ValueError('접촉 판정 힘은 유한한 양수여야 합니다')
@@ -972,57 +1014,104 @@ class SkillNode(Node):
         contact_pose = None
         max_force_n = 0.0
         insertion_mm = 0.0
+        trace_file = None
+        trace_writer = None
+        trace_path = None
+        trace_start = self._now_s()
+        next_trace_at = trace_start
+        phase = 'BEFORE_COMPLIANCE'
+        if trace_only:
+            directory = Path(p('height_measurement.trace_directory').value).expanduser().resolve()
+            directory.mkdir(parents=True, exist_ok=True)
+            trace_path = directory / f'force_{station.station_id}_{uuid.uuid4().hex}.csv'
+            trace_file = trace_path.open('x', newline='', buffering=1)
+            trace_writer = csv.writer(trace_file)
+            trace_writer.writerow(['ros_time_s', 'elapsed_s', 'force_read_end_s', 'pose_read_end_s',
+                'frame', 'phase', 'Fx_N', 'Fy_N', 'Fz_N', 'Mx_Nm', 'My_Nm', 'Mz_Nm',
+                'tcp_x_mm', 'tcp_y_mm', 'tcp_z_mm', 'tcp_a_deg', 'tcp_b_deg', 'tcp_c_deg',
+                'baseline_fz_N', 'delta_fz_N', 'threshold_N', 'contact_detected'])
+            self.get_logger().info(f'[FORCE_TRACE_CSV] {trace_path}')
 
         def observe_depth():
-            nonlocal contact_z, contact_pose, max_force_n, insertion_mm
+            nonlocal contact_z, contact_pose, max_force_n, insertion_mm, next_trace_at
+            sample_at = self._now_s()
+            if trace_only:
+                if sample_at < next_trace_at:
+                    return
+                next_trace_at += (math.floor((sample_at - next_trace_at) * trace_hz) + 1) / trace_hz
             force = self.arm.tool_force()
             if force is None or len(force) != 6 or not all(math.isfinite(float(v)) for v in force):
                 raise RuntimeError('깊이 측정 외력 조회 실패')
+            force_read_end = self._now_s()
             current = self.arm.current_posx()
+            pose_read_end = self._now_s()
             if len(current) != 6 or not all(math.isfinite(float(v)) for v in current):
                 raise RuntimeError('깊이 측정 자세 조회 실패')
             max_force_n = max(max_force_n, abs(float(force[2])))
-            if contact_z is None and self.arm.force_over(contact_threshold):
+            delta_fz = float(force[2]) - baseline_fz
+            if phase != 'RETURN' and contact_z is None and abs(delta_fz) >= contact_threshold:
                 contact_z = float(current[2])
                 contact_pose = list(current)
                 # 이후 목표 미도달·취소로 실패해도 최초 표본은 남긴다.
                 self.get_logger().info('[SURFACE_CONTACT_BASE] ' + json.dumps({
+                    'baseline_fz_n': baseline_fz,
+                    'contact_fz_n': float(force[2]), 'delta_fz_n': delta_fz,
                     'contact_tcp_posx': contact_pose,
                     'tip_position_mm': tip_position_base(contact_pose, reference, tip_offset),
                     'approximate_offset': True,
                 }, ensure_ascii=False))
             insertion_mm = 0.0 if contact_z is None else abs(float(current[2]) - contact_z)
+            if trace_writer is not None:
+                trace_writer.writerow([sample_at, sample_at - trace_start, force_read_end, pose_read_end,
+                    'BASE', phase, *force, *current, baseline_fz, delta_fz, contact_threshold,
+                    contact_z is not None])
+                trace_file.flush()
             job.feedback and job.feedback('DIP', contact_z is not None, abs(float(force[2])), insertion_mm)
 
         try:
-            self.arm.compliance_on(list(p('safety.compliance_stx').value))
-            self._wait_compliance_settle(job, settle_s)
-            # 목표의 XYZ와 회전을 모두 사용한다. 고정 Z 힘·상대 40 mm 담그기는 사용하지 않는다.
-            self.arm.movel_cancellable(
-                target, self.vel_scale, lambda: job.cancel or self._cancel_requested(),
-                self.motion_timeout_s, observer=observe_depth,
-                stop_requested=lambda: contact_pose is not None)
-            if contact_pose is None and not self._pose_matches(self.arm.current_posx(), target):
-                raise RuntimeError('깊이 측정 목표 자세 미도달')
+            try:
+                if trace_only:
+                    observe_depth()
+                self.arm.compliance_on(list(p('safety.compliance_stx').value))
+                self._wait_compliance_settle(job, settle_s)
+                phase = 'APPROACH'
+                # 목표의 XYZ와 회전을 모두 사용한다. 고정 Z 힘·상대 40 mm 담그기는 사용하지 않는다.
+                self.arm.movel_cancellable(
+                    target, self.vel_scale, lambda: job.cancel or self._cancel_requested(),
+                    self.motion_timeout_s, observer=observe_depth,
+                    stop_requested=lambda: not trace_only and contact_pose is not None)
+                if (trace_only or contact_pose is None) and not self._pose_matches(self.arm.current_posx(), target):
+                    raise RuntimeError('깊이 측정 목표 자세 미도달')
+            finally:
+                self.arm.compliance_off()
+            if job.cancel or self._cancel_requested():
+                raise RuntimeError('cancelled')
+            # 성공한 경로만 계량 자세로 되짚는다. 실패·취소 시 자동 복귀하지 않는다.
+            if trace_only:
+                phase = 'RETURN'
+                self.arm.movel_cancellable(start, self.vel_scale,
+                    lambda: job.cancel or self._cancel_requested(), self.motion_timeout_s,
+                    observer=observe_depth)
+            else:
+                self.arm.movel(start, self.vel_scale)
+            job.feedback and job.feedback('LIFT', contact_z is not None, max_force_n, insertion_mm)
+            measurement = {
+                'frame': 'BASE', 'baseline_fz_n': baseline_fz, 'csv_path': str(trace_path) if trace_path else None,
+                'contact_tcp_posx': contact_pose,
+                'tip_position_mm': (tip_position_base(contact_pose, reference, tip_offset)
+                                    if contact_pose is not None else None),
+                'approximate_offset': True,
+            }
+            message = json.dumps(measurement, ensure_ascii=False)
+            self.get_logger().info(f'[SURFACE_HEIGHT_BASE] {message}')
+            return {'contact_detected': contact_z is not None, 'max_contact_force_n': max_force_n,
+                    'insertion_depth_mm': insertion_mm, 'message': message}
         finally:
-            self.arm.compliance_off()
-        if job.cancel or self._cancel_requested():
-            raise RuntimeError('cancelled')
-        # 성공한 경로만 계량 자세로 되짚는다. 실패·취소 시 자동 복귀하지 않는다.
-        self.arm.movel(start, self.vel_scale)
-        job.feedback and job.feedback('LIFT', contact_z is not None, max_force_n, insertion_mm)
-        measurement = {
-            'frame': 'BASE', 'contact_tcp_posx': contact_pose,
-            'tip_position_mm': (tip_position_base(contact_pose, reference, tip_offset)
-                                if contact_pose is not None else None),
-            'approximate_offset': True,
-        }
-        message = json.dumps(measurement, ensure_ascii=False)
-        self.get_logger().info(f'[SURFACE_HEIGHT_BASE] {message}')
-        return {'contact_detected': contact_z is not None, 'max_contact_force_n': max_force_n,
-                'insertion_depth_mm': insertion_mm, 'message': message}
+            if trace_file is not None:
+                trace_file.close()
 
     def _do_pour(self, job: Job):
+        self._empty_scoop_baseline_pending = False
         self._require_scoop_extracted()
         SkillNode._require_held_scoop(self)
         p = self.get_parameter
@@ -1032,9 +1121,17 @@ class SkillNode(Node):
         workbench = self.stations.get('workbench')
         start = SkillNode._pose_from_extra(workbench, 'pour_start_posx')
         end = SkillNode._pose_from_extra(workbench, 'pour_end_posx')
+        height = workbench.extra.get('approach_mm', self.stations.approach_mm)
+        if (type(height) not in (int, float) or not math.isfinite(height) or height <= 0):
+            raise ValueError('Pour 접근 높이는 유한한 양수여야 합니다')
+        above = list(start)
+        above[2] += height  # 붓기 시작점 기준 BASE Z 상승. 용기 파지 ABOVE와 구분한다.
         if job.cancel:
             raise RuntimeError('cancelled')
         job.feedback and job.feedback('APPROACH')
+        self.arm.movel(above, self.vel_scale)
+        if job.cancel:
+            raise RuntimeError('cancelled')
         self.arm.movel(start, self.vel_scale)
         if job.cancel:
             raise RuntimeError('cancelled')
@@ -1056,6 +1153,7 @@ class SkillNode(Node):
         return True
 
     def _do_return_material(self, job: Job):
+        self._empty_scoop_baseline_pending = False
         self._require_scoop_extracted()
         material_id = job.args['material_id']
         SkillNode._require_held_scoop(self, material_id)
@@ -1088,6 +1186,10 @@ class SkillNode(Node):
     def _measure_weight_reading(self, tare_g: float, subject: str,
                                 station_id: str = 'workbench') -> WeightReading:
         p = self.get_parameter
+        capture_baseline = (subject == 'scoop'
+                            and getattr(self, '_empty_scoop_baseline_pending', False))
+        if capture_baseline:
+            self._empty_scoop_force_baseline = None
         period_s = self._scale_period_s()
         samples = int(p('scale.samples').value)
         settle_s = float(p('scale.settle_s').value)
@@ -1123,6 +1225,23 @@ class SkillNode(Node):
             subject=subject,
         )
         reading.header.stamp = self.get_clock().now().to_msg()
+        if (capture_baseline and method == 'tool_force' and valid_src
+                and not bool(p('scale.simulated').value)
+                and math.isfinite(raw_mean) and math.isfinite(raw_std) and raw_std >= 0
+                and self._held_payload == 'scoop' and self._held_material_id
+                and not self._cancel_requested()):
+            station = self.stations.for_material(self._held_material_id)
+            if station.station_id == station_id and self._pose_matches(self.arm.current_posx(), station.posx):
+                self._empty_scoop_force_baseline = {
+                    'fz_mean_n': float(raw_mean), 'fz_std_n': float(raw_std),
+                    'weight_valid': bool(valid),
+                    'material_id': self._held_material_id, 'station_id': station_id,
+                    'pose': list(station.posx),
+                    'safety_revision': getattr(self, '_safety_revision', 0),
+                }
+                self._empty_scoop_baseline_pending = False
+                self.get_logger().info('[EMPTY_SCOOP_FZ_BASELINE] ' + json.dumps(
+                    self._empty_scoop_force_baseline, ensure_ascii=False))
         return reading
 
     def _do_weigh(self, job: Job):

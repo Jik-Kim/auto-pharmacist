@@ -374,7 +374,7 @@ def _held_scoop_node(skill_node, station):
         _held_material_id='A',
         _now_s=lambda: 0.0,
         gripper=SimpleNamespace(state=lambda _: {'busy': False, 'grip_inferred': True}),
-        stations=SimpleNamespace(get=lambda _: station, for_material=lambda _: station),
+        stations=SimpleNamespace(approach_mm=50.0, get=lambda _: station, for_material=lambda _: station),
         arm=SimpleNamespace(movel=lambda target, scale: moves.append((list(target), scale))),
         motion_timeout_s=30.0,
         vel_scale=0.3,
@@ -397,7 +397,7 @@ def test_pour_uses_taught_start_end_and_restores_start(monkeypatch):
 
     assert skill_node.SkillNode._do_pour(
         node, skill_node.Job('pour', {'fraction': 1.0}, feedback=phases.append)) is True
-    assert [pose for pose, _ in moves] == [start, end, start]
+    assert [pose for pose, _ in moves] == [start[:2] + [start[2] + 50.0] + start[3:], start, end, start]
     assert holds == [(0.5, 'pour')]
     assert phases == ['APPROACH', 'TILT', 'HOLD', 'RETURN']
 
@@ -455,7 +455,9 @@ def test_end_move_failure_does_not_issue_restore_motion(monkeypatch, kind):
 
     with pytest.raises(RuntimeError, match='end move failed'):
         getattr(skill_node.SkillNode, f'_do_{kind}')(node, job)
-    assert [pose for pose, _ in moves] == [start, end]
+    assert [pose for pose, _ in moves] == (
+        [start[:2] + [start[2] + 50.0] + start[3:], start, end]
+        if kind == 'pour' else [start, end])
 
 
 def test_return_without_taught_poses_is_rejected_before_motion(monkeypatch):
@@ -646,3 +648,22 @@ def test_invalid_extract_lift_height_rejected_before_first_motion(monkeypatch, h
     with pytest.raises(ValueError, match='유한한 양수'):
         module.SkillNode._do_weigh_held(node, module.Job('weigh_held', {'tare_g': 0.0}))
     assert node._pending_scoop_extract
+
+
+def test_pour_cancel_at_above_prevents_descent(monkeypatch):
+    skill_node = _load_skill_node(monkeypatch)
+    station = SimpleNamespace(station_id='workbench', extra={
+        'pour_start_posx': [420., 220., 238., 90., 180., -90.],
+        'pour_end_posx': [420., 160., 320., 90., 130., -90.],
+        'approach_mm': 60.0,
+    })
+    node, moves, holds = _held_scoop_node(skill_node, station)
+    job = skill_node.Job('pour', {'fraction': 1.0})
+    def cancel_at_above(target, scale):
+        moves.append(list(target))
+        job.cancel = True
+    node.arm.movel = cancel_at_above
+    with pytest.raises(RuntimeError, match='cancelled'):
+        skill_node.SkillNode._do_pour(node, job)
+    assert moves == [[420., 220., 298., 90., 180., -90.]]
+    assert holds == []
