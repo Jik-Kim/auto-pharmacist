@@ -46,7 +46,7 @@ except ImportError:
 from gmp_hmi.core.measurement_context import target_band
 from gmp_hmi.core.pause_context import pause_reason
 from gmp_hmi.core.safety_recovery import SafetyRecovery
-from gmp_hmi.core.db import DECISIONS, KINDS, VERDICTS, CellDB
+from gmp_hmi.core.db import DECISIONS, KINDS, LEVELS, VERDICTS, CellDB
 from gmp_hmi.core.session_inventory import SessionInventory
 from gmp_hmi.core.trial_inventory import validate_trial_snapshot
 from gmp_hmi.core.admin_store import AdminStore, DEFAULT_SETTINGS
@@ -57,7 +57,6 @@ MODES = {getattr(CellState, name): name
          for name in ('IDLE', 'RUNNING', 'PAUSED', 'DEVIATION', 'ERROR', 'DONE')}
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 TOPICS = ('state', 'weight', 'gripper', 'dispense_result', 'deviation', 'scoop_cycle', 'event')
-LEVELS = {0: 'INFO', 1: 'WARN', 2: 'ERROR'}
 
 
 class CommandUnavailable(RuntimeError):
