@@ -19,7 +19,7 @@
 - #108 본래 주제: `ScoopCycle` 6축 wrench 채울 경로 — 전제(모멘트 = 파지 품질) 근거 부족(노션 9/22), 미정리.
 - #221 C 몫 완료, B 몫 대기(scoop_nominal_g 65 는 교착 구간 진입 → decide() 하한 동반).
 - #228·#242 (D): DONE_UNMEASURED 소비 4곳, 진행 스트립 INVALID 「완료」 표시 — C 는 대기.
-- 계량 경로 전체를 태우는 무효 계량 통합 시험(후속).
+- 계량 경로 전체를 태우는 무효 계량 통합 시험(후속). **막힘 해소** — `fake_skill_node` 에 무효 손잡이가 필요해 `test/t6-fault-injection` 과 같은 파일에서 충돌하던 것이, 양쪽 다 머지돼 지금은 가능하다.
 
 ## 알려진 함정
 - 빈 verdict ≠ 미측정. 첫 사이클 TIMEOUT 뒤 전량 반환은 `actual_g` 0 이 참값 → UNDER 가 맞고 INVALID 는 거짓(#241 시험 2건이 고정).
@@ -29,6 +29,9 @@
 - 스크래치패드는 통째로 지워질 수 있다 — 멈추기 전 커밋·푸시.
 
 ## 철회 이력 (최근 것 위)
+- 2026-09-23 ~~「`verdict` 가 비면 INVALID」~~ → **`unmeasured > 0` 으로 가른다.** 첫 사이클 TIMEOUT 뒤 전량 반환은 `actual_g` 0 이 참값이라 UNDER 가 맞다(실측). `test_108_안_들어간_것은_INVALID_가_아니라_UNDER_다` 가 고정.
+- 2026-09-23 ~~「`hmi.js` 에 INVALID 이 영문 원문으로 뜬다」~~ → **`'?'` 가 뜬다.** `hmi.js` 는 정수 verdict 가 아니라 `hmi_web_node:339` 가 `VERDICTS` 로 변환한 문자열을 받는다 → `hmi.js` 수정은 `db.py:15` 에 딸린다.
+- 2026-09-23 ~~「`session_inventory` 도 v1.8 과 동시 머지 필요」~~ → **거동 무변경.** `observe` 는 `OK`·`OVER` 만 차감하고 `UNDER` 도 이미 제외라 v1.8 전후가 같다. 별건(재고 과대표시는 전부터 있던 문제).
 - 2026-09-23 ~~미측정 원료 verdict 되매김 UNDER(임시)~~ → INVALID=3 (v1.8). PR #241.
 - 2026-09-22 ~~미측정 원료 verdict 빈 값 → 'OK' 폴백~~ → verdict_of 되매김 UNDER + WARN DISPENSE_UNMEASURED. PR #225.
 - 2026-09-22 ~~RULES['WEIGH_INVALID'] (2,'RETRY','QA')~~ → (0,'QA','QA'), 재계량은 max_invalid_retries 전담. #213 결정 1.
