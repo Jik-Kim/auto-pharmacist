@@ -36,6 +36,7 @@
 - **배치가 즉시 ERROR/CANCELLED 면 먼저 도메인 충돌을 의심** — 9/22 공유 `ROS_DOMAIN_ID=70` 에서 다른 팀원 노드가 우리 배치를 취소했다(`BATCH_CANCEL_REQUEST` 감사 기록 없이 `BATCH_CANCELLED`). 격리 도메인에서 재현되면 우리 문제.
 - `ros2 node list`·`service list` 가 옛 목록이면 `ros2 daemon stop && ros2 daemon start`.
 - `static/*` 를 고친 뒤 화면이 그대로면 `colcon build --symlink-install --packages-select gmp_hmi` + HMI 재시작, `curl http://127.0.0.1:5000/static/hmi.css | grep <바꾼 문자열>` 로 서빙 확인.
+- **ROS 없는 샌드박스에서 `gmp_hmi` pytest 는 `PYTHONPATH` 없이 돌리면 거짓 기준선이 된다** — `gmp_process` import 실패로 `test_v4_process.py` 등 69 건이 ERROR 로 빠지고 「55 passed」만 보인다. 9/23 #266 에서 이것을 「회귀 없음」으로 적었다가 조장 검토에서 실패 1 건이 드러났다. `PYTHONPATH=../gmp_process:.:../gmp_dosing python3 -m pytest -q test` 로 **126 passed** 가 기준.
 - gmp_hmi 와 gmp_process 시험을 같은 pytest 실행에 넣지 않는다 — 노드 경합으로 process 시험이 깨진다(C CURRENT).
 - **가상 모드로는 `PICK_CONTAINER` 를 통과 못 한다** — 파지 판정이 `grip = w > width_mm + grip_margin_mm`(`gmp_skills/adapters/rg2_gripper.py:246`)인데 `virtual` 백엔드(`:175`)는 명령한 관절각으로 그대로 이동해 `w ≈ width_mm` 이라 마진 2.0 mm(`common.yaml:61`)를 못 넘는다. 9/23 실행에서 `GRIP_FAIL` ×4 → ERROR. **가상은 이동·상태 전이·기록 확인용이고 전체 사이클 완주 검증에는 못 쓴다.**
 - **가상 모드 `NUDGE_WAIT` 은 안 풀린다** — `skill_node.py:126` 이 `scale.simulated` 면 NUDGE 감지를 끄는데 `process_node` 의 `safety.nudge_enabled` 는 `true` 그대로이고(`common.yaml:118`) `_await` 에 타임아웃이 없다(`process_node.py:315-318`). 우회: `/cell/event` 에 `code='NUDGE'` 를 한 번 발행하면 사람이 건드린 것과 같은 경로로 풀린다(파라미터 변경 불필요).
