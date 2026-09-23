@@ -3,7 +3,9 @@
 Cell 오라클: 스쿱 풍량 20 g, 용기 풍량 30 g. scoop 마다 yields 에서 퍼올림량을 꺼내고, pour 는 fraction 만큼 옮기되
 residual 만큼 스쿱에 남긴다. weigh_scoop 은 스쿱 총량, weigh 는 용기 총량·순량을 돌려준다.
 """
-from gmp_dosing.core.dosing import DosingConfig
+import pytest
+
+from gmp_dosing.core.dosing import DosingConfig, decide
 from gmp_dosing.core.scale import ScaleConfig, WeightModel
 from gmp_process.core.process_fsm import ProcessFSM, ToolFingerprint
 from gmp_process.core.recipe import parse
@@ -752,3 +754,77 @@ def test_invalid_tare_up_to_limit_raises_weigh_invalid():
     run(fsm, cell)
     assert [(d['kind'], d['step']) for d in fsm.deviations] == [('WEIGH_INVALID', 'TARE')]
     assert fsm.state == 'ERROR' and fsm.tare_g == 0.0
+
+
+# ── 고정 스쿱 (9/23 조장 결정: 공칭 85 · min_fraction 0.10 · 레시피 85/85/170 ±10 %) ──────
+# 시연은 **끝까지 담그는 고정 스쿱**이라 `depth_fraction` 이 실제로 안 먹는다. 그때 무슨 일이
+# 벌어지는지를 고정한다 — 깊이 제어가 붙거나 `fixed_scoop` 분기가 들어오면 **먼저 깨져야** 한다.
+
+NOMINAL_85, MINFRAC_10 = 85.0, 0.10
+
+
+def _fixed_scoop_run(target, tol, per_scoop, first=None):
+    """매번 같은 양을 퍼는 스쿱으로 원료 1종을 끝까지 돌린다 — 깊이 요청은 무시된다."""
+    spec = parse({'product': 'demo', 'items': [{'material_id': 'A', 'target_g': target, 'tol_pct': tol}]})
+    fsm = ProcessFSM(spec, DosingConfig(scoop_nominal_g=NOMINAL_85, min_fraction=MINFRAC_10),
+                     WeightModel(ScaleConfig()), fingerprint=ToolFingerprint())
+    run(fsm, Cell(yields=[per_scoop if first is None else first] + [per_scoop] * 40))
+    r = fsm.results[0] if fsm.results else fsm.cur
+    return r, [d['kind'] for d in fsm.deviations]
+
+
+def test_고정스쿱_첫_스쿱_미달은_반환만_반복하다_TIMEOUT_으로_끝난다():
+    """보충 요청이 **항상 초과**가 되어 스쿱↔반환을 돌다 반환 한도에서 멈춘다.
+
+    고정 스쿱이면 `decide()` 가 몇 g 을 요청하든 85 g 이 온다. 남은 목표량이 그보다
+    작으므로 반환 가드가 매번 걸리고, `max_returns` 를 넘겨 TIMEOUT 이 난다.
+
+    ⚠️ **일탈이 둘이다.** TIMEOUT 을 QA 가 승인하면 배치가 이어지고, 투입량이 모자란 채
+    VERIFY 에 도달해 `BATCH_OUT_OF_SPEC` 이 또 난다 — 시연자가 QA 를 **두 번** 누른다.
+    """
+    r, kinds = _fixed_scoop_run(85, 10, NOMINAL_85, first=70.0)
+    assert kinds == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], kinds
+    assert r.returns == 3, r.returns          # max_returns 를 소진한다
+    assert r.attempts == 2, r.attempts        # 반환은 붓기 시도를 소모하지 않는다
+    assert r.actual_g < 85 * 0.9, r.actual_g  # 허용 하한에도 못 미친 채 끝난다
+
+
+@pytest.mark.parametrize('target,scoops,threshold', [(85, 1, 78.5), (170, 2, 77.5)])
+def test_고정스쿱_임계는_스쿱_1회량으로_정해진다(target, scoops, threshold):
+    """깨지는 지점이 **스쿱 1회량**으로 정해진다. 실측한 경계를 고정한다.
+
+        투입 = 스쿱수 × 1회량 − 잔량      ← 잔량은 **마지막 사이클 것만** 잃는다
+        (중간 사이클의 잔량은 다음 스쿱에 섞여 회수된다)
+
+    그래서 스쿱이 많을수록 임계가 **내려간다** — 잃는 잔량이 한 번뿐이라 목표가 커질수록
+    비율로는 작아진다. 85 g 1스쿱 78.5 g · 170 g 2스쿱 77.5 g.
+
+    ⚠️ **운영을 묶는 것은 더 높은 쪽(78.5 g)** 이다. 공칭 85 대비 여유가 6.5 g(7.6 %)뿐이고,
+    잔량이 커지면 그대로 줄어든다.
+    """
+    below, above = round(threshold - 0.1, 1), threshold
+    r_bad, kinds_bad = _fixed_scoop_run(target, 10, below)
+    assert kinds_bad == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], (target, below, kinds_bad)
+
+    r_ok, kinds_ok = _fixed_scoop_run(target, 10, above)
+    assert kinds_ok == [], (target, above, kinds_ok, r_ok.actual_g)
+    assert abs(r_ok.actual_g - target) <= target * 0.10, r_ok.actual_g
+    # 잔량을 한 번만 잃는다는 것이 이 경계의 이유다
+    assert r_ok.actual_g == pytest.approx(scoops * above - 2.0), (r_ok.actual_g, scoops, above)
+
+
+def test_고정스쿱_보충요청이_최소채취보다_작아지는_구간은_없다():
+    """「보충 요청량 < 최소채취면 QA」 분기는 **발동하지 못한다** (9/23 팀장 제안 검토).
+
+    최소채취 = `min_fraction × scoop_nominal_g` = 8.5 g 인데 목표 85 의 허용오차도
+    8.5 g 이라, 보충 요청량이 8.5 g 아래로 내려가기 전에 `decide()` 가 먼저 OK 를 낸다.
+    그래서 조건은 「요청량이 작다」가 아니라 **「깊이 제어가 없다」**여야 한다.
+    """
+    cfg = DosingConfig(scoop_nominal_g=NOMINAL_85, min_fraction=MINFRAC_10)
+    floor_g = cfg.min_fraction * cfg.scoop_nominal_g
+    assert round(floor_g, 6) == 8.5
+    for actual in (70.0, 76.0, 76.4):                     # 아직 보충을 요청한다
+        assert decide(85.0, actual, 10.0, 1, True, 0, cfg).action == 'SCOOP', actual
+        assert 85.0 - actual > floor_g, actual            # 요청량은 늘 최소채취보다 크다
+    for actual in (76.5, 80.0, 85.0):                     # 여기서 이미 끝난다
+        assert decide(85.0, actual, 10.0, 1, True, 0, cfg).action == 'DONE', actual

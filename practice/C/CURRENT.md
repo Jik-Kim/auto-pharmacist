@@ -13,7 +13,7 @@
 | 원료 소진 | SCOOP_EMPTY 재시도 ×3, **4회째 MATERIAL_EMPTY** → REFILL 인터락. 보충 뒤 재소진도 MATERIAL_EMPTY | #111 A안, PR #233·#234 |
 | 첫 SCOOP 깊이 | `max(min_fraction, min(1, 남은 목표 ÷ scoop_nominal_g))` — 둘째 사이클부터 `decide()` 와 같은 식 | #221 C 몫, PR #224 |
 | 무효 계량 통합 시험 | fake_skill_node 손잡이 없이 `_publish_result` 직접 호출 | PR #225 |
-| 통합 시험 기준선 | gmp_process **186 passed / 6 skipped** · gmp_dosing 19 (= 합계 **205 / 6**, 9/23 main `c33ea8e` C 실측. 181 → #257 이 +2, #253 이 +3) | ROS 소싱 필수 — 133 이면 소싱 누락. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
+| 통합 시험 기준선 | gmp_process **190 passed / 6 skipped** · gmp_dosing 19 (= 합계 **209 / 6**, 9/23 C 실측. 186 → 고정 스쿱 시험 +4) | ROS 소싱 필수 — 133 이면 소싱 누락. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
 
 ## 열린 과제 (이슈 번호)
 - #108 본래 주제: `ScoopCycle` 6축 wrench 채울 경로 — 전제(모멘트 = 파지 품질) 근거 부족(노션 9/22), 미정리.
@@ -22,6 +22,7 @@
 - 계량 경로 전체를 태우는 무효 계량 통합 시험(후속). **막힘 해소** — `fake_skill_node` 에 무효 손잡이가 필요해 `test/t6-fault-injection` 과 같은 파일에서 충돌하던 것이, 양쪽 다 머지돼 지금은 가능하다.
 
 ## 알려진 함정
+- **잔량은 사이클마다 잃지 않는다** — 중간 사이클의 스쿱 잔량은 다음 스쿱에 섞여 회수되고, **마지막 사이클 것 하나만** 잃는다. `투입 = 스쿱수 × 1회량 − 잔량`(× 스쿱수 아님). 9/23 에 이걸 틀려 고정 스쿱 임계를 잘못 계산했다 — 스쿱이 많을수록 임계가 **내려간다** (85 g 1스쿱 78.5 g · 170 g 2스쿱 77.5 g, 운영 기준은 높은 쪽 78.5).
 - 빈 verdict ≠ 미측정. 첫 사이클 TIMEOUT 뒤 전량 반환은 `actual_g` 0 이 참값 → UNDER 가 맞고 INVALID 는 거짓(#241 시험 2건이 고정).
 - 교착 구간: `decide()` 하한 × 반환 가드 → 최소채취 > 2×허용오차 일 때 (허용오차, 최소채취−허용오차) 구간에서 스쿱↔반환 반복. 65 g 나노미널이면 데모 C 100 g 이 경계.
 - 설정 dataclass 는 키워드 인자만(AGENTS). `.msg` 바꾼 브랜치는 **워크트리 안에서** `colcon build --packages-select gmp_interfaces --cmake-force-configure` 뒤 시험. 공유 install 갈아끼우기 금지.
