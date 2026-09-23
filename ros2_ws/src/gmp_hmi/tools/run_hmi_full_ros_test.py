@@ -69,7 +69,7 @@ def start_launch(env, duration):
         "ros2", "launch", "gmp_hmi", "hmi_comm_test.launch.py",
         "scenario:=normal",
         f"item_duration_s:={duration}",
-        "test_initial_g:=[80.0,1000.0,1000.0]",
+        "test_initial_g:=[170.0,1000.0,1000.0]",
     ]
     process = subprocess.Popen(command, env=env, start_new_session=True)
     opener = build_opener(ProxyHandler({}))
