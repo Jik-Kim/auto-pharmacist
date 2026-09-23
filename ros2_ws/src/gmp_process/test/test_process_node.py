@@ -599,6 +599,9 @@ def test_213_붓기_뒤_계량_무효는_QA_승인으로_미측정이_기록된�
     assert dev.kind == Deviation.WEIGH_INVALID and dev.requires_decision, dev.kind
     assert _qa(col, dev.deviation_id, Deviation.APPROVED).accepted
     assert _wait_done(proc) == 'DONE', _why(proc)
+    # 원료 하나라도 미측정이면 배치 결과도 DONE_UNMEASURED 다 (9/23 조장 결정).
+    # 종전에는 VERIFY 미측정만 봐서 이 배치가 그냥 DONE 으로 나갔다.
+    assert proc._batch_outcome == 'DONE_UNMEASURED', proc._batch_outcome
 
     r = [x for x in col.results if x.material_id == 'A'][-1]
     assert r.verdict == DispenseResult.INVALID, r.verdict     # 「모른다」 — UNDER 도 OK 도 아니다
@@ -608,6 +611,46 @@ def test_213_붓기_뒤_계량_무효는_QA_승인으로_미측정이_기록된�
     bad = [w for w in col.weights if not w.valid]
     assert len(bad) == 3, [(w.subject, w.valid, w.std_g) for w in col.weights]
     assert all(w.subject == 'scoop' and w.std_g > 8.0 for w in bad), [(w.subject, w.std_g) for w in bad]
+
+
+def test_배치_미측정은_BATCH_UNMEASURED_이벤트로도_나간다(cell):
+    """`DONE_UNMEASURED` 는 `RunBatch.result` 에만 실려 **DB 에 닿지 않는다**.
+
+    `record_node` 는 배치 결과를 `CellState` 에서 만들고 `RunBatch.result` 는 보지 않는다.
+    그래서 조건만 넓히면 기록·KPI 는 그대로다 — 이벤트가 그 틈을 잇는다 (D 발견, 9/23).
+
+    순서는 **최선의 노력**이다. `_pub_state` 가 0.5 s 타이머로도 돌아 DONE 상태가 먼저
+    나갈 수 있고, 그 역전은 D 가 UPDATE 로 흡수한다. 여기서는 **이벤트가 나간다는 것과
+    내용**을 고정한다.
+    """
+    proc, fake, col = cell
+    fake.weigh_invalid = {'WEIGH_RESIDUAL': 3}
+    _submit(col, [('A', 40.0, 5.0)])
+
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    assert _qa(col, proc._pending_dev().deviation_id, Deviation.APPROVED).accepted
+    assert _wait_done(proc) == 'DONE', _why(proc)
+
+    warn = [e for e in col.events if e.code == 'BATCH_UNMEASURED']
+    assert len(warn) == 1, [e.code for e in col.events]
+    assert warn[0].level == CellEvent.WARN
+    assert "'A'" in warn[0].text and 'VERIFY 미측정 False' in warn[0].text, warn[0].text
+    assert warn[0].batch_id == proc.batch_id, warn[0].batch_id
+
+    # BATCH_END 가 outcome 을 달고 나간다 — 로그만 봐도 어떤 완료인지 구분된다
+    end = [e for e in col.events if e.code == 'BATCH_END'][-1]
+    assert end.text.endswith('DONE_UNMEASURED'), end.text
+
+
+def test_정상_배치는_BATCH_UNMEASURED_를_내지_않는다(cell):
+    """모르는 데가 없으면 경고가 없어야 한다 — 있으면 D 가 멀쩡한 배치를 미측정으로 기록한다."""
+    proc, _fake, col = cell
+    _submit(col, [('A', 40.0, 5.0)])
+    assert _wait_done(proc) == 'DONE', _why(proc)
+    assert proc._batch_outcome == 'DONE', proc._batch_outcome
+    assert not [e for e in col.events if e.code == 'BATCH_UNMEASURED'], col.events
+    end = [e for e in col.events if e.code == 'BATCH_END'][-1]
+    assert end.text.endswith('DONE'), end.text
 
 
 def test_213_최종_계량_무효는_배치를_DONE_UNMEASURED_로_남긴다(cell):
