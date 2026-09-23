@@ -269,10 +269,6 @@ class CellDB:
             row['resume_supported'] = False
         return records
 
-    def active_batch(self):
-        rows = self._rows('SELECT * FROM batches WHERE finished_at IS NULL ORDER BY started_at DESC LIMIT 1')
-        return rows[0] if rows else None
-
     def batch_status(self, batch_id):
         rows = self._rows('SELECT * FROM batches WHERE batch_id=?', (batch_id,))
         return rows[0] if rows else None
