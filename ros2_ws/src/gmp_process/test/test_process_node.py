@@ -558,17 +558,16 @@ def test_scoop_cycle_attempt_numbers_are_unique_per_material(cell):
 
 
 # ── NUDGE 게이트 (추가 기능 7 · D-21) ────────────────────────────────────
-def test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다(cell):
-    """#213·#108 — `decide()` 를 못 거친 원료가 verdict=OK 로 발행되던 구멍.
+def test_108_투입량_불명은_INVALID_로_나간다(cell):
+    """#108 (계약 v1.8) — 「모른다」를 담을 열거값이 생겼다.
 
     계량이 무효라 QA 로 갔다가 승인된 원료는 `ItemRun.verdict` 가 빈 문자열이다.
-    종전 `r.verdict or 'OK'` 는 이걸 **OK 로** 떨어뜨렸다 — 목표 100 g·실제 0 g·
-    오차 −100 % 인데 판정만 OK 라, 판정 필드로 집계하는 소비자는 성공으로 센다.
+    종전 `r.verdict or 'OK'` 는 이걸 **OK 로** 떨어뜨렸다(#213 이 처음 연 경로) —
+    목표 100 g·실제 0 g·오차 −100 % 인데 판정만 OK 라 소비자가 성공으로 센다.
+    #225 가 임시로 UNDER 로 되매겼고, 이제 **INVALID** 로 정확히 말한다.
 
-    `DispenseResult` 에 「모름」을 담을 열거값이 없으므로(#108 INVALID 상수 전까지)
-    **보수적으로 미달로 보고한다** — 미측정분은 actual_g 에 안 들어가 실제보다 작다.
-    계량 경로 전체를 태우지 않고 발행 함수만 직접 부른다 — fake_skill_node 에 무효
-    손잡이를 더하면 test/t6-fault-injection 과 충돌한다.
+    계량 경로 전체를 태우지 않고 발행 함수만 직접 부른다 — fake_skill_node 에
+    무효 손잡이를 더하면 다른 브랜치와 같은 파일에서 충돌한다.
     """
     proc, _fake, col = cell
     proc.batch_id = 'B-테스트'
@@ -577,10 +576,9 @@ def test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다(cell):
     proc._publish_result(unmeasured)                 # verdict '' · actual 0.0
     assert _wait_until(lambda: len(col.results) == 1), '발행이 안 됐다'
     m = col.results[0]
-    assert (m.verdict, m.actual_g) == (DispenseResult.UNDER, 0.0), m.verdict
-    assert round(m.error_pct) == -100, m.error_pct
+    assert (m.verdict, m.actual_g) == (DispenseResult.INVALID, 0.0), m.verdict
 
-    # 불확실성은 이벤트로도 남는다 — record_node 가 배치 기록에 넣는다
+    # 불확실성의 **정도**는 열거값이 못 담는다 — 이벤트가 담고 record_node 가 기록한다
     assert _wait_until(lambda: any(e.code == 'DISPENSE_UNMEASURED' for e in col.events))
     warn = [e for e in col.events if e.code == 'DISPENSE_UNMEASURED'][-1]
     assert warn.level == CellEvent.WARN and '불확실' in warn.text, warn.text
@@ -591,6 +589,23 @@ def test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다(cell):
     assert _wait_until(lambda: len(col.results) == 2)
     assert col.results[1].verdict == DispenseResult.OK
     assert len([e for e in col.events if e.code == 'DISPENSE_UNMEASURED']) == 1
+
+
+def test_108_안_들어간_것은_INVALID_가_아니라_UNDER_다(cell):
+    """#108 — 「모른다」와 「안 들어갔다」를 섞지 않는다.
+
+    첫 사이클에서 반환 한도를 넘겨 TIMEOUT 이 나면 퍼낸 것을 **전부 되돌린 뒤**라
+    `decide()` 를 못 거쳐 verdict 가 비어 있지만 `actual_g` 0 은 **참값**이다.
+    미측정이 아니므로 INVALID 로 적으면 거짓이 된다 — 되매김으로 UNDER 가 나가야 한다.
+    """
+    proc, _fake, col = cell
+    proc.batch_id = 'B-테스트'
+
+    nothing = ItemRun(material_id='A', target_g=100.0, tol_pct=5.0)   # verdict '' · unmeasured 0
+    proc._publish_result(nothing)
+    assert _wait_until(lambda: len(col.results) == 1)
+    assert col.results[0].verdict == DispenseResult.UNDER, col.results[0].verdict
+    assert not [e for e in col.events if e.code == 'DISPENSE_UNMEASURED'], '미측정이 아니다'
 
 
 def _wait_until(fn, timeout=20.0):
