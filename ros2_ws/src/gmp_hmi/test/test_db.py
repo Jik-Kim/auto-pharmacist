@@ -1,5 +1,8 @@
 import os
-from gmp_hmi.core.db import CellDB
+import re
+from pathlib import Path
+
+from gmp_hmi.core.db import DECISIONS, KINDS, LEVELS, VERDICTS, CellDB
 
 SCHEMA = os.path.join(os.path.dirname(__file__), '..', 'config', 'schema.sql')
 
@@ -121,3 +124,33 @@ def test_228_KPI_는_계량_검증_완료와_미측정_승인_완료를_나눈�
     assert db.kpis(result='DONE_UNMEASURED')['batches'] == 1   # 조회 필터
     empty = CellDB(str(tmp_path / 'empty.db'), SCHEMA).kpis()
     assert empty['unmeasured_done'] == 0 and empty['run_complete_pct'] is None
+
+
+MSG = Path(__file__).resolve().parents[2] / 'gmp_interfaces' / 'msg'
+
+
+def _constant_blocks(name):
+    """.msg 의 상수를 빈 줄로 나뉜 묶음별로 {값: 이름} 으로. Deviation 은 kind·decision 두 묶음이다."""
+    blocks = []
+    for chunk in (MSG / f'{name}.msg').read_text(encoding='utf-8').split('\n\n'):
+        found = re.findall(r'^\s*u?int\d+\s+([A-Z_][A-Z0-9_]*)\s*=\s*(\d+)', chunk, re.M)
+        if found:
+            blocks.append({int(value): key for key, value in found})
+    return blocks
+
+
+def test_label_maps_match_contract():
+    # 이름표는 DB 기록과 화면이 같이 쓴다(db.py 15~19). 계약에 값이 늘거나 번호가 바뀌면
+    # 여기서 먼저 깨져야 한다 — 없으면 조용히 '?'·숫자 문자열로 기록된다.
+    kinds, decisions = _constant_blocks('Deviation')
+    assert KINDS == kinds
+    assert DECISIONS == decisions
+    assert VERDICTS == _constant_blocks('DispenseResult')[0]
+    assert LEVELS == _constant_blocks('CellEvent')[0]
+
+
+def test_scoop_outcome_labels_cover_contract():
+    outcomes = next(b for b in _constant_blocks('ScoopCycle') if 'COMPLETE' in b.values())
+    js = (Path(__file__).resolve().parents[1] / 'static' / 'hmi.js').read_text(encoding='utf-8')
+    labels = re.search(r'const outcomeNames=\{([^}]*)\}', js).group(1)
+    assert {int(k) for k in re.findall(r'(\d+):', labels)} == set(outcomes)
