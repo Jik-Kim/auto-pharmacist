@@ -5,7 +5,7 @@ const number=(v,d=1)=>v==null||!Number.isFinite(Number(v))?'—':Number(v).toFix
 const clock=t=>t==null?'—':new Date(t*1000).toLocaleTimeString('ko-KR',{hour12:false});
 const dateTime=t=>t==null?'—':new Date(t*1000).toLocaleString('ko-KR',{hour12:false});
 const badge=(text,type='neutral')=>`<span class="badge ${type}">${escapeHtml(text)}</span>`;
-const verdict=v=>badge(v||'진행',v==='OK'||v==='DONE'||v==='AUTO_RECOVERED'?'good':v==='ERROR'||v==='DISCARDED'?'bad':v==='OVER'||v==='UNDER'||v==='PENDING'?'warn':'info');
+const verdict=v=>badge(v||'진행',v==='OK'||v==='DONE'||v==='AUTO_RECOVERED'?'good':v==='ERROR'||v==='DISCARDED'||v==='INVALID'?'bad':v==='OVER'||v==='UNDER'||v==='PENDING'?'warn':'info');
 let cancelBatchId='';
 let session={authenticated:false,user:null},userEdit='',currentSettings=null,reportRows=[],alarmRows=[],alarmBusy=false,lastHttpError='';
 let snapshot={},fresh=false,inFlight=false,selectedBatch='',detailTab='items',detailData=null,detailVersion=0,recordBusy=false,page='operation',lastWeights=[],selectedRecipe=null,recipeVersion=0,lastBatchMode='',acknowledgedShortages=new Set(),refillMaterial='';
