@@ -13,6 +13,7 @@
 | 용기 스테이션 | `workbench/passbox_empty/passbox_done/reject_bin` AT Z=130, 진입 관절각의 TCP가 접근점 Z=180, 이탈점 Z=330. 다른 스테이션에서 진입할 때 `approach_posj`로 이동한 뒤 AT까지 직선 하강한다 | [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [`_move_taught_station`](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py) |
 | 용기 이송의 `ABOVE` | 목적지 최초 `ABOVE`는 티칭 접근점(Z=180), 같은 스테이션에서 AT→`ABOVE` 또는 다음 스테이션으로 출발할 때는 안전 이탈점(Z=330)이다. 외부 이름 하나가 진입점과 이탈점을 함께 표현한다 | [`_move_taught_station`](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py), [`_leave_taught_station`](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py) |
 | 관절 이송 | `transfer_joint_vel_deg_s=60`, `transfer_joint_acc_deg_s2=100`; 실행 시 `vel_scale` 적용 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [DRL·DIO 일지](2026-09-23_DRL_고정경로_DIO.md) |
+| DRL 이동 속도 | 관절 60°/s·100°/s², 병진 250 mm/s·1000 mm/s², 회전 80.625°/s·322.5°/s². `vel_scale`을 속도·가속도에 적용하며 1.0이면 DRL 기준값. ROS 실물 재검증 필요 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [dsr_arm.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/dsr_arm.py) |
 | 그리퍼 | 기본 백엔드 DIO. DO1/2 개폐, 약통 `DI1=1`, 스쿱 `DI1=DI2=1` 뒤 0.8초 안정, 열림 `DI1=0`. 폭·파지력은 측정/설정하지 않으며 폭 지문은 `fingerprint_tolerance_mm=0`으로 비활성 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [rg2_gripper.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/rg2_gripper.py) |
 | 안전 자가진단 | 실물 기동·복구 때 등록 툴 `tool_weight`, TCP `GripperDA_v1`, 충돌 감도 50%를 조회해 모두 일치해야 통과한다. 자동 변경하지 않는다 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [dsr_arm.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/dsr_arm.py) |
 | 공구 설정 | B CURRENT 참조: 1.36 kg · CoG `[5.31, -34.68, 8.28]` mm 동결 | [B CURRENT](../B/CURRENT.md), [PR #235](https://github.com/Jik-Kim/auto-pharmacist/pull/235) |
@@ -20,6 +21,7 @@
 | Scoop Action 종료 코드 | 내부 시간 초과는 ABORTED, 실제 클라이언트 취소만 CANCELED | [skill_node.py](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py), [PR #236](https://github.com/Jik-Kim/auto-pharmacist/pull/236) |
 
 ## 검증 기준선
+- 9/23 DRL 속도 정합화: `gmp_skills` 모의 테스트 **488건 통과**. 배율 1.0/0.2에서 관절·병진·회전 명령값, 초기 속도 설정, B 계측용 기존 생성자 호출 호환성을 확인했다. 공정 그림 재생성 diff 없음. 새 속도의 ROS 실물 검증은 미수행.
 - `gmp_skills` 모의 테스트 **474건 통과**. Python 구문·YAML/XML 파싱·diff 공백 검사와 공정 다이어그램 재생성도 통과했다. [DRL·DIO 일지](2026-09-23_DRL_고정경로_DIO.md)
 - 사용자 제공 DRL의 핵심 플로우는 실물 검증됐지만, **ROS로 이식한 경로의 통합 기동·실물 재검증은 수행하지 않았다.** [PR #277](https://github.com/Jik-Kim/auto-pharmacist/pull/277)
 
