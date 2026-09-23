@@ -19,7 +19,7 @@
 | 계약 이름표 대조 | `db.py` `KINDS`·`DECISIONS`·`VERDICTS`·`LEVELS`, `hmi.js` `outcomeNames` 를 `gmp_interfaces/msg/*.msg` 와 시험으로 대조(`test_db.py`). 통신 시험 launch 의 시나리오 목록도 시험 노드와 대조 | 통합 전 정리 PR |
 | 프런트 시험 2 종 | `tools/test_safety_popup.cjs`(DOM 스텁·안전 복구 팝업 가드)·`tools/test_frontend_render.cjs`(playwright) **둘 다 PASS**. 후자는 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium` 필요 | 9/23 실행, PR #267 |
 | 재고 차감 `session_inventory.observe` | OK·OVER 만 차감(UNDER·INVALID 제외) — 「재고를 모른다」 표현은 별건 | `core/session_inventory.py:39`, #108 논의 |
-| 레이아웃 | `body` 가 `display:flex; height:100dvh; overflow:hidden` — **스크롤은 `main` 안에서만** 일어난다. 기록·통계 탭은 grid 4행 `1fr` 로 카드 3개 하단 정렬 | PR #229 (`hmi.css:1`·`:73`) |
+| 레이아웃 | 데스크톱: `body` 가 `display:flex; height:100dvh; overflow:hidden` — **스크롤은 `main` 안에서만**. 기록·통계 탭은 grid 4행 `1fr` 로 카드 3개 하단 정렬. **휴대폰(≤760px)은 페이지 전체가 스크롤**되고 비상정지 안내띠만 위에 고정, 헤더 버튼 44px | PR #229 (`hmi.css:1`·`:73`), 통합 전 정리 PR(`hmi.css` 끝 모바일 블록) |
 | 시연 기기 | 로봇 PC 1대 + **휴대폰 브라우저 HMI 기본**, 같은 네트워크(`http://<로봇 PC Wi-Fi IP>:5000`) | PR #259, `docs/demo_run_procedure.md` T0·G6 |
 | ROS 도메인 | 본운영 70, 격리 시험 88 | `docs/demo_run_procedure.md:38` |
 | 통신 검증 기준선 | `tools/verify_ros_http.py` **20 항목 PASS** (실제 DDS, `/hmi_test`, 배치 9 건) — D-33 레시피 기준(값은 `gmp_bringup/params/recipes` 참조). 시작 재고 `test_initial_g:='[170.0,1000.0,1000.0]'`. launch 와 검증기의 `GMP_HMI_ADMIN_PASSWORD` 가 **같아야** 한다(다르면 로그인 401) | 9/23 19:50 실행, PR #276 |
@@ -27,7 +27,7 @@
 | 시험 레시피 사본 | `config/test_recipes/v4` = 운영 `gmp_bringup/params/recipes` 와 **같다**(값은 운영 파일 참조). `test_v4_recipes.py` 가 운영과 대조해 어긋나면 실패한다. 통신 시험 launch 가 시험 노드에 `test_scoop_nominal_g` 85 g 을 넘긴다 | SOT D-33, PR #276 |
 
 ## 열린 과제 (이슈 번호)
-- **G6 휴대폰 리허설** — `body overflow:hidden`(#229) 이 모바일(≤ 760 px)에도 걸린다. 헤더 줄바꿈으로 `main` 이 좁아질 수 있음. 휴대폰에서 스크롤·승인/폐기·안전 복구 버튼을 실제로 눌러 볼 것 (PR #259 G6, **미검증**).
+- **G6 휴대폰 리허설** — 9/23 390px 에서 고정 영역이 화면 절반(데모)~30 %(운영)를 먹던 것을 페이지 스크롤로 바꿨다(통합 전 정리 PR). QA 승인·폐기·진입·안전 복구·주문 버튼 도달·클릭은 playwright 로 확인. **실제 로봇 PC + 휴대폰 실물 리허설은 미검증**.
 - **#261 실제 `/cell` 확인** — `/hmi_test` DDS 경로는 **9/23 검증 완료**(아래 통신 검증 20 항목). 남은 것은 **실제 C 공정·로봇**에서 같은 경로가 도는지다. 가상 `/cell` 은 파지에서 막히므로(아래 함정) 실물이어야 한다.
 - `docs/interfaces.md:188` KPI 이름이 아직 「배치 성공률」 — 계약 문서라 조장 몫(#261 본문에 적음).
 - ~~`tools/test_safety_popup.cjs` 살릴지 지울지 D 판단~~ → **살린다**. 실패 원인은 팝업 로직이 아니라 스텁이었다(9/22 `f349fe2` 가 `hmi.js:151` 에 `appendChild` 추가 → 스텁에 없어 `TypeError`). 스텁 한 줄로 PASS, 가드 17 건 유효(고의로 `robot_state` 허용 목록을 넓히면 실패 확인). `tools/test_frontend_render.cjs` 는 **환경 문제였다** — playwright·Chromium 이 있는 샌드박스에서 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium node tools/test_frontend_render.cjs` 로 9/23 PASS. 심볼릭 링크 불필요.
