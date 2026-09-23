@@ -917,13 +917,24 @@ class ProcessNode(Node):
                         self.note = 'RunBatch 취소 — 배치 자동 재개 없음'
                     self._batch_outcome = (fsm.state if fsm.state in ('DONE', 'DISCARDED', 'ABORTED')
                                            else 'ERROR')
-                    if self._batch_outcome == 'DONE' and fsm.verify_unmeasured:
-                        # 완료품이지만 **최종 순량을 모른다** — QA 가 값 없이 승인했다 (#213).
+                    unmeasured = [r.material_id for r in fsm.results if r.unmeasured]
+                    if self._batch_outcome == 'DONE' and (fsm.verify_unmeasured or unmeasured):
+                        # 완료품이지만 **어딘가는 얼마나 들어갔는지 모른다** — QA 가 값 없이 승인했다.
+                        # 원료 단위(`ItemRun.unmeasured`)와 최종 계량(`verify_unmeasured`)은 **다른
+                        # 사건**이고 둘 다 여기 걸린다 (9/23 조장 결정). 종전에는 뒤엣것만 봐서,
+                        # 「원료 투입량은 모르는데 VERIFY 는 멀쩡한」 배치가 그냥 DONE 으로 나갔다.
                         # `result` 는 문자열 필드라 값을 늘려도 계약 변경이 아니다.
                         self._batch_outcome = 'DONE_UNMEASURED'
+                        # ⚠️ 이 값은 `RunBatch.result` 에만 실리고 **DB 에 닿지 않는다** —
+                        # `record_node` 는 배치 결과를 `CellState` 에서 만든다. 그래서 따로 알린다.
+                        # 최종 `CellState(DONE)` 보다 먼저 내보내려 하지만 `_pub_state` 는 0.5 s
+                        # 타이머로도 돌아 앞질러 나갈 수 있다 — 순서 역전은 D 가 UPDATE 로 흡수한다.
+                        self.event('WARN', 'BATCH_UNMEASURED',
+                                   f'미측정 원료 {unmeasured or "없음"} / '
+                                   f'VERIFY 미측정 {bool(fsm.verify_unmeasured)}')
                     self._close_attempt('ABORTED')
                     self._drain()
-                    self.event('INFO', 'BATCH_END', f'{fsm.mode} / {fsm.state}')
+                    self.event('INFO', 'BATCH_END', f'{fsm.mode} / {fsm.state} / {self._batch_outcome}')
                     self._batch_done.set()
             except Exception as e:
                 self._execution_uncertain = True
