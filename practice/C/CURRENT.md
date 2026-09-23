@@ -1,0 +1,31 @@
+# C 공정 현행 상태 (갱신: 2026-09-23)
+
+> 세션 시작 때 이 파일을 읽는다. 값을 쓰기 전에 근거 링크의 원본을 직접 연다.
+
+## 지금 유효한 값
+| 항목 | 값 | 근거 |
+|---|---|---|
+| 계약 | **v1.8** — `DispenseResult.verdict` OK/UNDER/OVER/**INVALID=3** | PR #241(C 발행) · #240(D 소비), `docs/interfaces.md` |
+| 계량 무효(WEIGH_INVALID) 정책 | `max_invalid_retries: 2`(총 3회); 카운터는 단계별·유효 시 초기화; 투입 전(TARE·SCOOP_TARE·WEIGH_SCOOP) → **CLEANUP → ERROR**, 투입 후(WEIGH_RESIDUAL·VERIFY) → QA; QA 승인 시 미측정 기록(`ItemRun.unmeasured`, `RunBatch.result='DONE_UNMEASURED'`, verdict INVALID) | #213 결정 1~5, PR #225·#227·#241 |
+| VERIFY | ① `\|net − Σtarget\| > Σ(target×tol)` → BATCH_OUT_OF_SPEC 만. ② 는 기록만 | SOT D-26, PR #209 |
+| 원료 소진 | SCOOP_EMPTY 재시도 ×3, **4회째 MATERIAL_EMPTY** → REFILL 인터락. 보충 뒤 재소진도 MATERIAL_EMPTY | #111 A안, PR #233·#234 |
+| 첫 SCOOP 깊이 | `max(min_fraction, min(1, 남은 목표 ÷ scoop_nominal_g))` — 둘째 사이클부터 `decide()` 와 같은 식 | #221 C 몫, PR #224 |
+| 무효 계량 통합 시험 | fake_skill_node 손잡이 없이 `_publish_result` 직접 호출 | PR #225 |
+| 통합 시험 기준선 | gmp_process 176 passed / 7 skipped (9/23, #233·#236 뒤; #241 머지 뒤 +2) | ROS 소싱 필수 — 133 이면 소싱 누락 |
+
+## 열린 과제 (이슈 번호)
+- #108 본래 주제: `ScoopCycle` 6축 wrench 채울 경로 — 전제(모멘트 = 파지 품질) 근거 부족(노션 9/22), 미정리.
+- #221 C 몫 완료, B 몫 대기(scoop_nominal_g 65 는 교착 구간 진입 → decide() 하한 동반).
+- #228·#242 (D): DONE_UNMEASURED 소비 4곳, 진행 스트립 INVALID 「완료」 표시 — C 는 대기.
+- 계량 경로 전체를 태우는 무효 계량 통합 시험(후속).
+
+## 알려진 함정
+- 빈 verdict ≠ 미측정. 첫 사이클 TIMEOUT 뒤 전량 반환은 `actual_g` 0 이 참값 → UNDER 가 맞고 INVALID 는 거짓(#241 시험 2건이 고정).
+- 교착 구간: `decide()` 하한 × 반환 가드 → 최소채취 > 2×허용오차 일 때 (허용오차, 최소채취−허용오차) 구간에서 스쿱↔반환 반복. 65 g 나노미널이면 데모 C 100 g 이 경계.
+- 설정 dataclass 는 키워드 인자만(AGENTS). `.msg` 바꾼 브랜치는 **워크트리 안에서** `colcon build --packages-select gmp_interfaces --cmake-force-configure` 뒤 시험. 공유 install 갈아끼우기 금지.
+- 스크래치패드는 통째로 지워질 수 있다 — 멈추기 전 커밋·푸시.
+
+## 철회 이력 (최근 것 위)
+- 2026-09-23 ~~미측정 원료 verdict 되매김 UNDER(임시)~~ → INVALID=3 (v1.8). PR #241.
+- 2026-09-22 ~~미측정 원료 verdict 빈 값 → 'OK' 폴백~~ → verdict_of 되매김 UNDER + WARN DISPENSE_UNMEASURED. PR #225.
+- 2026-09-22 ~~RULES['WEIGH_INVALID'] (2,'RETRY','QA')~~ → (0,'QA','QA'), 재계량은 max_invalid_retries 전담. #213 결정 1.
