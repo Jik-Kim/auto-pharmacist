@@ -562,6 +562,78 @@ def test_scoop_cycle_attempt_numbers_are_unique_per_material(cell):
 
 
 # ── NUDGE 게이트 (추가 기능 7 · D-21) ────────────────────────────────────
+# ── 계량 무효 — 실제 스킬 왕복으로 태운다 (#213·#108) ──────────────────────
+# 종전에는 판정 로직을 순수 파이썬(FSM)으로, 발행을 `_publish_result` 직접 호출로만 고정했다.
+# 그 둘 **사이**는 아무 시험도 안 지나가는데, 9/23 에 고친 버그(verdict 빈 값 → OK)가 정확히
+# 거기 있었다. `fake.weigh_invalid` 로 스킬이 `valid=false` 를 돌려주게 해 전 구간을 태운다.
+
+
+def test_213_붓기_전_계량_무효는_원료를_되돌리고_ERROR_로_끝난다(cell):
+    """#213 결정 3 — 아직 약통에 넣지 않았으므로 **되돌릴 수 있다**. QA 로 가지 않는다."""
+    proc, fake, col = cell
+    fake.weigh_invalid = {'WEIGH_SCOOP': 3}          # 최초 1 + 재시도 2
+    _submit(col, [('A', 40.0, 5.0)])
+
+    assert _wait_done(proc) == 'ERROR', _why(proc)
+    assert 'return_material:A' in fake.calls, fake.calls   # 원료를 원료통에 되돌린다
+    devs = [d for d in col.devs if d.kind == Deviation.WEIGH_INVALID]
+    assert devs, [d.kind for d in col.devs]
+    assert devs[-1].decision == Deviation.FORCED, devs[-1].decision
+    # 되돌렸으므로 그 원료는 결과에 남지 않는다 — 「0 g 넣었다」가 아니라 「안 넣었다」다
+    assert not [r for r in col.results if r.material_id == 'A'], col.results
+
+
+def test_213_붓기_뒤_계량_무효는_QA_승인으로_미측정이_기록된다(cell):
+    """#213 결정 3 · #108 — 이미 부은 뒤라 되돌릴 게 없다. 승인하면 **모른 채** 배치를 잇는다.
+
+    9/23 에 고친 경로를 실제 스킬 왕복으로 처음 태우는 시험이다. 종전에는 FSM 이
+    「verdict 가 비었다」까지만 알고, 발행부가 그 빈 값을 `'OK'` 로 떨어뜨리는 것을
+    아무도 보지 못했다.
+    """
+    proc, fake, col = cell
+    fake.weigh_invalid = {'WEIGH_RESIDUAL': 3}
+    _submit(col, [('A', 40.0, 5.0)])
+
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    dev = proc._pending_dev()
+    assert dev.kind == Deviation.WEIGH_INVALID and dev.requires_decision, dev.kind
+    assert _qa(col, dev.deviation_id, Deviation.APPROVED).accepted
+    assert _wait_done(proc) == 'DONE', _why(proc)
+
+    r = [x for x in col.results if x.material_id == 'A'][-1]
+    assert r.verdict == DispenseResult.INVALID, r.verdict     # 「모른다」 — UNDER 도 OK 도 아니다
+    assert any(e.code == 'DISPENSE_UNMEASURED' for e in col.events), [e.code for e in col.events]
+
+    # 무효 계량 3건이 기록에 남는다. σ 가 게이트 위라 **왜 무효인지**가 기록만 봐도 보인다
+    bad = [w for w in col.weights if not w.valid]
+    assert len(bad) == 3, [(w.subject, w.valid, w.std_g) for w in col.weights]
+    assert all(w.subject == 'scoop' and w.std_g > 8.0 for w in bad), [(w.subject, w.std_g) for w in bad]
+
+
+def test_213_최종_계량_무효는_배치를_DONE_UNMEASURED_로_남긴다(cell):
+    """#213 5번 — 완제품인데 **최종 순량을 모른다**. 원료 단위 미측정과 다른 사건이다.
+
+    원료 미측정은 `DispenseResult.verdict=INVALID`(원료별 투입량을 모름), 최종 계량
+    미측정은 `RunBatch.result='DONE_UNMEASURED'`(배치 순량을 모름)로 갈라진다.
+    """
+    proc, fake, col = cell
+    fake.weigh_invalid = {'VERIFY': 3}
+    _submit(col, [('A', 40.0, 5.0)])
+
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    dev = proc._pending_dev()
+    assert dev.kind == Deviation.WEIGH_INVALID, dev.kind
+    assert _qa(col, dev.deviation_id, Deviation.APPROVED).accepted
+    assert _wait_done(proc) == 'DONE', _why(proc)
+    assert proc._batch_outcome == 'DONE_UNMEASURED', proc._batch_outcome
+
+    # 원료는 정상으로 끝났다 — 모르는 것은 **최종 순량**뿐이다
+    r = [x for x in col.results if x.material_id == 'A'][-1]
+    assert r.verdict != DispenseResult.INVALID, r.verdict
+    bad = [w for w in col.weights if not w.valid]
+    assert all(w.subject == 'container' for w in bad), [(w.subject, w.valid) for w in bad]
+
+
 def test_108_투입량_불명은_INVALID_로_나간다(cell):
     """#108 (계약 v1.8) — 「모른다」를 담을 열거값이 생겼다.
 
