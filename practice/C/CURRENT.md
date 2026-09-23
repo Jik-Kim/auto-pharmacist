@@ -8,7 +8,7 @@
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 계약 | **v1.8** — `DispenseResult.verdict` OK/UNDER/OVER/**INVALID=3** | PR #241(C 발행) · #240(D 소비), `docs/interfaces.md` |
-| 계량 무효(WEIGH_INVALID) 정책 | `max_invalid_retries: 2`(총 3회); 카운터는 단계별·유효 시 초기화; 투입 전(TARE·SCOOP_TARE·WEIGH_SCOOP) → **CLEANUP → ERROR**, 투입 후(WEIGH_RESIDUAL·VERIFY) → QA; QA 승인 시 미측정을 기록한다. **원료 미측정과 최종 계량 미측정은 다른 사건이다** — `WEIGH_RESIDUAL` 무효는 `ItemRun.unmeasured` → `DispenseResult.verdict=INVALID`(그 원료의 투입량을 모름), `VERIFY` 무효는 `fsm.verify_unmeasured` → `RunBatch.result='DONE_UNMEASURED'`(배치 최종 순량을 모름, `process_node.py:921`). 한 배치에서 따로 일어난다 | #213 결정 1~5, PR #225·#227·#241 |
+| 계량 무효(WEIGH_INVALID) 정책 | `max_invalid_retries: 2`(총 3회); 카운터는 단계별·유효 시 초기화; 투입 전(TARE·SCOOP_TARE·WEIGH_SCOOP) → **CLEANUP → ERROR**, 투입 후(WEIGH_RESIDUAL·VERIFY) → QA; QA 승인 시 미측정을 기록한다. **어디를 모르는지는 다른 사건이지만 배치 결과에서는 합쳐진다** — `WEIGH_RESIDUAL` 무효는 `ItemRun.unmeasured` → `DispenseResult.verdict=INVALID`(그 원료의 투입량을 모름), `VERIFY` 무효는 `fsm.verify_unmeasured`(배치 최종 순량을 모름). **`RunBatch.result` 는 둘 중 하나만 있어도 `DONE_UNMEASURED`** 이고(9/23 조장 결정), 그때 `CellEvent(WARN, BATCH_UNMEASURED)` 가 같이 나간다 — `DONE_UNMEASURED` 는 `RunBatch.result` 에만 실려 DB 에 닿지 않기 때문이다. ⚠️ **이 이벤트가 최종 `CellState(DONE)` 보다 먼저 간다고 전제하지 말 것** — `_pub_state` 가 0.5 s 타이머로도 돌아 역전될 수 있고, D 가 UPDATE 로 흡수한다 | #213 결정 1~5, PR #225·#227·#241 |
 | VERIFY | ① `\|net − Σtarget\| > Σ(target×tol)` → BATCH_OUT_OF_SPEC 만. ② 는 기록만 | SOT D-26, PR #209 |
 | 원료 소진 | SCOOP_EMPTY 재시도 ×3, **4회째 MATERIAL_EMPTY** → REFILL 인터락. 보충 뒤 재소진도 MATERIAL_EMPTY | #111 A안, PR #233·#234 |
 | 첫 SCOOP 깊이 | `max(min_fraction, min(1, 남은 목표 ÷ scoop_nominal_g))` — 둘째 사이클부터 `decide()` 와 같은 식 | #221 C 몫, PR #224 |
