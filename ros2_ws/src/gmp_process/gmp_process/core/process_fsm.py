@@ -146,6 +146,10 @@ class ProcessFSM:
         """반환 뒤 다시 풀 깊이. 비율 자체가 아니라 **직전 깊이에 대한 보정**이다 —
         이미 얕게 펐는데 또 초과했다면 그 얕은 깊이에서 더 줄여야 수렴한다.
         """
+        if self.dosing_cfg.fixed_scoop:
+            # 고정 경로는 부분 깊이를 지원하지 않는다. 반환 뒤에도 1.0 이 아니면 A 스킬이
+            # 이동 전에 거부하므로, 반환 한도 뒤 TIMEOUT→QA 정책까지 도달하지 못한다 (#270).
+            return 1.0
         if self.cur.scooped_g <= 0.0:
             return self.dosing_cfg.min_fraction
         remaining = max(0.0, self.cur.target_g - self.cur.actual_g)
@@ -164,6 +168,10 @@ class ProcessFSM:
         쓰면 그 문제가 두 곳으로 갈라진다.
         """
         cfg = self.dosing_cfg
+        if cfg.fixed_scoop:
+            # 고정 스쿱은 첫·반환 뒤·보충 모두 끝까지 담근다. `decide()` 만 1.0 으로 고정하면
+            # 목표가 공칭량보다 작은 첫 스쿱이 부분 깊이를 내어 A 스킬에서 거부된다 (#270).
+            return 1.0
         return max(cfg.min_fraction, min(1.0, self.cur.target_g / cfg.scoop_nominal_g))
 
     def _scoop_allowance_g(self) -> float:
