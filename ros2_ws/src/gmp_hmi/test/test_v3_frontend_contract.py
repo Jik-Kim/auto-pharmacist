@@ -44,3 +44,20 @@ def test_steps_map_matches_process_fsm_states():
 
     assert not fsm - hmi, f'HMI steps 맵에 없는 공정 상태: {sorted(fsm - hmi)}'
     assert not hmi - fsm, f'공정에 없는 HMI steps 키: {sorted(hmi - fsm)}'
+
+
+def test_progress_strip_never_calls_invalid_item_complete():
+    """INVALID 원료를 진행 스트립이 「완료」(초록)로 표시하면 안 된다 (#242).
+
+    v1.8 의 INVALID 는 WEIGH_INVALID 일탈을 QA 가 APPROVED 해야만 발행된다. 그래서
+    `devs.some(APPROVED)` 가 항상 참이라, 이 가지를 막지 않으면 결과 배지(bad)와
+    진행 스트립(done)이 같은 원료를 두고 서로 다른 말을 한다.
+    """
+    source = HMI_JS.read_text(encoding='utf-8')
+    complete_expr = re.search(r'complete=(.*?),current=', source, re.S).group(1)
+
+    assert 'unmeasured' in complete_expr, f'complete 가 INVALID 를 거르지 않는다: {complete_expr}'
+    assert "unmeasured=r?.verdict==='INVALID'" in source
+    assert "'투입량 미확인'" in source
+    # v1.8 의 INVALID 는 재계량 예정이 아니라 「모른 채 넘어감」이다.
+    assert "'재계량'" not in source
