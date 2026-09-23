@@ -424,7 +424,11 @@ def test_refill_wait_then_enter_resumes_with_one_exit(cell):
     _submit(col, [('A', 100.0, 5.0)])
     assert _wait_mode(proc, 'PAUSED'), proc.fsm.state
     kinds = [d['kind'] for d in proc.fsm.deviations]
-    assert kinds == ['SCOOP_EMPTY'] * 4 and proc.fsm.deviations[-1]['action'] == 'REFILL'
+    # #111 A안 — 보충으로 넘어가는 4회째부터 kind 가 MATERIAL_EMPTY 다.
+    # `ScoopCycle.outcome` 은 둘 다 SCOOP_EMPTY 로 남는다 (`DEV_TO_OUTCOME` 이 합쳐서 매핑) —
+    # 스쿱 시도의 결과는 같은 사실이고, 달라진 것은 일탈 기록이다.
+    assert kinds == ['SCOOP_EMPTY'] * 3 + ['MATERIAL_EMPTY'], kinds
+    assert proc.fsm.deviations[-1]['action'] == 'REFILL'
 
     r = _lock(col, InterlockRequest.Request.ENTER)
     assert r.granted and r.message.startswith('이미'), r.message      # 이미 안전 자세 — safe_pose 재호출 없음
