@@ -13,7 +13,7 @@
 | 원료 소진 | SCOOP_EMPTY 재시도 ×3, **4회째 MATERIAL_EMPTY** → REFILL 인터락. 보충 뒤 재소진도 MATERIAL_EMPTY | #111 A안, PR #233·#234 |
 | 첫 SCOOP 깊이 | `max(min_fraction, min(1, 남은 목표 ÷ scoop_nominal_g))` — 둘째 사이클부터 `decide()` 와 같은 식 | #221 C 몫, PR #224 |
 | 무효 계량 통합 시험 | fake_skill_node 손잡이 없이 `_publish_result` 직접 호출 | PR #225 |
-| 통합 시험 기준선 | gmp_process **181 passed / 6 skipped** (9/23, 죽은 레시피 시험 교체 후; C 실측. 직전 177/7 = main `1b63b26`) | ROS 소싱 필수 — 133 이면 소싱 누락. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
+| 통합 시험 기준선 | gmp_process **186 passed / 6 skipped** · gmp_dosing 19 (= 합계 **205 / 6**, 9/23 main `c33ea8e` C 실측. 181 → #257 이 +2, #253 이 +3) | ROS 소싱 필수 — 133 이면 소싱 누락. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
 
 ## 열린 과제 (이슈 번호)
 - #108 본래 주제: `ScoopCycle` 6축 wrench 채울 경로 — 전제(모멘트 = 파지 품질) 근거 부족(노션 9/22), 미정리.
@@ -25,6 +25,7 @@
 - 빈 verdict ≠ 미측정. 첫 사이클 TIMEOUT 뒤 전량 반환은 `actual_g` 0 이 참값 → UNDER 가 맞고 INVALID 는 거짓(#241 시험 2건이 고정).
 - 교착 구간: `decide()` 하한 × 반환 가드 → 최소채취 > 2×허용오차 일 때 (허용오차, 최소채취−허용오차) 구간에서 스쿱↔반환 반복. 65 g 나노미널이면 데모 C 100 g 이 경계.
 - 설정 dataclass 는 키워드 인자만(AGENTS). `.msg` 바꾼 브랜치는 **워크트리 안에서** `colcon build --packages-select gmp_interfaces --cmake-force-configure` 뒤 시험. 공유 install 갈아끼우기 금지.
+- **NUDGE 계열 시험은 경합에 약하다.** 다른 세션과 겹쳐 돌면 무더기로 깨진다 (9/23: 9건 실패 → 단독 재실행 205/6 전부 통과). **실행 시간이 평소의 2~3배면 경합을 의심한다** — 84 s 가 224 s 였다. 실패를 볼 수 있는 실행에는 `tail` 을 붙이지 말 것 (9/23 에 `tail -4` 로 9건 중 3건만 남겨 판단이 한 번 막혔다). `-rf` 로 요약을 뽑는다.
 - gmp_hmi 를 gmp_process 와 **같은 pytest 실행**에 넣으면 노드 경합으로 `test_scoop_cycle_attempt_numbers_are_unique_per_material` 이 `FORCE_LIMIT @PICK_CONTAINER` 로 깨진다(격리 3/3 통과, #242 코멘트). 기준선은 패키지별로 따로 잰다.
 - 스크래치패드는 통째로 지워질 수 있다 — 멈추기 전 커밋·푸시.
 
