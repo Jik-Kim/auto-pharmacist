@@ -112,3 +112,47 @@ def test_builtin_rule_agrees_with_decide_once_fixed_scoop_lands():
                 a = ss._run_material(target, tol, 85.0, iter(draws).__next__, cfg, 8)
                 b = ss._run_material(target, tol, 85.0, iter(draws).__next__, None, 8)
                 assert a == b, (target, tol, sd, seed, a, b)
+
+
+# ── 붓기 방식 (9/23 채택) — 저울 위 용기에 부어 회차당 1번만 읽는다 ────────
+def _pour_csv(tmp_path, rows):
+    p = tmp_path / 'pour.csv'
+    p.write_text('회차,투입량_g,원료면,비고\n' + '\n'.join(rows) + '\n', encoding='utf-8')
+    return str(p)
+
+
+def test_pour_format_is_read_and_judged_on_delivered(tmp_path):
+    """붓기 방식은 투입량이 곧 저울값이다 — 뺄셈이 없다."""
+    rows = ss.load(_pour_csv(tmp_path, ['1,85.2,가득,', '2,83.9,가득,']))
+    assert [r['투입량'] for r in rows] == [85.2, 83.9]
+    assert '퍼올림' not in rows[0] and '잔량' not in rows[0]
+
+
+def test_pour_format_rejects_untared_reading(tmp_path):
+    """tare 를 안 하면 누적값이 들어온다 — 음수·0 은 즉시 거부한다.
+
+    누적 자체는 숫자로 구분이 안 되므로 기록지 주석과 비고로 막고,
+    여기서는 부호가 틀린 것만 세운다.
+    """
+    with pytest.raises(ss.RowError, match='tare'):
+        ss.load(_pour_csv(tmp_path, ['1,0,가득,']))
+    with pytest.raises(ss.RowError, match='tare'):
+        ss.load(_pour_csv(tmp_path, ['1,-85.2,가득,']))
+
+
+def test_unknown_header_is_refused_with_the_columns_it_saw(tmp_path):
+    """열 이름을 잘못 적은 기록지를 빈 결과로 넘기지 않는다 — 실측이 한 번뿐이다."""
+    p = tmp_path / 'bad.csv'
+    p.write_text('회차,무게,원료면\n1,85.0,가득\n', encoding='utf-8')
+    with pytest.raises(ss.RowError, match='헤더'):
+        ss.load(str(p))
+
+
+def test_report_runs_on_pour_format(tmp_path):
+    rows = ss.load(_pour_csv(tmp_path, [f'{i},{84.0 + (i % 3):.1f},가득,' for i in range(1, 13)]))
+    buf = io.StringIO()
+    res = ss.report(rows, 85.0, 10.0, 8, 500, 272, out=buf)
+    text = buf.getvalue()
+    assert '붓기 방식' in text and '배치 완주율' in text
+    assert '퍼올림' not in text.split('■ 판정')[0].split('\n')[3]   # 표에 퍼올림 줄이 없다
+    assert res['scooped'] is None and res['delivered']['n'] == 12

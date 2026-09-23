@@ -29,6 +29,7 @@ import sys
 from pathlib import Path
 
 COLUMNS = ['회차', '빈스쿱_g', '채취후_g', '붓기후스쿱_g', '원료면', '비고']
+POUR_COLUMNS = ['회차', '투입량_g', '원료면', '비고']
 SURFACES = ('가득', '중간', '바닥')
 
 TEMPLATE = (
@@ -41,6 +42,19 @@ TEMPLATE = (
     '# 같은 원료·같은 깊이(depth_fraction 1.0)로 연속 15회. 중간에 원료를 보충하면 비고에 적는다.\n'
     + ','.join(COLUMNS) + '\n'
     + '\n'.join(f'{i},,,,,' for i in range(1, 16)) + '\n'
+)
+
+
+POUR_TEMPLATE = (
+    '# ' + ' · '.join(POUR_COLUMNS) + '\n'
+    '# 붓기 방식 — 저울 위 용기에 부어 **회차마다 저울 1번**만 읽는다.\n'
+    '#   투입량_g  붓기 직전 저울을 0 으로 맞추고(tare), 붓고 나서 읽은 값\n'
+    '#             = 용기에 실제로 들어간 양. 이것이 판정 대상이다\n'
+    '#   원료면    가득 | 중간 | 바닥\n'
+    '# tare 를 깜빡했으면 비고에 적는다 — 누적값이 섞이면 산포가 통째로 틀린다.\n'
+    '# 용기가 차면 비우고 다시 tare 한다. 비운 회차도 비고에 적는다.\n'
+    + ','.join(POUR_COLUMNS) + '\n'
+    + '\n'.join(f'{i},,,' for i in range(1, 16)) + '\n'
 )
 
 
@@ -115,21 +129,41 @@ class RowError(ValueError):
 
 
 def load(path: str) -> list[dict]:
-    rows = []
+    """기록 CSV 를 읽는다. 두 형식을 모두 받는다 — 헤더로 가른다.
+
+    · 붓기 방식  `투입량_g` — 저울 위 용기에 부어 회차당 1번 읽는다 (9/23 채택)
+    · 3회 계량   `빈스쿱_g/채취후_g/붓기후스쿱_g` — 스쿱을 빼서 재는 방식
+    어느 쪽이든 판정은 **투입량**으로 한다. 3회 계량일 때만 퍼올림·잔량이 따라온다.
+    """
     with open(path, encoding='utf-8') as fh:
         lines = [ln for ln in fh if not ln.lstrip().startswith('#')]
-    for i, raw in enumerate(csv.DictReader(lines), start=1):
+    reader = csv.DictReader(lines)
+    fields = set(reader.fieldnames or ())
+    pour = '투입량_g' in fields
+    if not pour and not {'빈스쿱_g', '채취후_g', '붓기후스쿱_g'} <= fields:
+        raise RowError(f'{path}: 헤더를 못 알아보겠다 — `투입량_g` 또는 '
+                       f'`빈스쿱_g/채취후_g/붓기후스쿱_g` 가 필요하다. 지금: {sorted(fields)}')
+    need = ['투입량_g'] if pour else ['빈스쿱_g', '채취후_g', '붓기후스쿱_g']
+    rows = []
+    for i, raw in enumerate(reader, start=1):
         if raw.get('회차') in (None, ''):
             continue
-        blank = [c for c in ('빈스쿱_g', '채취후_g', '붓기후스쿱_g') if not (raw.get(c) or '').strip()]
-        if blank:
+        if any(not (raw.get(c) or '').strip() for c in need):
             continue                                   # 아직 안 적은 줄은 건너뛴다
         try:
-            empty = float(raw['빈스쿱_g'])
-            after = float(raw['채취후_g'])
-            poured = float(raw['붓기후스쿱_g'])
+            vals = [float(raw[c]) for c in need]
         except ValueError as exc:
             raise RowError(f'{path} {i} 번째 기록: 숫자가 아니다 — {exc}') from exc
+        surface = (raw.get('원료면') or '').strip()
+        note = (raw.get('비고') or '').strip()
+        if pour:
+            delivered, = vals
+            if delivered <= 0:
+                raise RowError(f'회차 {raw["회차"]}: 투입량 {delivered:g} g — tare 를 안 했거나 부호가 틀렸다')
+            rows.append({'회차': raw['회차'], '투입량': delivered,
+                         '원료면': surface, '비고': note})
+            continue
+        empty, after, poured = vals
         scooped, residue, delivered = after - empty, poured - empty, after - poured
         if scooped <= 0:
             raise RowError(f'회차 {raw["회차"]}: 채취후({after}) 가 빈스쿱({empty}) 이하다 — 열을 바꿔 적었나')
@@ -137,9 +171,8 @@ def load(path: str) -> list[dict]:
             raise RowError(f'회차 {raw["회차"]}: 잔량이 음수({residue:.1f} g) — 붓기후({poured}) < 빈스쿱({empty})')
         if delivered < 0:
             raise RowError(f'회차 {raw["회차"]}: 투입량이 음수({delivered:.1f} g) — 붓기후({poured}) > 채취후({after})')
-        surface = (raw.get('원료면') or '').strip()
         rows.append({'회차': raw['회차'], '퍼올림': scooped, '잔량': residue,
-                     '투입량': delivered, '원료면': surface, '비고': (raw.get('비고') or '').strip()})
+                     '투입량': delivered, '원료면': surface, '비고': note})
     return rows
 
 
@@ -225,16 +258,23 @@ def report(rows: list[dict], nominal: float, tol: float, max_attempts: int,
            trials: int, seed: int, out=sys.stdout) -> dict:
     delivered = [r['투입량'] for r in rows]
     s = stats(delivered)
-    p = stats([r['퍼올림'] for r in rows])
-    q = stats([r['잔량'] for r in rows])
+    three = '퍼올림' in rows[0]
+    p = stats([r['퍼올림'] for r in rows]) if three else None
+    q = stats([r['잔량'] for r in rows]) if three else None
 
     w = out.write
-    w(f"■ 스쿱 1회량 (#272) — 회차 {s['n']}\n\n")
+    w(f"■ 스쿱 1회량 (#272) — 회차 {s['n']}  ({'3회 계량' if three else '붓기 방식'})\n\n")
     w(f"{'':10}{'평균':>9}{'σ':>8}{'CV':>8}{'최소':>8}{'최대':>8}\n")
     for label, d in (('투입량', s), ('퍼올림', p), ('잔량', q)):
-        w(f"{label:10}{d['mean']:9.2f}{d['sd']:8.2f}{d['cv']:7.1f}%{d['min']:8.1f}{d['max']:8.1f}\n")
+        if d is not None:
+            w(f"{label:10}{d['mean']:9.2f}{d['sd']:8.2f}{d['cv']:7.1f}%{d['min']:8.1f}{d['max']:8.1f}\n")
     w(f"\nσ(투입량) 한쪽 95 % 한계  하한 {s['sd_lo']:.2f} / 상한 {s['sd_hi']:.2f} g  (양쪽 구간 아님)\n")
-    w(f"잔량 가정 확인       CURRENT.md 는 2 g 를 가정했다 → 실측 {q['mean']:.1f} g\n\n")
+    if q is not None:
+        w(f"잔량 가정 확인       CURRENT.md 는 2 g 를 가정했다 → 실측 {q['mean']:.1f} g\n")
+    else:
+        w("잔량                 붓기 방식은 스쿱에 남는 양을 따로 보지 않는다 —\n"
+          "                     투입량에 이미 빠져 있어 판정에는 영향이 없다\n")
+    w("\n")
 
     w("■ 판정 — 투입량 기준 (scoop_nominal_g 가 decide() 에서 뜻하는 값)\n")
     for line in verdict(s, nominal):
@@ -281,7 +321,8 @@ def report(rows: list[dict], nominal: float, tol: float, max_attempts: int,
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description='스쿱 1회 투입량 평균·σ 판정 (#272)')
     ap.add_argument('csv', nargs='?', help='기록 CSV')
-    ap.add_argument('--template', action='store_true', help='빈 기록지를 표준출력으로')
+    ap.add_argument('--template', nargs='?', const='pour', choices=['pour', 'three'],
+                    help='빈 기록지를 표준출력으로. pour(기본)=붓기 방식 1회 계량, three=3회 계량')
     ap.add_argument('--nominal', type=float, default=85.0, help='기대 1회량 [g] (common.yaml dosing.scoop_nominal_g)')
     ap.add_argument('--tol', type=float, default=10.0, help='레시피 허용 오차 [%%]')
     ap.add_argument('--max-attempts', type=int, default=8, help='common.yaml dosing.max_attempts')
@@ -290,7 +331,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
 
     if a.template:
-        sys.stdout.write(TEMPLATE)
+        sys.stdout.write(POUR_TEMPLATE if a.template == 'pour' else TEMPLATE)
         return 0
     if not a.csv:
         ap.error('CSV 경로가 필요하다 (빈 기록지는 --template)')
