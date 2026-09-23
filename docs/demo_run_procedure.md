@@ -6,7 +6,7 @@
 
 | 순서 | 창 | 띄우는 것 | 기다릴 것 |
 |---|---|---|---|
-| T0 | — | 로봇 전원 · 컴퓨트박스 · 랜선 · 비상정지 해제 · **툴 `tool_weight` / TCP `GripperDA_v1` 선택 확인**(9/22: `tool_weight` 의 cz 는 89.0 이어야 한다 — 공구 자동측정을 다시 돌리면 2.32 로 덮이므로 A 정식 반영 전에는 돌리지 않는다) · **스쿠핑 보정 확인** — `stations.yaml` `scooping.A.calibrated` 가 `true` 여야 자동 스쿱이 실행된다(#216, G5). `false` 면 첫 `SCOOP` 이 이동 전 거부되어 배치가 진행되지 않는다 · 실물 첫 PC 는 `python3 -c 'import pymodbus'` — 없으면 `sudo apt install python3-pymodbus` (없으면 OnRobot 드라이버가 뜨자마자 죽고 `/onrobot/sendCommand` 가 안 보인다, 9/19) | 티치펜던트 Auto 모드 |
+| T0 | — | 로봇 전원 · 컴퓨트박스 · 랜선 · 비상정지 해제 · **툴 `tool_weight` / TCP `GripperDA_v1` 선택 확인**(9/23: `tool_weight` 는 **1.36 kg · CoG [5.31, −34.68, 8.28] mm** 로 펜던트에 **동결** — 9/22 의 「cz 89」와 「자동측정 금지」는 모두 철회됐다(PR #235, cz 89 는 무게중심이 아니라 1.079 Nm 보정항). 값이 다르면 바꾸지 말고 A 에게 알린다) · ⚠️ **실물 계량은 재보정 전 「미검증」** — `common.yaml` `scale.gain 0.8859`·`offset_g`·`max_std_g` 는 우드락 공구(9/19~21) 조건 값이고 PLA 공구에서는 9/23 실측이 용기 경로 gain ≈ 1.076 을 가리킨다(#187, 확정 전). 재보정 전 리허설 계량이 이상해도 설비·보정 어느 쪽인지 가를 수 없으므로 결과를 「미검증」으로 기록한다 · **스쿠핑 보정 확인** — `stations.yaml` `scooping.A.calibrated` 가 `true` 여야 자동 스쿱이 실행된다(#216, G5). `false` 면 첫 `SCOOP` 이 이동 전 거부되어 배치가 진행되지 않는다 · 실물 첫 PC 는 `python3 -c 'import pymodbus'` — 없으면 `sudo apt install python3-pymodbus` (없으면 OnRobot 드라이버가 뜨자마자 죽고 `/onrobot/sendCommand` 가 안 보인다, 9/19) | 티치펜던트 Auto 모드 |
 | T1 | 브링업 | `ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100` | `[skill_node] SELF_CHECK OK` 로그 (툴·TCP·충돌 감도 일치) |
 | T2 | HMI | (T1 에 포함) HMI 창 | 상태 `IDLE`, 그리퍼 폭 표시 |
 | T3 | 사람 | 원료통 A·B·C(판 바깥 아래)와 **각 원료통 아래 전용 스쿱 3개**, **빈 약통을 Pass Box 「빈통」 칸(`passbox_empty`, slots 1)** 에 넣었는지. 완성품은 로봇이 Pass Box 「완성품」 칸(`passbox_done`)에 놓고 QA 가 회수한다 (D-23·D-24). 판 위 매거진·트레이·스쿱랙은 없다 (9/18 폐지). 이후 용기는 사람이 만지지 않는다 (D-18) | — |
