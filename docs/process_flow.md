@@ -110,7 +110,7 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
    ▼
  PICK_SCOOP ──grip ok──▶ SCOOP_TARE ──weigh_scoop──▶ SCOOP ──contact──▶ WEIGH_SCOOP ──weigh_scoop──▶ POUR ──▶ WEIGH_RESIDUAL
    │ GRIP_FAIL ×3           (빈 스쿱 무게)             ▲  │ SCOOP_EMPTY ×3   (퍼낸 양 →                 (fraction=1.0)  │ (잔량 → 투입량 누적
-   ▼ ×4 ERROR                                          │  ▼ 연속 3회 = MATERIAL_EMPTY  전량 붓기 / 원료통 반환)            │  → decide)
+   ▼ ×4 ERROR                                          │  ▼ ×4 → MATERIAL_EMPTY        전량 붓기 / 원료통 반환)            │  → decide)
                                                        │ PAUSED ──interlock EXIT──▶ _resume(scoop)                    ├─ OK ────────▶ RETURN_SCOOP
                                                        └──────────────── UNDER, attempts<8 → scoop(attempt+1) ◀───────┤                 │ 다음 원료 → PICK_SCOOP
                                                                                                                       ├─ OVER ──────▶ RETURN_MATERIAL(material_id) → SCOOP 재시도
