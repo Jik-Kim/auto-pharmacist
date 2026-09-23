@@ -64,6 +64,30 @@ class StationTable:
                     raise ValueError(f'{sid}: solution_space 접근에는 양수 접근 높이와 exit_mm가 필요하다')
                 if self.frame != 'base':
                     raise ValueError('solution_space 이동은 BASE 좌표만 지원한다')
+            taught_keys = ('approach_posj', 'empty_approach_posj', 'middle_posx',
+                           'pour_above_posx', 'return_entry_posx')
+            for key in taught_keys:
+                if key in body:
+                    vector6(body[key], f'{sid}.{key}')
+                    if self.frame != 'base':
+                        raise ValueError('DRL 티칭 경로는 BASE 좌표만 지원한다')
+            if 'approach_posj' in body and ('solution_space' in body or 'posj' in body):
+                raise ValueError('관절 티칭 접근과 다른 접근 정책을 중복 설정할 수 없다')
+            for key in ('empty_descent_mm', 'pour_exit_mm', 'return_lower_mm'):
+                if key in body and (type(body[key]) not in (int, float)
+                                    or not math.isfinite(body[key]) or body[key] <= 0):
+                    raise ValueError(f'{sid}.{key}는 유한한 양수여야 한다')
+            if 'approach_posj' in body or 'return_entry_posx' in body:
+                if type(body.get('exit_mm')) not in (int, float) or body['exit_mm'] <= 0:
+                    raise ValueError(f'{sid}: 티칭 경로 이탈 높이가 필요하다')
+            required = {
+                'empty_approach_posj': ('approach_posj', 'empty_descent_mm', 'middle_posx'),
+                'pour_above_posx': ('middle_posx', 'pour_start_posx', 'pour_end_posx', 'pour_exit_mm'),
+                'return_entry_posx': ('return_lower_mm', 'material_id'),
+            }
+            for key, fields in required.items():
+                if key in body and any(field not in body for field in fields):
+                    raise ValueError(f'{sid}.{key}: 필수 티칭 설정 누락')
             self.stations[sid] = Station(sid, [float(v) for v in posx], body.get('note', ''),
                                          {k: v for k, v in body.items() if k not in ('posx', 'note')})
             for key in ('approach_mm', 'exit_mm'):

@@ -1,82 +1,135 @@
-# 스테이션 좌표 — 단일 출처 (SOT D-09·D-24). 9/21 BASE 기준 사용자 티칭값을 반영했다.
-# safe.posx는 아직 자리표시자다. 원료 반환 start/end는 미티칭이면 이동 전에 거부한다.
-# return_end_posx는 티칭 참고값이며 반환 끝 이동은 return_end_posj 관절각을 사용한다.
-# 실물 첫 이동은 반드시 vel_scale 0.2로 검증한다.
-#
-# frame: base  → posx 는 로봇 베이스 좌표 [x, y, z, a, b, c] mm·deg
-# frame: user  → D-15 판 좌표계 (set_user_cart_coord). 판 3점 티칭 후 전환
-# 9/21 posx는 사용자 제공값 그대로이며 자동 반올림하지 않았다.
-# 기존 taught_at_posj·이송 관절각은 유지했다. 갱신 posx와 일치는 실물 확인 대기다.
-#
-# 오른쪽 볼트구멍 열 (x=717, z=100, 자세 [180,-90,-90] 공통) — 위에서 아래로 약 15 cm 간격:
-#   맨 위 구멍 = 미사용. 실측 결과 팔이 닿지 않아 스테이션으로 쓸 수 없다 (9/21).
-#   passbox_done(y=71.32) → passbox_empty(y=-70.37) → reject_bin(y=-220.0)
-# 구멍 하나에 통 하나라 완성품·폐기함 모두 용량 1이다 (slots: 1).
-# nudge_wait 는 이 열에 없다 — 위 이유로 맨 위 구멍을 못 쓰고 팔이 닿는 자리로 따로 티칭했다.
-# 완성품보다 85.7 mm 위, x·z·자세도 달라 한 칸의 절반처럼 보이지만 티칭 오차가 아니다. 고치지 말 것.
+# 9/23 사용자 실물 검증 DRL: m0609_tw_autopharm_moved.drl (BASE, mm/deg)
+# fixed_path.verified는 원본 고정 경로 검증, calibrated는 높이 보정 검증이다.
+# A 높이 보정 근사값은 보존하며 B/C 높이 보정 모델은 없다. 자동 보정은 모두 비활성.
+# 원료 반환·넛지는 DRL 주 루프에 없으므로 좌표 갱신만으로 검증 완료로 보지 않는다.
+# workbench empty 접근은 DRL 관절각 도착 후 실제 TCP에서 Z -200: posx와 합성하지 않는다.
+# safe.posx는 자리표시자이며 safe 이동은 posj를 사용한다.
 frame: base
-approach_mm: 60.0          # 작업점 위 접근 높이
+approach_mm: 60.0
 stations:
-  safe:        {posx: [300.0, 0.0, 450.0, 0.0, 180.0, 0.0], posj: [0.0, 0.0, 90.0, 0.0, 90.0, 0.0], note: "안전 자세 — 초기 특이점에서 movej로 진입. 판 위 모든 물체보다 높게"}
-  workbench:   {posx: [423.0, 93.0, 130.0, 90.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, solution_space: 3, pour_start_posx: [420.0, 220.0, 238.0, 90.0, 180.0, -90.0], pour_end_posx: [420.0, 160.0, 320.0, 90.0, 130.0, -90.0], note: "posx는 용기 파지 AT, 용기 계량은 ABOVE. pour_start/end_posx는 스쿱 붓기 시작/종료 자세"}
-  # 스쿱 끝 근사 오프셋: material_1.posx 자세에서 TCP 기준 BASE 방향 mm. 자세 재티칭 시 재확인.
-  material_1:  {posx: [344.0, -298.0, 200.0, 90.0, -180.0, -90.0], surface_z_base_mm: 90.0, scoop_tip_offset_base_mm: [0.0, -120.0, -20.0], return_start_posx: [344.0, -340.0, 170.0, 90.0, -180.0, -90.0], return_end_posx: [344.0, -259.0, 204.0, 90.0, 154.29, -90.0], return_end_posj: [-50.28, 23.28, 68.27, 16.9, 107.97, -227.68], measure_posx: [344.0, -334.0, 120.0, 90.0, 160.0, -90.0], note: "원료통 A. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세", material_id: "A", expected_scoop_width_mm: 15.5}
-  material_2:  {posx: [439.0, -298.0, 200.0, 90.0, -180.0, -90.0], return_start_posx: [439.0, -340.0, 170.0, 90.0, -180.0, -90.0], return_end_posx: [439.0, -259.0, 204.0, 90.0, 154.29, -90.0], return_end_posj: [-43.22, 33.92, 51.96, 19.73, 111.13, -218.69], measure_posx: [439.0, -334.0, 120.0, 90.0, 160.0, -90.0], note: "원료통 B. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세", material_id: "B", expected_scoop_width_mm: 18.0}
-  material_3:  {posx: [537.0, -298.0, 200.0, 90.0, -180.0, -90.0], return_start_posx: [537.0, -340.0, 170.0, 90.0, -180.0, -90.0], return_end_posx: [537.0, -259.0, 204.0, 90.0, 154.29, -90.0], return_end_posj: [-37.45, 51.25, 21.33, 23.64, 121.39, -207.39], measure_posx: [537.0, -334.0, 120.0, 90.0, 160.0, -90.0], note: "원료통 C. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세", material_id: "C", expected_scoop_width_mm: 28.0}
-  # 전용 스쿱은 각 원료통 아래에 둔다 (9/18 확정) — 거치대 한 곳(scoop_rack)은 폐지했다.
-  # 이동 거리가 줄고, 스쿱 3개를 한 곳에 모으지 않으므로 교차오염 경로도 끊긴다.
-  # FSM 은 material_id 만 넘기고, process_node 가 여기서 짝(material_id 일치)을 찾아 MoveToStation(scoop_N) 을 부른다.
-  scoop_1:     {posx: [344.0, -298.0, 50.0, 90.0, -180.0, -90.0], note: "원료 A 전용 스쿱 (material_1 아래)", material_id: "A"}
-  scoop_2:     {posx: [439.0, -298.0, 50.0, 90.0, -180.0, -90.0], note: "원료 B 전용 스쿱 (material_2 아래)", material_id: "B"}
-  scoop_3:     {posx: [537.0, -298.0, 50.0, 90.0, -180.0, -90.0], note: "원료 C 전용 스쿱 (material_3 아래)", material_id: "C"}
-  # Pass Box 두 칸 (D-24, 9/18) — 무균실이라 사람은 Pass Box 로만 주고받는다 (D-23).
-  # 판 위에 별도 매거진·트레이는 없다. 로봇이 빈통 칸에서 꺼내 쓰고 완성품 칸에 넣는다.
-  passbox_empty: {posx: [717.0, -70.37, 130.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, solution_space: 3, note: "Pass Box 「빈통」 칸 — 빈 약통을 여기서 꺼낸다 (구 magazine)", slots: 1}
-  passbox_done:  {posx: [717.0, 71.32, 130.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, solution_space: 3, note: "Pass Box 「완성품」 칸 — 완료품을 여기 넣는다 (구 output_tray). QA 가 회수", slots: 1}
-  nudge_wait:    {posx: [578.0, 157.0, 84.0, 45.0, 180.0, 135.0], taught_at_posj: &nudge_wait_at [14.57, 35.24, 63.40, -0.12, 81.36, 104.70], note: "넛지 대기 위치 (D-24) — 세트 완료 후 여기서 사람이 건드리기를 기다린다. safe 와 별개"}
-  reject_bin:    {posx: [717.0, -220.0, 130.0, 180.0, -90.0, -90.0], approach_mm: 50.0, exit_mm: 150.0, solution_space: 3, note: "폐기 위치", slots: 1}
-
-# 9/22: 용기 스테이션은 solution_space=3으로 ABOVE까지 amovejx, AT 접근은 직선.
-# 기존 workbench→passbox_done 관절 티칭 경로는 이 방식으로 대체했다.
-# 아래 nudge 경로는 변경된 높이·sol에 맞춰 재티칭 전까지 비활성 유지.
-# 실물: 등록된 경로는 미티칭/비활성일 때 기존 amovel로 우회하지 않고 거부한다.
-# 가상: 등록 여부·활성 여부와 무관하게 기존 amovel 직선 이동을 사용한다.
-# 실물 목적지는 등록된 출발 이력으로만 진입 가능하다. 같은 목적지 안의 AT↔ABOVE는 직선 이동이다.
-# TODO([A]): docs/setup.md의 티칭 목록을 채운 후 검증 단계에 맞춰 enabled를 켠다.
-# waypoints_posj 마지막 점의 TCP는 arrival에 지정한 목적지 ABOVE 또는 AT와 같아야 한다.
-# ABOVE/EXIT posx는 절대값을 중복 저장하지 않고 station의 BASE Z 오프셋으로 계산한다.
-# taught_at_posj는 일반 AT 이동을 바꾸지 않는다. nudge 경로에서만 별칭으로 참조한다.
+  safe:
+    posx: [300.0, 0.0, 450.0, 0.0, 180.0, 0.0]
+    posj: [0.0, 0.0, 90.0, 0.0, 90.0, 0.0]
+    note: 안전 자세 — 초기 특이점에서 movej로 진입. 판 위 모든 물체보다 높게
+  workbench:
+    posx: [420.0, 93.0, 130.0, 90.0, -90.0, -90.0]
+    approach_mm: 50.0
+    exit_mm: 200.0
+    pour_start_posx: [420.0, 195.0, 243.0, 90.0, 180.0, -90.0]
+    pour_end_posx: [420.0, 150.0, 320.0, 90.0, 130.0, -90.0]
+    note: posx는 용기 파지 AT, 용기 계량은 ABOVE. pour_start/end_posx는 스쿱 붓기 시작/종료 자세
+    approach_posj: [44.13, 46.91, 79.0, 119.66, -124.47, 45.38]
+    empty_approach_posj: [44.13, 38.07, 72.36, 108.69, -130.87, 27.51]
+    empty_descent_mm: 200.0
+    middle_posx: [395.0, -90.0, 230.0, 90.0, -180.0, -90.0]
+    pour_above_posx: [420.0, 195.0, 290.0, 90.0, 180.0, -90.0]
+    pour_exit_mm: 50.0
+  material_1:
+    posx: &id002 [298.0, -298.0, 200.0, 90.0, -180.0, -90.0]
+    surface_z_base_mm: 90.0
+    scoop_tip_offset_base_mm: [0.0, -120.0, -20.0]
+    return_start_posx: [298.0, -340.0, 170.0, 90.0, -180.0, -90.0]
+    return_end_posx: [298.0, -259.68, 204.37, 90.0, 154.29, -90.0]
+    return_end_posj: [-54.33, 19.06, 74.19, 15.35, 107.47, -232.25]
+    measure_posx: [298.0, -333.79, 120.0, 90.0, 160.06, -90.0]
+    note: 원료통 A. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세
+    material_id: A
+    expected_scoop_width_mm: 15.5
+  material_2:
+    posx: [395.0, -298.0, 200.0, 90.0, -180.0, -90.0]
+    return_start_posx: [395.0, -340.0, 170.0, 90.0, -180.0, -90.0]
+    return_end_posx: [395.0, -259.68, 204.37, 90.0, 154.29, -90.0]
+    return_end_posj: [-46.29, 28.61, 60.34, 18.45, 109.23, -222.84]
+    measure_posx: [395.0, -333.79, 120.0, 90.0, 160.06, -90.0]
+    note: 원료통 B. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세
+    material_id: B
+    expected_scoop_width_mm: 18.0
+  material_3:
+    posx: [490.0, -298.0, 200.0, 90.0, -180.0, -90.0]
+    return_start_posx: [490.0, -340.0, 170.0, 90.0, -180.0, -90.0]
+    return_end_posx: [490.0, -259.68, 204.37, 90.0, 154.29, -90.0]
+    return_end_posj: [-40.05, 41.36, 39.41, 21.34, 114.80, -213.56]
+    measure_posx: [490.0, -333.79, 120.0, 90.0, 160.06, -90.0]
+    note: 원료통 C. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세
+    material_id: C
+    expected_scoop_width_mm: 28.0
+  scoop_1:
+    posx: [298.0, -292.0, 50.0, 90.0, -180.0, -90.0]
+    note: 원료 A 전용 스쿱 (material_1 아래)
+    material_id: A
+    approach_mm: 50.0
+    exit_mm: 100.0
+    return_entry_posx: [298.0, -142.0, 150.0, 90.0, -180.0, -90.0]
+    return_lower_mm: 100.0
+  scoop_2:
+    posx: [395.0, -292.0, 50.0, 90.0, -180.0, -90.0]
+    note: 원료 B 전용 스쿱 (material_2 아래)
+    material_id: B
+    approach_mm: 50.0
+    exit_mm: 100.0
+    return_entry_posx: [395.0, -142.0, 150.0, 90.0, -180.0, -90.0]
+    return_lower_mm: 100.0
+  scoop_3:
+    posx: [490.0, -292.0, 50.0, 90.0, -180.0, -90.0]
+    note: 원료 C 전용 스쿱 (material_3 아래)
+    material_id: C
+    approach_mm: 50.0
+    exit_mm: 100.0
+    return_entry_posx: [490.0, -142.0, 150.0, 90.0, -180.0, -90.0]
+    return_lower_mm: 100.0
+  passbox_empty:
+    posx: [705.0, -73.0, 130.0, 180.0, -90.0, -90.0]
+    approach_mm: 50.0
+    exit_mm: 200.0
+    note: Pass Box 「빈통」 칸 — 빈 약통을 여기서 꺼낸다 (구 magazine)
+    slots: 1
+    approach_posj: [-12.02, 28.39, 120.59, -13.8, -59.7, 96.98]
+  passbox_done:
+    posx: [705.0, 77.0, 130.0, 180.0, -90.0, -90.0]
+    approach_mm: 50.0
+    exit_mm: 200.0
+    note: Pass Box 「완성품」 칸 — 완료품을 여기 넣는다 (구 output_tray). QA 가 회수
+    slots: 1
+    approach_posj: [10.46, 28.46, 120.46, 12.31, -59.53, 83.6]
+  nudge_wait:
+    posx: [578.66, 157.79, 84.6, 45.0, 180.0, 135.0]
+    taught_at_posj: &id001 [14.57, 35.24, 63.4, -0.12, 81.36, 104.7]
+    note: 넛지 대기 위치 (D-24) — 세트 완료 후 여기서 사람이 건드리기를 기다린다. safe 와 별개
+  reject_bin:
+    posx: [705.0, -223.0, 130.0, 180.0, -90.0, -90.0]
+    approach_mm: 50.0
+    exit_mm: 200.0
+    note: 폐기 위치
+    slots: 1
+    approach_posj: [-31.52, 33.0, 111.22, -36.97, -60.01, 110.51]
 transfers:
-  - source: passbox_done
-    destination: nudge_wait
-    payload: empty
-    enabled: false
-    start_from: above        # 놓기 후 직선 후퇴 완료 상태에서만 이송 시작
-    arrival: at              # nudge는 파지/놓기가 없는 대기점. ABOVE/최종 하강 불필요
-    start_above_posj: [9.34, 33.50, 119.09, 10.64, -63.01, 85.03]
-    exit_posj: [9.34, 20.54, 116.30, 12.88, -47.59, 81.16]
-    waypoints_posj:
-      - *nudge_wait_at        # 주신 nudge_wait AT 관절각으로 직접 도착
-
-# TW m0609_tw_scooping.drl 원료 A만 검증. B/C로 자동 복제하지 않는다.
+- source: passbox_done
+  destination: nudge_wait
+  payload: empty
+  enabled: false
+  start_from: above
+  arrival: at
+  start_above_posj: [9.34, 33.5, 119.09, 10.64, -63.01, 85.03]
+  exit_posj: [9.34, 20.54, 116.3, 12.88, -47.59, 81.16]
+  waypoints_posj:
+  - *id001
 scooping:
   A:
-    # 근사 오프셋으로 mid 끝 Z=48.6, 실측 54~55와 불일치. 보정 전 실행 금지.
     calibrated: false
-    reference_pose_base: [344.0, -298.0, 200.0, 90.0, -180.0, -90.0]
+    reference_pose_base: *id002
     tip_offset_world_mm: [0.0, -120.0, -20.0]
-    reference_surface_world_z_mm: 72.5  # 70~75의 임시 중간값, 실측 보정 필요
+    reference_surface_world_z_mm: 72.5
     material_bottom_world_z_mm: 50.0
-    clearance_mm: 5.0  # 실측 4~5 중 보수적 여유, 실제 경로 검증 필요
+    clearance_mm: 5.0
     reference_gross_g: 100.0
     empty_scoop_g: 35.0
-    min_fraction: 0.15  # 현행 dosing.min_fraction과 같아야 한다
+    min_fraction: 0.15
     waypoints_base:
-      - [344.0, -291.0, 203.0, 90.0, 124.54, -90.0]  # enter
-      - [344.0, -320.0, 165.0, 90.0, 128.18, -90.0]  # start
-      - [344.0, -332.42, 134.0, 90.0, 146.0, -90.0]   # tilt
-      - [344.0, -342.63, 116.0, 90.0, 155.82, -90.0] # mid
-      - [343.5, -333.31, 117.57, 0.0, 178.25, -180.0] # end
+    - [298.0, -291.0, 203.0, 90.0, 124.54, -90.0]
+    - [298.0, -320.0, 165.0, 90.0, 128.18, -90.0]
+    - [298.0, -332.42, 134.0, 90.0, 146.0, -90.0]
+    - [298.0, -342.63, 116.0, 90.0, 155.82, -90.0]
+    - [298.0, -333.31, 117.57, 0.0, 178.25, -180.0]
     shake_base: [345.02, -325.63, 149.68, 90.0, -155.0, -90.0]
     velocity: [250.0, 80.625]
     acceleration: [1000.0, 322.5]
@@ -84,3 +137,58 @@ scooping:
     shake_period: [0.4, 0.5, 0.0, 0.0, 0.0, 0.0]
     shake_atime: 0.5
     shake_repeat: 3
+    execution_mode: taught_fixed
+    fixed_path:
+      verified: true
+      source: m0609_tw_autopharm_moved.drl
+      waypoints_base:
+      - [298.0, -255.0, 200.0, 90.0, 141.62, -90.0]
+      - [298.0, -280.0, 165.0, 90.0, 145.79, -90.0]
+      - [298.0, -306.0, 136.0, 90.0, 163.59, -90.0]
+      - [298.0, -341.0, 124.0, 90.0, 171.59, -90.0]
+      - [298.0, -347.0, 141.0, 90.0, -176.37, -90.0]
+      shake_base: [298.0, -325.63, 149.68, 90.0, -155.0, -90.0]
+      velocity: [250.0, 80.625]
+      acceleration: [1000.0, 322.5]
+      shake_amp: [14.0, 15.0, 0.0, 0.0, 0.0, 0.0]
+      shake_period: [0.3, 0.5, 0.0, 0.0, 0.0, 0.0]
+      shake_atime: 0.5
+      shake_repeat: 3
+  B:
+    execution_mode: taught_fixed
+    calibrated: false
+    fixed_path:
+      verified: true
+      source: m0609_tw_autopharm_moved.drl
+      waypoints_base:
+      - [395.0, -255.0, 200.0, 90.0, 141.62, -90.0]
+      - [395.0, -280.0, 165.0, 90.0, 145.79, -90.0]
+      - [395.0, -306.0, 136.0, 90.0, 163.59, -90.0]
+      - [395.0, -341.0, 124.0, 90.0, 171.59, -90.0]
+      - [395.0, -347.0, 141.0, 90.0, -176.37, -90.0]
+      shake_base: [395.0, -325.63, 149.68, 90.0, -155.0, -90.0]
+      velocity: [250.0, 80.625]
+      acceleration: [1000.0, 322.5]
+      shake_amp: [12.0, 15.0, 0.0, 0.0, 0.0, 0.0]
+      shake_period: [0.3, 0.5, 0.0, 0.0, 0.0, 0.0]
+      shake_atime: 0.5
+      shake_repeat: 3
+  C:
+    execution_mode: taught_fixed
+    calibrated: false
+    fixed_path:
+      verified: true
+      source: m0609_tw_autopharm_moved.drl
+      waypoints_base:
+      - [490.0, -255.0, 200.0, 90.0, 141.62, -90.0]
+      - [490.0, -280.0, 165.0, 90.0, 145.79, -90.0]
+      - [490.0, -306.0, 136.0, 90.0, 163.59, -90.0]
+      - [490.0, -341.0, 124.0, 90.0, 171.59, -90.0]
+      - [490.0, -347.0, 141.0, 90.0, -176.37, -90.0]
+      shake_base: [490.0, -325.63, 149.68, 90.0, -155.0, -90.0]
+      velocity: [250.0, 80.625]
+      acceleration: [1000.0, 322.5]
+      shake_amp: [14.0, 15.0, 0.0, 0.0, 0.0, 0.0]
+      shake_period: [0.3, 0.5, 0.0, 0.0, 0.0, 0.0]
+      shake_atime: 0.5
+      shake_repeat: 3

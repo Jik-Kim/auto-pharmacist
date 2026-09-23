@@ -353,7 +353,7 @@ def test_container_weigh_grips_at_and_measures_at_above(monkeypatch):
         ),
         gripper=SimpleNamespace(
             grip=lambda *_: (True, 20.0, True),
-            release=lambda _: commands.append('release'),
+            release=lambda _: commands.append('release') or True,
         ),
         vel_scale=0.3,
         _measure_weight_reading=lambda tare_g, subject: (

@@ -89,8 +89,8 @@ def test_dio_without_confirmed_input_fails_closed():
     arm = type('Arm', (), {'dout': lambda _self, pin, on: outputs.append((pin, on))})()
     g = Rg2Gripper('dio', lambda _command: True, arm=arm, din_pins=(0,), dio_settle_s=0.0)
     ok, width, inferred = g.grip(15.5, 20.0, timeout_s=0.0)
-    assert ok and width == -1.0 and inferred is False
-    assert outputs == [(1, True), (2, False)]
+    assert not ok and width == -1.0 and inferred is False
+    assert outputs == []
 
 
 @pytest.mark.parametrize('busy_seen,grip', [(False, False), (True, False), (True, True)])
