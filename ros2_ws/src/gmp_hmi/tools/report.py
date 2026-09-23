@@ -29,7 +29,9 @@ def main():
     print('지표\t값')
     for key, label, unit in (
         ('batches', '종료 배치', '건'),
-        ('batch_success_pct', '배치 성공률', '%'),
+        ('batch_success_pct', '계량 검증 완료율', '%'),
+        ('unmeasured_done', '미측정 승인 완료', '건'),
+        ('run_complete_pct', '실행 완주율', '%'),
         ('auto_recovery_pct', '자동복구율', '%'),
         ('run_time_s', '누적 운전시간', '초'),
         ('forced_interventions', '강제 개입', '회'),
