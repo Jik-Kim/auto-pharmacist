@@ -91,3 +91,24 @@ def test_report_runs_end_to_end_and_names_the_judged_quantity(tmp_path):
     text = buf.getvalue()
     assert '투입량 기준' in text and '배치 완주율' in text
     assert res['delivered']['n'] == 12
+
+
+def test_builtin_rule_agrees_with_decide_once_fixed_scoop_lands():
+    """#274 머지되는 순간 완주율 엔진이 내장 규칙 → 진짜 decide() 로 갈아탄다.
+
+    둘이 다르면 **같은 CSV 가 머지 전후로 다른 완주율을 낸다** — 그것도 조용히.
+    그래서 같은 스쿱 수열을 두 엔진에 먹여 결과가 한 건도 안 갈리는지 본다.
+    #274 전에는 fixed_scoop 이 없어 skip 되고, 머지된 뒤 자동으로 살아난다.
+    """
+    import random
+    cfg = ss._fixed_cfg(85.0, 8)
+    if cfg is None:
+        pytest.skip('#274 (fixed_scoop) 미머지 — 머지되면 이 시험이 살아난다')
+    for target, tol in ((85.0, 10.0), (170.0, 10.0), (85.0, 5.0), (170.0, 5.0), (255.0, 10.0)):
+        for sd in (0.5, 2.0, 5.0, 9.0):
+            for seed in range(20):
+                rng = random.Random(seed)
+                draws = [rng.gauss(85.0, sd) for _ in range(20)]
+                a = ss._run_material(target, tol, 85.0, iter(draws).__next__, cfg, 8)
+                b = ss._run_material(target, tol, 85.0, iter(draws).__next__, None, 8)
+                assert a == b, (target, tol, sd, seed, a, b)
