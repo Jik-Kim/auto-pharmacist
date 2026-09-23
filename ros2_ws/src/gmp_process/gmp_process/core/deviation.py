@@ -12,6 +12,10 @@ RULES = {
     'SCOOP_EMPTY':     (3, 'RETRY', 'REFILL'),
     'MATERIAL_EMPTY':  (0, 'REFILL', 'REFILL'),
     'OVERFILL':        (0, 'QA', 'QA'),
+    # TIMEOUT 은 **두 가지를 덮는다** — ① 보정 시도를 다 썼는데 미달 ② 보충하면 허용 상한을
+    # 넘어 더 넣을 방법이 없음(고정 스쿱). 둘 다 「목표 도달 불가, 더 할 수 있는 게 없음」이라
+    # 처분이 같아 한 kind 로 둔다. **어느 쪽인지는 `detail` 로만 구분된다** — 기록을 읽을 때
+    # 「재시도를 다 썼다」로 단정하지 말 것. 계약(`Deviation.kind`)을 다시 열 일이 생기면 그때 가른다.
     'TIMEOUT':         (0, 'QA', 'QA'),
     'WEIGH_INVALID':   (0, 'QA', 'QA'),
     # WEIGH_INVALID 의 재계량은 `max_invalid_retries` 가 전담한다 — 여기 오는 것은 그 상한을

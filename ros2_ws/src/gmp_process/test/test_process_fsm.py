@@ -813,6 +813,30 @@ def test_고정스쿱_임계는_스쿱_1회량으로_정해진다(target, scoops
     assert r_ok.actual_g == pytest.approx(scoops * above - 2.0), (r_ok.actual_g, scoops, above)
 
 
+def test_고정스쿱_170g_은_첫_스쿱이_미달이어도_보충으로_합격한다():
+    """**「첫 미달이면 QA」로 단순화하면 이 경우를 잘못 죽인다** (9/23 B 지적, C 원안 철회).
+
+    170 g ±10 % 는 스쿱 두 번이 목표다. 첫 스쿱이 83 g 이면 투입 81 g 으로 미달이지만,
+    한 번 더 퍼면 166 g 으로 **허용 안에 들어온다** — 보충이 상한(187 g)을 넘지 않기 때문이다.
+
+    그래서 보충 중단 조건은 「미달이다」가 아니라 **「보충하면 상한을 넘는다」**여야 한다:
+
+        actual + min_add > target × (1 + tol)      min_add = 고정 스쿱이면 공칭 전량
+
+    85 g 은 1스쿱이 목표라 미달이면 보충이 곧 초과라 사실상 전 구간이 걸리지만,
+    170 g 은 `actual ≤ 102 g` 까지 보충이 허용된다. **한 레시피로 일반화하면 틀린다.**
+    """
+    r, kinds = _fixed_scoop_run(170, 10, NOMINAL_85, first=83.0)
+    assert kinds == [], kinds
+    assert r.attempts == 2 and r.returns == 0, (r.attempts, r.returns)
+    assert abs(r.actual_g - 170) <= 17.0, r.actual_g      # 83 + 85 − 잔량 2 = 166
+
+    # 경계 — 보충이 상한을 넘기 시작하는 지점. `fixed_scoop` 분기는 여기서 갈려야 한다
+    over_limit = 170 * 1.10 - NOMINAL_85                  # = 102.0
+    assert over_limit == pytest.approx(102.0)
+    assert 81.0 + NOMINAL_85 <= 170 * 1.10, '81 g 에서는 보충이 아직 상한 안이다'
+
+
 def test_고정스쿱_보충요청이_최소채취보다_작아지는_구간은_없다():
     """「보충 요청량 < 최소채취면 QA」 분기는 **발동하지 못한다** (9/23 팀장 제안 검토).
 
