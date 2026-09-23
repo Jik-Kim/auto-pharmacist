@@ -1,4 +1,4 @@
-# 벤더와 같은 노드 범위에서 type만 덮어쓴다. 로봇 이름 변경도 허용한다.
+# 벤더 YAML과 같은 노드 범위. robot.launch.py에서 벤더 설정 다음에 적용한다.
 /**:
   controller_manager:
     ros__parameters:

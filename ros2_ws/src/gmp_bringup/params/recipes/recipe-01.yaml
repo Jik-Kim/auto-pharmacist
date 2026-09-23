@@ -1,0 +1,8 @@
+# #161: gmp_hmi/config/test_recipes/v4/recipe-01.yaml 를 운영 경로에 등록.
+# 목표량·허용오차는 B 도징 보정(min_resolvable_g 재검토, PR #44 후속) 확정 전 잠정값이다 —
+# 조장 승인(#161 코멘트, 9/21): 등록·로딩 검증은 먼저 진행하고 값 정합성은 보정 확정 뒤 재확인한다.
+product: "레시피 1"
+items:
+  - {material_id: A, target_g: 40.0, tol_pct: 5.0}
+  - {material_id: B, target_g: 40.0, tol_pct: 5.0}
+  - {material_id: C, target_g: 40.0, tol_pct: 5.0}

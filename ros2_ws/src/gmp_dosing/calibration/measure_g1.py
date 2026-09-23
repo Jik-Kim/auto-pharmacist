@@ -69,12 +69,43 @@ def robot_params():
     return r['id'], r['model'], float(r['vel']), float(r['acc']), r.get('tool_name', ''), r.get('tcp_name', '')
 
 
+def apply_tolerances(arm):
+    """skill_node:131-135 가 외부에서 넣어주는 값들 — movejx 계열이 이걸 참조한다.
+
+    DsrArm 생성자는 이 속성들을 안 만든다. movel 만 쓸 때는 필요 없지만
+    movejx_cancellable 은 도착 확인에 pose_xyz_tolerance 를 써서 AttributeError 가 난다 (9/22).
+    """
+    import yaml
+    r = yaml.safe_load(COMMON.read_text())['/**']['ros__parameters']['robot']
+    arm.cancel_requested = lambda: False
+    arm.motion_timeout_s = float(r.get('motion_timeout_s', 60.0))
+    arm.pose_xyz_tolerance = float(r.get('pose_xyz_tolerance_mm', 2.0))
+    arm.pose_rotation_tolerance = float(r.get('pose_rotation_tolerance_deg', 2.0))
+    arm.joint_tolerance = float(r.get('joint_tolerance_deg', 1.0))
+    return arm
+
+
 def station_posx(station_id: str):
     import yaml
     st = yaml.safe_load(STATIONS.read_text())
     s = st['stations'][station_id]
     print(f"    stations.yaml({st.get('frame')} frame) {station_id}: {s.get('note', '')}")
     return [float(v) for v in s['posx']]
+
+
+def station_solution_space(station_id: str):
+    """스테이션의 solution_space (관절 분기). 없으면 None.
+
+    9/22: 이 값이 계량 품질을 가른다. 같은 좌표·같은 자세각이라도 **손목 분기**가 다르면
+    거동이 완전히 달라진다 — material_3(sol 3) 는 σ 6.1·모멘트 0.000 인데
+    material_1(sol 2) 는 σ 19.0·모멘트 0.912 다. 둘은 J4 0° vs 180°, J5 부호반전,
+    J6 180° 차이로 전형적인 손목 뒤집기 쌍이었다.
+    movel 은 출발 자세의 분기를 물려받으므로 재현되지 않는다 — movejx 로 분기를 지정해야 한다.
+    """
+    import yaml
+    s = yaml.safe_load(STATIONS.read_text())['stations'][station_id]
+    v = s.get('solution_space')
+    return int(v) if v is not None else None
 
 
 STATES = {0: 'INITIALIZING', 1: 'STANDBY', 2: 'MOVING', 3: 'SAFE_OFF', 4: 'TEACHING', 5: 'SAFE_STOP',
@@ -261,6 +292,31 @@ def main(argv=None):
                          "예: workbench(용기 계량) | material_1/2/3(weigh_held 가 실제로 재는 자세 — "
                          "calibration 은 이 자세로 해야 gain/offset 이 운영과 맞는다)")
     ap.add_argument('--vel-scale', type=float, default=0.2, help='--goto-station 속도 스케일')
+    ap.add_argument('--sol-space', type=int, default=None, metavar='N',
+                    help='[9/22] 관절 분기(0~7)를 지정해 movejx 로 이동한다. stations.yaml 에 solution_space 가 '
+                         '있으면 자동으로 쓰고, 이 옵션이 그것을 덮는다. -1 을 주면 끄고 movel 로 간다. '
+                         '**계량 품질이 이 값에 갈린다** — material_3(sol 3) σ 6.1·모멘트 0.000 vs '
+                         'material_1(sol 2) σ 19.0·모멘트 0.912. movel 은 출발 자세의 분기를 물려받아 재현되지 않는다')
+    ap.add_argument('--tool-name', default='', metavar='NAME',
+                    help='common.yaml 의 robot.tool_name 대신 이 공구를 set_tool 한다. '
+                         '공구 무게·무게중심을 바꿔 시험할 때 쓴다 — add_tool 로 시험용 공구를 만들고 '
+                         '여기에 그 이름을 주면 등록된 tool_weight 를 건드리지 않는다 (9/22 cz 검증).')
+    ap.add_argument('--load-series', default='', metavar='G1,G2,..',
+                    help='[9/22] **한 파지 안에서 하중을 늘려가며** 재서 gain 직선을 뽑는다. 회차마다 Enter 로 멈추므로 '
+                         '그 사이에 시료를 더 붓고 저울로 읽은 값을 이 목록에 미리 넣어둔다 (예: 78,155,232,309). '
+                         '그리퍼를 놓지 않으니 재파지 산포(사람 배치 시 σ 6.34)가 안 들어가고, 하중을 되돌릴 필요도 없다. '
+                         '--trials 는 목록 길이로 맞춰진다. --alt-actual-g 와 같이 쓰지 않는다')
+    ap.add_argument('--auto-regrip', type=float, default=0.0, metavar='SEC',
+                    help='[9/22 팀장 요청] 세트 경계에서 **사람을 거치지 않고** 로봇만으로 놓고 다시 집는다. '
+                         '--pick-lift-mm 이 필요하다: AT 로 내려가 열고 SEC 초 기다렸다 다시 닫고 ABOVE 로 올린다. '
+                         '물체는 AT 의 받침면에 그대로 놓이므로 사람이 손댈 일이 없다. '
+                         '운영(TARE→VERIFY 사이 로봇이 용기를 내려놓고 다시 집는 것)과 같은 조건이라, '
+                         '사람이 놓던 기존 측정(σ_cup 6.34, 사람 배치 산포 포함)의 상한을 실제값으로 좁힌다')
+    ap.add_argument('--goto-posj', default='', metavar='J1,..,J6',
+                    help='시작 시 관절각[deg] 6개로 movej. **자세(관절해)를 보장하는 유일한 방법** — '
+                         '--goto-station 은 movel 이라 출발 자세를 물려받는다. 저울 보정은 관절해에 딸리므로 '
+                         '(9/22: 같은 좌표·같은 자세각인데 +Y200 에서 σ 6.24→26.08) 검증된 자세를 재현할 때 쓴다. '
+                         '--goto-station 과 같이 주면 movej 로 자세를 잡은 뒤 movel 로 좌표를 맞춘다')
     ap.add_argument('--offset-mm', default='', metavar='DX,DY,DZ',
                     help='--goto-station 좌표에 더할 [mm] — 실물 위치가 바뀌었는데 stations.yaml 이 '
                          '아직 반영 전(PR 대기)일 때 임시 보정. 예: 100,0,0')
@@ -277,13 +333,23 @@ def main(argv=None):
     import rclpy
     from gmp_skills.adapters.dsr_arm import DsrArm
     rid, model, vel, acc, tool, tcp = robot_params()
+    if a.tool_name:
+        print(f'    공구를 {tool!r} 대신 {a.tool_name!r} 로 바꿔 쓴다 (--tool-name)')
+        tool = a.tool_name
     rclpy.init()
-    arm = DsrArm(rid, model, 'real', vel, acc, tool, tcp)
+    arm = apply_tolerances(DsrArm(rid, model, 'real', vel, acc, tool, tcp))
     wait_controller(arm, rclpy, a.controller_timeout)
     setup_tool(arm, tool, tcp, bool(a.goto_station))
     grip = Gripper(rclpy) if a.gripper else None
     close_cmd = f'{int(round(a.grip_width_mm * 10))}' if a.grip_width_mm else 'c'
     pick_posx = measure_posx = None
+    if a.goto_posj:
+        j6 = [float(v) for v in a.goto_posj.split(',')]
+        if len(j6) != 6:
+            raise SystemExit(f'--goto-posj 는 관절각 6개다 (받은 값 {len(j6)}개)')
+        input(f'\n[0j] 관절각 {j6} 로 movej 합니다 (vel_scale {a.vel_scale}). 주변 확인 → Enter ')
+        arm.movej(j6, a.vel_scale)
+        print('    movej 완료 — 이 관절해가 측정 자세다')
     if a.goto_station:
         posx = station_posx(a.goto_station)
         if a.offset_mm:
@@ -295,12 +361,31 @@ def main(argv=None):
                         if a.pick_lift_mm else posx)
         if a.pick_lift_mm:
             print(f'    파지 AT {pick_posx}  →  측정 ABOVE {measure_posx} (+{a.pick_lift_mm:g} mm)')
+        sol = a.sol_space if a.sol_space is not None else station_solution_space(a.goto_station)
+        if sol is not None and sol < 0:
+            sol = None
+            print('    solution_space 끔 (--sol-space -1) → movel 로 간다')
+        elif sol is not None:
+            print(f'    solution_space {sol} 로 movejx — 관절 분기를 고정한다')
+        else:
+            print('    ⚠ solution_space 가 없다 → movel. 출발 자세의 분기를 물려받아 재현되지 않는다')
         input(f'\n[0] {a.goto_station} {"파지" if a.pick_lift_mm else "계량"} 자세 {pick_posx} 로 '
               f'이동합니다 (vel_scale {a.vel_scale}). 주변 확인 → Enter ')
-        arm.movel(pick_posx, a.vel_scale)
+        if sol is None:
+            arm.movel(pick_posx, a.vel_scale)
+        else:
+            arm.movejx_cancellable(pick_posx, sol, a.vel_scale, lambda: False, a.controller_timeout)
+            got = arm.solution_space()
+            print(f'    도착 solution_space = {got}' + ('' if got == sol else f'  ⚠ 요청 {sol} 과 다르다'))
         print('    이동 완료')
     if a.probe > 0:
         return probe(arm, grip, close_cmd, a.probe, a.actual_g)
+    series = [float(v) for v in a.load_series.split(',')] if a.load_series else None
+    if series:
+        if a.alt_actual_g is not None:
+            raise SystemExit('--load-series 와 --alt-actual-g 는 같이 못 쓴다')
+        a.trials = len(series)
+        print(f'    하중 계열 {series} — 회차 {a.trials} 로 맞춘다 (한 파지 안에서 부어가며 잰다)')
     cond = a.condition or f'{a.object}_total_{a.actual_g:g}g'
     if measure_posx:                    # 어디서 쟀는지 CSV 에 남긴다 — 자세가 σ 를 좌우한다 (9/21)
         cond += '@' + a.goto_station + '[' + ','.join(f'{v:g}' for v in measure_posx[:3]) + ']'
@@ -325,10 +410,19 @@ def main(argv=None):
             if grip:
                 if a.pick_lift_mm:      # 파지는 AT 에서 — 내려가 있어야 용기를 놓고 잡을 수 있다
                     arm.movel(pick_posx, a.vel_scale)
-                release_gripper(grip, f'[2] 세트 {s}/{a.sets} 시작 —', swallow_interrupt=False)
-                input(f'\n[2] 세트 {s}/{a.sets}: 물체({a.actual_g:g} g) 를 핑거 사이에 대고 → Enter (닫는다) ')
-                grip.send(close_cmd)
-                input('    잡혔는지 눈으로 확인 → Enter (측정 시작) ')
+                if a.auto_regrip > 0:
+                    # 사람을 거치지 않는다 — 물체는 AT 받침면에 그대로 있으므로 열고 닫으면 같은 자리를 다시 잡는다.
+                    # 운영의 로봇 재파지와 같은 조건 (9/22 팀장 요청).
+                    print(f'\n[2] 세트 {s}/{a.sets}: 로봇만으로 재파지 — 엶 → {a.auto_regrip:g} s 대기 → 닫음 (사람 개입 없음)')
+                    grip.send('o')          # Gripper 는 send() 만 있다 — 'o' 가 열기
+                    time.sleep(a.auto_regrip)
+                    grip.send(close_cmd)
+                    time.sleep(a.auto_regrip)
+                else:
+                    release_gripper(grip, f'[2] 세트 {s}/{a.sets} 시작 —', swallow_interrupt=False)
+                    input(f'\n[2] 세트 {s}/{a.sets}: 물체({a.actual_g:g} g) 를 핑거 사이에 대고 → Enter (닫는다) ')
+                    grip.send(close_cmd)
+                    input('    잡혔는지 눈으로 확인 → Enter (측정 시작) ')
                 if a.pick_lift_mm:      # 측정은 ABOVE 에서 — 운영(skill_node._do_weigh)과 같은 경로
                     arm.movel(measure_posx, a.vel_scale)
                     print(f'    측정 자세로 +{a.pick_lift_mm:g} mm 올림 → {measure_posx}')
@@ -337,7 +431,13 @@ def main(argv=None):
             name = f'{a.object}_total{a.actual_g:g}g_{stamp}_set{s}'
             for t in range(1, a.trials + 1):
                 trial_g = a.actual_g if (a.alt_actual_g is None or t % 2 == 1) else a.alt_actual_g
-                if a.alt_actual_g is not None:
+                if series:
+                    trial_g = series[t - 1]
+                    prev = series[t - 2] if t > 1 else None
+                    add = '' if prev is None else f' (앞 회차보다 +{trial_g - prev:g} g)'
+                    input(f'    세트 {s} 회차 {t}/{a.trials}: 하중을 **{trial_g:g} g** 으로 맞추고{add} → Enter '
+                          f'(그리퍼는 문 채로 둔다. 다 부은 뒤에 치세요) ')
+                elif a.alt_actual_g is not None:
                     # 그리퍼는 문 채로 둔다 — 파지 오프셋이 유지되어야 차에서 빠진다
                     input(f'    세트 {s} 회차 {t}/{a.trials}: 내용물을 {"채우고" if t % 2 == 1 else "비우고"} '
                           f'({trial_g:g} g) → Enter (그리퍼는 문 채로 둔다) ')

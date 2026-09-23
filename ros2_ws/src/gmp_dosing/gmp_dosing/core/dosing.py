@@ -20,7 +20,9 @@ class DosingConfig:
     max_attempts: int = 3
     scoop_nominal_g: float = 40.0     # 스쿱 1회 퍼올림 평균 (9/18 실측)
     min_fraction: float = 0.15        # 담그기 깊이 비율의 하한 (계약 v1.5). 이보다 얕게는 제어가 안 된다
-    max_invalid: int = 2
+    max_invalid_retries: int = 2      # 계량 무효 시 **다시 재는** 횟수. 최초 측정은 여기 안 든다 —
+                                      # 총 측정은 이 값 + 1 이다 (#213 결정 1). 종전 이름 max_invalid 는
+                                      # 「무효 결과 총 횟수」였는데 읽는 사람마다 다르게 세었다.
 
 
 @dataclass
@@ -51,7 +53,7 @@ def decide(target_g: float, actual_g: float, tol_pct: float, attempts: int, vali
     지금 도달하는 곳은 test_dosing.py 뿐이다.
     """
     if not valid:
-        if invalid_count + 1 >= cfg.max_invalid:
+        if invalid_count > cfg.max_invalid_retries:
             return Decision('DEVIATION', 'INVALID', 'WEIGH_INVALID')
         # ⚠️ fraction 은 **담그기 깊이**다 (v1.5). 옛 설계에서는 붓기 비율이라 0 이 "붓지 말고 다시 재라"
         #    였지만, 지금 이 값이 실제로 쓰이면 `_scoop(0.0)` → 깊이 0 이 되어 계약 v1.5 의

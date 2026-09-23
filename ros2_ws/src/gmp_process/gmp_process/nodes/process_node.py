@@ -38,7 +38,7 @@ from gmp_interfaces.msg import (CellEvent, CellState, Deviation, DispenseResult,
 from gmp_interfaces.srv import (InterlockRequest, MeasureForce, QaDecision, RecoverSafety, SafePose,
                                 SetGripper, SubmitOrder)
 
-from gmp_dosing.core.dosing import DosingConfig
+from gmp_dosing.core.dosing import DosingConfig, verdict_of
 from gmp_dosing.core.scale import ScaleConfig, WeightModel
 from gmp_process.core.attempt import Attempt, Reading
 from gmp_process.core.process_fsm import ProcessFSM, ToolFingerprint
@@ -81,11 +81,16 @@ class ProcessNode(Node):
             ('robot.vel_scale', 0.0),           # 0 이면 skill_node 의 robot.vel_scale
             ('scale.method', 'tool_force'), ('scale.gain', 0.8859), ('scale.offset_g', 247.091),
             # 런타임 값은 common.yaml 이 단일 출처다. 아래 기본값은 런치 없이 노드를 띄울 때만 쓰인다.
-            # 9/21 영점 재작업의 material_3 재측정값(min_resolvable 5.0 · max_std 8.0)은 조장·A 결정
-            # 전까지 미적용이라, 여기와 ScaleConfig 기본값과 common.yaml 의 숫자가 당분간 서로 다르다.
-            ('scale.min_resolvable_g', 19.0), ('scale.max_std_g', 10.0),
+            # 9/21 영점 재작업의 material_3 재측정값(max_std 8.0)은 조장·A 결정 전까지 미적용이라,
+            # 여기와 ScaleConfig 기본값과 common.yaml 의 숫자가 당분간 서로 다르다.
+            ('scale.max_std_g', 10.0),
+            # VERIFY 직전 빈 그리퍼 영점 재확인 임계 [N] — 0 이면 검사 꺼짐. B 실측 전 잠정값.
+            ('scale.zero_drift_limit_n', 0.5),
             ('scale.samples', 20), ('scale.settle_s', 1.0),
-            ('dosing.max_attempts', 3), ('dosing.scoop_nominal_g', 40.0), ('dosing.min_fraction', 0.15),
+            # max_attempts 는 **붓기 시도** 상한이다. 목표량÷스쿱 1회량에 비례해야 한다
+            # (데모 A 200 g ÷ 40 g = 5회가 하한). max_returns 는 **초과 반환** 상한으로 성격이 다르다 (#189).
+            ('dosing.max_attempts', 8), ('dosing.max_returns', 3),
+            ('dosing.scoop_nominal_g', 40.0), ('dosing.min_fraction', 0.15),
             ('gripper.cup_width_mm', 60.0),
             ('gripper.open_width_mm', 100.0), ('gripper.force_n', 20.0),
             ('gripper.fingerprint_tolerance_mm', 0.0),   # [추가 1] WRONG_TOOL 폭 지문 margin. 0 이면 검사 꺼짐
@@ -95,10 +100,13 @@ class ProcessNode(Node):
         ])
         p = lambda k: self.get_parameter(k).value  # noqa: E731
         self.p = p
-        self.scale = WeightModel(ScaleConfig(p('scale.method'), p('scale.gain'), p('scale.offset_g'),
-                                             p('scale.min_resolvable_g'), p('scale.max_std_g')))
-        self.dosing_cfg = DosingConfig(p('dosing.max_attempts'), p('dosing.scoop_nominal_g'),
-                                       p('dosing.min_fraction'))
+        # **키워드로 넘긴다** — ScaleConfig 는 min_resolvable_g 가 offset_g 와 max_std_g 사이에 있어서,
+        # 위치 인자로 두면 그 필드를 뺄 때 max_std_g 가 조용히 한 칸 밀린다 (AGENTS 규칙, #211).
+        self.scale = WeightModel(ScaleConfig(method=p('scale.method'), gain=p('scale.gain'),
+                                             offset_g=p('scale.offset_g'), max_std_g=p('scale.max_std_g')))
+        self.dosing_cfg = DosingConfig(max_attempts=p('dosing.max_attempts'),
+                                       scoop_nominal_g=p('dosing.scoop_nominal_g'),
+                                       min_fraction=p('dosing.min_fraction'))
         # 스테이션 이름표 — 없으면 원료 → scoop_N 을 못 찾는다. 경로가 비면 주문 때 거부한다
         self.smap = StationMap.from_yaml(p('stations_file')) if p('stations_file') else StationMap()
 
@@ -380,7 +388,9 @@ class ProcessNode(Node):
         self._last_result = DispenseResult()
         fingerprint = ToolFingerprint(scoop_widths_mm=self.smap.widths, cup_width_mm=self.p('gripper.cup_width_mm'),
                                       tolerance_mm=self.p('gripper.fingerprint_tolerance_mm'))
-        self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale, fingerprint=fingerprint)
+        self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale, fingerprint=fingerprint,
+                              max_returns=int(self.p('dosing.max_returns')),
+                              zero_drift_limit_n=float(self.p('scale.zero_drift_limit_n')))
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name='process-run')
         self._thread.start()
 
@@ -418,7 +428,7 @@ class ProcessNode(Node):
             with self._order_lock:
                 outcome = self._batch_outcome or 'ERROR'
                 result = RunBatch.Result(
-                    success=outcome == 'DONE', items_done=min(255, len(self.fsm.results)),
+                    success=outcome in ('DONE', 'DONE_UNMEASURED'), items_done=min(255, len(self.fsm.results)),
                     deviations=min(255, len(self.fsm.deviations)), result=outcome,
                     message=self.note or outcome)
                 if outcome == 'ABORTED' and self._batch_cancel.is_set():
@@ -428,7 +438,7 @@ class ProcessNode(Node):
                         time.sleep(0.01)
                 if outcome == 'ABORTED' and handle.is_cancel_requested:
                     handle.canceled()
-                elif outcome in ('DONE', 'DISCARDED'):
+                elif outcome in ('DONE', 'DONE_UNMEASURED', 'DISCARDED'):
                     handle.succeed()  # DISCARDED는 완료된 실행이며 result.success는 false
                 else:
                     handle.abort()
@@ -841,6 +851,7 @@ class ProcessNode(Node):
         fsm = self.fsm
         try:
             self.event('INFO', 'BATCH_START', fsm.spec.product)
+            verify_logged = False      # VERIFY 수치 이벤트는 배치당 한 번 (무효 재계량으로 여러 번 돌 수 있다)
             self._pub_state()
             self._check_batch_interrupt()
             req = fsm.start()
@@ -873,6 +884,11 @@ class ProcessNode(Node):
                 nxt = fsm.on_result(req, res)
                 self._after(step, req, res)
                 self._drain()
+                if step == 'VERIFY' and fsm.verify_detail and not verify_logged:
+                    # ② 폐지(9/22) 뒤에도 회계 수치는 남긴다. 판정은 ① 만 하지만, 끈 것이
+                    # 「배치 기록 교차검증」이라 무엇을 포기했는지 감사 추적에서 보여야 한다.
+                    verify_logged = True
+                    self.event('INFO', 'VERIFY', fsm.verify_detail)
                 self.event('INFO', 'STEP', f'{step} → {fsm.state}')
                 req = nxt
             self._check_batch_interrupt()
@@ -901,6 +917,10 @@ class ProcessNode(Node):
                         self.note = 'RunBatch 취소 — 배치 자동 재개 없음'
                     self._batch_outcome = (fsm.state if fsm.state in ('DONE', 'DISCARDED', 'ABORTED')
                                            else 'ERROR')
+                    if self._batch_outcome == 'DONE' and fsm.verify_unmeasured:
+                        # 완료품이지만 **최종 순량을 모른다** — QA 가 값 없이 승인했다 (#213).
+                        # `result` 는 문자열 필드라 값을 늘려도 계약 변경이 아니다.
+                        self._batch_outcome = 'DONE_UNMEASURED'
                     self._close_attempt('ABORTED')
                     self._drain()
                     self.event('INFO', 'BATCH_END', f'{fsm.mode} / {fsm.state}')
@@ -1023,13 +1043,30 @@ class ProcessNode(Node):
         m.batch_id, m.material_id = self.batch_id, r.material_id
         m.target_g, m.actual_g = float(r.target_g), float(r.actual_g)
         m.error_pct = (r.actual_g - r.target_g) / r.target_g * 100.0 if r.target_g else 0.0
-        # DispenseResult 는 OK/UNDER/OVER 뿐이라 QA 승인된 'INVALID' 는 담을 곳이 없다 → OK 로 떨어진다 (I-008)
-        m.verdict = getattr(DispenseResult, r.verdict or 'OK', DispenseResult.OK)
+        # DispenseResult 는 OK/UNDER/OVER 뿐이라 QA 승인된 'INVALID' 는 담을 곳이 없다 (I-008 · #108).
+        # ⚠️ 빈 verdict 를 'OK' 로 떨어뜨리지 않는다 — `decide()` 를 못 거친 원료(계량 무효 뒤 QA
+        # 승인, 첫 사이클 TIMEOUT 등)가 **목표 100 g · 실제 0 g · 오차 −100 % 인데 판정 OK** 로
+        # 나가던 구멍이었다. 미측정분은 `actual_g` 에 안 들어가 실제보다 작으므로, 같은 규칙으로
+        # 다시 매기면 UNDER 가 된다. 「모르는 것을 OK」 대신 **「확인 안 된 것은 미달」**로 보고한다.
+        # 원료가 다음 사이클로 넘어갔다는 것 자체가 직전 `decide()` 에서 허용오차 밖이었다는 뜻이라
+        # 이 되매김은 항상 OK 가 아니다. target 0 은 `error_pct` 와 같은 방식으로 막는다.
+        fallback = verdict_of(r.target_g, r.actual_g, r.tol_pct)[0] if r.target_g else 'OK'
+        m.verdict = getattr(DispenseResult, r.verdict or fallback, DispenseResult.OK)
         m.attempts = min(255, int(r.attempts))
         m.duration_s = max(0.0, self._now() - self._item_t0) if self._item_t0 else 0.0
         self._item_t0 = 0.0
         self._last_result = deepcopy(m)
         self.pub_result.publish(m)
+        if r.unmeasured:
+            # 계량이 무효였던 사이클은 `decide()` 를 못 거쳐 `ItemRun.verdict` 가 빈 문자열이고,
+            # 열거값에 「모름」이 없어 위에서 **UNDER 로 되매겨 나간다** (#108 INVALID 상수 전까지).
+            # #213 결정 3 이 WEIGH_RESIDUAL 무효를 QA 로 보내면서 **이 경로가 처음으로 실제로 밟힌다**
+            # (그 전에는 ERROR 로 끝나 여기까지 오지 못했다). UNDER 는 「모자랐다」지 「모른다」가
+            # 아니므로 그 차이를 이벤트로 남긴다 — `record_node` 가 배치 기록에 넣는다.
+            self.event('WARN', 'DISPENSE_UNMEASURED',
+                       f'{r.material_id}: 계량 무효 {r.unmeasured}회로 투입량 불확실 — '
+                       f'actual_g {m.actual_g:.1f} 은 미측정분이 빠진 값이라 실제보다 작고, '
+                       f'verdict 는 「모름」을 담을 열거값이 없어 UNDER 로 보고된다 (#108)')
 
     def _close_attempt(self, outcome: str):
         a, self._attempt = self._attempt, None

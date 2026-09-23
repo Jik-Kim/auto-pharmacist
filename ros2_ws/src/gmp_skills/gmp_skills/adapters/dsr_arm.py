@@ -17,7 +17,7 @@ import time
 import rclpy
 import DR_init
 
-from gmp_skills.core.transfer import joints_match, pose_matches
+from gmp_skills.core.transfer import joints_match, pose_matches, vector6
 
 
 class DsrArm:
@@ -184,6 +184,36 @@ class DsrArm:
         return self._require_ok(
             'movesx', self.R.movesx([self.posx(*p) for p in poses], vel=self.vel * vel_scale,
                                     acc=self.acc * vel_scale))
+
+    def transform_pose(self, pose, *, to_world):
+        """BASE/WORLD 변환 조회도 단일 워커의 제한 시간 안에서 수행한다."""
+        response = self._bounded_query(
+            'coord_transform', pos_in=list(vector6(pose, '변환 입력')),
+            ref_in=self.R.DR_BASE if to_world else self.R.DR_WORLD,
+            ref_out=self.R.DR_WORLD if to_world else self.R.DR_BASE)
+        return list(vector6(response.conv_posx, '변환 결과'))
+
+    def movesx_cancellable(self, poses, vel, acc, cancel_requested, timeout_s, observer=None):
+        points = [vector6(p, 'spline 경유점') for p in poses]
+        if not points or not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise ValueError('spline 경유점과 양수 제한 시간이 필요하다')
+        if any(len(v) != 2 or any(not math.isfinite(x) or x <= 0 for x in v)
+               for v in (vel, acc)):
+            raise ValueError('spline 속도/가속도는 양수 2개여야 한다')
+        if cancel_requested():
+            raise RuntimeError('cancelled')
+        try:
+            self._require_ok('amovesx', self.R.amovesx(
+                [self.posx(*p) for p in points], vel=list(vel), acc=list(acc),
+                ref=self.R.DR_BASE, mod=self.R.DR_MV_MOD_ABS))
+        except Exception:
+            self.stop_motion()
+            raise
+        self.wait_motion_cancellable(
+            cancel_requested, timeout_s, observer=observer,
+            target_reached=lambda: pose_matches(
+                self.current_posx(), points[-1], self.pose_xyz_tolerance,
+                self.pose_rotation_tolerance))
 
     def amove_periodic(self, amp, period, atime, repeat, ref_tool=True):
         return self._require_ok(

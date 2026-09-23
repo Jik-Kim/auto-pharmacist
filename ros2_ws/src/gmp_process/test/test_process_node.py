@@ -29,6 +29,7 @@ from gmp_interfaces.srv import SubmitOrder                    # noqa: E402
 
 from fake_skill_node import FakeSkillNode                     # noqa: E402
 from gmp_process.nodes.process_node import ProcessNode        # noqa: E402
+from gmp_process.core.process_fsm import ItemRun             # noqa: E402
 
 STATIONS = os.path.join(os.path.dirname(__file__), '..', '..', 'gmp_bringup', 'params', 'stations.yaml')
 
@@ -260,7 +261,9 @@ def test_qa_rejects_wrong_deviation_id_then_approves(cell):
     # 붓을 때 스쿱 투입량의 2배가 약통에 들어간다(흘림·편향 모사). 스쿱 계량(WEIGH_SCOOP·WEIGH_RESIDUAL)은
     # 정상으로 보이므로 배치 끝 VERIFY ① 이 BATCH_OUT_OF_SPEC 으로 잡는다 (D-22 ①). 깊이 계약(v1.5) 뒤로는
     # 정상 스쿱 경로에서 OVERFILL 이 나지 않는다 — 스쿱량이 남은 양+허용오차를 넘으면 붓기 전에 반환하기 때문.
-    fake.transfer = 2.0
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), proc.fsm.state
 
@@ -364,7 +367,9 @@ def test_enter_during_qa_wait_keeps_qa_open(cell):
     """
     from gmp_interfaces.srv import InterlockRequest
     proc, fake, col = cell
-    fake.transfer = 2.0
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION')
     dev = proc._pending_dev()
@@ -396,7 +401,9 @@ def test_forced_deviation_is_not_auto_recovered(cell):
 def test_qa_rejects_invalid_decision_value(cell):
     """승인(1)·폐기(2) 외의 판정값은 거부한다 — 0 을 보냈다고 폐기로 흘러가면 안 된다 (리뷰 3번)."""
     proc, fake, col = cell
-    fake.transfer = 2.0
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION')
     dev = proc._pending_dev()
@@ -454,6 +461,43 @@ def test_refill_wait_puts_reason_at_head_of_note(cell):
     assert _lock(col, InterlockRequest.Request.EXIT).granted
     assert _wait_done(proc) == 'DONE', f'{proc.fsm.state} / {proc.note}'
     assert proc.note == '', f'대기가 끝나면 사유를 내린다: {proc.note!r}'
+
+
+def test_t6a_missing_scoop_retries_grip_then_forced(cell):
+    """T6(a) 고의 장애 — 스쿱을 거치대에서 빼둔 채 시작하면 파지가 계속 실패한다 (#111).
+
+    절차서(`demo_run_procedure.md` T6)는 "`GRIP_FAIL` 자동 재시도" 까지만 적고 결말이 없다.
+    실제로는 **3회 RETRY 뒤 4회째가 FORCED 로 올라가 ERROR 로 끝난다** — 사람이 스쿱을 꽂기
+    전에는 어떤 재시도도 성공할 수 없으므로 무한 재시도를 하지 않는 것이 맞다.
+    """
+    proc, fake, col = cell
+    fake.missing_scoop = True
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_done(proc) == 'ERROR', _why(proc)
+    kinds = [(d['kind'], d['action']) for d in proc.fsm.deviations]
+    assert kinds == [('GRIP_FAIL', 'RETRY')] * 3 + [('GRIP_FAIL', 'FORCED')], kinds
+    assert all(d.kind == Deviation.GRIP_FAIL for d in col.devs), [d.kind for d in col.devs]
+
+
+def test_t6c_over_scoop_returns_to_material_then_rescoops_shallower(cell):
+    """T6(c) 고의 장애 — 원료를 수북이 담아 초과 스쿱을 유도한다 (#111).
+
+    **일탈이 뜨지 않는다.** 초과는 붓기 전에 `RETURN_MATERIAL` 로 되돌리고 깊이를 줄여 다시 푸는
+    정상 경로다 (v1.3 뒤 `OVERFILL` 이 정상 경로에서 안 나오는 것과 같은 이유). 절차서 T6 행의
+    "각각 `deviation` 이 뜨고 기록에 남는다" 는 (c)에는 해당하지 않는다 — 기록은
+    `ScoopCycle.outcome = RETURNED` 로 남는다.
+    """
+    proc, fake, col = cell
+    fake.scoop_gain = 3.0                          # 공칭 40 g 자리에 120 g — 남은 목표 + 허용오차 초과
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_done(proc) == 'DONE', _why(proc)
+    assert proc.fsm.deviations == [], proc.fsm.deviations
+    assert any(c.startswith('return_material:') for c in fake.calls), fake.calls
+    outcomes = [c.outcome for c in col.cycles]
+    assert ScoopCycle.RETURNED in outcomes and ScoopCycle.COMPLETE in outcomes, outcomes
+    # 반환은 붓기 시도를 소모하지 않는다 — returns 로 따로 센다
+    r = proc.fsm.results[0]
+    assert r.returns >= 1 and r.attempts == 1, (r.returns, r.attempts)
 
 
 def test_scoop_skill_failure_does_not_lose_scoop_cycle(cell):
@@ -514,6 +558,41 @@ def test_scoop_cycle_attempt_numbers_are_unique_per_material(cell):
 
 
 # ── NUDGE 게이트 (추가 기능 7 · D-21) ────────────────────────────────────
+def test_213_투입량_불명은_OK_가_아니라_UNDER_로_나간다(cell):
+    """#213·#108 — `decide()` 를 못 거친 원료가 verdict=OK 로 발행되던 구멍.
+
+    계량이 무효라 QA 로 갔다가 승인된 원료는 `ItemRun.verdict` 가 빈 문자열이다.
+    종전 `r.verdict or 'OK'` 는 이걸 **OK 로** 떨어뜨렸다 — 목표 100 g·실제 0 g·
+    오차 −100 % 인데 판정만 OK 라, 판정 필드로 집계하는 소비자는 성공으로 센다.
+
+    `DispenseResult` 에 「모름」을 담을 열거값이 없으므로(#108 INVALID 상수 전까지)
+    **보수적으로 미달로 보고한다** — 미측정분은 actual_g 에 안 들어가 실제보다 작다.
+    계량 경로 전체를 태우지 않고 발행 함수만 직접 부른다 — fake_skill_node 에 무효
+    손잡이를 더하면 test/t6-fault-injection 과 충돌한다.
+    """
+    proc, _fake, col = cell
+    proc.batch_id = 'B-테스트'
+
+    unmeasured = ItemRun(material_id='A', target_g=100.0, tol_pct=5.0, unmeasured=1)
+    proc._publish_result(unmeasured)                 # verdict '' · actual 0.0
+    assert _wait_until(lambda: len(col.results) == 1), '발행이 안 됐다'
+    m = col.results[0]
+    assert (m.verdict, m.actual_g) == (DispenseResult.UNDER, 0.0), m.verdict
+    assert round(m.error_pct) == -100, m.error_pct
+
+    # 불확실성은 이벤트로도 남는다 — record_node 가 배치 기록에 넣는다
+    assert _wait_until(lambda: any(e.code == 'DISPENSE_UNMEASURED' for e in col.events))
+    warn = [e for e in col.events if e.code == 'DISPENSE_UNMEASURED'][-1]
+    assert warn.level == CellEvent.WARN and '불확실' in warn.text, warn.text
+
+    # 대조군 — 정상 원료는 그대로 OK 이고 경고도 없다
+    ok = ItemRun(material_id='B', target_g=100.0, tol_pct=5.0, actual_g=98.0, verdict='OK')
+    proc._publish_result(ok)
+    assert _wait_until(lambda: len(col.results) == 2)
+    assert col.results[1].verdict == DispenseResult.OK
+    assert len([e for e in col.events if e.code == 'DISPENSE_UNMEASURED']) == 1
+
+
 def _wait_until(fn, timeout=20.0):
     t0 = time.time()
     while time.time() - t0 < timeout:
@@ -583,7 +662,9 @@ def test_two_nudges_inside_one_skill_cancel_out(cell):
 def test_nudge_while_qa_pending_keeps_qa_open(cell):
     """판정 대기 중에는 mode 를 덮지 않는다 — 덮으면 _srv_qa 가 영영 거부한다 (인터락과 같은 함정)."""
     proc, fake, col = cell
-    fake.transfer = 2.0
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION')
     dev = proc._pending_dev()
@@ -745,7 +826,9 @@ def test_discarded_batch_also_parks_at_nudge_wait(cell):
     """폐기도 세트의 끝 — reject_bin 뒤 nudge_wait 에서 기다리고, NUDGE 뒤 상태는 DISCARDED 로 남는다 (record_node 가 본다)."""
     proc, fake, col = cell
     fake.attendant = False
-    fake.transfer = 2.0                            # 약통에 2배 → VERIFY ① BATCH_OUT_OF_SPEC → QA
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), _why(proc)
     dev = proc._pending_dev()
@@ -781,7 +864,9 @@ def test_enter_during_nudge_wait_goes_to_safe_pose(cell):
 def test_shutdown_during_qa_wait_ends_the_batch_via_cancellation(cell):
     """QA 판정 대기 중 종료는 '거부(DISCARDED)'를 지어내지 않는다 — BatchCancelled 로 명확히 취소된다."""
     proc, fake, col = cell
-    fake.transfer = 2.0                            # 약통에 2배 → VERIFY ① BATCH_OUT_OF_SPEC → QA
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), _why(proc)
     n_devs = len(proc.fsm.deviations)
@@ -860,9 +945,16 @@ def test_safety_stop_skips_force_limit_retry(cell):
 
 
 def test_safety_stop_during_qa_wait_ends_batch(cell):
-    """QA 판정을 기다리는 중에 안전 정지가 오면 판정을 기다리지 않고 끝낸다."""
+    """QA 판정을 기다리는 중에 안전 정지가 오면 판정을 기다리지 않고 끝낸다.
+
+    종전 주석은 이 시험이 `과투입 → OVERFILL` 을 쓴다고 적었으나 **사실이 아니었다** —
+    `WEIGH_SCOOP` 의 반환 가드(`scooped > remaining + target×tol/100`)가 과투입을 먼저
+    막으므로 OVERFILL 까지 못 간다. 실제로 걸리던 것은 VERIFY ① BATCH_OUT_OF_SPEC 이다.
+    """
     proc, fake, col = cell
-    fake.transfer = 2.0                              # 과투입 → OVERFILL → QA 대기
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+                                                   # (종전 transfer=2.0 과 같은 결과다. transfer>1 은 스쿱
+                                                   #  내용물을 음수로 만들어 클램프 제거 뒤에는 못 쓴다)
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), _why(proc)
     fake.safety_stop('collision while paused')
@@ -912,7 +1004,7 @@ def test_late_recovery_event_cannot_clear_new_safety_stop(cell):
     import json
     proc, fake, col = cell
     fake.safety_stop('start', origin='recovery_request', request_id='old', operator_id='op')
-    assert _wait_until(lambda: proc._safety_events.request == ('old', 'op'))
+    assert _wait_until(lambda: proc._safety_events.request_id == 'old')
     old_revision = fake.safety_revision
     fake.safety_stop('new alarm')
     assert _wait_until(lambda: proc._safety_stop_reason == 'new alarm')

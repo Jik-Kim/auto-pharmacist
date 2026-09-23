@@ -57,3 +57,30 @@ transfers:
     exit_posj: [9.34, 20.54, 116.30, 12.88, -47.59, 81.16]
     waypoints_posj:
       - *nudge_wait_at        # 주신 nudge_wait AT 관절각으로 직접 도착
+
+# TW m0609_tw_scooping.drl 원료 A만 검증. B/C로 자동 복제하지 않는다.
+scooping:
+  A:
+    # 근사 오프셋으로 mid 끝 Z=48.6, 실측 54~55와 불일치. 보정 전 실행 금지.
+    calibrated: false
+    reference_pose_base: [344.0, -298.0, 200.0, 90.0, -180.0, -90.0]
+    tip_offset_world_mm: [0.0, -120.0, -20.0]
+    reference_surface_world_z_mm: 72.5  # 70~75의 임시 중간값, 실측 보정 필요
+    material_bottom_world_z_mm: 50.0
+    clearance_mm: 5.0  # 실측 4~5 중 보수적 여유, 실제 경로 검증 필요
+    reference_gross_g: 100.0
+    empty_scoop_g: 35.0
+    min_fraction: 0.15  # 현행 dosing.min_fraction과 같아야 한다
+    waypoints_base:
+      - [344.0, -291.0, 203.0, 90.0, 124.54, -90.0]  # enter
+      - [344.0, -320.0, 165.0, 90.0, 128.18, -90.0]  # start
+      - [344.0, -332.42, 134.0, 90.0, 146.0, -90.0]   # tilt
+      - [344.0, -342.63, 116.0, 90.0, 155.82, -90.0] # mid
+      - [343.5, -333.31, 117.57, 0.0, 178.25, -180.0] # end
+    shake_base: [345.02, -325.63, 149.68, 90.0, -155.0, -90.0]
+    velocity: [250.0, 80.625]
+    acceleration: [1000.0, 322.5]
+    shake_amp: [15.0, 15.0, 0.0, 0.0, 0.0, 0.0]
+    shake_period: [0.4, 0.5, 0.0, 0.0, 0.0, 0.0]
+    shake_atime: 0.5
+    shake_repeat: 3

@@ -1,8 +1,9 @@
 """벤더 원본을 유지하고 DSR 감도 조회·실물 RG2 상태 발행 확장을 선택한다."""
 import importlib.util
 import os
+from pathlib import Path
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 from launch import LaunchDescription
 from launch.conditions import IfCondition
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PythonExpression
@@ -38,6 +39,7 @@ def generate_launch_description():
         package='gmp_skills', executable='rg2_status_driver',
         name='OnRobotRGControllerServer', namespace=LaunchConfiguration('name'),
         output='screen',
+        additional_env={'PYTHONPATH': _gripper_pythonpath()},
         condition=IfCondition(PythonExpression(["'", LaunchConfiguration('mode'), "' == 'real'"])),
         # offset=5는 벤더 계승값이며 현재 서버는 장치에 쓰지 않는다.
         # 실제 offset은 /onrobot/status.gfof로 읽는다(9/20 실측 2.0 mm).
@@ -49,6 +51,24 @@ def generate_launch_description():
     return LaunchDescription(actions)
 
 
+<<<<<<< HEAD
+=======
+def _gripper_pythonpath():
+    """벤더 develop 설치의 egg-link를 드라이버 프로세스에만 반영한다."""
+    prefix = Path(get_package_prefix('onrobot_rg_control'))
+    paths = []
+    for link in sorted(prefix.glob('lib/python*/site-packages/onrobot*rg*control*.egg-link')):
+        lines = link.read_text().splitlines()
+        if not lines:
+            continue
+        target = (link.parent / lines[0]).resolve()
+        if (target / 'onrobot_rg_control' / 'OnRobotRGControllerServer.py').is_file():
+            paths.append(str(target))
+    # 일반 설치는 기존 PYTHONPATH를 그대로 사용한다. 임시 venv나 고정 홈 경로는 추가하지 않는다.
+    return os.pathsep.join(paths + [os.environ.get('PYTHONPATH', '')])
+
+
+>>>>>>> 9b1fc970137eefcbc5de3009df176c2b84bf04fc
 def _control_node():
     """벤더와 같은 하드웨어·파라미터를 쓰고 컨트롤러 플러그인 종류만 덮어쓴다."""
     xacro = os.path.join(get_package_share_directory('m0609_rg2_bringup'),
@@ -69,7 +89,12 @@ def _control_node():
             {'update_rate': 100},
             os.path.join(get_package_share_directory('dsr_controller2'),
                          'config', 'dsr_controller2.yaml'),
+<<<<<<< HEAD
             # 일반 dict의 /** 범위 대신 벤더와 같은 controller_manager 범위로 덮어쓴다.
+=======
+            # 벤더의 /**/controller_manager와 같은 범위로 type만 덮어쓴다.
+            # 일반 dict는 /** 범위가 되어 더 구체적인 벤더 설정에 밀린다.
+>>>>>>> 9b1fc970137eefcbc5de3009df176c2b84bf04fc
             os.path.join(get_package_share_directory('gmp_bringup'),
                          'params', 'dsr_controller_override.yaml'),
         ],

@@ -207,7 +207,7 @@ def test_event_can_resolve_matching_uncertain_request(node):
     req = node.safety_recovery.begin('admin', 5, True, 'B1', 1)
     node.safety_recovery.finish(req, None)
     node._on_event(Message(code='ROBOT_SAFETY_RECOVERY', level=0, batch_id='', text=json.dumps(
-        dict(request_id=req['request_id'], operator_id='admin', success=True,
+        dict(request_id=req['request_id'], operator_id='other', success=True,
              manual_required=False, robot_state=1, message='STANDBY'))))
     assert node.safety_recovery.phase == 'recovered'
     assert not node.act_batch.calls

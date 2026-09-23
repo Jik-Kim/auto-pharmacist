@@ -26,18 +26,17 @@ def test_timeout_after_max_attempts():
 
 
 def test_invalid_then_deviation():
-    assert decide(100, 0, 5, 1, False, 0, CFG).action == 'SCOOP'
-    assert decide(100, 0, 5, 1, False, 1, CFG).kind == 'WEIGH_INVALID'
+    # max_invalid_retries=2 → 재시도 2회까지는 다시 재고 3회째 무효에서 일탈 (#213 결정 1)
+    assert decide(100, 0, 5, 1, False, 1, CFG).action == 'SCOOP'
+    assert decide(100, 0, 5, 1, False, 2, CFG).action == 'SCOOP'
+    assert decide(100, 0, 5, 1, False, 3, CFG).kind == 'WEIGH_INVALID'
 
 
-def test_scale_tare_and_resolution():
-    m = WeightModel(ScaleConfig(method='workpiece', offset_g=0.0, min_resolvable_g=19.0, max_std_g=5.0))
+def test_scale_tare_and_reading():
+    m = WeightModel(ScaleConfig(method='workpiece', offset_g=0.0, max_std_g=5.0))
     m.set_tare(m.raw_to_g(0.05))            # 50 g 용기
     gross, tare, net, std, valid = m.reading(0.08, 0.001, True)
     assert abs(net - 30.0) < 1e-6 and valid
-    assert m.resolvable(100, 5.0) is False   # ±5 g 폭은 3σ 19 g 로 못 가른다 (Q-11)
-    assert m.resolvable(100, 18.9) is False
-    assert m.resolvable(100, 19.0)
 
 
 def test_calib_reads_both_methods_and_estimates_update_interval(tmp_path):
@@ -116,29 +115,8 @@ def test_rezero_csv_reproduces_reference_and_defaults():
 
     cfg = ScaleConfig()
     assert cfg.method == doc['method'] and cfg.gain == 1.0 and cfg.offset_g == 0.0   # 값은 common.yaml 이 넣는다
-    assert cfg.min_resolvable_g == ref['min_resolvable_g'] >= s20['three_sigma_g']   # 실측 3σ 를 덮는다
     assert cfg.max_std_g == ref['max_std_g'] >= s20['within_trial_sigma_p95_g']      # 정상 계량이 invalid 로 떨어지지 않게
     assert abs(round((fit['gain'] + 1.0279) / 2, 2) - ref['gain']) < 1e-9            # scoop_1 3점과의 교차 검증값
-
-
-def test_resolvable_covers_every_recipe():
-    """9/21 실측 분해능으로 레시피 A·B·C 를 전부 판정할 수 있어야 한다 — C 는 경계다.
-
-    ⚠️ resolvable() 은 **런타임에서 호출되지 않는다** (호출처는 이 파일뿐, 9/21 전수 확인).
-    "이 저울로 그 목표를 가를 수 있는가" 라는 물리적 사실을 고정하는 테스트이지, 코드가 그렇게
-    판정한다는 뜻이 아니다. 실제 합격 판정은 verdict_of() 가 분해능과 무관하게 한다.
-    min_resolvable_g 의 유일한 런타임 용도는 process_fsm 의 VERIFY ② 이고 성격이 다르다 —
-    config/scale_reference.yaml 의 verify_mismatch 절 참조.
-    """
-    import pathlib
-    import yaml
-    root = pathlib.Path(__file__).resolve().parent.parent
-    ref = yaml.safe_load((root / 'config' / 'scale_reference.yaml').read_text())['tool_force_calibration']
-    m = WeightModel(ScaleConfig(min_resolvable_g=ref['min_resolvable_g']))
-    for target, key in ((200.0, 'A_200g_tol5'), (150.0, 'B_150g_tol5'), (100.0, 'C_100g_tol5')):
-        assert m.resolvable(target, 5.0), f'{target:g} g ±5 % 를 못 가른다'
-        assert abs(target * 0.05 - ref['resolvable'][key]) < 1e-9
-    assert not m.resolvable(99.0, 5.0)        # C 가 경계 — 목표가 조금만 낮아도 못 가른다
 
 
 def test_offset_cancels_out_in_net_weight():
@@ -164,3 +142,48 @@ def test_offset_cancels_out_in_net_weight():
     assert max(nets_b) - min(nets_b) < 1e-9
     assert abs(nets_a[0] - nets_b[0]) < 1e-9  # 두 경로가 같은 값을 준다
     assert abs(nets_a[0] - (raw_gross - raw_tare) * -1.0 / 9.80665 * 1000 * 1.03) < 1e-9   # 남는 것은 gain 뿐
+
+
+def test_fit_oscillation_removes_slow_swing():
+    """느린 진동이 실린 표본에서 상수항을 뽑는다 — 단순 평균보다 참값에 가깝다 (9/22)."""
+    import math
+    from gmp_dosing.core.scale import fit_oscillation
+    s = [100.0 + 30.0 * math.sin(2 * math.pi * 0.82 * i / 15.0) for i in range(32)]
+    value, resid, hf, period = fit_oscillation(s, 0.82)
+    assert abs(value - 100.0) < 0.5          # 참값 복원
+    assert abs(sum(s) / len(s) - 100.0) > 2  # 단순 평균은 창이 정수배가 아니라 치우친다
+    assert 14.0 <= period <= 16.0
+    assert resid < 0.5
+
+
+def test_fit_oscillation_guard_falls_back_on_plain_noise():
+    """⚠️ 진동이 없으면 적합하지 않는다 — 안 그러면 잡음을 진동으로 오인해 값이 나빠진다.
+
+    9/22 전체 회귀에서 무조건 적용하면 측정 17건 중 10건이 악화하고 전체 25 % 나빠졌다.
+    가드(residual ≤ apply_ratio × 표본 σ) 로 적용률을 11 % 로 낮추니 전체 -15.1 % 가 됐다.
+    """
+    import random
+    from gmp_dosing.core.scale import fit_oscillation
+    random.seed(1)
+    s = [100.0 + random.gauss(0, 6) for _ in range(32)]
+    value, resid, hf, period = fit_oscillation(s, 0.82)
+    assert period == 0.0                     # 적합을 안 썼다는 표시
+    assert value == sum(s) / len(s)          # 단순 평균 그대로
+    assert fit_oscillation(s, 0.82, apply_ratio=0)[3] == 0.0   # 가드를 꺼도 단순 평균
+
+
+def test_reading_hf_gate_catches_load_change_but_passes_oscillation():
+    """무결성 게이트는 '재는 중 조작' 만 잡고 느린 진동은 통과시킨다 (9/22 실측 분리).
+
+    오염 고주파 σ 10.57·12.26·26.45  vs  양성 최대 8.54 — 임계 9.5 가 그 사이다.
+    정확도 게이트(max_std_g)와 다른 것을 잡으므로 둘 다 필요하다.
+    """
+    from gmp_dosing.core.scale import ScaleConfig, WeightModel
+    m = WeightModel(ScaleConfig(method='workpiece', gain=1.0, offset_g=0.0,
+                                max_std_g=8.0, max_hf_std_g=9.5))
+    # 진동은 크지만 고주파는 작다 → 통과
+    assert m.reading(0.100, 0.005, True, raw_hf_std=0.006)[4] is True
+    # 재는 중 하중이 바뀌어 고주파가 튀었다 → 거부
+    assert m.reading(0.100, 0.005, True, raw_hf_std=0.012)[4] is False
+    # hf 를 안 주면 기존 동작 그대로 (하위호환)
+    assert m.reading(0.100, 0.005, True)[4] is True

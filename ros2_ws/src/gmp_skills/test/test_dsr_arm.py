@@ -728,6 +728,7 @@ def test_virtual_self_check_does_not_call_controller():
     arm._bounded_call = lambda *_: pytest.fail('virtual에서는 실물 감도를 조회하지 않는다')
     ok, detail = arm.self_check('tool', 'tcp', 50.0)
     assert ok and '생략' in detail
+<<<<<<< HEAD
 
 
 def test_contact_stop_waits_for_idle_without_requiring_original_target():
@@ -772,3 +773,5 @@ def test_cancel_wins_over_contact_stop():
         arm.wait_motion_cancellable(lambda: cancelled[0], 1.0, observer=observe,
                                     stop_requested=lambda: True)
     assert stopped == [True]
+=======
+>>>>>>> 9b1fc970137eefcbc5de3009df176c2b84bf04fc

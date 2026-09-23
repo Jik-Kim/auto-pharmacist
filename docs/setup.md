@@ -136,7 +136,7 @@ ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거�
 
 스테이션 티칭과 `stations.yaml` 관리는 조장·A 담당이다. process는 `station_id`·`approach` 계약만 사용하며, 파지 좌표 연결은 C 담당 작업이 아니다.
 
-- `_carry()`와 용기 계량은 동일한 `workbench.posx`를 AT로 사용한다. 용기 계량은 ABOVE(Z=200), 스쿱 계량은 대응 `material_N.posx`다.
+- `_carry()`와 용기 계량은 동일한 `workbench.posx`를 AT로 사용한다. 용기 계량은 ABOVE(Z=180 = AT 130 + `approach_mm` 50, 107행과 같음), 스쿱 계량은 대응 `material_N.posx`다.
 - 초과 스쿱 반환·재시도와 투입량 기록 분리는 공정 패키지에 함께 반영했다. 새 `ReturnMaterial` Action이 있으므로 사용자는 가상·실물 검증 전에 인터페이스와 호출 패키지를 다시 빌드해야 한다.
 - 9/21 원료 A/B/C 반환 시작 posx·끝 posx/posj 입력 완료. 끝 이동은 `return_end_posj` 관절 이동(취소·도착 확인 포함)을 사용하고 시작점으로 복귀하지 않는다. 끝 posx는 참고용이다. 관절 보간 중 스쿱 궤적·낙하·간섭 검증은 별도다.
 - TODO([A]): 반환 끝→재스쿱 경로는 스쿱 모션 구현 시 함께 연결한다. 현재 기본 Scoop 접근을 이 경로의 검증으로 간주하지 않는다.
@@ -186,7 +186,7 @@ ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거�
 
 ```bash
 source tools/env.sh
-export PYTHONPATH="/tmp/gmp-g2-venv/lib/python3.12/site-packages:/home/jonny/rokey_proj/Automation/ws_cobot_pjt/ws_dsr/build/onrobot_rg_control:$PYTHONPATH"
+export PYTHONPATH="/tmp/gmp-g2-venv/lib/python3.12/site-packages:<ws_dsr>/build/onrobot_rg_control:$PYTHONPATH"   # <ws_dsr> = 두산 SDK 워크스페이스 경로(사람마다 다름, 예: ~/ws_cobot_pjt/ws_dsr)
 ros2 launch gmp_bringup robot.launch.py mode:=real host:=192.168.1.100 gui:=false
 # 별도 터미널에서 source tools/env.sh 후:
 ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=0.2
@@ -248,7 +248,7 @@ ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=1.0 \
 정지된 개발 환경에서 아래 순서로 설치한다. 실행 중인 컨트롤러는 이 명령으로 재시작하지 않는다.
 
 ```bash
-cd ~/rokey_proj/Automation/auto-pharmacist
+cd <auto-pharmacist 저장소 경로>   # 예: ~/auto-pharmacist
 source tools/env.sh
 cd ros2_ws
 colcon build --symlink-install --packages-select gmp_interfaces gmp_dsr_controller gmp_skills gmp_bringup
@@ -264,3 +264,21 @@ ros2 pkg prefix gmp_bringup
 불일치 시 펜던트 설정과 승인값을 확인하며 프로그램이 값을 변경하지 않는다. 가상에서는 검증 생략을 표시한다.
 서비스·기대값 의미는 `interfaces.md` 8절, 플러그인 제약은 `gmp_dsr_controller/README.md`를 따른다.
 실물 조회와 새 컨트롤러 기동은 별도 검증이 필요하다.
+
+## 높이 기반 스쿠핑 보정·인계 (9/22)
+
+A 구현: `Scoop.depth_fraction` → 접촉 자세로 표면 WORLD Z 계산 → TW spline의 WORLD Z 평행 이동 → 털기 → 계량 위치 복귀. 설정은 `stations.yaml:scooping.A`이며 원본 경로·속도·주기 운동을 기록했다. `calibrated=false`라 현재 실물 이동은 거부한다. 기준 표면72.5와 바닥 여유5는 근삿값이고 제공 오프셋은 계산상 mid=48.6으로 유격 설명에서 추정한54~55와 차이가 있다(직접 실측 아님). 실제 WORLD/BASE 변환과 스쿱 끝 오프셋을 보정한 뒤 활성화 및 사용자 가상/실물 검증이 필요하다. B/C에는 보정 경로가 없어 거부한다.
+
+인계 목록(다른 담당 코드는 수정하지 않음):
+- B `gmp_dosing/core/dosing.py:DosingConfig.scoop_nominal_g`와 C 설정: 원료 A 기준 순량65 g과 통일할 것. 기본40 g을 그대로 사용하면 요청량과 맞지 않는다. 원료별 계수를 다른 원료에 그대로 적용하지 않는다.
+- C `gmp_process/core/process_fsm.py:_scoop` 및 첫 SCOOP 진입: 첫 시도부터 남은 목표/기준 순량을 깊이 비율로 전달할 것. 현재 첫 시도1.0 고정은 작은 레시피를 반영하지 못한다. 큰 목표는 검증 최대 깊이1.0 이내에서 여러 번 계량하며 분할한다.
+- B/C `min_fraction`: A profile 하한0.15와 일치 필요. 하한보다 적은 목표를 조용히 올려 과다 채취하지 말고 별도 처리한다. 무효 계량의 fraction=0 경로는 A에서 거부된다.
+- C 반환 후 재스쿱: 기존 차단은 유지된다. 안전한 연결 경로 검증 전 자동 재시도 가능으로 처리하지 않는다.
+- 기준 순량65 g은 모델 보정값이다. 실제 tare는 기존 WeighHeld 실측값을 유지한다. 내부 contact_pose_base는 Action 필드로 추가하지 않았다.
+
+A 단독으로 가능한 범위는 보정 완료된 원료의 명시적 depth_fraction 실행이다. 레시피 g 기반 자동 분할·보정은 위 B/C 인계 후 가능하다. 새 spline은 ROS 어댑터/컨트롤러에서도 TW 경로와 속도 의미를 확인해야 하며, 원본의 성공을 ROS 구현 검증으로 대체하지 않는다.
+
+
+### 원료 높이 측정 전용 실행 (9/22)
+
+`skill.launch.py height_measure_only:=true`는 보정 활성 여부와 무관하게 기존 check_depth 측정·정상 복귀만 실행한다. 파지/인출 이력·안전 검사는 유지하며 spline/털기는 하지 않는다. 접촉 최초 BASE 자세를 WORLD로 변환하고 기준 자세에서 구한 TCP 로컬 끝 오프셋으로 접촉 지점의 높이를 계산한다. 로그 및 Scoop Result.message의 HEIGHT_MEASUREMENT_ONLY로 전달한다. 실제 스쿠핑을 하지 않았으므로 success=false / ABORTED로 반환한다. 자동 공정과 동시 사용하지 않는 수동 진단 모드다. 약90 mm의 칼라스톤 표면은 위치별 편차가 있으므로 단일 접촉점을 전체 표면 평균으로 취급하지 않는다. 최초 힘 감지 자세는 통신 지연·돌 재배열·끝 이외 부위 접촉의 영향을 받을 수 있다.

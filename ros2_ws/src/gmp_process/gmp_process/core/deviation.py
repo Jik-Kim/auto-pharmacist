@@ -13,8 +13,16 @@ RULES = {
     'MATERIAL_EMPTY':  (0, 'REFILL', 'REFILL'),
     'OVERFILL':        (0, 'QA', 'QA'),
     'TIMEOUT':         (0, 'QA', 'QA'),
-    'WEIGH_INVALID':   (2, 'RETRY', 'QA'),
-    'VERIFY_MISMATCH': (0, 'QA', 'QA'),   # 용기 계량 vs 스쿱 누적 투입량 불일치 — 계측 신뢰성 (D-22 ②)
+    'WEIGH_INVALID':   (0, 'QA', 'QA'),
+    # WEIGH_INVALID 의 재계량은 `max_invalid_retries` 가 전담한다 — 여기 오는 것은 그 상한을
+    # 넘긴 뒤다. 그래서 limit 0(즉시)이다. 종전 (2,'RETRY','QA') 는 재시도를 두 곳에서 세어
+    # 총 횟수가 두 상수의 **합**이 되고 그 합이 어느 설정에도 없었다 (#213 결정 1).
+    # 투입 전 단계(TARE·SCOOP_TARE·WEIGH_SCOOP)는 `_cleanup_then_error` 가 정리 후 FORCED 로
+    # 직접 기록하므로 이 표를 타지 않는다 — 여기 오는 것은 WEIGH_RESIDUAL·VERIFY 뿐이다.
+    # ⚠️ VERIFY_MISMATCH 는 9/22 폐지(사용자·조장 확정) — process_fsm 이 더는 내지 않는다.
+    #    정책 항목은 남긴다: 계약 열거값이 살아 있고, 과거 배치 기록에 이 kind 가 들어 있어
+    #    HMI·DB 가 조회할 때 정책표를 찾는다. 새로 발생하지는 않는다.
+    'VERIFY_MISMATCH': (0, 'QA', 'QA'),   # [폐지] 용기 계량 vs 스쿱 누적 투입량 불일치 (D-22 ②)
     'BATCH_OUT_OF_SPEC': (0, 'QA', 'QA'), # 용기 순량 vs 레시피 총 목표량 불일치 — 제품 규격 판정 (D-22 ①). QA 가 폐기 판단
     'SAFETY_SWITCH':   (1, 'RETRY', 'FORCED'),
     'FORCE_LIMIT':     (1, 'RETRY', 'FORCED'),
