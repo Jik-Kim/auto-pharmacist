@@ -303,13 +303,13 @@ class RosHttpCheck:
         if not any(d.get('decision')=='APPROVED' and d.get('operator_id')==self.qa for d in rec4['deviations']):
             raise CheckFailed('QA 판정자 또는 승인 기록 누락')
         self.report('OVERFILL → QA 승인 → 후속 원료 처리·로그인 판정자 기록')
-        fifth=self.order('verify_mismatch','recipe-03')
-        pending=self.pending(fifth,'VERIFY_MISMATCH')
+        fifth=self.order('batch_out_of_spec','recipe-03')
+        pending=self.pending(fifth,'BATCH_OUT_OF_SPEC')
         before_discard=self.amounts()
         self.decide(fifth,pending,2)
         self.wait('검증 일탈 폐기 기록',lambda:self.record(fifth,'DISCARDED'))
         if self.amounts()!=before_discard: raise CheckFailed('폐기 시 이미 사용한 재고가 복구됨')
-        self.report('VERIFY_MISMATCH → QA 폐기 → 반송 완료 뒤 DISCARDED · 소비 재고 유지')
+        self.report('BATCH_OUT_OF_SPEC → QA 폐기 → 반송 완료 뒤 DISCARDED · 소비 재고 유지')
         before_wrong=self.amounts()
         sixth=self.order('wrong_tool','recipe-02')
         pending=self.pending(sixth,'WRONG_TOOL')
@@ -317,6 +317,34 @@ class RosHttpCheck:
         self.wait('도구 일탈 폐기 기록',lambda:self.record(sixth,'DISCARDED',0))
         if self.amounts()!=before_wrong: raise CheckFailed('미투입 폐기에서 원료가 소비되거나 복구됨')
         self.report('WRONG_TOOL → QA 폐기 · 미사용 예약 해제·원료 소비 없음')
+        # 계량 무효를 QA 가 승인해 투입량을 모르는 채 끝난 배치 (계약 v1.8 INVALID · SOT D-32).
+        kpi_before=self.get('/kpi')
+        seventh=self.order('weigh_invalid')
+        pending=self.pending(seventh,'WEIGH_INVALID')
+        self.decide(seventh,pending,1)
+        rec7=self.wait('미측정 승인 완료 기록',lambda:self.record(seventh,'DONE_UNMEASURED'))
+        invalid=[i for i in rec7['items'] if i.get('verdict')=='INVALID']
+        if len(invalid)!=1: raise CheckFailed(f'INVALID 판정 원료가 1건이 아님: {len(invalid)}')
+        if not any(e.get('code')=='BATCH_UNMEASURED' for e in rec7.get('events',[])):
+            raise CheckFailed('BATCH_UNMEASURED 이벤트가 기록되지 않음')
+        if not any(not w.get('valid') for w in rec7.get('weights',[])):
+            raise CheckFailed('무효 계량(valid=false)이 기록되지 않음')
+        self.report('계량 무효 → QA 승인 → verdict=INVALID·BATCH_UNMEASURED·DONE_UNMEASURED 기록')
+        kpi=self.get('/kpi')
+        if kpi.get('unmeasured_done',0)!=kpi_before.get('unmeasured_done',0)+1:
+            raise CheckFailed('KPI 미측정 승인 완료 건수가 늘지 않음')
+        if kpi.get('batch_success_pct') is None or kpi.get('run_complete_pct') is None:
+            raise CheckFailed('KPI 두 지표(batch_success_pct·run_complete_pct)가 없음')
+        if kpi['run_complete_pct']<kpi['batch_success_pct']-1e-6:
+            raise CheckFailed('완주율이 계량 검증 완료율보다 작음 — 미측정이 합산되지 않음')
+        self.report('KPI 두 지표 — 계량 검증 완료율(DONE만)·미측정 승인 완료·완주율(합)')
+        before_empty=self.amounts()
+        eighth=self.order('material_empty','recipe-02')
+        pending=self.pending(eighth,'MATERIAL_EMPTY')
+        self.decide(eighth,pending,2)
+        self.wait('원료 소진 폐기 기록',lambda:self.record(eighth,'DISCARDED',0))
+        if self.amounts()!=before_empty: raise CheckFailed('미투입 폐기에서 원료가 소비되거나 복구됨')
+        self.report('MATERIAL_EMPTY(kind 5) → QA 폐기 · 원료 소비 없음')
         self.login(self.operator,self.test_password)
         self.height('A',19.9); self.height('B',19.9)
         self.wait('원료2개 높이 부족',lambda:self.blocked(['A','B']))
@@ -369,7 +397,7 @@ class RosHttpCheck:
         if first.encode() not in csv_data or json.loads(json_data).get('batch_id')!=first: raise CheckFailed('CSV/JSON 다운로드 내용 불일치')
         if self.get('/kpi').get('batches',0)<len(self.batches): raise CheckFailed('KPI 배치 집계 누락')
         self.wait('개별 보충 감사 기록',lambda:any(row.get('actor')==self.operator and row.get('action')=='TEST_REFILL' for row in self.get('/audit')))
-        self.report('배치 이력7·KPI·개별 보충 감사 기록·actor 위조 방지·CSV/JSON 다운로드')
+        self.report(f'배치 이력{len(self.batches)}·KPI·개별 보충 감사 기록·actor 위조 방지·CSV/JSON 다운로드')
         summary={'result':'PASS','transport':self.transport,'checks':len(self.passed),'check_details':self.passed,'batches':self.batches,
                  'scope':'actual HMI/record/mock code + HTTP + SQLite; fake process only, no physical robot'}
         print(json.dumps(summary,ensure_ascii=False,indent=2))

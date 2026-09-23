@@ -3,12 +3,23 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
 from types import SimpleNamespace
 
 import pytest
 
 from test_v3_backend import backend, Message, RosStub
+
+INTERFACES = Path(__file__).resolve().parents[2] / 'gmp_interfaces/msg'
+_CONSTANT = re.compile(r'^\s*u?int\d+\s+([A-Z_][A-Z0-9_]*)\s*=\s*(-?\d+)', re.M)
+
+
+def contract_constants(name):
+    """실제 .msg 의 상수. 손으로 적으면 계약이 바뀔 때 스텁만 조용히 어긋난다 —
+    OVERFILL 이 계약 0 인데 스텁 1 인 채로 통과하던 적이 있다(#266 검토)."""
+    text = (INTERFACES / f'{name}.msg').read_text(encoding='utf-8')
+    return {key: int(value) for key, value in _CONSTANT.findall(text)}
 
 
 @pytest.fixture
@@ -17,15 +28,9 @@ def process(backend, monkeypatch):
     monkeypatch.setattr(RosStub, 'create_timer', lambda self, *args: args, raising=False)
     monkeypatch.setattr(RosStub, 'get_logger', lambda self: SimpleNamespace(info=lambda *_: None, warning=lambda *_: None))
     msg = sys.modules['gmp_interfaces.msg']
-    msg.CellEvent.WARN = 1
-    msg.CellEvent.ERROR = 2
-    msg.Deviation.OVERFILL = 1
-    msg.Deviation.VERIFY_MISMATCH = 2
-    msg.Deviation.WRONG_TOOL = 3
-    msg.ScoopCycle.WEIGH_METHOD_WORKPIECE = 0
-    msg.ScoopCycle.COMPLETE = 0
-    msg.DispenseResult.OK = 0
-    msg.DispenseResult.OVER = 1
+    for name in ('CellEvent', 'Deviation', 'DispenseResult', 'ScoopCycle'):
+        for key, value in contract_constants(name).items():
+            setattr(getattr(msg, name), key, value)
     path = Path(__file__).resolve().parents[1] / 'gmp_hmi/nodes/hmi_test_process.py'
     spec = importlib.util.spec_from_file_location('hmi_test_process_under_test', path)
     module = importlib.util.module_from_spec(spec)
