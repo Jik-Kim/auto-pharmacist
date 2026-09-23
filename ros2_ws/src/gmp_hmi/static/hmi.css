@@ -116,11 +116,14 @@ body:has(#loginOverlay:not([hidden]))>.safety-banner{visibility:hidden}.login-ca
  header .connection{gap:6px}
  nav button{min-height:40px;padding:6px 10px}
  .session-button{min-height:44px;padding:8px 12px;font-size:12px}
- /* 버튼 4개(설정·계정 관리·안전 복구·계정)를 2×2 로 — 한 개만 다음 줄로 떨어지지 않게 */
- header .connection{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:100%;align-items:stretch}
- header .connection>.connection-group:first-child{grid-column:1/-1;justify-content:flex-start}
- header .connection>.connection-group+.connection-group{display:contents}
- header .connection .session-button{width:100%}
+ /* 계정(로그아웃) 버튼만 혼자 다음 줄로 떨어지지 않게 상태 표시 줄 오른쪽 끝으로 올린다.
+  * 1줄: [환경·수신 상태 …… 계정] / 2줄: [설정][계정 관리][안전 복구] — 버튼은 제 크기 그대로. */
+ header .connection{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'status session' 'tools tools';gap:8px;width:100%;align-items:center}
+ header .connection>.connection-group:nth-child(1){grid-area:status;min-width:0}
+ header .connection>#utilityButtons{grid-area:tools}
+ header .connection>.connection-group:nth-child(3){grid-area:session}
+ header .connection>.connection-group+.connection-group{padding-left:0;border-left:0}
+ #sessionButton{min-height:34px;padding:6px 10px;font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
 
 /* 휴대폰(≤760px) 기록·통계: 날짜 입력(datetime-local)은 브라우저 최소 폭이 커서 두 칸을 나란히 두면 화면을 넘어
