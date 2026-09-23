@@ -10,7 +10,7 @@
 | T1 | 브링업 | `ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100` | `[skill_node] SELF_CHECK OK` 로그 (툴·TCP·충돌 감도 일치) |
 | T2 | HMI | (T1 에 포함) HMI 창 | 상태 `IDLE`, 그리퍼 폭 표시 |
 | T3 | 사람 | 원료통 A·B·C(판 바깥 아래)와 **각 원료통 아래 전용 스쿱 3개**, **빈 약통을 Pass Box 「빈통」 칸(`passbox_empty`, slots 1)** 에 넣었는지. 완성품은 로봇이 Pass Box 「완성품」 칸(`passbox_done`)에 놓고 QA 가 회수한다 (D-23·D-24). 판 위 매거진·트레이·스쿱랙은 없다 (9/18 폐지). 이후 용기는 사람이 만지지 않는다 (D-18) | — |
-| T4 | HMI | 레시피 `demo_batch` 선택 → 주문 제출 | 상태 `RUNNING` |
+| T4 | HMI | 레시피 `recipe-01`(「레시피 1」) 선택 → 주문 제출 — `demo_batch.yaml` 은 운영 목록에서 삭제됐고 현재 운영 레시피는 `recipe-01`~`03`(9/22 #217) | 상태 `RUNNING` |
 | T5 | — | 자율 운전. **공정 중에는 손대지 않는다** (건드리면 NUDGE 정지, 한 번 더 건드리면 재개 — D-21). 원료 3종이 끝나면 완성품을 Pass Box 「완성품」 칸에 놓고 `nudge_wait` 로 물러나 **PAUSED 로 선다(`NUDGE_WAIT`)** | 원료 3종 `OK` → 상태 `NUDGE_WAIT` |
 | T5' | 사람 | **완성품을 Pass Box 에서 회수하고 로봇을 한 번 건드린다** (D-23 세트 경계). 이 NUDGE 없이는 `DONE` 이 되지 않고 다음 주문도 받지 않는다 | `DONE`, 상태 `IDLE` |
 | T6 | 시연 | 일탈 시나리오: (a) 스쿱을 빼둔 채 시작 → `GRIP_FAIL` 자동 재시도 ×3, **4 회째 FORCED → `ERROR`**(자동 복구 아님) (b) 원료통 비움 → `SCOOP_EMPTY` ×3 뒤 4 회째 action=REFILL → 인터락 보충 → 재개. **기록 kind 는 현재 `SCOOP_EMPTY` 그대로다** — `MATERIAL_EMPTY` 를 내는 코드가 없어(#111) 조장 결정 뒤 kind 가 바뀐다 (c) 초과 스쿱 유도(원료를 수북이) → `RETURN_MATERIAL` 로 원료통에 반환 후 더 얕게 재스쿱 — **일탈이 뜨지 않는 정상 경로**이고 `ScoopCycle.outcome=RETURNED` 로만 남는다. 실물은 반환→재스쿱 연결 경로 구현 전까지 여기서 `ERROR` 로 끝난다(#64). `TIMEOUT` 은 깊이 보정이 수렴하지 않아 `max_returns`(3) 를 넘을 때만 나며 가상에서는 거의 재현되지 않는다(9/22 재현: 공칭 9 배를 줘도 반환 1 회) (d) 배치 끝 VERIFY 규격 이탈 → `BATCH_OUT_OF_SPEC` → HMI QA 판정. `OVERFILL` 은 v1.3 뒤 정상 경로에서 나오지 않는다(초과는 붓기 전에 반환) | (a)(b)(d) 는 `deviation` 이 뜨고 기록에 남는다, (c) 는 `ScoopCycle` 기록으로만 확인 |
@@ -50,5 +50,5 @@ export GMP_HMI_ADMIN_PASSWORD
 HMI를 별도 실행할 때도 위 환경을 설정하고 `ros2 launch gmp_hmi hmi.launch.py`를 사용한다.
 이미 브링업에서 HMI가 실행 중이면 중복 기동하지 않는다.
 운영 레시피는 설치된 `gmp_bringup/params/recipes`에서 읽는다.
-`hmi_comm_test.launch.py`는 도메인 88에서 실행하며 40g 단위 레시피는 시험 전용이다.
+`hmi_comm_test.launch.py`는 도메인 88에서 별도 시험용 레시피 사본(`gmp_hmi/config/test_recipes/v4`)을 쓴다 — 운영 레시피(`recipe-01`~`03`, 9/22 #217 로 40 g/80 g 단위가 등록됨)와 파일이 다를 뿐 "40 g 단위는 시험 전용" 은 아니다.
 실물 허용오차 충족 여부는 G1 측정 결과로 결정한다.
