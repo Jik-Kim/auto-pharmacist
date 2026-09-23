@@ -44,7 +44,7 @@
 | 4 | `TARE` | `MeasureForce` (빈 그리퍼 영점 기준, workbench ABOVE) → `WeighContainer(tare_g=0)` | 빈 용기 풍량 기록. 영점은 VERIFY 직전 대조 기준이 된다 — **같은 자세에서 재야 성립한다** |
 | 5 | `PICK_SCOOP` | `MoveToStation(scoop_N)` → `SetGripper(close, scoop_width)` | `grip_inferred=false` → `Deviation(GRIP_FAIL)` 재시도 ≤ 3 |
 | 6 | `SCOOP_TARE` | **`weigh_scoop`**(빈 스쿱, 든 채로) | 스쿱 풍량 — 원료마다 1회 (D-22) |
-| 7 | `SCOOP` | `Scoop(material_id, depth_fraction)` — 깊이 비율은 v1.5, 실제 Z 변환은 A 실물 뒤 | `contact_detected=false` → `SCOOP_EMPTY` → 재시도, 연속 3회 → `MATERIAL_EMPTY` → 인터락 보충 요청 |
+| 7 | `SCOOP` | `Scoop(material_id, depth_fraction)` — 깊이 비율은 v1.5, 실제 Z 변환은 A 실물 뒤 | `contact_detected=false` → `SCOOP_EMPTY` → 재시도 ×3, 4회째 → `MATERIAL_EMPTY` → 인터락 보충 요청 |
 | 8 | `WEIGH_SCOOP` | `weigh_scoop`(붓기 전) | 퍼낸 양 = gross − 스쿱 풍량. **퍼낸 양 > 남은 목표 + target×tol** 이면 8a 반환, 아니면 9 전량 붓기 — 초과 예방 (1차 폐루프, v1.3) |
 | 8a | `RETURN_MATERIAL` | `ReturnMaterial(material_id)` — `return_start_posx` 직선 → `return_end_posj` 관절, 끝 자세 유지 (v1.5.1) | 성공 → 7 재스쿱 (깊이 = 직전 × 남은량/퍼낸 양, 하한 `min_fraction`), returns ≥ `max_returns`(기본 3 — 붓기 상한 `max_attempts` 와 **분리**돼 있다, #189) → `Deviation(TIMEOUT)`. 실패 → `safe` 후 `ERROR`. **연결 경로 구현 전까지 실물 skill_node 는 후속 Scoop 을 거부한다** |
 | 9 | `POUR` | `Pour(fraction=1.0)` — 전량 붓기, 목적지는 고정 `workbench` | 부분 붓기·`amove_periodic` 털어내기는 폐기 (v1.3). 초과는 8a 가 막는다 |
