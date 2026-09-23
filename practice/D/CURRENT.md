@@ -1,4 +1,4 @@
-# D HMI·기록 현행 상태 (갱신: 2026-09-23 18:20, D 본인 — 안전 복구 팝업 시험 복구)
+# D HMI·기록 현행 상태 (갱신: 2026-09-23 19:40, D 본인 — 시험 레시피 사본 D-33 동기화)
 
 **담당**: aszx4880-star
 
@@ -21,11 +21,13 @@
 | 레이아웃 | `body` 가 `display:flex; height:100dvh; overflow:hidden` — **스크롤은 `main` 안에서만** 일어난다. 기록·통계 탭은 grid 4행 `1fr` 로 카드 3개 하단 정렬 | PR #229 (`hmi.css:1`·`:73`) |
 | 시연 기기 | 로봇 PC 1대 + **휴대폰 브라우저 HMI 기본**, 같은 네트워크(`http://<로봇 PC Wi-Fi IP>:5000`) | PR #259, `docs/demo_run_procedure.md` T0·G6 |
 | ROS 도메인 | 본운영 70, 격리 시험 88 | `docs/demo_run_procedure.md:38` |
-| 통신 검증 기준선 | `tools/verify_ros_http.py` **20 항목 PASS** (실제 DDS, `/hmi_test`). v1.8 `INVALID`·`BATCH_UNMEASURED`·`DONE_UNMEASURED`·KPI 두 지표·`MATERIAL_EMPTY` 포함 | 9/23 실행, PR(이 변경) |
-| 시험 시나리오 | `normal`·`overfill`·`batch_out_of_spec`·`wrong_tool`·`weigh_invalid`·`material_empty` | `gmp_hmi/nodes/hmi_test_process.py` |
+| 통신 검증 기준선 | `tools/verify_ros_http.py` 20 항목. 9/23 옛 레시피(40/80 g)로 **실제 DDS PASS** 했다. D-33 레시피(85/170 g) 기대값으로 바꾼 뒤는 **재실행 전(미검증)**. 시작 재고 `test_initial_g:='[170.0,1000.0,1000.0]'` | PR #266 (옛 값 PASS), PR(이 변경) |
+| 시험 시나리오 | `normal`·`overfill`(과다 배율 `OVERFILL_RATIO` 1.15 — ±10 % 를 넘어야 해서 1.10 에서 올림)·`batch_out_of_spec`·`wrong_tool`·`weigh_invalid`·`material_empty` | `gmp_hmi/nodes/hmi_test_process.py` |
+| 시험 레시피 사본 | `config/test_recipes/v4` = 운영 `gmp_bringup/params/recipes` 와 **같다** — A85/B85/C85 · A170/B85 · A85/B85/C170, ±10 %. `test_v4_recipes.py` 가 운영과 대조(어긋나면 실패). 통신 시험 스쿱 `test_scoop_nominal_g` 85 g | SOT D-33, #271, PR(이 변경) |
 
 ## 열린 과제 (이슈 번호)
 - **G6 휴대폰 리허설** — `body overflow:hidden`(#229) 이 모바일(≤ 760 px)에도 걸린다. 헤더 줄바꿈으로 `main` 이 좁아질 수 있음. 휴대폰에서 스크롤·승인/폐기·안전 복구 버튼을 실제로 눌러 볼 것 (PR #259 G6, **미검증**).
+- **통신 검증 20 항목 재실행** — D-33 레시피로 기대값을 바꿨는데 샌드박스엔 ROS 가 없어 실제 DDS 로 못 돌렸다. 새 launch `test_initial_g:='[170.0,1000.0,1000.0]' item_duration_s:=2.0` 로 한 번 돌려 20 PASS 확인.
 - **#261 실제 `/cell` 확인** — `/hmi_test` DDS 경로는 **9/23 검증 완료**(아래 통신 검증 20 항목). 남은 것은 **실제 C 공정·로봇**에서 같은 경로가 도는지다. 가상 `/cell` 은 파지에서 막히므로(아래 함정) 실물이어야 한다.
 - `docs/interfaces.md:188` KPI 이름이 아직 「배치 성공률」 — 계약 문서라 조장 몫(#261 본문에 적음).
 - ~~`tools/test_safety_popup.cjs` 살릴지 지울지 D 판단~~ → **살린다**. 실패 원인은 팝업 로직이 아니라 스텁이었다(9/22 `f349fe2` 가 `hmi.js:151` 에 `appendChild` 추가 → 스텁에 없어 `TypeError`). 스텁 한 줄로 PASS, 가드 17 건 유효(고의로 `robot_state` 허용 목록을 넓히면 실패 확인). `tools/test_frontend_render.cjs` 는 **환경 문제였다** — playwright·Chromium 이 있는 샌드박스에서 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium node tools/test_frontend_render.cjs` 로 9/23 PASS. 심볼릭 링크 불필요.
