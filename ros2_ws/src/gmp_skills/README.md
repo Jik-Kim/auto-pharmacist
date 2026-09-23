@@ -13,6 +13,10 @@ core/stations.py          stations.yaml 파싱, 접근점 계산 (ROS 비의존)
 core/transfer.py          관절 이송 티칭값·출발 관절 구성·파지 조건·ZYZ 자세 검증 (ROS 비의존)
 ```
 
+> **9/23 현행:** 실물 DIO 개폐·DI 완료, A/B/C 고정 full 경로를 사용합니다.
+> `calibrated=false`는 높이 보정만 차단합니다. 과거 sol=3·높이 보정 설명보다
+> [현행 운용·B/C 인계](../../../docs/setup.md#drl-고정-경로dio-운용-923-사용자-승인)를 우선합니다.
+
 ## 불변식
 
 - `DsrArm` 메서드는 **워커 스레드에서만** 부른다. 콜백에서 부르면 멈춘다 (D-02).

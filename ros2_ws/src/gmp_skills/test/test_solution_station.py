@@ -14,6 +14,11 @@ def setup(monkeypatch):
     node = module.SkillNode.__new__(module.SkillNode)
     node.stations = StationTable.from_yaml(
         Path(__file__).resolve().parents[2] / 'gmp_bringup/params/stations.yaml')
+    # 이전 sol 선택 정책을 쓰는 설정도 지원한다. 운영 티칭 경로는 별도 시험한다.
+    for name in ('workbench', 'passbox_empty', 'passbox_done', 'reject_bin'):
+        extra = node.stations.get(name).extra
+        extra.pop('approach_posj')
+        extra['solution_space'] = 3
     node.mode = 'real'
     node.vel_scale = .2
     node.motion_timeout_s = 30

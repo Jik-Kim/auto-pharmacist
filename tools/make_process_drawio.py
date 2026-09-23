@@ -63,8 +63,8 @@ p1.edge(hmi, proc, 'Service interlock\nENTER=1 / EXIT=2, reason → granted\nENT
 p1.edge(hmi, proc, 'Action run_batch (RunBatch)\nCLI·시험용, 우선순위 낮음', color=GRAY, dashed=True, exit=(1, 0.92), entry=(0, 0.66), lpos=(0, -18))
 # process → skill
 p1.edge(proc, skill, 'Action move_to_station\nstation_id, approach ABOVE/AT, vel_scale\n→ success, reached', color=WARM, exit=(1, 0.1), entry=(0, 0.1), lpos=(0, -24))
-p1.edge(proc, skill, 'Action scoop\nmaterial_id, attempt\n→ contact, max force, insertion depth', color=WARM, exit=(1, 0.22), entry=(0, 0.22), lpos=(0, -24))
-p1.edge(proc, skill, 'Action pour\nfraction=1 → success (workbench ABOVE→start→end)', color=WARM, exit=(1, 0.34), entry=(0, 0.34), lpos=(0, -18))
+p1.edge(proc, skill, 'Action scoop\nmaterial_id, attempt, depth_fraction\n→ contact, max force, insertion depth', color=WARM, exit=(1, 0.22), entry=(0, 0.22), lpos=(0, -24))
+p1.edge(proc, skill, 'Action pour\nfraction=1 → success (middle→붓기→middle)', color=WARM, exit=(1, 0.34), entry=(0, 0.34), lpos=(0, -18))
 p1.edge(proc, skill, 'Action return_material\nmaterial_id → success, message (좌표 미티칭이면 실패)', color=WARM, exit=(1, 0.40), entry=(0, 0.40), lpos=(0, -18))
 p1.edge(proc, skill, 'Action WeighContainer (고정 workbench 용기 들어, 그리퍼 비어야) · WeighHeld (든 채로, v1.2)\ntare_g → reading: gross / net / std / valid / subject', color=WARM, exit=(1, 0.46), entry=(0, 0.46), lpos=(0, -24))
 p1.edge(proc, skill, 'Service set_gripper\nclose, width_mm, force_n, timeout_s\n→ success, final_width_mm, grip_inferred', color=WARM, exit=(1, 0.58), entry=(0, 0.58), lpos=(0, -24))
@@ -97,9 +97,9 @@ pickc = S(2, 0, 'PICK_CONTAINER', 'req: carry passbox_empty→workbench')
 tare = S(3, 0, 'TARE', 'req: measure(영점 기준) → weigh\n빈 용기 풍량 (배치 1회)')
 picks = S(0, 1, 'PICK_SCOOP', 'req: move(scoop_N) → grip\n스쿱은 원료통 아래 (D-24)')
 stare = S(1, 1, 'SCOOP_TARE', 'req: weigh_scoop — 빈 스쿱\n든 채 (원료마다 1회)')
-scoop = S(2, 1, 'SCOOP', 'req: scoop(material, attempt, depth_fraction)\nA: 접촉 측정 → 높이 보정 spline → 털기\n보정 미확인 시 이동 전 거부\n수동 높이 진단은 Scoop 성공 아님')
+scoop = S(2, 1, 'SCOOP', 'req: scoop(material, attempt, depth_fraction)\nA/B/C: 고정 full spline → 털기\n높이 보정 비활성 · fraction=1만 지원\n접촉 미측정: C 연계 수정 필요')
 wscoop = S(3, 1, 'WEIGH_SCOOP', 'req: weigh_scoop — 붓기 전\n퍼낸 양 → 붓기 비율')
-pour = S(4, 1, 'POUR', 'req: pour(fraction=1)\nworkbench ABOVE→start→end')
+pour = S(4, 1, 'POUR', 'req: pour(fraction=1)\nmiddle→ABOVE→start→end\n→ABOVE→Z+50→middle')
 wreturn = S(3, 3, 'RETURN_MATERIAL', 'req: return_material(material_id)\n좌표 미티칭이면 실패', 'p')
 wres = S(5, 1, 'WEIGH_RESIDUAL', 'req: weigh_scoop — 붓기 후 스쿱 잔량\n투입량 = 전 − 후 → decide()')
 ret = S(1, 2, 'RETURN_SCOOP', 'req: move(scoop_N) → grip(open)\n전용 스쿱 = 교차오염 방지')
@@ -119,7 +119,7 @@ p2.edge(tare, picks, 'tare_g 저장 · cur = 원료 0 · weight 발행', color=A
         exit=(0.5, 1), entry=(0.5, 0), points=((cx(3), 300), (cx(0), 300)), lpos=(0, -14))
 p2.edge(picks, stare, 'grip_inferred=true', color=ACC, lpos=(0, 16))
 p2.edge(stare, scoop, 'scoop_tare_g 저장\nattempts=1', color=ACC, lpos=(0, 22))
-p2.edge(scoop, wscoop, 'contact_detected=true', color=ACC, lpos=(0, 16))
+p2.edge(scoop, wscoop, 'contact_detected=true (현 C)\n고정 경로는 미측정: 인계 필요', color=ACC, lpos=(0, 16))
 p2.edge(wscoop, pour, 'scooped ≤ max(0, need)+target×tol%\n전량 pour(fraction=1)', color=ACC, lpos=(0, 22))
 p2.edge(pour, wres, '', color=ACC)
 p2.edge(wres, ret, 'OK (|err| ≤ tol) · actual += scooped − residual → dispense_result 발행', color=OK,
@@ -191,8 +191,8 @@ kinds = [
   ('weigh_scoop', 'station · material_id · tare_g(빈 스쿱)', 'WeighHeld act — 해당 material_N.posx에서 들고 있는 스쿱을 계량 (SCOOP_TARE · WEIGH_SCOOP · WEIGH_RESIDUAL)\n계량 후 계량 자세에 머문다 · 빈 그리퍼면 success=false', "{'gross_g','net_g','std_g','valid','subject=scoop'}"),
  ('move', 'station · approach', 'move_to_station(station, ABOVE/AT)', "{'success','reached'} → state.station"),
  ('grip', 'close · target(scoop/cup)', 'set_gripper(close, width = scoop_width | cup_width, force)', "{'grip_inferred','final_width_mm'}"),
- ('scoop', 'material_id · attempt · fraction', 'scoop — 높이 보정 파라미터만 유지, 힘 측정 불안정·스쿱 회전으로 접촉 정지/높이 측정 비활성 (통합·플로우 우선)', "{'contact_detected'}"),
- ('pour', 'station · fraction=1', 'pour(1)   pour ABOVE → workbench_pour_start → workbench_pour_end 전량 이동', "{'success'}"),
+ ('scoop', 'material_id · attempt · fraction', '고정 full(fraction=1), 높이 보정 비활성. 접촉 미측정(false/TAUGHT_FIXED): C 연계 필요', "{'contact_detected'}"),
+ ('pour', 'station · fraction=1', 'pour(1): middle → ABOVE → start → end → ABOVE → Z+50 → middle', "{'success'}"),
  ('return_material', 'material_id', 'return_material(material_id)   원료통 반환 start/end 미티칭이면 이동하지 않고 실패', "{'success','message'}"),
  ('safe', 'reason · then', 'safe_pose(reason)   전이는 then 이 정한다', '{}'),
  ('wait_qa', 'deviation', '스킬 없음 — _qa.clear(); _qa.wait()', "{'decision': APPROVED|DISCARDED}"),
@@ -246,7 +246,7 @@ ROWS = [
  ('SCOOP', 'n', None, 'Scoop act\nmaterial_id, attempt → contact_detected', None, 'state\ndeviation(SCOOP_EMPTY · MATERIAL_EMPTY)', False),
  ('WEIGH_SCOOP', 'n', None, 'WeighHeld act (material_N.posx, 붓기 전)\n→ gross, valid', 'scooped > max(0, need)+target×tol%\n→ RETURN_MATERIAL, 아니면 fraction=1', 'weight(퍼낸 양) · state', False),
  ('RETURN_MATERIAL', 'p', None, 'ReturnMaterial act\nmaterial_id → 원료통 start→end\n미티칭이면 success=false', None, 'scoop_cycle RETURNED/RETURN_FAILED\ndelivered=0 · valid=false', False),
- ('POUR', 'n', None, 'Pour act\nfraction=1 · workbench ABOVE→start→end', None, 'state', False),
+ ('POUR', 'n', None, 'Pour act (fraction=1)\nmiddle→붓기 경로→middle (상세 3쪽)', None, 'state', False),
  ('WEIGH_RESIDUAL', 'n', None, 'WeighHeld act (material_N.posx, 붓기 후)\n→ gross, valid', 'decide(target, actual, tol, attempts,\nvalid, invalid, cfg)\n→ DONE / SCOOP / DEVIATION(kind)',
   'weight(잔량) · scoop_cycle(시도 1건) · state\ndispense_result (DONE·DEVIATION 시)\ndeviation(OVERFILL · TIMEOUT · WEIGH_INVALID)', False),
  ('RETURN_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT — 원료통 아래)\nSetGripper srv (open)', None, 'state', False),

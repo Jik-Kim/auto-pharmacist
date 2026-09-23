@@ -10,6 +10,8 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 
 평가 기준(R12)과의 대응은 `PROJECT_RULES.md` 3-8. 이 프로젝트가 점수를 얻는 곳은 **「기능 동작 지속성」(일탈·복구)** 과 **「입출력 데이터 이해도」(배치 기록 HMI)** 다.
 
+> **9/23 현행 변경:** D-04~06 그리퍼 운용과 스쿠핑·이송은 문서 끝 「DRL 고정 경로·DIO 운용」을 우선합니다. 기존 항목은 결정 이력입니다.
+
 ## 확정 사항
 
 | ID | 항목 | 결정 |
@@ -332,3 +334,51 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 ### 원료 높이 측정 전용 실행 (9/22)
 
 `skill.launch.py height_measure_only:=true`는 보정 활성 여부와 무관하게 기존 check_depth 측정·정상 복귀만 실행한다. 파지/인출 이력·안전 검사는 유지하며 spline/털기는 하지 않는다. 접촉 최초 BASE 자세를 WORLD로 변환하고 기준 자세에서 구한 TCP 로컬 끝 오프셋으로 접촉 지점의 높이를 계산한다. 로그 및 Scoop Result.message의 HEIGHT_MEASUREMENT_ONLY로 전달한다. 실제 스쿠핑을 하지 않았으므로 success=false / ABORTED로 반환한다. 자동 공정과 동시 사용하지 않는 수동 진단 모드다. 약90 mm의 칼라스톤 표면은 위치별 편차가 있으므로 단일 접촉점을 전체 표면 평균으로 취급하지 않는다. 최초 힘 감지 자세는 통신 지연·돌 재배열·끝 이외 부위 접촉의 영향을 받을 수 있다.
+
+## DRL 고정 경로·DIO 운용 (9/23 사용자 승인)
+
+`m0609_tw_autopharm_moved.drl`의 핵심 플로우 실물 검증 완료를 사용자에게 확인했다.
+이번 ROS 코드 이식은 별도 실물 검증 전이며, DRL 자체의 검증과 구분한다.
+
+- `stations.yaml:scooping.A/B/C.execution_mode=taught_fixed`, `fixed_path.verified=true`로
+  각 원료의 full 5점 spline → 털기 → 원료 계량 자세를 실행한다.
+  `calibrated=false`는 **높이 보정 모델 미검증**이며 고정 경로를 차단하지 않는다.
+  `height_compensated` 모드만 `calibrated=true`를 요구한다. 스쿱 지문과 무관하다.
+- 고정 경로는 `depth_fraction=1.0`만 허용한다. DRL의 A half 좌표는 주 루프에서
+  사용되지 않았으므로 운영에 켜지 않는다. 접촉 측정·WORLD 변환·끝 높이 보정도 수행하지 않는다.
+- 접촉/깊이는 미측정이므로 `contact_detected=false`, 힘·깊이=0,
+  `message=TAUGHT_FIXED: ... 미측정`을 반환한다. 0을 실측값으로 사용하지 않는다.
+- 통합 `robot.launch.py`도 common.yaml의 백엔드를 읽어 DIO에서는 Modbus 그리퍼 서버를 시작하지 않는다. 이미 실행 중인 외부 벤더 서버는 이 변경으로 종료되지 않는다.
+- 실물 기본 그리퍼는 DIO. 닫기 DO1=1/DO2=0, 열기 DO1=0/DO2=1.
+  약통은 DI1=1, 스쿱은 DI1=DI2=1 후 0.8초, 열림은 DI1=0을 확인한다.
+  완료 시간 초과·취소·조회 실패는 성공으로 처리하지 않는다. DI 조회는 DSR 워커에서만 한다.
+  기동 시 DI1=0으로 확인되는 열린 상태만 복원하며, 자동 열기/닫기는 하지 않는다.
+- `SetGripper.close`로 개폐하며 DIO에서 width/force 요청은 제어값으로 쓰지 않는다.
+  실제 폭은 -1(미측정), `force_cmd_n=0`은 파지력 명령 없음이다. 지문 tolerance=0으로 비활성화한다.
+  DIO는 Modbus 폭 기반 slip/안전 비트를 제공하지 않는다. 로봇 안전 계층은 그대로 유지한다.
+- 원료·스쿱 X=298/395/490, 스쿱 Y=-292. 용기 스테이션은 DRL의 관절 진입과
+  직선 하강·200mm 상승을 사용한다. workbench 놓기는 posx [420,93,130,...],
+  빈 그리퍼 집기는 middle → exit 관절각 → 실제 TCP에서 Z -200이다.
+  관절 도착점의 TCP를 다른 posx 변수와 같다고 가정하지 않는다.
+- Pour는 middle → above(Z290) → start(Z243) → end(Z320) → above → Z+50 → middle.
+  스쿱 반납은 return_entry → Z-100 → 거치점 → 열기 → Z+100이다.
+- 관절 속도/가속도 기준은 DRL의 60deg/s·100deg/s²이며 `vel_scale`을 적용한다.
+  일반 직선 속도·가속도와 런치 속도 배율은 기존 저속 설정을 유지한다.
+  스쿠핑 spline은 DRL의 병진/회전 속도·가속도에 기존 배율을 적용한다.
+
+### B/C 인계와 미검증 범위
+
+1. **B 직접 연계:** 스쿱 AT 파지 → WeighHeld(인출·빈 스쿱 계량) →
+   Scoop(material_id, depth_fraction=1.0) → WeighHeld(퍼낸 양) 순서로 호출한다.
+   고정 Scoop은 해당 원료 계량 자세에서만 시작한다. 성공 여부와 message를 확인한다.
+2. **C 자동 공정은 아직 연결 완료가 아니다.**
+   `process_fsm.py`의 SCOOP 결과 처리는 contact_detected=false를 SCOOP_EMPTY로 간주한다.
+   `process_node.py`는 Scoop.message를 FSM에 전달하지 않는다.
+   고정 경로의 미측정과 접촉 실패를 구분하고, 퍼낸 양의 판단을 후속 계량과 연결하는 합의가 필요하다.
+   첫 스쿱 `_first_fraction()`도 목표/scoop_nominal_g로 1 미만을 요청할 수 있어
+   고정 모드 지원 범위와 맞춰야 한다. 임의로 full로 바꾸거나 true 접촉값을 만들지 않는다.
+3. 원료 반환 끝→재스쿠핑 연결, 비활성 passbox_done→nudge_wait 이송은 유지한다.
+   DRL 주 루프에 없는 반환·넛지를 좌표 존재만으로 검증 완료로 표시하지 않는다.
+   깊이 조절·계량 보정·지문 검증도 별도다. 다른 담당 코드와 계량 보정값은 수정하지 않는다.
+4. DI 폴링 시간 제한은 완료 신호 대기에 적용된다. 기존 DSR 동기 IO 함수 자체가
+   응답하지 않는 경우까지 선점하는 기능은 없다. ROS 이식 후 실물 완료·취소 확인이 필요하다.

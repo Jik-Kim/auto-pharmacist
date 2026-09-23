@@ -63,23 +63,23 @@ def depth_node(monkeypatch, material='A'):
     return node, job, calls, feedback
 
 
-@pytest.mark.parametrize('material,x', [('A', 344.0), ('B', 439.0), ('C', 537.0)])
+@pytest.mark.parametrize('material,x', [('A', 298.0), ('B', 395.0), ('C', 490.0)])
 def test_check_depth_uses_full_taught_target_and_returns_to_weigh_pose(monkeypatch, material, x):
     node, job, calls, feedback = depth_node(monkeypatch, material)
     result = node._do_check_depth(job)
     weigh = [x, -298.0, 200.0, 90.0, -180.0, -90.0]
     assert calls == [('move', weigh, 1.0), ('on',),
-                     ('measure', [x, -334.0, 120.0, 90.0, 160.0, -90.0], 1.0, 30.0),
+                     ('measure', [x, -333.79, 120.0, 90.0, 160.06, -90.0], 1.0, 30.0),
                      ('contact_stop',),
                      ('off',), ('move', weigh, 1.0)]
     measurement = json.loads(result.pop('message'))
     assert measurement['frame'] == 'BASE'
-    assert measurement['contact_tcp_posx'] == [x, -334, 150, 90, 160, -90]
+    assert measurement['contact_tcp_posx'] == [x, -333.79, 150, 90, 160.06, -90]
     # 최초 접촉의 자세와 회전을 사용한다. 최종 목표 Z=120이나 고정 Z-20이 아니다.
-    assert measurement['tip_position_mm'][2] == pytest.approx(90.1637303852)
+    assert measurement['tip_position_mm'][2] == pytest.approx(90.2746851781)
     assert result == dict(contact_detected=True, max_contact_force_n=16.0,
                           insertion_depth_mm=0.0,
-                          contact_pose_base=[x, -334.0, 150.0, 90.0, 160.0, -90.0])
+                          contact_pose_base=[x, -333.79, 150.0, 90.0, 160.06, -90.0])
     assert [f[0] for f in feedback] == ['APPROACH', 'DIP', 'LIFT']
 
 
