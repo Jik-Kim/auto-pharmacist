@@ -3,6 +3,8 @@
 Cell 오라클: 스쿱 풍량 20 g, 용기 풍량 30 g. scoop 마다 yields 에서 퍼올림량을 꺼내고, pour 는 fraction 만큼 옮기되
 residual 만큼 스쿱에 남긴다. weigh_scoop 은 스쿱 총량, weigh 는 용기 총량·순량을 돌려준다.
 """
+import pytest
+
 from gmp_dosing.core.dosing import DosingConfig
 from gmp_dosing.core.scale import ScaleConfig, WeightModel
 from gmp_process.core.process_fsm import ProcessFSM, ToolFingerprint
@@ -20,7 +22,7 @@ def _fsm(fingerprint=None):
 
 class Cell:
     def __init__(self, yields, residual=2.0, grip=None, qa='APPROVED', spill=False, cup_bias=0.0, invalid_first=0,
-                width_mm=None, cup_invalid_first=0, zero_drift_n=0.0):
+                width_mm=None, cup_invalid_first=0, zero_drift_n=0.0, contact_blind=False):
         self.yields, self.residual, self.qa, self.spill, self.cup_bias = list(yields), residual, qa, spill, cup_bias
         self.grip = grip or (lambda req, n: True)
         self.width_mm = width_mm                          # 폭 지문 테스트용 — 정지 폭을 고정값으로 돌려준다
@@ -30,6 +32,7 @@ class Cell:
         self.cup_invalid_left = cup_invalid_first   # 용기 계량(TARE·VERIFY) 무효 횟수
         self.zero_drift_n = zero_drift_n            # VERIFY 직전 영점이 이만큼 움직인 것으로 답한다
         self.n_measure = 0
+        self.contact_blind = contact_blind   # 접촉을 아예 못 재는 경로 — 늘 '닿았다'고 답한다 (#277 고정 티칭)
 
     def __call__(self, req):
         k = req['kind']
@@ -51,7 +54,7 @@ class Cell:
             self.n['scoop'] += 1
             amt = self.yields.pop(0) if self.yields else 0.0
             self.in_scoop += amt
-            return {'contact_detected': amt > 0}
+            return {'contact_detected': True if self.contact_blind else amt > 0}
         if k == 'pour':
             f = 1.0 if self.spill else req['fraction']
             moved = max(0.0, self.in_scoop * f - self.residual) if f >= 1.0 else self.in_scoop * f
@@ -519,6 +522,57 @@ def test_material_empty_repeats_when_refill_did_not_help():
     assert set(kinds[3:]) == {'MATERIAL_EMPTY'}, kinds
     assert all(d['action'] == 'REFILL' for d in fsm.deviations[3:])
     assert [d['count'] for d in fsm.deviations[3:]] == list(range(1, len(kinds) - 2)), kinds
+
+
+# ── 접촉 신호를 못 믿는 경로 (#277) ──────────────────────────────────────────
+# A 의 고정 DRL 티칭 경로는 힘을 아예 재지 않는다. 지금 코드(`skill_node._do_fixed_scoop`)는
+# `contact_detected=False` 를 돌려주는데, 그 값은 「안 닿았다」가 아니라 **「안 재봤다」**는
+# 뜻이다 — 계약에 그 구분을 적을 자리가 없다.
+#
+# 가는 길은 **아직 SOT 에 없다.** 두 안이 올라가 있다:
+#   (a) 계약 v1.9 에 `Scoop.Result.contact_measured` 신설 (권고안)
+#   (b) A 가 `contact_detected=True` 를 돌려준다 — 9/23 조장 **조건부 차선**:
+#       「(a) 가 시연 전에 어려우면 (b) 로 간다」. 확정되면 SOT 항목으로 올라온다.
+#
+# ⚠️ **어느 쪽이 되든 이 시험이 필요하다.** (b) 면 늘 참이라 `_scoop_empty()` 가 영영 안 불리고,
+#    (a) 면 C 가 「안 재봤다」를 받으므로 역시 접촉으로는 못 잡는다. 원료가 없다는 사실은 퍼낸
+#    무게로 드러난다 — **무게 그물은 두 안의 공통 요구**다.
+#    `contact_blind=True` 는 그 공통 상황, 즉 「접촉 신호로는 판단할 수 없다」를 세운 것이다.
+#
+# ⚠️ 문턱값은 **아직 정하지 않았다** — #272 의 스쿱 1회량 σ 실측이 나와야 근거가 붙는다.
+#    그래서 아래 두 시험은 **0 g**(누가 봐도 빈 스쿱)과 **정상 채취량**만 쓰고 경계는 건드리지 않는다.
+#    경계를 지금 박으면 σ 가 나왔을 때 시험부터 고치게 되고, 그러면 정작 값을 안 보게 된다.
+
+
+@pytest.mark.xfail(strict=True, reason='#277 — 무게 기반 빈 스쿱 감지 미구현. 구현되면 strict 가 이 표식을 떼라고 알린다')
+def test_접촉을_못_믿는_경로에서_원료_소진은_보충_요청으로_간다():
+    """접촉 신호를 못 믿는 경로에서 원료통이 비면, 지금은 **사람을 부르지 않고** 배치를 태운다.
+
+    실측한 현재 거동은 `['TIMEOUT', 'BATCH_OUT_OF_SPEC']` 이다. 셋 다 틀렸다 —
+    QA 가 받는 사유가 「보정 3회 후에도 미달」이라 **원료를 채우라는 말이 어디에도 없고**,
+    `wait_interlock` 을 안 거치므로 **보충 기회 자체가 없으며**, 배치는 규격 이탈로 끝난다.
+    접촉을 재든 못 재든 같은 사실에는 같은 결론이 나와야 한다
+    (대조군: `test_material_empty_refill_resumes_scoop`, 같은 yields 에 접촉만 살아 있다).
+    """
+    cell = Cell(yields=[0, 0, 0, 0, 100, 50], contact_blind=True)
+    fsm = _fsm()
+    trace = run(fsm, cell)
+    kinds = [d['kind'] for d in fsm.deviations]
+    assert kinds == ['SCOOP_EMPTY'] * 3 + ['MATERIAL_EMPTY'], kinds
+    assert ('PAUSED', 'wait_interlock') in trace, '사람에게 보충을 요청하지 않았다'
+    assert fsm.state == 'DONE' and len(fsm.results) == 2
+
+
+def test_접촉을_못_믿어도_멀쩡한_스쿱은_빈_스쿱이_아니다():
+    """반대쪽 오류를 막는다 — 무게로 잡기 시작하면 정상 채취를 빈 스쿱으로 몰 수 있다.
+
+    지금은 감지가 없어 당연히 통과하지만, 감지가 들어온 **뒤에도** 통과해야 한다.
+    문턱값을 고를 때 이 시험이 상한을 잡아 준다.
+    """
+    fsm = _fsm()
+    run(fsm, Cell(yields=[100, 50], contact_blind=True))
+    assert fsm.state == 'DONE' and not fsm.deviations
+    assert [r.attempts for r in fsm.results] == [1, 1]
 
 
 def test_prepour_boundary_uses_original_target_tolerance_after_prior_delivery():
