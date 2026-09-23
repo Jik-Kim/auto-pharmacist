@@ -18,8 +18,10 @@ from dataclasses import dataclass
 @dataclass
 class DosingConfig:
     max_attempts: int = 3
-    scoop_nominal_g: float = 40.0     # 스쿱 1회 퍼올림 평균 (9/18 실측)
-    min_fraction: float = 0.15        # 담그기 깊이 비율의 하한 (계약 v1.5). 이보다 얕게는 제어가 안 된다
+    scoop_nominal_g: float = 85.0     # 스쿱 1회 퍼올림 평균 (9/23 조장 결정, 종전 9/18 실측 40.0)
+    min_fraction: float = 0.10        # 담그기 깊이 비율의 하한 (계약 v1.5). 이보다 얕게는 제어가 안 된다
+                                      # ⚠️ 교착 조건 min_fraction × scoop_nominal_g ≤ 2 × target × tol 을
+                                      #    지켜야 한다. common.yaml 주석과 test_dosing 의 단언 참조
     max_invalid_retries: int = 2      # 계량 무효 시 **다시 재는** 횟수. 최초 측정은 여기 안 든다 —
                                       # 총 측정은 이 값 + 1 이다 (#213 결정 1). 종전 이름 max_invalid 는
                                       # 「무효 결과 총 횟수」였는데 읽는 사람마다 다르게 세었다.

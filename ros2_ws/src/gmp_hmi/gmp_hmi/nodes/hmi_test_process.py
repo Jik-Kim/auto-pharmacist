@@ -147,8 +147,12 @@ class HmiTestProcess(Node):
         if self.mode not in (CellState.IDLE, CellState.DONE):
             return False, '시험 배치가 이미 실행 또는 대기 중입니다.', None
         scenario = self.get_parameter('scenario').value
-        if scenario not in ('normal', 'overfill', 'verify_mismatch', 'wrong_tool'):
-            return False, 'scenario는 normal/overfill/verify_mismatch/wrong_tool을 지원합니다.', None
+        # batch_out_of_spec 은 옛 verify_mismatch 를 대신한다 — VERIFY_MISMATCH 는 9/22 폐지라
+        # 실제 FSM 이 내지 않는다(Deviation.msg:21). 배치 끝 규격 판정은 BATCH_OUT_OF_SPEC 이다.
+        if scenario not in ('normal', 'overfill', 'batch_out_of_spec', 'wrong_tool',
+                            'weigh_invalid', 'material_empty'):
+            return False, ('scenario는 normal/overfill/batch_out_of_spec/wrong_tool/'
+                           'weigh_invalid/material_empty를 지원합니다.'), None
         items = list(recipe.items)
         if not 1 <= len(items) <= 255:
             return False, '원료 1~255개가 필요합니다.', None
@@ -208,6 +212,7 @@ class HmiTestProcess(Node):
         self.last_result = DispenseResult()
         self.batch_done.clear()
         self.delivered_total = 0.0
+        self.unmeasured_done = False   # 이 배치에 투입량 미측정 승인이 있었나 (D-32)
         self.mode, self.step, self.station = CellState.RUNNING, 'SELF_CHECK', 'test_safe'
         self.phase, self.elapsed, self.last_weight = 'start', 0.0, -1.0
         self.note = f'시험 주문 접수 · {scenario} · 실제 로봇 연결 없음'
@@ -263,11 +268,16 @@ class HmiTestProcess(Node):
         self.pending = None
         self.mode = CellState.RUNNING
         if req.decision == Deviation.APPROVED:
-            if self.active_scenario == 'verify_mismatch':
+            if self.active_scenario == 'batch_out_of_spec':
                 self._finish('DONE')
-            elif self.active_scenario == 'wrong_tool':
+            elif self.active_scenario in ('wrong_tool', 'material_empty'):
                 self.phase, self.elapsed = 'item', 0.0
                 self.active_scenario = 'normal'
+            elif self.active_scenario == 'weigh_invalid':
+                # 계량을 못 믿는 채 QA 가 승인했다 → 이 원료는 투입량을 모른다 (계약 v1.8, #213).
+                self._invalid_result(self.items[self.index])
+                self.active_scenario = 'normal'
+                self._next_item()
             else:
                 self._next_item()
         else:
@@ -325,7 +335,8 @@ class HmiTestProcess(Node):
         self.pub_weight.publish(reading)
         return reading
 
-    def _cycle(self, item, actual, attempt=1, actual_before=0.0, duration_s=None):
+    def _cycle(self, item, actual, attempt=1, actual_before=0.0, duration_s=None,
+               outcome=None, valid=True):
         residual = 3.0
         cycle = self._stamp(ScoopCycle(
             batch_id=self.batch_id, material_id=item.material_id, attempt=attempt,
@@ -335,7 +346,8 @@ class HmiTestProcess(Node):
             delivered_g=float(actual), weigh_method=ScoopCycle.WEIGH_METHOD_WORKPIECE,
             weigh_pose_id='workbench', tool_name='TEST_TOOL', tcp_name='TEST_TCP',
             contact_detected=True, max_contact_force_n=5.0, insertion_depth_mm=20.0,
-            grip_width_mm=32.4, outcome=ScoopCycle.COMPLETE, valid=True,
+            grip_width_mm=32.4, valid=bool(valid),
+            outcome=ScoopCycle.COMPLETE if outcome is None else outcome,
             duration_s=float(self.item_duration if duration_s is None else duration_s)))
         for name in ('tare', 'pre_pour', 'post_pour'):
             setattr(cycle, name + '_wrench', [0.0, 0.0, -1.0, 0.0, 0.0, 0.0])
@@ -346,11 +358,40 @@ class HmiTestProcess(Node):
         cycle.reference_valid = False
         self.pub_cycle.publish(cycle)
 
+    def _invalid_reading(self, subject='scoop'):
+        """유효성 게이트를 못 넘은 계량. 값은 남기되 `valid=false` 로 「못 믿는다」를 표시한다.
+
+        NaN 을 쓰지 않는다 — SQLite 가 NaN 을 NULL 로 바꿔 검증이 흔들린다. 무효 판정의
+        근거는 흩어짐(`std_g`)이고 `valid` 가 그 결론이다.
+        """
+        reading = self._stamp(WeightReading(
+            gross_g=47.0, tare_g=35.0, net_g=12.0,
+            std_g=99.0, samples=20, valid=False, station='workbench', subject=subject))
+        self.pub_weight.publish(reading)
+        return reading
+
+    def _invalid_result(self, item):
+        """투입량을 모르는 채 QA 승인으로 넘어간 원료 (계약 v1.8 `verdict=INVALID`).
+
+        실제 공정은 이때 누적 투입량에 아무것도 더하지 않는다(#213) — 0 을 더하는 것과 다르다.
+        `BATCH_UNMEASURED` 는 record_node 가 배치 결과를 `DONE_UNMEASURED` 로 남기는 근거다 (D-32).
+        """
+        self.unmeasured_done = True
+        self.last_result = self._stamp(DispenseResult(
+            batch_id=self.batch_id, material_id=item.material_id,
+            target_g=float(item.target_g), actual_g=0.0, error_pct=0.0,
+            verdict=DispenseResult.INVALID, attempts=1,
+            duration_s=float(self.item_duration)))
+        self.pub_result.publish(self.last_result)
+        self.items_done += 1
+        self._event('BATCH_UNMEASURED',
+                    'TEST_ONLY 투입량 미측정 승인 · ' + item.material_id, CellEvent.WARN)
+
     def _deviation(self, kind, text):
         self.deviation_count += 1
         self.pending = Deviation(
             deviation_id='D-' + self.batch_id + '-1', batch_id=self.batch_id,
-            material_id=self.items[self.index].material_id if kind != Deviation.VERIFY_MISMATCH else '',
+            material_id=self.items[self.index].material_id if kind != Deviation.BATCH_OUT_OF_SPEC else '',
             kind=kind, detail='TEST_ONLY ' + text, requires_decision=True,
             decision=Deviation.PENDING, operator_id='')
         self.pub_dev.publish(self._stamp(self.pending))
@@ -368,9 +409,9 @@ class HmiTestProcess(Node):
         self.index += 1
         if self.index >= len(self.items):
             self.index = len(self.items) - 1
-            self._weight(self.delivered_total + (50.0 if self.active_scenario == 'verify_mismatch' else 0.0), 'container')
-            if self.active_scenario == 'verify_mismatch':
-                self._deviation(Deviation.VERIFY_MISMATCH, '용기 순량과 스쿱 누적량 차이 시험')
+            self._weight(self.delivered_total + (50.0 if self.active_scenario == 'batch_out_of_spec' else 0.0), 'container')
+            if self.active_scenario == 'batch_out_of_spec':
+                self._deviation(Deviation.BATCH_OUT_OF_SPEC, '배치 끝 용기 순량이 총 목표량 허용폭 밖 시험')
             else:
                 self._finish('DONE')
         else:
@@ -419,6 +460,17 @@ class HmiTestProcess(Node):
             self._weight(actual * fraction)
             self.last_weight = self.elapsed
         if fraction < 1.0:
+            return
+        if self.active_scenario == 'weigh_invalid':
+            # 재시도 상한을 넘긴 무효 계량 → WEIGH_INVALID. 투입량을 모르므로 재고도 차감하지 않는다.
+            # 실패한 시도도 ScoopCycle 로 남긴다 — 투입량 0, valid=false (계약 outcome 2).
+            self._invalid_reading()
+            self._cycle(item, 0.0, 1, 0.0, outcome=ScoopCycle.WEIGH_INVALID, valid=False)
+            self._deviation(Deviation.WEIGH_INVALID, '스쿱 계량 무효 반복 시험')
+            return
+        if self.active_scenario == 'material_empty':
+            # SCOOP_EMPTY 가 연속으로 나 원료가 소진됐다고 본 경우 (kind 5, #233).
+            self._deviation(Deviation.MATERIAL_EMPTY, '원료 소진 시험')
             return
         self.inventory.consume(item.material_id, actual)
         self._publish_inventory()
