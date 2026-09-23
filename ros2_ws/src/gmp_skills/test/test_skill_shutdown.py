@@ -106,7 +106,15 @@ def test_check_depth_compliance_entry_failure_still_releases_without_retreat(mon
             station_id="material_1", posx=[1]*6, extra={"measure_posx": [2]*6})),
         arm=SimpleNamespace(movel=lambda *_: calls.append('move'), current_posx=lambda: [1]*6,
                             compliance_on=fail, compliance_off=lambda: calls.append('release')))
-    node.get_parameter = lambda key: SimpleNamespace(value=[1]*6 if key == 'safety.compliance_stx' else 3.0)
+    node._empty_scoop_force_baseline = dict(fz_mean_n=0.0, material_id='A',
+        station_id='material_1', pose=[1]*6, safety_revision=0)
+    node._pose_matches = lambda a, b: a == b
+    node.stations.get = lambda _: SimpleNamespace(
+        posx=[0]*6, extra={'scoop_tip_offset_base_mm': [0, -120, -20]})
+    values = {'safety.compliance_stx': [1]*6,
+              'height_measurement.force_trace_only': False, 'height_measurement.trace_hz': 10.0,
+              'height_measurement.reference_station': 'material_1'}
+    node.get_parameter = lambda key: SimpleNamespace(value=values.get(key, 3.0))
     with pytest.raises(RuntimeError, match='entry failed'):
         module.SkillNode._do_check_depth(node, module.Job('scoop', {'material_id': 'A'}))
     assert calls == ['move', 'compliance_on', 'release']

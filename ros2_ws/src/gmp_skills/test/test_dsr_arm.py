@@ -728,3 +728,45 @@ def test_virtual_self_check_does_not_call_controller():
     arm._bounded_call = lambda *_: pytest.fail('virtual에서는 실물 감도를 조회하지 않는다')
     ok, detail = arm.self_check('tool', 'tcp', 50.0)
     assert ok and '생략' in detail
+def test_contact_stop_waits_for_idle_without_requiring_original_target():
+    arm = _arm()
+    _, stopped = motion_clock(arm)
+    states = iter([2, 2, 0])
+    reads = []
+    arm.motion_state = lambda: reads.append(True) or next(states)
+    arm.current_posx = lambda: [0]*6
+    arm.movel_cancellable([100]*6, .2, lambda: False, 1.0,
+                          stop_requested=lambda: True)
+    assert stopped == [True]
+    assert len(reads) == 3
+
+
+def test_contact_stop_ack_without_idle_times_out():
+    arm = _arm()
+    _, stopped = motion_clock(arm)
+    arm.motion_state = lambda: 2
+    with pytest.raises(TimeoutError):
+        arm.wait_motion_cancellable(lambda: False, .1, stop_requested=lambda: True)
+    assert stopped == [True, True]  # 접촉 요청 후 시간 초과 정지
+
+
+def test_failed_contact_stop_is_not_completion():
+    arm = _arm()
+    motion_clock(arm)
+    def fail():
+        raise RuntimeError('stop failed')
+    arm.stop_motion = fail
+    with pytest.raises(RuntimeError, match='stop failed'):
+        arm.wait_motion_cancellable(lambda: False, 1.0, stop_requested=lambda: True)
+
+
+def test_cancel_wins_over_contact_stop():
+    arm = _arm()
+    _, stopped = motion_clock(arm)
+    cancelled = [False]
+    def observe():
+        cancelled[0] = True
+    with pytest.raises(RuntimeError, match='cancelled'):
+        arm.wait_motion_cancellable(lambda: cancelled[0], 1.0, observer=observe,
+                                    stop_requested=lambda: True)
+    assert stopped == [True]
