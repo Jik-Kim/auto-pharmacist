@@ -1,4 +1,4 @@
-# D HMI·기록 현행 상태 (갱신: 2026-09-23 16:30, D 본인 — 가상 모드 함정·cjs 시험 정정)
+# D HMI·기록 현행 상태 (갱신: 2026-09-23 18:20, D 본인 — 안전 복구 팝업 시험 복구)
 
 **담당**: aszx4880-star
 
@@ -16,6 +16,7 @@
 | KPI | `batch_success_pct` = **DONE 만**(카드 이름 「계량 검증 완료율」), `unmeasured_done`·`unmeasured_done_pct` = 미측정 승인 완료, `run_complete_pct` = 둘의 합(완주율). 카드 수 5개 불변 | PR #261, SOT D-32 (5) |
 | 결과 필터 | 전체·정상 종료·**미측정 승인 완료**·폐기·오류·진행 중 | `templates/index.html` `#reportResult`, PR #261 |
 | `hmi.js steps` 맵 | FSM 상태와 1:1 (CLEANUP 포함) | PR #232 |
+| 프런트 시험 2 종 | `tools/test_safety_popup.cjs`(DOM 스텁·안전 복구 팝업 가드)·`tools/test_frontend_render.cjs`(playwright) **둘 다 PASS**. 후자는 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium` 필요 | 9/23 실행, PR(이 변경) |
 | 재고 차감 `session_inventory.observe` | OK·OVER 만 차감(UNDER·INVALID 제외) — 「재고를 모른다」 표현은 별건 | `core/session_inventory.py:39`, #108 논의 |
 | 레이아웃 | `body` 가 `display:flex; height:100dvh; overflow:hidden` — **스크롤은 `main` 안에서만** 일어난다. 기록·통계 탭은 grid 4행 `1fr` 로 카드 3개 하단 정렬 | PR #229 (`hmi.css:1`·`:73`) |
 | 시연 기기 | 로봇 PC 1대 + **휴대폰 브라우저 HMI 기본**, 같은 네트워크(`http://<로봇 PC Wi-Fi IP>:5000`) | PR #259, `docs/demo_run_procedure.md` T0·G6 |
@@ -25,7 +26,7 @@
 - **G6 휴대폰 리허설** — `body overflow:hidden`(#229) 이 모바일(≤ 760 px)에도 걸린다. 헤더 줄바꿈으로 `main` 이 좁아질 수 있음. 휴대폰에서 스크롤·승인/폐기·안전 복구 버튼을 실제로 눌러 볼 것 (PR #259 G6, **미검증**).
 - **#261 실물/가상 통합 확인** — `record_node` 가 `BATCH_UNMEASURED` 를 받아 DB 에 `DONE_UNMEASURED` 를 남기는지, KPI 카드·필터 표시. 샌드박스엔 ROS·flask 가 없어 **core 단위 시험만 통과**(test_db +5).
 - `docs/interfaces.md:188` KPI 이름이 아직 「배치 성공률」 — 계약 문서라 조장 몫(#261 본문에 적음).
-- `tools/test_safety_popup.cjs` 는 main 에서도 실패(`$(...).appendChild is not a function` — DOM 스텁에 `appendChild` 없음). 살릴지 지울지 D 판단(#238 검토 코멘트). `tools/test_frontend_render.cjs` 는 **환경 문제였다** — playwright·Chromium 이 있는 샌드박스에서 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium node tools/test_frontend_render.cjs` 로 9/23 PASS. 심볼릭 링크 불필요.
+- ~~`tools/test_safety_popup.cjs` 살릴지 지울지 D 판단~~ → **살린다**. 실패 원인은 팝업 로직이 아니라 스텁이었다(9/22 `f349fe2` 가 `hmi.js:151` 에 `appendChild` 추가 → 스텁에 없어 `TypeError`). 스텁 한 줄로 PASS, 가드 17 건 유효(고의로 `robot_state` 허용 목록을 넓히면 실패 확인). `tools/test_frontend_render.cjs` 는 **환경 문제였다** — playwright·Chromium 이 있는 샌드박스에서 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium node tools/test_frontend_render.cjs` 로 9/23 PASS. 심볼릭 링크 불필요.
 
 ## 알려진 함정
 - HMI 는 판정 정수를 직접 받지 않는다 — `hmi_web_node:339` 가 `VERDICTS` 로 바꾼 문자열을 받는다. 새 열거값은 `db.py:15` 가 본체.
