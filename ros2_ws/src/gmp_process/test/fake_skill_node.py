@@ -50,6 +50,18 @@ class FakeSkillNode(Node):
                                                 # 유발하려면 `cup_bias` 를 쓴다 (test_process_fsm 의 Cell 과 같은 규약)
                                                 #   → 스쿱 계량으로는 안 잡히고 VERIFY ① BATCH_OUT_OF_SPEC 이 잡는다
         self.missing_scoop = False              # 스쿱이 거치대에 없다 — 파지해도 물리지 않는다 (T6(a) 고의 장애)
+        self.weigh_invalid = {}                 # 계량 단계 → 앞으로 `valid=false` 로 답할 횟수.
+                                                # 'TARE'·'VERIFY'(용기 계량) · 'SCOOP_TARE'·'WEIGH_SCOOP'·
+                                                # 'WEIGH_RESIDUAL'(스쿱 계량). {'WEIGH_RESIDUAL': 3} 이면
+                                                # 최초 1 + 재시도 2 가 다 무효라 일탈까지 간다.
+        self.invalid_std_g = 12.5               # 무효일 때 싣는 σ. 실물은 `scale.py:135` 가
+                                                # `valid = valid_src and std_g <= max_std_g`(기본 8.0) 로 판정하므로
+                                                # **σ 가 게이트 위여야** 기록이 자기모순이 아니다
+                                                # (valid=false 인데 σ 0.4 로 남으면 나중에 기록을 보는 사람이 막힌다)
+        self._poured = False                    # 마지막 붓기 이후 다시 퍼지 않았다 = 다음 스쿱 계량은 **잔량**이다.
+                                                # 계약상 세 스쿱 계량은 같은 요청이라(`WeighHeld.action`) goal 로는
+                                                # 구분되지 않는다. FSM 상태를 흉내 내는 대신 **물리적 사실**로 가른다 —
+                                                # 붓고 나면 스쿱에 남은 것이 잔량이라는 건 로봇 밖에서도 참이다.
         self.scoop_gain = 1.0                   # 깊이당 퍼올림 배율. 크게 주면 min_fraction 으로도 남은 양을 넘겨
                                                 #   반환만 반복하다 붓기 전에 TIMEOUT 이 난다 (붓기 전 일탈 시험용)
         self.block_rescoop = False              # 실물처럼 반환 뒤 Scoop 을 거부할지 (v1.5.1 · PR #43)
@@ -145,9 +157,21 @@ class FakeSkillNode(Node):
         self.fail[name] = left - 1
         return True
 
-    def _reading(self, gross: float, tare: float, subject: str, station: str = 'workbench') -> WeightReading:
+    def _takes_invalid(self, stage: str) -> bool:
+        """`weigh_invalid` 에서 한 번 꺼내 쓴다 — `_fails` 와 같은 규약(소진되면 정상으로 돌아온다)."""
+        with self.lock:
+            left = self.weigh_invalid.get(stage, 0)
+            if left <= 0:
+                return False
+            self.weigh_invalid[stage] = left - 1
+            return True
+
+    def _reading(self, gross: float, tare: float, subject: str, station: str = 'workbench',
+                 stage: str = '') -> WeightReading:
+        bad = self._takes_invalid(stage)
         m = WeightReading(gross_g=float(gross), tare_g=float(tare), net_g=float(gross - tare),
-                          std_g=0.4, samples=20, valid=True, station=station, subject=subject)
+                          std_g=self.invalid_std_g if bad else 0.4, samples=20,
+                          valid=not bad, station=station, subject=subject)
         m.header.stamp = self.get_clock().now().to_msg()
         return m
 
@@ -196,6 +220,7 @@ class FakeSkillNode(Node):
                 self.empty -= 1
                 gh.succeed()
                 return Scoop.Result(success=True, contact_detected=False)
+            self._poured = False         # 다시 펐으니 다음 스쿱 계량은 **붓기 전**이다
             if self.held:
                 # 깊이 비율만큼 퍼올린다 — 계약 v1.5 의 depth_fraction 이 실제로 쓰이는 지점
                 self.content[self.held] = (self.content.get(self.held, 0.0)
@@ -220,6 +245,7 @@ class FakeSkillNode(Node):
             moved = min(have, max(0.0, have * f * self.transfer))   # 스쿱에 있는 것보다 많이 못 붓는다
             self.content[self.held] = have - moved
             self.in_cup += moved
+            self._poured = True          # 이후의 스쿱 계량은 **잔량**이다 (재계량으로 여러 번 와도 그렇다)
         gh.succeed()
         return Pour.Result(success=True)
 
@@ -243,8 +269,9 @@ class FakeSkillNode(Node):
         with self.lock:
             gross = CUP_MASS_G + self.in_cup + (self.cup_bias if self.in_cup > 0 else 0.0)
         gh.succeed()
+        stage = 'TARE' if gh.request.tare_g == 0.0 else 'VERIFY'
         return WeighContainer.Result(success=True,
-                                     reading=self._reading(gross, gh.request.tare_g, 'container'))
+                                     reading=self._reading(gross, gh.request.tare_g, 'container', stage=stage))
 
     def _weigh_held(self, gh):
         with self.lock:
@@ -257,8 +284,11 @@ class FakeSkillNode(Node):
             gross = SCOOP_MASS_G + self.content.get(self.held, 0.0)
             suffix = self.held.rsplit('_', 1)[-1]
             station = f'material_{suffix}'
+            poured = self._poured
         gh.succeed()
-        return WeighHeld.Result(success=True, reading=self._reading(gross, gh.request.tare_g, 'scoop', station))
+        stage = 'SCOOP_TARE' if gh.request.tare_g == 0.0 else ('WEIGH_RESIDUAL' if poured else 'WEIGH_SCOOP')
+        return WeighHeld.Result(success=True,
+                                reading=self._reading(gross, gh.request.tare_g, 'scoop', station, stage=stage))
 
     # ── Service ──────────────────────────────────────────────────────
     def _set_gripper(self, req, res):
