@@ -9,7 +9,9 @@
 셀 밖 QA 는 같은 네트워크의 다른 기기에서 http://<이 PC>:5000 으로 접속한다 (R23 원격 승인).
 
 의존: python3-flask (apt). 없으면 기동 시 안내하고 종료.
-TODO([D]) 9/17: 가상 모드에서 주문→상태→QA 승인→기록 조회 한 바퀴.
+TODO([D]): 실물 통합 때 주문→상태→QA 승인→기록 조회 한 바퀴를 실제 /cell 로 확인한다.
+가상 모드로는 못 한다 — 파지 판정과 세트 끝 NUDGE_WAIT 에서 막힌다(practice/D/CURRENT.md 「알려진 함정」).
+/hmi_test 경로는 tools/verify_ros_http.py 로 검증된다.
 """
 import copy
 import csv
