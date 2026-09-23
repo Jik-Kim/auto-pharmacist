@@ -9,7 +9,9 @@
 셀 밖 QA 는 같은 네트워크의 다른 기기에서 http://<이 PC>:5000 으로 접속한다 (R23 원격 승인).
 
 의존: python3-flask (apt). 없으면 기동 시 안내하고 종료.
-TODO([D]) 9/17: 가상 모드에서 주문→상태→QA 승인→기록 조회 한 바퀴.
+TODO([D]): 실물 통합 때 주문→상태→QA 승인→기록 조회 한 바퀴를 실제 /cell 로 확인한다.
+가상 모드로는 못 한다 — 파지 판정과 세트 끝 NUDGE_WAIT 에서 막힌다(practice/D/CURRENT.md 「알려진 함정」).
+/hmi_test 경로는 tools/verify_ros_http.py 로 검증된다.
 """
 import copy
 import csv
@@ -44,7 +46,7 @@ except ImportError:
 from gmp_hmi.core.measurement_context import target_band
 from gmp_hmi.core.pause_context import pause_reason
 from gmp_hmi.core.safety_recovery import SafetyRecovery
-from gmp_hmi.core.db import DECISIONS, KINDS, VERDICTS, CellDB
+from gmp_hmi.core.db import DECISIONS, KINDS, LEVELS, VERDICTS, CellDB
 from gmp_hmi.core.session_inventory import SessionInventory
 from gmp_hmi.core.trial_inventory import validate_trial_snapshot
 from gmp_hmi.core.admin_store import AdminStore, DEFAULT_SETTINGS
@@ -55,7 +57,6 @@ MODES = {getattr(CellState, name): name
          for name in ('IDLE', 'RUNNING', 'PAUSED', 'DEVIATION', 'ERROR', 'DONE')}
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 TOPICS = ('state', 'weight', 'gripper', 'dispense_result', 'deviation', 'scoop_cycle', 'event')
-LEVELS = {0: 'INFO', 1: 'WARN', 2: 'ERROR'}
 
 
 class CommandUnavailable(RuntimeError):
@@ -572,7 +573,6 @@ class HmiRosNode(Node):
         data['target_band'] = target_band(data.get('active_recipe'), data['state'].get('batch_id'))
         data['integration'] = {
             'inventory': {'connected': False, 'message': '운영 재고·보충 계약 미정 · 표시값은 HMI 추정입니다'},
-            'collection': {'connected': False, 'message': '회수 확인 기록만 지원 · C 적재 카운터 초기화 미연결'},
             'restart': {'connected': False, 'message': '미완료 기록 조회만 지원 · C 재기동 재개 계약 미정'}}
         data['now'] = self.get_clock().now().nanoseconds / 1e9
         return json_finite(data)
@@ -881,7 +881,7 @@ def build_app(node: HmiRosNode, db: CellDB, admin_store=None):
 
     @app.route('/demo')
     def demo():
-        return render_template('index.html', hmi_config={'demo': True, 'recipes': ['demo_batch']})
+        return render_template('index.html', hmi_config={'demo': True, 'recipes': ['recipe-01', 'recipe-02', 'recipe-03']})
 
     @app.get('/auth/session')
     def auth_session():
@@ -1066,17 +1066,6 @@ def build_app(node: HmiRosNode, db: CellDB, admin_store=None):
         if not isinstance(batch_id, str) or not isinstance(deviation_id, str):
             raise ValueError('배치·일탈 ID는 문자열이어야 합니다')
         return command(lambda: node.qa(batch_id, deviation_id, decision, g.user['username']))
-
-    @app.post('/collection-confirm')
-    @requires('qa', 'admin')
-    def collection_confirm():
-        data = payload()
-        if data.get('passbox_done_empty') is not True or data.get('reject_bin_empty') is not True:
-            raise ValueError('완성품 패스박스와 폐기함을 모두 비웠음을 확인하세요')
-        # 적재 카운터의 권위자는 C 공정이다. HMI는 사람의 회수 확인만 감사 기록으로 남긴다.
-        node.audit('COLLECTION_CONFIRMED', g.user['username'],
-                   'passbox_done_empty=true reject_bin_empty=true counter_reset=not_connected', batch_id='')
-        return jsonify(ok=True, message='회수 확인을 기록했습니다. 공정 적재 카운터 초기화 연동은 아직 준비 중입니다.')
 
     @app.post('/interlock')
     @requires('operator', 'admin')

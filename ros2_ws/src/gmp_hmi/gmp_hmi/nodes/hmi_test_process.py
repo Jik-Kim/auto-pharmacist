@@ -297,11 +297,12 @@ class HmiTestProcess(Node):
                 return res
             self.previous = (self.mode, self.step, self.station, self.note)
             # 가상 안전 자세 이동 완료 후에만 응답한다. 실제 하드웨어 안전 검증은 아니다.
-            self.step, self.station = 'MOVING_TO_SAFE', 'test_moving'
+            # 단계 이름은 실제 FSM 과 같게 둔다 — 실제는 이동 중에도 단계를 바꾸지 않는다(hmi.js steps 맵에 없는 이름은 영문 그대로 보인다).
+            self.station = 'test_moving'
             self._state()
             time.sleep(0.3)
             self._previous_tick = time.monotonic()
-            self.mode, self.step, self.station = CellState.PAUSED, 'INTERLOCK', 'test_safe'
+            self.mode, self.step, self.station = CellState.PAUSED, 'PAUSED', 'test_safe'
             self.note = '시험 안전 위치를 가정한 일시정지 · 실제 구역 진입 허가 아님'
             self._event('INTERLOCK_ENTER', 'TEST_ONLY ' + req.reason)
             self._state()
@@ -399,13 +400,13 @@ class HmiTestProcess(Node):
             kind=kind, detail='TEST_ONLY ' + text, requires_decision=True,
             decision=Deviation.PENDING, operator_id='')
         self.pub_dev.publish(self._stamp(self.pending))
-        self.mode, self.step, self.phase = CellState.DEVIATION, 'WAIT_QA', 'qa'
+        self.mode, self.step, self.phase = CellState.DEVIATION, 'DEVIATION', 'qa'
         self.note = '시험 일탈 · QA 승인 또는 폐기 대기'
         self._state()
 
     def _finish(self, result):
         self.phase, self.elapsed, self.finish_result = 'finish', 0.0, result
-        self.step, self.station = ('DISCARD_MOVING', 'reject_bin') if result == 'DISCARDED' else ('FINISH', 'passbox_done')
+        self.step, self.station = ('DISCARDED', 'reject_bin') if result == 'DISCARDED' else ('FINISH', 'passbox_done')
         self.note = '시험 배치 결과 정리 중 · ' + result
         self._state()  # RUNNING을 유지한다. 가상 반송 완료는 다음 tick에서만 확정한다.
 
@@ -457,7 +458,7 @@ class HmiTestProcess(Node):
         overfill = self.active_scenario == 'overfill' and self.index == min(1, len(self.items) - 1)
         actual = float(item.target_g * (OVERFILL_RATIO if overfill else 1.0))
         fraction = min(1.0, self.elapsed / self.item_duration)
-        self.step = 'SCOOP' if fraction < 0.4 else ('POUR' if fraction < 0.7 else 'WEIGH')
+        self.step = 'SCOOP' if fraction < 0.4 else ('POUR' if fraction < 0.7 else 'WEIGH_RESIDUAL')
         self.station = self._material_station(item.material_id) if fraction < 0.4 else 'workbench'
         self.note = f'시험 {item.material_id} · 목표 {item.target_g:g} g · 생성 계량값'
         if self.elapsed - self.last_weight >= 0.4:

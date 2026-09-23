@@ -17,8 +17,10 @@ def _start(context):
     test_dir = tempfile.mkdtemp(prefix='gmp_hmi_ros_check_')
     db_path = os.path.join(test_dir, 'cell.db')
     scenario = LaunchConfiguration('scenario').perform(context)
-    if scenario not in ('normal', 'overfill', 'verify_mismatch', 'wrong_tool'):
-        raise ValueError('scenario는 normal/overfill/verify_mismatch/wrong_tool이어야 합니다.')
+    # hmi_test_process._validate_batch 의 목록과 같아야 한다(test_v3_frontend_contract 가 대조).
+    scenarios = ('normal', 'overfill', 'batch_out_of_spec', 'wrong_tool', 'weigh_invalid', 'material_empty')
+    if scenario not in scenarios:
+        raise ValueError('scenario는 ' + '/'.join(scenarios) + ' 중 하나여야 합니다.')
     if not os.environ.get('GMP_HMI_ADMIN_PASSWORD'):
         raise ValueError('시험 관리자 비밀번호를 GMP_HMI_ADMIN_PASSWORD 환경변수에 설정하세요 (10자 이상).')
     initial = yaml.safe_load(LaunchConfiguration('test_initial_g').perform(context))

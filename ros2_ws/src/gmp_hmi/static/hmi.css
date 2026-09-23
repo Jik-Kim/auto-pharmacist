@@ -104,3 +104,44 @@ body:has(#loginOverlay:not([hidden]))>.safety-banner{visibility:hidden}.login-ca
 #orderForm button,#openCancelBatch,#refreshRestart{margin-top:20px}
 .monitor canvas{height:260px}
 .deviation .button-pair button{min-height:68px}
+
+/* 휴대폰(≤760px): 헤더가 화면을 계속 차지하지 않게 페이지 전체를 스크롤한다. 고정 영역이 화면 절반(데모)~30 %(운영)를
+ * 먹어 아래 영역만 스크롤되던 것(9/23 G6 사전 확인). 비상정지 안내띠는 sticky 라 스크롤해도 맨 위에 남는다.
+ * 안전 복구 등 헤더 버튼은 손가락 터치 최소 크기(44px)로 키운다. */
+@media(max-width:760px){
+ body{height:auto;min-height:100dvh;overflow:auto}
+ main{flex:none;overflow:visible}
+ header{min-height:0;padding:10px 12px;gap:8px 10px}
+ .brand{font-size:17px;gap:8px}.brand small{display:none}.brand-mark{width:30px;height:32px;font-size:18px}
+ header .connection{gap:6px}
+ nav button{min-height:40px;padding:6px 10px}
+ .session-button{min-height:44px;padding:8px 12px;font-size:12px}
+ /* 계정(로그아웃) 버튼만 혼자 다음 줄로 떨어지지 않게 상태 표시 줄 오른쪽 끝으로 올린다.
+  * 1줄: [환경·수신 상태 …… 계정] / 2줄: [설정][계정 관리][안전 복구] — 버튼은 제 크기 그대로. */
+ header .connection{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:'status session' 'tools tools';gap:8px;width:100%;align-items:center}
+ header .connection>.connection-group:nth-child(1){grid-area:status;min-width:0}
+ header .connection>#utilityButtons{grid-area:tools}
+ header .connection>.connection-group:nth-child(3){grid-area:session}
+ header .connection>.connection-group+.connection-group{padding-left:0;border-left:0}
+ #sessionButton{min-height:34px;padding:6px 10px;font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
+
+/* 휴대폰(≤760px) 기록·통계: 날짜 입력(datetime-local)은 브라우저 최소 폭이 커서 두 칸을 나란히 두면 화면을 넘어
+ * 페이지 전체가 옆으로 밀렸다(390px 에서 417px). 필터는 2열 격자, 날짜는 한 줄씩. 표는 줄바꿈 대신 표 안에서만
+ * 가로로 넘긴다 — 시작 시각이 네 줄로 쪼개지지 않게(9/23 동권님 휴대폰 확인). */
+@media(max-width:760px){
+ .filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end}
+ .filters label{min-width:0;max-width:none}
+ .filters input,.filters select{min-width:0;width:100%}
+ #reportFilters>label:nth-of-type(-n+2),#alarmFilters>label:nth-of-type(-n+2){grid-column:1/-1}
+ .filters button{width:100%}
+ .table-scroll th,.table-scroll td{white-space:nowrap}
+ /* main 은 margin:auto 라 폭이 내용에 맞춰 늘어난다 — 화면 폭에 묶어야 넓은 표가 표 안에서만 넘친다 */
+ main{width:100%;min-width:0}#records,#operation,.records-grid,.records-grid>.card{min-width:0;max-width:100%}
+ /* 실제 휴대폰(특히 iOS Safari)은 날짜 칸이 width 를 무시하고 내용 폭으로 그려 화면을 벗어난다 —
+  * 기본 모양을 끄고 블록으로 칸에 맞춘다. 값·달력 선택은 그대로 된다. */
+ .filters input[type=datetime-local]{-webkit-appearance:none;appearance:none;display:block;box-sizing:border-box;
+  width:100%;min-width:0;max-width:100%;height:42px;padding:8px 10px;font-size:14px;line-height:1.2}
+ .filters input[type=datetime-local]::-webkit-date-and-time-value{text-align:left}
+ .filters label{overflow:hidden}
+}
