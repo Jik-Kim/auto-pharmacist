@@ -19,7 +19,8 @@
 | 계약 이름표 대조 | `db.py` `KINDS`·`DECISIONS`·`VERDICTS`·`LEVELS`, `hmi.js` `outcomeNames` 를 `gmp_interfaces/msg/*.msg` 와 시험으로 대조(`test_db.py`). 통신 시험 launch 의 시나리오 목록도 시험 노드와 대조 | 통합 전 정리 PR |
 | 프런트 시험 2 종 | `tools/test_safety_popup.cjs`(DOM 스텁·안전 복구 팝업 가드)·`tools/test_frontend_render.cjs`(playwright) **둘 다 PASS**. 후자는 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium` 필요 | 9/23 실행, PR #267 |
 | 재고 차감 `session_inventory.observe` | OK·OVER 만 차감(UNDER·INVALID 제외) — 「재고를 모른다」 표현은 별건 | `core/session_inventory.py:39`, #108 논의 |
-| 레이아웃 | 데스크톱: `body` 가 `display:flex; height:100dvh; overflow:hidden` — **스크롤은 `main` 안에서만**. 기록·통계 탭은 grid 4행 `1fr` 로 카드 3개 하단 정렬. **휴대폰(≤760px)은 페이지 전체가 스크롤**되고 비상정지 안내띠만 위에 고정, 헤더 버튼 44px(로그아웃은 상태 줄 오른쪽), `main` 은 화면 폭에 묶고 표는 표 상자 안에서만 가로 스크롤, 기간 필터는 한 줄씩 | PR #229 (`hmi.css:1`·`:73`), 통합 전 정리 PR(`hmi.css` 끝 모바일 블록) |
+| 레이아웃 | 데스크톱: `body` 가 `display:flex; height:100dvh; overflow:hidden` — **스크롤은 `main` 안에서만**. 기록·통계 탭은 grid 4행 `1fr` 로 카드 3개 하단 정렬. **휴대폰(≤760px)은 페이지 전체가 스크롤**되고 비상정지 안내띠만 위에 고정, 헤더 버튼 44px(로그아웃은 상태 줄 오른쪽), `main` 은 화면 폭에 묶고 표는 표 상자 안에서만 가로 스크롤, 기간 필터는 한 줄씩. 갱신 때 높이가 바뀌지 않게 상태 바·결과표·일탈 목록 높이 고정, (iOS 는 스크롤 앵커링이 없다) |
+| 배치 완료·폐기 알림 | 모든 화면에서 **떠 있는 알림**(PC 왼쪽 아래·휴대폰 아래), `COMPLETION_SHOW_MS` 5 s 뒤 자동 숨김, ✕ 닫기. 한 자리라 새 알림이 이전 것을 대신하고, 한 번 보인 배치·결과는 옛 상태를 다시 받아도 안 뜸. 칸 사이에 끼우지 않는다(아래 카드를 밀었다) | `hmi.js` `renderCompletion`, 이 PR | PR #229 (`hmi.css:1`·`:73`), 통합 전 정리 PR(`hmi.css` 끝 모바일 블록) |
 | 시연 기기 | 로봇 PC 1대 + **휴대폰 브라우저 HMI 기본**, 같은 네트워크(`http://<로봇 PC Wi-Fi IP>:5000`) | PR #259, `docs/demo_run_procedure.md` T0·G6 |
 | ROS 도메인 | 본운영 70, 격리 시험 88 | `docs/demo_run_procedure.md:38` |
 | 통신 검증 기준선 | `tools/verify_ros_http.py` **20 항목 PASS** (실제 DDS, `/hmi_test`, 배치 9 건) — D-33 레시피 기준(값은 `gmp_bringup/params/recipes` 참조). 시작 재고 `test_initial_g:='[170.0,1000.0,1000.0]'`. launch 와 검증기의 `GMP_HMI_ADMIN_PASSWORD` 가 **같아야** 한다(다르면 로그인 401) | 9/23 19:50 실행, PR #276 |
