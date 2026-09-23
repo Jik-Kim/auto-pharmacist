@@ -883,7 +883,7 @@ def build_app(node: HmiRosNode, db: CellDB, admin_store=None):
 
     @app.route('/demo')
     def demo():
-        return render_template('index.html', hmi_config={'demo': True, 'recipes': ['demo_batch']})
+        return render_template('index.html', hmi_config={'demo': True, 'recipes': ['recipe-01', 'recipe-02', 'recipe-03']})
 
     @app.get('/auth/session')
     def auth_session():
