@@ -157,8 +157,7 @@ body:has(#loginOverlay:not([hidden]))>.safety-banner{visibility:hidden}.login-ca
  .statusbar .status-field strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  .statusbar #note{grid-column:1/-1;min-width:0;height:3.4em;line-height:1.7;overflow:hidden;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
- #completion{position:fixed;left:12px;right:12px;bottom:12px;z-index:180;margin:0;max-height:40vh;overflow:auto;
-  box-shadow:0 12px 32px #1428403a}
+ #completion{left:12px;right:12px;bottom:12px;width:auto;max-height:40vh;overflow:auto}
  body:has(#completion:not([hidden])) main{padding-bottom:150px}
  body:has(#completion:not([hidden])) .safety-mode-popup{top:64px;bottom:auto}
  #results{height:220px}
@@ -166,3 +165,11 @@ body:has(#loginOverlay:not([hidden]))>.safety-banner{visibility:hidden}.login-ca
  .deviations{min-height:258px;display:flex;flex-direction:column}
  .deviations>.empty{flex:1;display:flex;align-items:center;justify-content:center}
 }
+
+/* 배치 완료·폐기 알림: 모든 화면에서 떠 있는 알림(8초 뒤 자동으로 사라짐, ✕ 로 닫기). 칸 사이에 끼우면 아래 카드를
+ * 전부 밀어 화면이 오르내렸다. 안전 모드 팝업(오른쪽 아래)과 겹치지 않게 왼쪽 아래에 둔다. */
+#completion{position:fixed;left:22px;bottom:22px;z-index:180;width:min(460px,calc(100% - 44px));margin:0;
+ padding-right:44px;box-shadow:0 18px 48px #14284038}
+#completion .completion-close{position:absolute;top:8px;right:8px;min-height:32px;width:32px;padding:0;
+ background:transparent;border:0;color:inherit;font-size:16px;line-height:1}
+@media(max-width:760px){#completion{left:12px;right:12px;bottom:12px;width:auto}}
