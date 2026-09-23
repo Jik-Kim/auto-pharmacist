@@ -763,14 +763,19 @@ def test_invalid_tare_up_to_limit_raises_weigh_invalid():
 NOMINAL_85, MINFRAC_10 = 85.0, 0.10
 
 
-def _fixed_scoop_run(target, tol, per_scoop, first=None):
-    """매번 같은 양을 퍼는 스쿱으로 원료 1종을 끝까지 돌린다 — 깊이 요청은 무시된다."""
+def _fixed_scoop_run(target, tol, per_scoop, first=None, *, flag=False):
+    """매번 같은 양을 퍼는 스쿱으로 원료 1종을 끝까지 돌린다 — 깊이 요청은 무시된다.
+
+    `flag` 는 `DosingConfig.fixed_scoop`. 끄면 **현장 설정을 안 바꿨을 때**의 거동이고,
+    켜면 `decide()` 가 보충 불가를 미리 판정한다.
+    """
     spec = parse({'product': 'demo', 'items': [{'material_id': 'A', 'target_g': target, 'tol_pct': tol}]})
-    fsm = ProcessFSM(spec, DosingConfig(scoop_nominal_g=NOMINAL_85, min_fraction=MINFRAC_10),
+    fsm = ProcessFSM(spec, DosingConfig(scoop_nominal_g=NOMINAL_85, min_fraction=MINFRAC_10,
+                                        fixed_scoop=flag),
                      WeightModel(ScaleConfig()), fingerprint=ToolFingerprint())
     run(fsm, Cell(yields=[per_scoop if first is None else first] + [per_scoop] * 40))
     r = fsm.results[0] if fsm.results else fsm.cur
-    return r, [d['kind'] for d in fsm.deviations]
+    return r, [d['kind'] for d in fsm.deviations], fsm.deviations
 
 
 def test_고정스쿱_첫_스쿱_미달은_반환만_반복하다_TIMEOUT_으로_끝난다():
@@ -782,7 +787,7 @@ def test_고정스쿱_첫_스쿱_미달은_반환만_반복하다_TIMEOUT_으로
     ⚠️ **일탈이 둘이다.** TIMEOUT 을 QA 가 승인하면 배치가 이어지고, 투입량이 모자란 채
     VERIFY 에 도달해 `BATCH_OUT_OF_SPEC` 이 또 난다 — 시연자가 QA 를 **두 번** 누른다.
     """
-    r, kinds = _fixed_scoop_run(85, 10, NOMINAL_85, first=70.0)
+    r, kinds, _devs = _fixed_scoop_run(85, 10, NOMINAL_85, first=70.0)
     assert kinds == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], kinds
     assert r.returns == 3, r.returns          # max_returns 를 소진한다
     assert r.attempts == 2, r.attempts        # 반환은 붓기 시도를 소모하지 않는다
@@ -803,10 +808,10 @@ def test_고정스쿱_임계는_스쿱_1회량으로_정해진다(target, scoops
     잔량이 커지면 그대로 줄어든다.
     """
     below, above = round(threshold - 0.1, 1), threshold
-    r_bad, kinds_bad = _fixed_scoop_run(target, 10, below)
+    r_bad, kinds_bad, _ = _fixed_scoop_run(target, 10, below)
     assert kinds_bad == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], (target, below, kinds_bad)
 
-    r_ok, kinds_ok = _fixed_scoop_run(target, 10, above)
+    r_ok, kinds_ok, _ = _fixed_scoop_run(target, 10, above)
     assert kinds_ok == [], (target, above, kinds_ok, r_ok.actual_g)
     assert abs(r_ok.actual_g - target) <= target * 0.10, r_ok.actual_g
     # 잔량을 한 번만 잃는다는 것이 이 경계의 이유다
@@ -826,7 +831,7 @@ def test_고정스쿱_170g_은_첫_스쿱이_미달이어도_보충으로_합격
     85 g 은 1스쿱이 목표라 미달이면 보충이 곧 초과라 사실상 전 구간이 걸리지만,
     170 g 은 `actual ≤ 102 g` 까지 보충이 허용된다. **한 레시피로 일반화하면 틀린다.**
     """
-    r, kinds = _fixed_scoop_run(170, 10, NOMINAL_85, first=83.0)
+    r, kinds, _devs = _fixed_scoop_run(170, 10, NOMINAL_85, first=83.0)
     assert kinds == [], kinds
     assert r.attempts == 2 and r.returns == 0, (r.attempts, r.returns)
     assert abs(r.actual_g - 170) <= 17.0, r.actual_g      # 83 + 85 − 잔량 2 = 166
@@ -835,6 +840,37 @@ def test_고정스쿱_170g_은_첫_스쿱이_미달이어도_보충으로_합격
     over_limit = 170 * 1.10 - NOMINAL_85                  # = 102.0
     assert over_limit == pytest.approx(102.0)
     assert 81.0 + NOMINAL_85 <= 170 * 1.10, '81 g 에서는 보충이 아직 상한 안이다'
+
+
+def test_fixed_scoop_플래그는_반환_루프를_없애지만_QA_횟수는_그대로다():
+    """`DosingConfig.fixed_scoop` 를 켜면 **헛도는 반환이 사라진다** — 그게 전부다.
+
+    ⚠️ **QA 는 여전히 두 번이다.** 투입량이 모자란 사실은 그대로라 배치 끝 VERIFY ① 이
+    `BATCH_OUT_OF_SPEC` 을 또 낸다. 플래그가 바꾸는 것은 **가는 길**이지 **결과**가 아니다
+    (C 가 「QA 가 한 번으로 준다」고 잘못 전달했던 부분 — 9/23 실측으로 정정).
+
+    얻는 것은 셋이다: 반환 3회만큼 시연이 짧아지고, `ScoopCycle` 에 의미 없는 RETURNED
+    3건이 안 쌓이고, 일탈 detail 이 **왜 멈췄는지**를 말한다.
+    """
+    off_r, off_kinds, _ = _fixed_scoop_run(85, 10, NOMINAL_85, first=70.0, flag=False)
+    on_r, on_kinds, on_devs = _fixed_scoop_run(85, 10, NOMINAL_85, first=70.0, flag=True)
+
+    assert off_kinds == on_kinds == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], (off_kinds, on_kinds)
+    assert off_r.actual_g == on_r.actual_g, (off_r.actual_g, on_r.actual_g)   # 결과는 같다
+    assert (off_r.returns, on_r.returns) == (3, 0), (off_r.returns, on_r.returns)
+
+    # 사유가 기록에 남는다 — 같은 kind 를 가르는 유일한 근거다
+    timeout = next(d for d in on_devs if d['kind'] == 'TIMEOUT')
+    assert '보충 불가' in timeout['detail'] and '93.5' in timeout['detail'], timeout['detail']
+
+
+def test_fixed_scoop_플래그를_켜도_맞출_수_있는_배치는_안_죽인다():
+    """보충으로 도달 가능한 경우는 플래그와 무관하게 그대로 간다 — 안전망이지 차단기가 아니다."""
+    for target, first in ((170, 83.0), (85, 85.0)):
+        on = _fixed_scoop_run(target, 10, NOMINAL_85, first=first, flag=True)
+        off = _fixed_scoop_run(target, 10, NOMINAL_85, first=first, flag=False)
+        assert on[1] == off[1] == [], (target, first, on[1], off[1])
+        assert on[0].actual_g == off[0].actual_g, (target, first)
 
 
 def test_고정스쿱_보충요청이_최소채취보다_작아지는_구간은_없다():
