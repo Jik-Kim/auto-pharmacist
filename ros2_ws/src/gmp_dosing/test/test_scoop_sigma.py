@@ -189,13 +189,13 @@ def test_gross_format_catches_an_emptied_cup_or_stray_tare(tmp_path):
         ss.load(_gross_csv(tmp_path, ['1,70.0,가득,']))
 
 
-def test_the_0924_measurement_reproduces_its_published_numbers():
-    """9/24 실측 원본이 CURRENT.md·#272 에 적은 값을 그대로 낸다.
+def test_the_0923_measurement_reproduces_its_published_numbers():
+    """9/23 실측 원본이 CURRENT.md·#272 에 적은 값을 그대로 낸다.
 
     숫자를 손으로 옮기면 여기서 깨진다. 이 결론이 fixed_scoop(#274) 존폐와
     레시피 목표를 정하므로, 원본과 결론이 갈라지면 즉시 드러나야 한다.
     """
-    src = Path(__file__).resolve().parents[1] / 'calibration' / 'scoop_sigma_0924_matA.csv'
+    src = Path(__file__).resolve().parents[1] / 'calibration' / 'scoop_sigma_0923_matA.csv'
     rows = ss.load(str(src))
     assert len(rows) == 15
     s = ss.stats([r['투입량'] for r in rows])
