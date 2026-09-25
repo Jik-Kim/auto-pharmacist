@@ -1,24 +1,25 @@
 # B 도징·계량 현행 상태 (갱신: 2026-09-25)
 
-**담당**: nomal-npc + 김병직 (대행, 담당자 토큰 소진, 9/23~)
+**담당**: nomal-npc + Jik-Kim (대행 — 사유: 담당자 토큰 소진, 기간: 9/23~ 원 담당자 복귀 시까지. 표시는 원 담당자가 복귀해 지운다, 규칙 8)
 
 > 세션 시작 때 이 파일을 읽는다. 값을 쓰기 전에 근거 링크의 원본을 직접 연다.
+> 다른 파트 값(레시피 목표·tol·총량, 공구값, 스쿱 폭·속도, D 시험값)은 숫자로 적지 않고 이름·링크로 둔다(규칙 5).
 
 ## 지금 유효한 값
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 공구 설정 `tool_weight` (펜던트, **동결**) | 1.36 kg · CoG [5.31, −34.68, 8.28] mm (PLA 부착물, 자동측정 3회 평균) | PR #235 `scale_reference.yaml` retracted_0923 |
-| 런타임 계량 `scale.gain / offset_g / max_std_g` | 0.8859 / 247.091 / 10.0 — **우드락 공구(9/19~21) 조건 값, PLA 공구에서 미검증** | `ros2_ws/src/gmp_bringup/params/common.yaml:81-83` |
+| 공구 설정 `tool_weight` (펜던트, **동결**) | A 소관 동결값 — 숫자는 원본에서 본다 | [`practice/A/CURRENT.md`](../A/CURRENT.md) · `gmp_dosing/config/scale_reference.yaml` retracted_0923 · PR #235 |
+| 런타임 계량 `scale.gain / offset_g / max_std_g` | 0.8859 / 247.091 / 10.0 — **우드락 공구(9/19~21) 조건 값, PLA 공구에서 미검증** | `ros2_ws/src/gmp_bringup/params/common.yaml:91-93` |
 | 용기 경로 gain (PLA, 미확정) | ≈ 1.076 (한 파지 2점, 229 g 유효 1회) | PR #235 본문 · #187 |
-| 로봇 재파지 σ (용기 229 g, 8파지 12분, 추세 제거) | **6.99 g** — 한 파지 유지는 0.85 g | #187 9/23 정정 코멘트 |
-| VERIFY ① 허용폭 Σ(target×tol) | **9/23 조장 결정으로 바뀌었다** — recipe-01/02/03 = **25.5 / 25.5 / 34.0 g** (총 255/255/340 g, tol **10 %**). 종전 6/6/8 g(120/120/160 g, tol 5 %) | `params/recipes/recipe-0*.yaml`, `process_fsm.py:441` |
-| VERIFY ① 성립 여부 | **레시피 확대로 크게 완화됐다 (재계산 필요)** — σ_순량 9.9 g 은 그대로인데 허용폭이 6.0 → 25.5 g 이라 **2.58 σ · 통과 ≈ 99 %**(종전 0.61 σ · 46 %). 다만 `\|편향\|+3σ ≤ 예산` 기준으로는 29.7 vs 25.5 로 **아직 미달**(recipe-03 만 34.0 으로 통과) | SOT D-26 9/23 추기(PR #239) + 9/23 저녁 레시피 변경, **조장 재검토 필요** |
-| 계량 무효 재시도 | `max_invalid_retries: 2` (총 3회 측정) | #213 결정 1, PR #225 |
-| 스쿱 1회량 `scoop_nominal_g` (파일값) | **85.0** — 9/23 조장 결정값이고 **실측과 다르다**. 아래 실측 줄을 볼 것 | common.yaml `dosing` |
-| 스쿱 1회 **투입량 실측** (#272, 9/23 측정) | **평균 78.9 g · σ 3.90 g** (n=15, 원료 A, `vel_scale` 1.0, 고정 티칭 경로). σ 한쪽 95 % 상한 **5.69 g** | `calibration/scoop_sigma_0923_matA.csv`, PR #283 |
-| 깊이 비율 하한 `min_fraction` | **0.10** (종전 0.15). `stations.yaml scooping.A` 와 같아야 함 | common.yaml `dosing`, stations.yaml:73 |
-| 교착 여유 | 최소 채취 8.5 g vs 한계 17.0 g(85 g)·34.0 g(170 g) → **2~4 배 여유** | `test_dosing.py` 가 파라미터 파일을 읽어 단언 |
-| 영점 이동 한계 `zero_drift_limit_n` | 0.1 N | common.yaml:84 |
+| 로봇 재파지 σ (용기 229 g, 8파지 12분, 추세 제거) | **6.99 g** — 한 파지 유지는 0.85 g. TARE·VERIFY 두 파지라 σ_순량 **9.9 g** → 3σ **29.7 g** | #187 9/23 정정 코멘트 |
+| VERIFY ① 허용폭 Σ(target×tol) | 레시피(C) 값에서 나온다 — **가장 엄격한 운영 레시피 값**을 쓴다. D-33 값·D-35 적용 뒤 값은 SOT 에 있다 | `params/recipes/recipe-0*.yaml`, `process_fsm.py:449` `batch_tol_g()`, SOT D-31 9/25 추기 · D-35 |
+| VERIFY ① 성립 여부 | 재파지 3σ 29.7 g 은 D-33·D-35 어느 쪽이든 **recipe-01·02 의 허용폭을 넘고 recipe-03 만 안에 든다** — `\|편향\|+3σ ≤ 예산` 기준 미달. 합격 기준을 무엇으로 할지는 **조장 결정 대기** | SOT D-31 9/25 미결 메모 |
+| 계량 무효 재시도 | `max_invalid_retries` **2** (총 3회 측정). 출처는 `DosingConfig` 기본값 **하나뿐**이다 — `common.yaml` 에도 `process_node` 선언에도 없다 | `gmp_dosing/core/dosing.py:32`, #213 결정 1, PR #225 |
+| 스쿱 1회량 `scoop_nominal_g` | **79.0** (9/25 D-35, PR #283 에서 반영). 종전 85.0(9/23 D-33 결정값) · 40.0(9/18) | common.yaml `dosing.scoop_nominal_g`, `DosingConfig` 기본값, SOT D-35 |
+| 스쿱 1회 **투입량 실측** (#272, 9/23 측정) | **평균 78.9 g · σ 3.90 g** (n=15, **원료 A 만**, `vel_scale` 1.0, 고정 티칭 경로). σ 한쪽 95 % 상한 **5.69 g** | `calibration/scoop_sigma_0923_matA.csv`, PR #283 |
+| 깊이 비율 하한 `min_fraction` | **0.10** (종전 0.15). `stations.yaml scooping.A` 와 같아야 함 | common.yaml `dosing`, `stations.yaml:126` |
+| 교착 여유 | 최소 채취 **7.9 g** (= 0.10 × 79). 한계 2×target×tol 은 레시피 값이라 여기 안 적는다 — 성립 여부는 시험이 레시피 파일을 읽어 단언한다 | `test_dosing.py::test_min_scoop_cannot_overshoot_tolerance` |
+| 영점 이동 한계 `zero_drift_limit_n` | 0.1 N | `common.yaml:94` |
 
 ## 열린 과제 (이슈 번호)
 - ✅ **[완료 — 9/23 측정] 스쿱 1회 채취량 측정 — #272. 결과: 고정 스쿱 85 g 은 성립하지 않는다**
