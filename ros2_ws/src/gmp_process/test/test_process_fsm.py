@@ -617,6 +617,22 @@ def test_플래그를_끄면_접촉_판정은_종전_그대로다():
     assert kinds_for(ftrace, 'WEIGH_SCOOP') == ['weigh_scoop'] * 6, '고정 모드는 무게로 가르니 매번 잰다'
 
 
+def test_빈_스쿱_기록은_어느_증거로_판정했는지를_남긴다():
+    """`detail` 은 DB 에 남는 문자열이다 — 무게로 판정한 것을 「원료에 닿지 않는다」로 적으면
+    감사 기록이 사실과 달라진다(9/25 팀장 지적). 증거별로 문구를 가른다."""
+    by_contact = _fsm()
+    run(by_contact, Cell(yields=[0, 0, 0, 0, 100, 50], contact=None))
+    assert all('contact_detected=false' in d['detail'] for d in by_contact.deviations), by_contact.deviations
+    assert '보충 필요' in by_contact.deviations[-1]['detail']
+
+    by_weight = _fsm(fixed=True)
+    run(by_weight, Cell(yields=[0, 0, 0, 0, 100, 50], contact=False))
+    assert all('순중량' in d['detail'] and '닿지' not in d['detail'] for d in by_weight.deviations), \
+        by_weight.deviations
+    assert by_weight.deviations[-1]['kind'] == 'MATERIAL_EMPTY'
+    assert '보충 필요' in by_weight.deviations[-1]['detail']
+
+
 def test_빈_스쿱_문턱은_설정에서_온다():
     """문턱값은 **잠정**이라 코드에 박으면 안 된다 — 설정을 올리면 거동이 따라와야 한다.
 
