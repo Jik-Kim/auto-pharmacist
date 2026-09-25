@@ -119,7 +119,7 @@ p2.edge(tare, picks, 'tare_g 저장 · cur = 원료 0 · weight 발행', color=A
         exit=(0.5, 1), entry=(0.5, 0), points=((cx(3), 300), (cx(0), 300)), lpos=(0, -14))
 p2.edge(picks, stare, 'grip_inferred=true', color=ACC, lpos=(0, 16))
 p2.edge(stare, scoop, 'scoop_tare_g 저장\nattempts=1', color=ACC, lpos=(0, 22))
-p2.edge(scoop, wscoop, 'contact_detected=true (현 C)\n고정 경로는 미측정: 인계 필요', color=ACC, lpos=(0, 16))
+p2.edge(scoop, wscoop, 'contact_detected=true\n(고정 모드: 경로 성공이면 무조건 → 무게로 판정)', color=ACC, lpos=(0, 16))
 p2.edge(wscoop, pour, 'scooped ≤ max(0, need)+target×tol%\n전량 pour(fraction=1)', color=ACC, lpos=(0, 22))
 p2.edge(pour, wres, '', color=ACC)
 p2.edge(wres, ret, 'OK (|err| ≤ tol) · actual += scooped − residual → dispense_result 발행', color=OK,
@@ -158,7 +158,7 @@ def loop(node, c, label, ex=0.35, en=0.75, lp=-14):
             points=((cx(c, ex), Y[1 if node in (picks, scoop) else 0] - 35), (cx(c, en), Y[1 if node in (picks, scoop) else 0] - 35)), lpos=(0, lp))
 loop(pickc, 2, 'GRIP_FAIL ≤3 → 같은 carry 재시도')
 loop(picks, 0, 'GRIP_FAIL ≤3 → grip 재시도\n[추가1] 폭 불일치 → WRONG_TOOL → DEVIATION', lp=-22)
-loop(scoop, 2, 'SCOOP_EMPTY ≤3 → scoop 재시도', ex=0.2, en=0.55)
+loop(scoop, 2, 'SCOOP_EMPTY ≤3 → scoop 재시도\n(접촉 false · 또는 WEIGH_SCOOP 순중량 ≤ empty_scoop_g)', ex=0.2, en=0.55, lp=-22)
 p2.edge(finish, finish, 'GRIP_FAIL ≤3', color=WARM, exit=(0.3, 0), entry=(0.7, 0), points=((cx(4, 0.3), Y[2] - 30), (cx(4, 0.7), Y[2] - 30)), lpos=(0, -12))
 # ── 보충 인터락 (PAUSED) — 2열 2행은 비어 있어 세로로 지난다
 p2.edge(scoop, paused, 'SCOOP_EMPTY 4회 = MATERIAL_EMPTY → REFILL\n_resume = 이 scoop 요청', color=WARM,
@@ -191,7 +191,7 @@ kinds = [
   ('weigh_scoop', 'station · material_id · tare_g(빈 스쿱)', 'WeighHeld act — 해당 material_N.posx에서 들고 있는 스쿱을 계량 (SCOOP_TARE · WEIGH_SCOOP · WEIGH_RESIDUAL)\n계량 후 계량 자세에 머문다 · 빈 그리퍼면 success=false', "{'gross_g','net_g','std_g','valid','subject=scoop'}"),
  ('move', 'station · approach', 'move_to_station(station, ABOVE/AT)', "{'success','reached'} → state.station"),
  ('grip', 'close · target(scoop/cup)', 'set_gripper(close, width = scoop_width | cup_width, force)', "{'grip_inferred','final_width_mm'}"),
- ('scoop', 'material_id · attempt · fraction', '고정 full(fraction=1), 높이 보정 비활성. 접촉 미측정(false/TAUGHT_FIXED): C 연계 필요', "{'contact_detected'}"),
+ ('scoop', 'material_id · attempt · fraction', '고정 full(fraction=1), 높이 보정 비활성. 접촉 미측정(false/TAUGHT_FIXED) → fixed_scoop 이면 FSM 이 접촉 대신 순중량으로 판정', "{'contact_detected'}"),
  ('pour', 'station · fraction=1', 'pour(1): middle → ABOVE → start → end → ABOVE → Z+50 → middle', "{'success'}"),
  ('return_material', 'material_id', 'return_material(material_id)   원료통 반환 start/end 미티칭이면 이동하지 않고 실패', "{'success','message'}"),
  ('safe', 'reason · then', 'safe_pose(reason)   전이는 then 이 정한다', '{}'),
@@ -244,7 +244,7 @@ ROWS = [
  ('PICK_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT)\nSetGripper srv (close, scoop_width, force)\n→ grip_inferred, final_width_mm', None, 'state\ndeviation(GRIP_FAIL · WRONG_TOOL[v1.2])', False),
  ('SCOOP_TARE', 'n', None, 'WeighHeld act [v1.2] (빈 스쿱, 든 채)\n→ gross, std, valid', None, 'weight(스쿱 풍량, subject=scoop) · state', False),
  ('SCOOP', 'n', None, 'Scoop act\nmaterial_id, attempt → contact_detected', None, 'state\ndeviation(SCOOP_EMPTY · MATERIAL_EMPTY)', False),
- ('WEIGH_SCOOP', 'n', None, 'WeighHeld act (material_N.posx, 붓기 전)\n→ gross, valid', 'scooped > max(0, need)+target×tol%\n→ RETURN_MATERIAL, 아니면 fraction=1', 'weight(퍼낸 양) · state', False),
+ ('WEIGH_SCOOP', 'n', None, 'WeighHeld act (material_N.posx, 붓기 전)\n→ gross, valid', 'scooped ≤ empty_scoop_g → SCOOP_EMPTY\nscooped > max(0, need)+target×tol%\n→ RETURN_MATERIAL, 아니면 fraction=1', 'weight(퍼낸 양) · state', False),
  ('RETURN_MATERIAL', 'p', None, 'ReturnMaterial act\nmaterial_id → 원료통 start→end\n미티칭이면 success=false', None, 'scoop_cycle RETURNED/RETURN_FAILED\ndelivered=0 · valid=false', False),
  ('POUR', 'n', None, 'Pour act (fraction=1)\nmiddle→붓기 경로→middle (상세 3쪽)', None, 'state', False),
  ('WEIGH_RESIDUAL', 'n', None, 'WeighHeld act (material_N.posx, 붓기 후)\n→ gross, valid', 'decide(target, actual, tol, attempts,\nvalid, invalid, cfg)\n→ DONE / SCOOP / DEVIATION(kind)',
