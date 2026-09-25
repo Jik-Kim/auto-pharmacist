@@ -52,5 +52,5 @@ export GMP_HMI_ADMIN_PASSWORD
 HMI를 별도 실행할 때도 위 환경을 설정하고 `ros2 launch gmp_hmi hmi.launch.py`를 사용한다.
 이미 브링업에서 HMI가 실행 중이면 중복 기동하지 않는다.
 운영 레시피는 설치된 `gmp_bringup/params/recipes`에서 읽는다.
-`hmi_comm_test.launch.py`는 도메인 88에서 별도 시험용 레시피 사본(`gmp_hmi/config/test_recipes/v4`)을 쓴다 — 운영 레시피(`recipe-01`~`03`, 9/22 #217 로 40 g/80 g 단위가 등록됨)와 파일이 다를 뿐 "40 g 단위는 시험 전용" 은 아니다.
+`hmi_comm_test.launch.py`는 도메인 88에서 별도 시험용 레시피 사본(`gmp_hmi/config/test_recipes/v4`)을 쓴다 — 운영 레시피(`recipe-01`~`03`)와 **값이 같아야 한다** — 파일만 다르고 `test_v4_recipes.py` 가 사본↔운영 대조로 이를 강제한다. 현행 목표·허용오차는 SOT D-33 과 `params/recipes/*.yaml` 참조. ~~9/22 #217 로 40 g/80 g 단위가 등록됨~~ → D-33(9/23 저녁)으로 대체(9/25 문서 관리 대조).
 실물 허용오차 충족 여부는 G1 측정 결과로 결정한다.
