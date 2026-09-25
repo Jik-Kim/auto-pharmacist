@@ -93,6 +93,9 @@ class ProcessNode(Node):
             ('dosing.scoop_nominal_g', 40.0), ('dosing.min_fraction', 0.15),
             # 실물 시연은 끝까지 담그는 고정 스쿱(D-33). 런치 없이 단독 시험할 때만 깊이 제어 기본값을 둔다.
             ('dosing.fixed_scoop', False),
+            # 빈 스쿱 문턱 [g] — 순중량이 이 이하면 「아무것도 안 퍼졌다」로 본다 (#282 ④).
+            # **잠정값**이고 런타임 값은 common.yaml 이다. 빈 스쿱 계량 산포를 재면 바뀐다.
+            ('dosing.empty_scoop_g', 2.0),
             ('gripper.cup_width_mm', 60.0),
             ('gripper.open_width_mm', 100.0), ('gripper.force_n', 20.0),
             ('gripper.fingerprint_tolerance_mm', 0.0),   # [추가 1] WRONG_TOOL 폭 지문 margin. 0 이면 검사 꺼짐
@@ -393,7 +396,8 @@ class ProcessNode(Node):
                                       tolerance_mm=self.p('gripper.fingerprint_tolerance_mm'))
         self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale, fingerprint=fingerprint,
                               max_returns=int(self.p('dosing.max_returns')),
-                              zero_drift_limit_n=float(self.p('scale.zero_drift_limit_n')))
+                              zero_drift_limit_n=float(self.p('scale.zero_drift_limit_n')),
+                              empty_scoop_g=float(self.p('dosing.empty_scoop_g')))
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name='process-run')
         self._thread.start()
 
