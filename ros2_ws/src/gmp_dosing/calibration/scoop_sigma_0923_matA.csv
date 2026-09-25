@@ -18,6 +18,19 @@
 #   계량             외부 저울, workbench 용기 자리. 로봇 계량값은 쓰지 않는다
 #                    (런타임 scale.gain/offset_g 가 우드락 공구 조건 값이라 미검증)
 #   공구             1.36 kg, CoG [5.31, -34.68, 8.28] mm (동결)
+#   실행 경로        실물 로봇 + ROS 2 — 시연과 같은 경로(브링업 → skill_node → Scoop·Pour 액션 → 고정 티칭 경로)
+#                    브링업: ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100 vel_scale:=1.0
+#                    1회차 (측정자 기록):
+#                      ros2 service call /cell/set_gripper gmp_interfaces/srv/SetGripper
+#                        "{close: false, width_mm: 0.0, force_n: 0.0, timeout_s: 15.0}"   그리퍼 열기
+#                      cd ros2_ws/src/gmp_dosing/calibration/records && ./scoop_run.sh setup
+#                        스쿱 파지 → 인출 → 원료통 계량 자세
+#                      ./scoop_run.sh trial   Scoop → Pour(workbench 저울 위 시료통) → 저울값 입력 → 원료통 자세 복귀
+#                    2~15회차: 명령 미기록. 추정 — 같은 폴더에서 ./scoop_run.sh trial 을 회차마다 반복
+#                      (trial 1회 = 1회차, 끝 자세가 다음 Scoop 의 시작 자세라 setup 을 다시 부를 필요가 없다).
+#                      단 #290 반영에 브링업 재기동이 필요했을 것이라 그때 setup(또는 파지 복원)을 다시 했는지는 모른다.
+#                    scoop_run.sh 는 당시 records/(gitignore) 에 있었고 9/25 eb046b5 가 A/B/C 공용판으로
+#                    calibration/ 에 옮겼다 — 당시 원본은 저장소에 없다. process_node(FSM) 는 거치지 않았다.
 #   저장소           1회차 main 5b658e0 · 2~15회차 #290(545ef89, 직선속도 60 → 250 mm/s) 적용 후
 #
 # ⚠️ vel_scale 을 바꾸면 채취량이 바뀐다. 다른 값으로 잰 회차를 여기 섞지 말 것.
