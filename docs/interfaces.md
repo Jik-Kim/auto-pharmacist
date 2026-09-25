@@ -294,5 +294,6 @@ A 워커는 작업 전·유휴·이동/계량 취소 확인 구간에서 상태�
 - `Scoop`의 고정 경로 모드는 depth_fraction=1만 지원하며 success는 경로 완료다.
   접촉 측정은 하지 않아 contact_detected=false, 힘·깊이=0과 `TAUGHT_FIXED` 미측정
   message를 반환한다. 센서값 0이나 접촉 실패의 증거로 사용하지 않는다.
-  현 C FSM은 false를 SCOOP_EMPTY로 처리하므로 자동 공정 연계는 후속 합의·수정이 필요하다.
+  C FSM은 `dosing.fixed_scoop=true`에서 이 값을 진행 조건으로 쓰지 않고, 이어지는 WeighHeld 순중량이
+  `dosing.empty_scoop_g` 이하일 때만 SCOOP_EMPTY로 본다 (D-34, #282).
   인계 대상과 지원 범위는 [실행 안내](setup.md)의 B/C 인계 절을 따른다.

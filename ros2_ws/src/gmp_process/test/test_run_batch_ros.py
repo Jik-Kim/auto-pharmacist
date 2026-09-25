@@ -19,7 +19,7 @@ from gmp_interfaces.action import RunBatch
 from gmp_interfaces.msg import CellState, Deviation, Recipe, RecipeItem
 from gmp_interfaces.srv import QaDecision, SubmitOrder
 from gmp_process.nodes.process_node import ProcessNode
-from fake_skill_node import FakeSkillNode
+from fake_skill_node import NOMINAL_SCOOP_G, FakeSkillNode
 from test_process_node import Collector
 
 pytestmark = pytest.mark.skipif(os.environ.get('ROS_DOMAIN_ID') != '88', reason='DOMAIN 88 전용 시험')
@@ -48,7 +48,10 @@ def rig():
     proc=ProcessNode(parameter_overrides=[
         Parameter('stations_file',value=str(STATIONS)),Parameter('scale.samples',value=4),
         Parameter('scale.settle_s',value=0.0),Parameter('server_wait_s',value=5.0),
-        Parameter('skill_timeout_s',value=8.0)])
+        Parameter('skill_timeout_s',value=8.0),
+        # 선언 기본값이 운영값(D-35)으로 바뀌어도 가짜 스킬 노드의 공칭 40 g 과 짝을 유지한다 (9/25)
+        Parameter('dosing.scoop_nominal_g',value=NOMINAL_SCOOP_G),
+        Parameter('dosing.min_fraction',value=0.15),Parameter('scale.zero_drift_limit_n',value=0.5)])
     fake=FakeSkillNode(); probe=Collector()
     executor=MultiThreadedExecutor(num_threads=8)
     for n in (proc,fake,probe):executor.add_node(n)

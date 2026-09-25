@@ -375,12 +375,17 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 1. **B 직접 연계:** 스쿱 AT 파지 → WeighHeld(인출·빈 스쿱 계량) →
    Scoop(material_id, depth_fraction=1.0) → WeighHeld(퍼낸 양) 순서로 호출한다.
    고정 Scoop은 해당 원료 계량 자세에서만 시작한다. 성공 여부와 message를 확인한다.
-2. **C 자동 공정은 아직 연결 완료가 아니다.**
-   `process_fsm.py`의 SCOOP 결과 처리는 contact_detected=false를 SCOOP_EMPTY로 간주한다.
-   `process_node.py`는 Scoop.message를 FSM에 전달하지 않는다.
-   고정 경로의 미측정과 접촉 실패를 구분하고, 퍼낸 양의 판단을 후속 계량과 연결하는 합의가 필요하다.
+2. ~~**C 자동 공정은 아직 연결 완료가 아니다.**
+   `process_fsm.py`의 SCOOP 결과 처리는 contact_detected=false를 SCOOP_EMPTY로 간주한다.~~
+   `process_node.py`는 Scoop.message를 FSM에 전달하지 않는다. ← **여전히 사실** (`process_node._dispatch` 의 scoop 분기 — 결과 dict 에 message 가 없다)
+   ~~고정 경로의 미측정과 접촉 실패를 구분하고, 퍼낸 양의 판단을 후속 계량과 연결하는 합의가 필요하다.
    첫 스쿱 `_first_fraction()`도 목표/scoop_nominal_g로 1 미만을 요청할 수 있어
-   고정 모드 지원 범위와 맞춰야 한다. 임의로 full로 바꾸거나 true 접촉값을 만들지 않는다.
+   고정 모드 지원 범위와 맞춰야 한다.~~ 임의로 full로 바꾸거나 true 접촉값을 만들지 않는다.
+   → **철회 (9/25, D-34 · PR #287·#289)**: 합의는 D-34 로 끝났고 코드도 바뀌었다.
+   `dosing.fixed_scoop=true`(common.yaml)면 깊이는 첫·반환 뒤·보충 모두 1.0 이고(#274 `decide()`, #289 첫·재스쿱),
+   FSM 은 contact_detected 를 진행 조건으로 쓰지 않는다(#287). 고정 경로의 미측정과 접촉 실패는
+   **이어지는 WeighHeld 순중량**으로 가른다 — `dosing.empty_scoop_g` 이하면 SCOOP_EMPTY(재시도 ×3, 4회째
+   MATERIAL_EMPTY). true 접촉값은 만들지 않았다. ⚠️ `empty_scoop_g` 는 잠정값 — 빈 스쿱 계량 산포는 미측정.
 3. 원료 반환 끝→재스쿠핑 연결, 비활성 passbox_done→nudge_wait 이송은 유지한다.
    DRL 주 루프에 없는 반환·넛지를 좌표 존재만으로 검증 완료로 표시하지 않는다.
    깊이 조절·계량 보정·지문 검증도 별도다. 다른 담당 코드와 계량 보정값은 수정하지 않는다.

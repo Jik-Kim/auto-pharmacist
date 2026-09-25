@@ -13,16 +13,16 @@ from gmp_process.core.recipe import parse
 SCOOP_TARE, CUP_TARE = 20.0, 30.0
 
 
-def _fsm(fingerprint=None):
+def _fsm(fingerprint=None, *, fixed=False):
     spec = parse({'product': 't', 'items': [{'material_id': 'A', 'target_g': 100, 'tol_pct': 5},
                                               {'material_id': 'B', 'target_g': 50, 'tol_pct': 5}]})
-    return ProcessFSM(spec, DosingConfig(scoop_nominal_g=40), WeightModel(ScaleConfig()),
-                      fingerprint=fingerprint or ToolFingerprint())
+    return ProcessFSM(spec, DosingConfig(scoop_nominal_g=40, fixed_scoop=fixed),
+                      WeightModel(ScaleConfig()), fingerprint=fingerprint or ToolFingerprint())
 
 
 class Cell:
     def __init__(self, yields, residual=2.0, grip=None, qa='APPROVED', spill=False, cup_bias=0.0, invalid_first=0,
-                width_mm=None, cup_invalid_first=0, zero_drift_n=0.0, contact_blind=False):
+                width_mm=None, cup_invalid_first=0, zero_drift_n=0.0, contact=None):
         self.yields, self.residual, self.qa, self.spill, self.cup_bias = list(yields), residual, qa, spill, cup_bias
         self.grip = grip or (lambda req, n: True)
         self.width_mm = width_mm                          # 폭 지문 테스트용 — 정지 폭을 고정값으로 돌려준다
@@ -32,7 +32,8 @@ class Cell:
         self.cup_invalid_left = cup_invalid_first   # 용기 계량(TARE·VERIFY) 무효 횟수
         self.zero_drift_n = zero_drift_n            # VERIFY 직전 영점이 이만큼 움직인 것으로 답한다
         self.n_measure = 0
-        self.contact_blind = contact_blind   # 접촉을 아예 못 재는 경로 — 늘 '닿았다'고 답한다 (#277 고정 티칭)
+        self.contact = contact              # None 이면 퍼낸 양으로 답한다. bool 이면 **늘 그 값** —
+                                            # 고정 티칭 경로는 힘을 안 재 접촉이 사실을 담지 못한다 (#277)
 
     def __call__(self, req):
         k = req['kind']
@@ -54,7 +55,7 @@ class Cell:
             self.n['scoop'] += 1
             amt = self.yields.pop(0) if self.yields else 0.0
             self.in_scoop += amt
-            return {'contact_detected': True if self.contact_blind else amt > 0}
+            return {'contact_detected': (amt > 0) if self.contact is None else self.contact}
         if k == 'pour':
             f = 1.0 if self.spill else req['fraction']
             moved = max(0.0, self.in_scoop * f - self.residual) if f >= 1.0 else self.in_scoop * f
@@ -534,27 +535,26 @@ def test_material_empty_repeats_when_refill_did_not_help():
 #   (b) A 가 `contact_detected=True` 를 돌려준다 — 9/23 조장 **조건부 차선**:
 #       「(a) 가 시연 전에 어려우면 (b) 로 간다」. 확정되면 SOT 항목으로 올라온다.
 #
-# ⚠️ **어느 쪽이 되든 이 시험이 필요하다.** (b) 면 늘 참이라 `_scoop_empty()` 가 영영 안 불리고,
-#    (a) 면 C 가 「안 재봤다」를 받으므로 역시 접촉으로는 못 잡는다. 원료가 없다는 사실은 퍼낸
-#    무게로 드러난다 — **무게 그물은 두 안의 공통 요구**다.
-#    `contact_blind=True` 는 그 공통 상황, 즉 「접촉 신호로는 판단할 수 없다」를 세운 것이다.
+# 채택안(9/23 조장 승인, A #269)은 **A 무변경 + C 가 무게로 가른다**이다. `contact=True` 는
+# 「접촉 신호로는 판단할 수 없다」를 세운 것이고, 그 상황에서도 결론이 같아야 한다.
+# ⚠️ **무게 그물은 `fixed_scoop` 플래그와 무관하게 늘 돈다.** 순중량 0 g 이 초과량 검사를
+#    통과해 POUR 로 가던 구멍은 깊이 보정 모드에도 있었다 (A #269 방침 3).
 #
 # ⚠️ 문턱값은 **아직 정하지 않았다** — #272 의 스쿱 1회량 σ 실측이 나와야 근거가 붙는다.
 #    그래서 아래 두 시험은 **0 g**(누가 봐도 빈 스쿱)과 **정상 채취량**만 쓰고 경계는 건드리지 않는다.
 #    경계를 지금 박으면 σ 가 나왔을 때 시험부터 고치게 되고, 그러면 정작 값을 안 보게 된다.
 
 
-@pytest.mark.xfail(strict=True, reason='#277 — 무게 기반 빈 스쿱 감지 미구현. 구현되면 strict 가 이 표식을 떼라고 알린다')
 def test_접촉을_못_믿는_경로에서_원료_소진은_보충_요청으로_간다():
-    """접촉 신호를 못 믿는 경로에서 원료통이 비면, 지금은 **사람을 부르지 않고** 배치를 태운다.
+    """접촉 신호를 못 믿는 경로에서 원료통이 비면 **무게가 잡아** 보충을 요청한다 (#282).
 
-    실측한 현재 거동은 `['TIMEOUT', 'BATCH_OUT_OF_SPEC']` 이다. 셋 다 틀렸다 —
+    고치기 전 실측은 `['TIMEOUT', 'BATCH_OUT_OF_SPEC']` 이다. 셋 다 틀렸다 —
     QA 가 받는 사유가 「보정 3회 후에도 미달」이라 **원료를 채우라는 말이 어디에도 없고**,
     `wait_interlock` 을 안 거치므로 **보충 기회 자체가 없으며**, 배치는 규격 이탈로 끝난다.
-    접촉을 재든 못 재든 같은 사실에는 같은 결론이 나와야 한다
+    접촉을 믿을 수 있든 없든 같은 사실에는 같은 결론이 나와야 한다
     (대조군: `test_material_empty_refill_resumes_scoop`, 같은 yields 에 접촉만 살아 있다).
     """
-    cell = Cell(yields=[0, 0, 0, 0, 100, 50], contact_blind=True)
+    cell = Cell(yields=[0, 0, 0, 0, 100, 50], contact=True)
     fsm = _fsm()
     trace = run(fsm, cell)
     kinds = [d['kind'] for d in fsm.deviations]
@@ -570,9 +570,87 @@ def test_접촉을_못_믿어도_멀쩡한_스쿱은_빈_스쿱이_아니다():
     문턱값을 고를 때 이 시험이 상한을 잡아 준다.
     """
     fsm = _fsm()
-    run(fsm, Cell(yields=[100, 50], contact_blind=True))
+    run(fsm, Cell(yields=[100, 50], contact=True))
     assert fsm.state == 'DONE' and not fsm.deviations
     assert [r.attempts for r in fsm.results] == [1, 1]
+
+
+# ── 고정 모드에서는 접촉을 진행 조건으로 안 쓴다 (#282, 9/23 조장 승인 / A #269) ────────────
+# A 의 고정 티칭 경로가 실제로 돌려주는 값은 `contact_detected=False` 다. 힘을 안 재니 「안 닿았다」가
+# 아니라 **「안 재봤다」**인데, 고치기 전 FSM 은 그걸 접촉 실패로 읽어 **가득 찬 원료통에도 보충을
+# 영영 요구**했다 (#282 실측: PAUSED · 투입 0 g · 보충 요청 96회). #289 가 깊이를 1.0 으로 고정한
+# 뒤에도 그대로였다 — 깊이와 접촉은 다른 문제다.
+
+
+def test_고정모드는_접촉이_거짓이어도_정상_배치를_완주한다():
+    """#282 회귀 — 이게 깨지면 시연에서 원료통이 가득 차 있는데 보충을 영영 요구한다."""
+    fsm = _fsm(fixed=True)
+    run(fsm, Cell(yields=[100, 50], contact=False))
+    assert fsm.state == 'DONE' and not fsm.deviations, fsm.deviations
+    assert [r.attempts for r in fsm.results] == [1, 1]
+
+
+def test_고정모드에서도_진짜_빈_통은_무게가_잡는다():
+    """접촉을 버려도 원료 소진은 그대로 잡힌다 — 버린 건 신호지 판단이 아니다."""
+    fsm = _fsm(fixed=True)
+    trace = run(fsm, Cell(yields=[0, 0, 0, 0, 100, 50], contact=False))
+    kinds = [d['kind'] for d in fsm.deviations]
+    assert kinds == ['SCOOP_EMPTY'] * 3 + ['MATERIAL_EMPTY'], kinds
+    assert ('PAUSED', 'wait_interlock') in trace
+    assert fsm.state == 'DONE' and len(fsm.results) == 2
+
+
+def test_플래그를_끄면_접촉_판정은_종전_그대로다():
+    """플래그 off 는 접촉 판정을 **안 바꾼다** — 깊이 보정 모드에서는 접촉이 여전히 1차 증거다.
+
+    무게 그물만 모드와 무관하게 남는다. 그래서 off 에서도 빈 통은 잡히지만 **접촉 단계에서**
+    잡혀 계량 한 번을 아낀다. 두 모드를 나란히 두어 차이를 눈에 보이게 고정한다.
+    """
+    fsm = _fsm()
+    trace = run(fsm, Cell(yields=[0, 0, 0, 0, 100, 50], contact=None))
+    assert [d['kind'] for d in fsm.deviations] == ['SCOOP_EMPTY'] * 3 + ['MATERIAL_EMPTY']
+    assert kinds_for(trace, 'WEIGH_SCOOP') == ['weigh_scoop'] * 2, '빈 스쿱 4회는 계량까지 안 간다'
+
+    fixed = _fsm(fixed=True)
+    ftrace = run(fixed, Cell(yields=[0, 0, 0, 0, 100, 50], contact=None))
+    assert [d['kind'] for d in fixed.deviations] == ['SCOOP_EMPTY'] * 3 + ['MATERIAL_EMPTY']
+    assert kinds_for(ftrace, 'WEIGH_SCOOP') == ['weigh_scoop'] * 6, '고정 모드는 무게로 가르니 매번 잰다'
+
+
+def test_빈_스쿱_기록은_어느_증거로_판정했는지를_남긴다():
+    """`detail` 은 DB 에 남는 문자열이다 — 무게로 판정한 것을 「원료에 닿지 않는다」로 적으면
+    감사 기록이 사실과 달라진다(9/25 팀장 지적). 증거별로 문구를 가른다."""
+    by_contact = _fsm()
+    run(by_contact, Cell(yields=[0, 0, 0, 0, 100, 50], contact=None))
+    assert all('contact_detected=false' in d['detail'] for d in by_contact.deviations), by_contact.deviations
+    assert '보충 필요' in by_contact.deviations[-1]['detail']
+
+    by_weight = _fsm(fixed=True)
+    run(by_weight, Cell(yields=[0, 0, 0, 0, 100, 50], contact=False))
+    assert all('순중량' in d['detail'] and '닿지' not in d['detail'] for d in by_weight.deviations), \
+        by_weight.deviations
+    assert by_weight.deviations[-1]['kind'] == 'MATERIAL_EMPTY'
+    assert '보충 필요' in by_weight.deviations[-1]['detail']
+
+
+def test_빈_스쿱_문턱은_설정에서_온다():
+    """문턱값은 **잠정**이라 코드에 박으면 안 된다 — 설정을 올리면 거동이 따라와야 한다.
+
+    #272 가 잰 것은 *퍼낸 양*의 산포(평균 78.9 · σ 3.9)지 **빈 스쿱 계량의 산포**가 아니다.
+    정작 필요한 값이 아직 미측정이라, 바뀔 것을 전제로 둔다.
+    """
+    spec = parse({'product': 't', 'items': [{'material_id': 'A', 'target_g': 100, 'tol_pct': 5}]})
+    # 고정 모드로 둔다 — 안 그러면 접촉 분기가 먼저 걸려 **문턱값이 아니라 접촉**을 재게 된다.
+    cfg = DosingConfig(scoop_nominal_g=40, fixed_scoop=True)
+
+    def run_with(threshold, amount):
+        fsm = ProcessFSM(spec, cfg, WeightModel(ScaleConfig()), fingerprint=ToolFingerprint(),
+                         empty_scoop_g=threshold)
+        run(fsm, Cell(yields=[amount] + [100] * 20, residual=0.0, contact=False))
+        return [d['kind'] for d in fsm.deviations]
+
+    assert 'SCOOP_EMPTY' not in run_with(2.0, 5.0), '기본 문턱에서 5 g 은 빈 스쿱이 아니다'
+    assert run_with(8.0, 5.0)[0] == 'SCOOP_EMPTY', '문턱을 올리면 같은 5 g 이 빈 스쿱이 된다'
 
 
 def test_prepour_boundary_uses_original_target_tolerance_after_prior_delivery():
