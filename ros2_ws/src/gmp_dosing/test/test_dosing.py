@@ -245,6 +245,11 @@ def test_dosing_defaults_match_operational_params():
     # 여기서 단언하면 KeyError 라, 그 값의 정합은 gmp_process 쪽 시험이 본다.
 
 
+def test_operational_params_explicitly_enable_fixed_scoop():
+    """D-33 시연은 고정 스쿱이다 — YAML 키가 빠지면 ProcessNode 기본값(false)으로 조용히 퇴행한다."""
+    assert _dosing_params()['fixed_scoop'] is True
+
+
 # ── 고정 스쿱에서 보충 불가 (9/23 조장 결정 · B·C 공동) ────────────────────
 FIXED = DosingConfig(max_attempts=8, scoop_nominal_g=85.0, min_fraction=0.10, fixed_scoop=True)
 DEPTH = DosingConfig(max_attempts=8, scoop_nominal_g=85.0, min_fraction=0.10)

@@ -120,7 +120,7 @@ ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거�
   `approach: 0` 요청을 AT로 바꿔 처리하지 않고 거부한다.
 - `robot.transfer_joint_vel_deg_s`·`robot.transfer_joint_acc_deg_s2`는 현재 0이다.
   사용자가 검증할 양수 값을 설정해야 한다. Action `vel_scale`을 곱해 적용하며,
-  직선 이동의 `robot.vel`·`robot.acc`와는 별개다.
+  직선 이동의 `robot.task_vel`·`robot.task_acc`와는 별개다.
 - 출발 AT/ABOVE에서 확인된 관절 구성과 마지막 도착 상태가 맞아야 한다.
   티칭 도중 수동 이동하거나 노드를 재시작한 뒤에는 이전 위치·파지 이력을 재사용하지 않는다.
   정상적인 MoveToStation 도착과 SetGripper 성공 이력을 다시 쌓아야 한다.
@@ -316,8 +316,15 @@ A 단독으로 가능한 범위는 보정 완료된 원료의 명시적 depth_fr
 - Pour는 middle → above(Z290) → start(Z243) → end(Z320) → above → Z+50 → middle.
   스쿱 반납은 return_entry → Z-100 → 거치점 → 열기 → Z+100이다.
 - 관절 속도/가속도 기준은 DRL의 60deg/s·100deg/s²이며 `vel_scale`을 적용한다.
-  일반 직선 속도·가속도와 런치 속도 배율은 기존 저속 설정을 유지한다.
+  9/23 추가 승인: 일반 직선 이동도 `robot.task_vel=[250.0,80.625]`,
+  `robot.task_acc=[1000.0,322.5]`로 DRL 병진/회전 값을 적용한다.
+  `robot.vel=60.0`·`robot.acc=100.0`은 관절 이동 전용이다.
+  각 이동은 속도와 가속도 모두 `vel_scale`을 한 번 곱한다. 배율 1.0이면 DRL 기준값이다.
+  런치 기본 배율은 유지하며 새 속도의 ROS 실물 검증은 별도다.
   스쿠핑 spline은 DRL의 병진/회전 속도·가속도에 기존 배율을 적용한다.
+  적용하려면 갱신한 `gmp_skills`·`gmp_bringup` 설치본으로 `skill_node`를 재기동한다.
+  속도 설정은 생성 시 읽으므로 실행 중 `ros2 param set`만으로 적용되지 않는다.
+  도징 계측 스크립트가 직접 생성하는 `DsrArm`은 기존 속도 인자 동작을 유지한다.
 
 ### B/C 인계와 미검증 범위
 

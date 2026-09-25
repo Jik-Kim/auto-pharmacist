@@ -104,7 +104,8 @@ class SkillNode(Node):
                           g('robot.tool_name'), g('robot.tcp_name'), self.get_logger(), self._now_s,
                           startup_timeout_s=float(g('robot.startup_timeout_s')),
                           virtual_tcp_name=g('robot.virtual_tcp_name'),
-                          tcp_offset_mm_deg=g('robot.tcp_offset_mm_deg'))
+                          tcp_offset_mm_deg=g('robot.tcp_offset_mm_deg'),
+                          task_vel=g('robot.task_vel'), task_acc=g('robot.task_acc'))
 
         backend = 'virtual' if self.mode == 'virtual' else g('gripper.backend')
         self._grip_cli = (self.create_client(SetCommand, '/onrobot/sendCommand')

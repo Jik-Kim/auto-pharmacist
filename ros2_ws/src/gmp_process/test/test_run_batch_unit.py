@@ -41,8 +41,12 @@ def ready(result):
 def module(monkeypatch):
     """별도 이름으로 로드해 다른 ROS 테스트 모듈에 대역을 남기지 않는다."""
     class Base:
-        def __init__(self, *a, **kw): self.params = {}; self.published = {}
-        def declare_parameters(self, _, pairs): self.params.update(pairs)
+        def __init__(self, *a, **kw):
+            self.params = {p.name: p.value for p in kw.get('parameter_overrides', [])}
+            self.published = {}
+        def declare_parameters(self, _, pairs):
+            for key, value in pairs:
+                self.params.setdefault(key, value)
         def get_parameter(self, k): return NS(value=self.params[k])
         def create_publisher(self, _type, key, _qos):
             self.published[key] = []
@@ -105,6 +109,12 @@ def accept(node, r=None):
 def test_action_server_uses_existing_name_and_callbacks(node):
     assert node.batch_server.goal_callback == node._goal_batch
     assert node.batch_server.cancel_callback == node._cancel_batch
+
+
+def test_fixed_scoop_parameter_is_wired_to_dosing_config(module):
+    """운영 YAML의 고정 스쿱 플래그가 ProcessFSM까지 전달돼야 #270 분기가 실제로 켜진다."""
+    n = module.ProcessNode(parameter_overrides=[NS(name='dosing.fixed_scoop', value=True)])
+    assert n.dosing_cfg.fixed_scoop is True
 
 
 def test_reservation_rejects_parallel_action_and_service(node):

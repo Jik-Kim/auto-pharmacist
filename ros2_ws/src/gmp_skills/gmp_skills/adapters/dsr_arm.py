@@ -24,9 +24,17 @@ class DsrArm:
     def __init__(self, robot_id: str, robot_model: str, mode: str, vel: float, acc: float,
                  tool_name: str = '', tcp_name: str = '', logger=None, now_fn=None, sleep_fn=None,
                  startup_timeout_s: float = 15.0, virtual_tcp_name: str = '',
-                 tcp_offset_mm_deg=None):
+                 tcp_offset_mm_deg=None, *, task_vel=None, task_acc=None):
         self.mode = mode
+        # vel/acc는 관절 기준. 기존 B 계측 스크립트의 위치 인자 호출은 유지한다.
         self.vel, self.acc = vel, acc
+        self.task_vel = list(task_vel) if task_vel is not None else [vel, vel]
+        self.task_acc = list(task_acc) if task_acc is not None else [acc, acc]
+        if (any(len(values) != 2 for values in (self.task_vel, self.task_acc))
+                or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                       or not math.isfinite(v) or v <= 0
+                       for v in [vel, acc, *self.task_vel, *self.task_acc])):
+            raise ValueError('관절 및 병진/회전 속도·가속도는 유한한 양수여야 한다')
         self.log = logger
         # 클래스 안의 ``DR_init.__dsr__*`` 표기는 Python 이름 맹글링을 받으므로 setattr을 쓴다.
         setattr(DR_init, '__dsr__id', robot_id)
@@ -110,8 +118,8 @@ class DsrArm:
                     R.set_robot_mode(R.ROBOT_MODE_AUTONOMOUS))
         self._require_ok('set_velj', R.set_velj(self.vel))
         self._require_ok('set_accj', R.set_accj(self.acc))
-        self._require_ok('set_velx', R.set_velx(self.vel, self.vel))
-        self._require_ok('set_accx', R.set_accx(self.acc, self.acc))
+        self._require_ok('set_velx', R.set_velx(*self.task_vel))
+        self._require_ok('set_accx', R.set_accx(*self.task_acc))
         if self.mode == 'real':
             self._bounded_call('set_singularity_handling', mode=R.DR_AVOID)
         else:
@@ -140,8 +148,8 @@ class DsrArm:
         if cancel is not None:
             return self.movel_cancellable(x6, vel_scale, cancel, self.motion_timeout_s)
         return self._require_ok(
-            'movel', self.R.movel(self.posx(*x6), vel=self.vel * vel_scale,
-                                  acc=self.acc * vel_scale, ref=self.R.DR_BASE,
+            'movel', self.R.movel(self.posx(*x6), vel=[v * vel_scale for v in self.task_vel],
+                                  acc=[a * vel_scale for a in self.task_acc], ref=self.R.DR_BASE,
                                   mod=self.R.DR_MV_MOD_ABS))
 
     def amovej(self, j6, vel_scale=1.0, *, joint_vel=None, joint_acc=None):
@@ -152,8 +160,8 @@ class DsrArm:
 
     def amovel(self, x6, vel_scale=1.0):
         return self._require_ok(
-            'amovel', self.R.amovel(self.posx(*x6), vel=self.vel * vel_scale,
-                                    acc=self.acc * vel_scale, ref=self.R.DR_BASE,
+            'amovel', self.R.amovel(self.posx(*x6), vel=[v * vel_scale for v in self.task_vel],
+                                    acc=[a * vel_scale for a in self.task_acc], ref=self.R.DR_BASE,
                                     mod=self.R.DR_MV_MOD_ABS))
 
     def solution_space(self):
@@ -182,8 +190,8 @@ class DsrArm:
 
     def movesx(self, poses, vel_scale=1.0):
         return self._require_ok(
-            'movesx', self.R.movesx([self.posx(*p) for p in poses], vel=self.vel * vel_scale,
-                                    acc=self.acc * vel_scale))
+            'movesx', self.R.movesx([self.posx(*p) for p in poses], vel=[v * vel_scale for v in self.task_vel],
+                                    acc=[a * vel_scale for a in self.task_acc]))
 
     def transform_pose(self, pose, *, to_world):
         """BASE/WORLD 변환 조회도 단일 워커의 제한 시간 안에서 수행한다."""
@@ -394,7 +402,7 @@ class DsrArm:
         return self._require_ok(
             'movel_rel_tool',
             R.movel(self.posx(dxyz[0], dxyz[1], dxyz[2], 0, 0, 0),
-                    vel=self.vel * vel_scale, acc=self.acc * vel_scale,
+                    vel=[v * vel_scale for v in self.task_vel], acc=[a * vel_scale for a in self.task_acc],
                     ref=R.DR_TOOL, mod=R.DR_MV_MOD_REL))
 
     def current_posx(self):
