@@ -30,6 +30,8 @@ from pathlib import Path
 
 COLUMNS = ['회차', '빈스쿱_g', '채취후_g', '붓기후스쿱_g', '원료면', '비고']
 POUR_COLUMNS = ['회차', '투입량_g', '원료면', '비고']
+GROSS_COLUMNS = ['회차', '총무게_g', '원료면', '비고']
+CUP_DIRECTIVE = '용기_g'
 SURFACES = ('가득', '중간', '바닥')
 
 TEMPLATE = (
@@ -135,15 +137,30 @@ def load(path: str) -> list[dict]:
     · 3회 계량   `빈스쿱_g/채취후_g/붓기후스쿱_g` — 스쿱을 빼서 재는 방식
     어느 쪽이든 판정은 **투입량**으로 한다. 3회 계량일 때만 퍼올림·잔량이 따라온다.
     """
+    cup = None
+    lines = []
     with open(path, encoding='utf-8') as fh:
-        lines = [ln for ln in fh if not ln.lstrip().startswith('#')]
+        for ln in fh:
+            if ln.lstrip().startswith('#'):
+                head, sepd, tail = ln.lstrip('# ').partition(':')
+                if sepd and head.strip() == CUP_DIRECTIVE:
+                    try:
+                        cup = float(tail.split('#')[0].strip())
+                    except ValueError as exc:
+                        raise RowError(f'{path}: `# {CUP_DIRECTIVE}: <숫자>` 를 못 읽었다 — {exc}') from exc
+                continue
+            lines.append(ln)
     reader = csv.DictReader(lines)
     fields = set(reader.fieldnames or ())
     pour = '투입량_g' in fields
-    if not pour and not {'빈스쿱_g', '채취후_g', '붓기후스쿱_g'} <= fields:
-        raise RowError(f'{path}: 헤더를 못 알아보겠다 — `투입량_g` 또는 '
+    gross = '총무게_g' in fields
+    if not (pour or gross) and not {'빈스쿱_g', '채취후_g', '붓기후스쿱_g'} <= fields:
+        raise RowError(f'{path}: 헤더를 못 알아보겠다 — `투입량_g`, `총무게_g`, 또는 '
                        f'`빈스쿱_g/채취후_g/붓기후스쿱_g` 가 필요하다. 지금: {sorted(fields)}')
-    need = ['투입량_g'] if pour else ['빈스쿱_g', '채취후_g', '붓기후스쿱_g']
+    if gross and cup is None:
+        raise RowError(f'{path}: `총무게_g` 로 적으려면 주석에 `# {CUP_DIRECTIVE}: 79.0` 처럼 '
+                       f'빈 용기 무게가 있어야 한다 — 없으면 투입량을 못 낸다')
+    need = ['총무게_g'] if gross else (['투입량_g'] if pour else ['빈스쿱_g', '채취후_g', '붓기후스쿱_g'])
     rows = []
     for i, raw in enumerate(reader, start=1):
         if raw.get('회차') in (None, ''):
@@ -156,6 +173,15 @@ def load(path: str) -> list[dict]:
             raise RowError(f'{path} {i} 번째 기록: 숫자가 아니다 — {exc}') from exc
         surface = (raw.get('원료면') or '').strip()
         note = (raw.get('비고') or '').strip()
+        if gross:
+            total, = vals
+            delivered = total - cup
+            if delivered <= 0:
+                raise RowError(f'회차 {raw["회차"]}: 총무게 {total:g} g 가 빈 용기 {cup:g} g 이하다 — '
+                               f'용기를 비우고 다시 쟀는지, tare 를 쳐버렸는지 확인')
+            rows.append({'회차': raw['회차'], '투입량': delivered,
+                         '원료면': surface, '비고': note})
+            continue
         if pour:
             delivered, = vals
             if delivered <= 0:

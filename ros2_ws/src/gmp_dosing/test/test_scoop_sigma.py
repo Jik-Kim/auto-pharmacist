@@ -156,3 +156,51 @@ def test_report_runs_on_pour_format(tmp_path):
     assert '붓기 방식' in text and '배치 완주율' in text
     assert '퍼올림' not in text.split('■ 판정')[0].split('\n')[3]   # 표에 퍼올림 줄이 없다
     assert res['scooped'] is None and res['delivered']['n'] == 12
+
+
+# ── 저울값 그대로 적는 형식 — 빈 시료통 무게는 주석 지시자로 한 번만 ────────
+def _gross_csv(tmp_path, rows, cup='79.0'):
+    p = tmp_path / 'gross.csv'
+    head = f'# 용기_g: {cup}\n' if cup is not None else ''
+    p.write_text(head + '회차,총무게_g,원료면,비고\n' + '\n'.join(rows) + '\n', encoding='utf-8')
+    return str(p)
+
+
+def test_gross_format_subtracts_the_cup_once(tmp_path):
+    """저울값 그대로 적고 빈 시료통 무게는 주석에 한 번만 — 회차마다 빼지 않는다.
+
+    사람이 15번 빼면 15번 틀릴 기회가 생긴다. 상수는 한 곳에 둔다.
+    """
+    rows = ss.load(_gross_csv(tmp_path, ['1,158.0,가득,', '2,161.2,가득,']))
+    assert [round(r['투입량'], 2) for r in rows] == [79.0, 82.2]
+
+
+def test_gross_format_needs_the_cup_weight(tmp_path):
+    """시료통 무게가 없으면 총무게를 투입량으로 조용히 쓰지 않고 거부한다."""
+    with pytest.raises(ss.RowError, match='용기_g'):
+        ss.load(_gross_csv(tmp_path, ['1,158.0,가득,'], cup=None))
+    with pytest.raises(ss.RowError, match='용기_g'):
+        ss.load(_gross_csv(tmp_path, ['1,158.0,가득,'], cup=''))
+
+
+def test_gross_format_catches_an_emptied_cup_or_stray_tare(tmp_path):
+    """총무게가 빈 시료통보다 가벼우면 비우고 안 넣었거나 tare 를 쳐버린 것이다."""
+    with pytest.raises(ss.RowError, match='빈 용기'):
+        ss.load(_gross_csv(tmp_path, ['1,70.0,가득,']))
+
+
+def test_the_0924_measurement_reproduces_its_published_numbers():
+    """9/24 실측 원본이 CURRENT.md·#272 에 적은 값을 그대로 낸다.
+
+    숫자를 손으로 옮기면 여기서 깨진다. 이 결론이 fixed_scoop(#274) 존폐와
+    레시피 목표를 정하므로, 원본과 결론이 갈라지면 즉시 드러나야 한다.
+    """
+    src = Path(__file__).resolve().parents[1] / 'calibration' / 'scoop_sigma_0924_matA.csv'
+    rows = ss.load(str(src))
+    assert len(rows) == 15
+    s = ss.stats([r['투입량'] for r in rows])
+    assert s['mean'] == pytest.approx(78.93, abs=0.01)
+    assert s['sd'] == pytest.approx(3.90, abs=0.01)
+    assert s['sd_hi'] == pytest.approx(5.69, abs=0.01)
+    # 목표 85 로는 한 스쿱 통과가 9/15 뿐이다 — 이것이 「성립하지 않는다」의 근거다
+    assert sum(76.5 <= r['투입량'] <= 93.5 for r in rows) == 9
