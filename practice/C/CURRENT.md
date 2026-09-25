@@ -8,29 +8,30 @@
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 계약 | **v1.8** — `DispenseResult.verdict` OK/UNDER/OVER/**INVALID=3** | PR #241(C 발행) · #240(D 소비), `docs/interfaces.md` |
-| 계량 무효(WEIGH_INVALID) 정책 | `max_invalid_retries: 2`(총 3회); 카운터는 단계별·유효 시 초기화; 투입 전(TARE·SCOOP_TARE·WEIGH_SCOOP) → **CLEANUP → ERROR**, 투입 후(WEIGH_RESIDUAL·VERIFY) → QA; QA 승인 시 미측정을 기록한다. **어디를 모르는지는 다른 사건이지만 배치 결과에서는 합쳐진다** — `WEIGH_RESIDUAL` 무효는 `ItemRun.unmeasured` → `DispenseResult.verdict=INVALID`(그 원료의 투입량을 모름), `VERIFY` 무효는 `fsm.verify_unmeasured`(배치 최종 순량을 모름). **`RunBatch.result` 는 둘 중 하나만 있어도 `DONE_UNMEASURED`** 이고(9/23 조장 결정), 그때 `CellEvent(WARN, BATCH_UNMEASURED)` 가 같이 나간다 — `DONE_UNMEASURED` 는 `RunBatch.result` 에만 실려 DB 에 닿지 않기 때문이다. ⚠️ **이 이벤트가 최종 `CellState(DONE)` 보다 먼저 간다고 전제하지 말 것** — `_pub_state` 가 0.5 s 타이머로도 돌아 역전될 수 있고, D 가 UPDATE 로 흡수한다 | #213 결정 1~5, PR #225·#227·#241 |
+| 계량 무효(WEIGH_INVALID) 정책 | `max_invalid_retries` 2(총 3회) — **yaml 값이 아니라 `DosingConfig` 기본값**(`gmp_dosing/core/dosing.py`)이고 `process_node` 는 넘기지 않는다; 카운터는 단계별·유효 시 초기화; 투입 전(TARE·SCOOP_TARE·WEIGH_SCOOP) → **CLEANUP → ERROR**, 투입 후(WEIGH_RESIDUAL·VERIFY) → QA; QA 승인 시 미측정을 기록한다. **어디를 모르는지는 다른 사건이지만 배치 결과에서는 합쳐진다** — `WEIGH_RESIDUAL` 무효는 `ItemRun.unmeasured` → `DispenseResult.verdict=INVALID`(그 원료의 투입량을 모름), `VERIFY` 무효는 `fsm.verify_unmeasured`(배치 최종 순량을 모름). **`RunBatch.result` 는 둘 중 하나만 있어도 `DONE_UNMEASURED`** 이고(9/23 조장 결정), 그때 `CellEvent(WARN, BATCH_UNMEASURED)` 가 같이 나간다 — `DONE_UNMEASURED` 는 `RunBatch.result` 에만 실려 DB 에 닿지 않기 때문이다. ⚠️ **이 이벤트가 최종 `CellState(DONE)` 보다 먼저 간다고 전제하지 말 것** — `_pub_state` 가 0.5 s 타이머로도 돌아 역전될 수 있고, D 가 UPDATE 로 흡수한다 | #213 결정 1~5, PR #225·#227·#241 |
 | VERIFY | ① `\|net − Σtarget\| > Σ(target×tol)` → BATCH_OUT_OF_SPEC 만. ② 는 기록만 | SOT D-26, PR #209 |
-| 원료 소진 | SCOOP_EMPTY 재시도 ×3, **4회째 MATERIAL_EMPTY** → REFILL 인터락. 보충 뒤 재소진도 MATERIAL_EMPTY. **증거가 둘이다** — 접촉(`contact_detected`, **고정 모드에서는 안 본다**)과 순중량(`scooped_g ≤ dosing.empty_scoop_g`, **모드와 무관하게 늘 본다**). 계량 무효는 빈 스쿱이 아니다 — `_invalid_or` 가 먼저 걸러 간다 | #111 A안 · #282, PR #233·#234 |
+| 원료 소진 | SCOOP_EMPTY 재시도 ×3, **4회째 MATERIAL_EMPTY** → REFILL 인터락. 보충 뒤 재소진도 MATERIAL_EMPTY. **증거가 둘이다** — 접촉(`contact_detected`, **고정 모드에서는 안 본다**)과 순중량(`scooped_g ≤ dosing.empty_scoop_g`, **모드와 무관하게 늘 본다**). 계량 무효는 빈 스쿱이 아니다 — `_invalid_or` 가 먼저 걸러 간다. 일탈 `detail` 에 **어느 증거였는지** 남는다(DB 문자열) | #111 A안 · #282, PR #233·#234·#287 |
 | 첫 SCOOP 깊이 | `max(min_fraction, min(1, 남은 목표 ÷ scoop_nominal_g))` — 둘째 사이클부터 `decide()` 와 같은 식. **고정 모드면 1.0** | #221 C 몫, PR #224 · #289(A) |
-| 고정 스쿱 모드 | **`dosing.fixed_scoop` 하나**가 네 곳을 움직인다 — `decide()` 의 깊이·보충 판정, `_first_fraction()`, `_rescoop_fraction()`(이상 A 가 #289 로), **FSM 의 접촉 우회**(C, #282). 켜면 깊이는 언제나 1.0 | D-33 · #282, PR #289·#287 |
+| 고정 스쿱 모드 | **`dosing.fixed_scoop` 하나**가 네 곳을 움직인다 — `decide()` 의 깊이·보충 판정(**#274**, e301cc9·e62b8da), `_first_fraction()`·`_rescoop_fraction()`·노드 배선(**A #289**), **FSM 의 접촉 우회**(C #287). 무게 그물(`empty_scoop_g`)은 플래그와 무관하게 늘 돈다(#287). 켜면 깊이는 언제나 1.0 | SOT **D-34**(#284) · #282 |
 | 무효 계량 통합 시험 | fake_skill_node 손잡이 없이 `_publish_result` 직접 호출 | PR #225 |
-| 통합 시험 기준선 | gmp_process **201 passed / 6 skipped** (9/25 C 실측). **내 파트 것만 적는다** — 남의 패키지 수치는 금방 상하고, 그러면 옆에 있는 내 값까지 같이 의심받는다(9/24 B 지적: 「gmp_dosing 19」가 34 가 되도록 방치). 다른 파트 현황은 `practice/<파트>/CURRENT.md` 를 본다 (규칙 5) | ROS 소싱 필수 — 133 이면 소싱 누락. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
+| 통합 시험 기준선 | gmp_process **201 passed / 6 skipped** (9/25 C 실측, `3c68261`). ⚠️ 6be0c83 이 시험 1건을 더했다 — ROS 환경에서 재측정 필요. **내 파트 것만 적는다** — 다른 파트 현황은 `practice/<파트>/CURRENT.md` (규칙 5) | ROS 소싱 필수. **숫자로 소싱 누락을 가리지 말 것** — ROS 없이 돌려도 150 passed / 2 skipped 가 나온다(9/25). `python3 -c "import rclpy"` 로 확인한다. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
 
 ## 열린 과제 (이슈 번호)
 - #108 본래 주제: `ScoopCycle` 6축 wrench 채울 경로 — 전제(모멘트 = 파지 품질) 근거 부족(노션 9/22), 미정리.
 - #221 C 몫 완료, B 몫 대기 — `scoop_nominal_g` 를 낮추면 교착 구간에 들어간다(`decide()` 하한 동반). **값은 `common.yaml` 참조**(여기 숫자를 적으면 상한다).
-- **#283/#272 — 고정 스쿱 목표값이 바뀔 수 있다.** B 실측이 평균 78.93 g · σ 3.90 g 이고 목표 85 는 실측이 아니었다(조장 결정값). 그대로 두면 recipe-01 완주 21 %. B 권고는 (가) 79 로 내리기(완주 82 %), 조장 결재 대기. **결재가 나면 시험에 박힌 85·170 이 낡는다** — cfg 에서 읽게 바꾸는 것이 C 후속. 수치·적용 범위(B·A·D 파일 목록)는 `practice/B/CURRENT.md` 를 본다(규칙 5).
-  - **시연 가능 최소 조건 = #287 머지 + (가) 적용** (B, 9/25). #287 전에는 첫 스쿱에서 무한 보충 루프다.
-  - ⛔ **결재 전에 `dosing.fixed_scoop` 를 끄지 말 것** — B 가 한 번 제안했다가 철회했다(9/24 팀장 지적). 세 원료가 모두 `taught_fixed` 이고 A 가 깊이 1.0 외를 거부하므로, 끄면 `decide()` 가 첫 보충에서 부분 깊이를 내 **배치가 ERROR 로 죽는다** — 지금보다 나쁘다.
-  - #272 는 원료 **A 만** 쟀다. B·C 는 스쿱 폭이 달라 1회량이 다를 수 있다(B 최우선 과제). 원료별 목표가 따로 정해지면 C 시험의 고정값도 원료별로 갈라야 한다.
+- **D-35 (9/25 사용자 결정) — 스쿱 기준값·레시피 목표를 #272 실측에 맞춘다.** 결정 전문은 SOT D-35(`8141c98`, 아직 main 미반영), 실측 수치는 `practice/B/CURRENT.md`·#272 (규칙 5 — 여기 숫자를 적지 않는다). **C 몫**: ① `params/recipes/recipe-01~03.yaml` 목표값(recipes 담당은 C — `interfaces.md` §4. B CURRENT 의 「A」는 오기) ② `process_node` 선언 기본값(`scoop_nominal_g`·`min_fraction`)을 운영값과 맞추기, `zero_drift` 기본값도 확인 ③ 시험에 박힌 85·170 을 cfg 에서 읽게. **머지 순서: #287 → C 레시피 PR = D 시험 사본 PR(동시)** — D `test_v4_recipes.py` 가 두 쪽을 대조한다.
+  - **시연 가능 최소 조건 = #287 머지 + D-35 적용** (B, 9/25). #287 전에는 첫 스쿱에서 무한 보충 루프다.
+  - ⛔ **`dosing.fixed_scoop` 를 끄지 말 것** (D-35 도 유지) — B 가 한 번 제안했다가 철회했다(9/24 팀장 지적). 세 원료가 모두 `taught_fixed` 이고 A 가 깊이 1.0 외를 거부하므로, 끄면 `decide()` 가 첫 보충에서 부분 깊이를 내 **배치가 ERROR 로 죽는다** — 지금보다 나쁘다.
+  - #272 는 원료 **A 만** 쟀다. B·C 는 스쿱 폭이 달라 1회량이 다를 수 있다(B 최우선 과제). 측정이 D-35 값 ±5 g 밖이면 원료별로 다시 결정한다 — 그러면 C 레시피·시험의 고정값도 원료별로 갈라야 한다.
 - #228·#242 (D): DONE_UNMEASURED 소비 4곳, 진행 스트립 INVALID 「완료」 표시 — C 는 대기.
 - 계량 경로 전체를 태우는 무효 계량 통합 시험(후속). **막힘 해소** — `fake_skill_node` 에 무효 손잡이가 필요해 `test/t6-fault-injection` 과 같은 파일에서 충돌하던 것이, 양쪽 다 머지돼 지금은 가능하다.
 
 ## 알려진 함정
-- **깊이를 내는 곳이 셋이다** — 첫 스쿱(`_first_fraction`) · 보충(`decide()`) · **반환 뒤 재스쿱(`_rescoop_fraction`)**. 깊이 규칙을 바꿀 때는 셋 다 본다. 내가 앞 둘만 고쳤다가 셋째에서 0.1 대 값이 그대로 나가는 것을 시험이 잡았다(A 도 #289 에서 셋 다 고쳤다).
+- **깊이를 내는 곳이 셋이다** — 첫 스쿱(`_first_fraction`) · 보충(`decide()`) · **반환 뒤 재스쿱(`_rescoop_fraction`)**. 깊이 규칙을 바꿀 때는 셋 다 본다. 내가 앞 둘만 고쳤다가 셋째에서 0.1 대 값이 그대로 나가는 것을 시험이 잡았다. 셋의 출처가 다르다 — 보충(`decide()`)은 #274, 첫·재스쿱은 A #289.
 - **FSM 을 바꾸면 「C FSM 이 이렇게 한다」고 적은 문서가 다섯 곳이다** — `docs/process_flow.md`(번역·상태 표), `docs/architecture.md`(6단계 표), `docs/interfaces.md`(9/23 고정 경로 운용 주석), `docs/setup.md`·`docs/SOT.md`(「B/C 인계」 2번, 같은 문단 두 벌), 그리고 `tools/make_process_drawio.py` 라벨 → `docs/diagrams/process_flow.drawio` 재생성. #287 첫 판이 코드와 CURRENT 만 고치고 이걸 다 놓쳐 정합성 점검에 걸렸다(9/25 보완). `grep -rn "contact_detected\|TAUGHT_FIXED" docs tools` 로 훑는다.
+- **`empty_scoop_g` 라는 이름이 두 뜻이다** — `common.yaml` `dosing.empty_scoop_g`(C, 2.0)는 **순중량 문턱**이고, `stations.yaml` `scooping.A.empty_scoop_g`·`gmp_dosing/config/scale_reference.yaml` `empty_scoop_g` 는 **빈 스쿱 자체의 무게**다(`gmp_skills/core/scooping.py` 가 씀). grep 결과를 섞어 읽지 말 것.
 - **접촉과 깊이는 다른 문제다** — #289 가 깊이를 1.0 으로 고정한 **뒤에도** 고정 경로는 무한 보충 루프였다. 한쪽을 고쳤다고 다른 쪽이 따라오지 않는다.
-- **`fixed_scoop` 는 이제 결과를 바꾼다** — 도입 당시(#274)에는 반환 루프만 없앴고 투입량·QA 횟수가 그대로였지만, 지금은 **깊이 1.0 강제와 접촉 우회**가 같은 플래그에 붙었다. 옛 기록(「플래그는 결과를 안 바꾼다」)을 근거로 쓰지 말 것.
+- **`fixed_scoop` 는 이제 결과를 바꾼다** — 도입 당시(#274)에는 보충 깊이 1.0 과 보충 불가 판정뿐이라 투입량·QA 횟수가 그대로였지만, 그 뒤 **첫·재스쿱 깊이 1.0**(#289)과 **접촉 우회**(#287)가 같은 플래그에 붙었다. 옛 기록(「플래그는 결과를 안 바꾼다」)을 근거로 쓰지 말 것.
 - **`gh pr edit` 이 이 저장소에서 조용히 실패한다** — Projects(classic) 폐지 GraphQL 오류로 제목·본문이 안 바뀌는데 **종료 코드만 보면 성공처럼 보인다**. `gh api -X PATCH repos/Jik-Kim/auto-pharmacist/pulls/<번호> -f title=... -F body=@<파일>` 로 우회하고 `gh pr view` 로 확인한다.
 - **갈라진 브랜치는 PR 차이를 부풀린다** — 머지 베이스가 둘이면 GitHub 이 남의 파일까지 내 변경으로 보여준다(9/23 #287). `git merge-base --all` 로 확인하고 최신 main 을 합쳐 하나로 만든다.
 - **`TIMEOUT` 은 두 사실을 덮는다** — ① 보정 시도 소진 ② 보충하면 상한 초과(고정 스쿱). 처분이 같아 한 kind 로 뒀고 **`detail` 로만 구분된다**. 기록에서 TIMEOUT 을 보고 「재시도를 다 썼다」로 단정하지 말 것. #111 `MATERIAL_EMPTY` 와 같은 모양인데 **v1.8 직후라 계약을 안 열기로 한 것**이다(9/23 팀장 동의) — 다시 열 일이 생기면 그때 가른다.
