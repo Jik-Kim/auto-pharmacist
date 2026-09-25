@@ -241,8 +241,9 @@ def test_dosing_defaults_match_operational_params():
     cfg = DosingConfig()
     assert cfg.scoop_nominal_g == d['scoop_nominal_g']
     assert cfg.min_fraction == d['min_fraction']
-    # max_invalid_retries 는 common.yaml dosing 절에 없다 — process_node 가 따로 선언한다.
-    # 여기서 단언하면 KeyError 라, 그 값의 정합은 gmp_process 쪽 시험이 본다.
+    # max_invalid_retries 는 common.yaml dosing 절에도 process_node 선언에도 없다 — 출처는
+    # DosingConfig 기본값(2) 하나뿐이라 여기서 대조할 운영값이 없다 (9/25 팀장 대조로 정정.
+    # 종전 주석은 「process_node 가 따로 선언한다」고 했으나 사실이 아니었다).
 
 
 def test_operational_params_explicitly_enable_fixed_scoop():
@@ -250,28 +251,29 @@ def test_operational_params_explicitly_enable_fixed_scoop():
     assert _dosing_params()['fixed_scoop'] is True
 
 
-# ── 고정 스쿱에서 보충 불가 (9/23 조장 결정 · B·C 공동) ────────────────────
-FIXED = DosingConfig(max_attempts=8, scoop_nominal_g=85.0, min_fraction=0.10, fixed_scoop=True)
-DEPTH = DosingConfig(max_attempts=8, scoop_nominal_g=85.0, min_fraction=0.10)
+# ── 고정 스쿱에서 보충 불가 (9/23 조장 결정 · B·C 공동, 9/25 D-35 로 79·158 g) ──────
+# 목표 79 g ±10 % = 71.1~86.9, 158 g ±10 % = 142.2~173.8. 한 스쿱 79 g.
+FIXED = DosingConfig(max_attempts=8, scoop_nominal_g=79.0, min_fraction=0.10, fixed_scoop=True)
+DEPTH = DosingConfig(max_attempts=8, scoop_nominal_g=79.0, min_fraction=0.10)
 
 
 def test_fixed_scoop_single_target_gives_up_at_first_shortfall():
-    """85 g 목표는 한 스쿱짜리라 미달이 나면 **보충이 언제나 초과**다 — 바로 QA 로 보낸다."""
-    d = decide(85.0, 70.0, 10.0, 1, True, 0, FIXED)       # 첫 스쿱 70 g
+    """79 g 목표는 한 스쿱짜리라 미달이 나면 **보충이 언제나 초과**다 — 바로 QA 로 보낸다."""
+    d = decide(79.0, 70.0, 10.0, 1, True, 0, FIXED)       # 첫 스쿱 70 g
     assert (d.action, d.kind) == ('DEVIATION', 'TIMEOUT')
-    assert '보충 불가' in d.detail and '85.0 g' in d.detail and '93.5 g' in d.detail
+    assert '보충 불가' in d.detail and '79.0 g' in d.detail and '86.9 g' in d.detail
 
 
 def test_fixed_scoop_keeps_topping_up_when_two_scoops_fit():
-    """170 g 목표는 두 스쿱짜리다 — 첫 스쿱이 부족해도 한 번 더 퍼면 들어온다. 죽이면 안 된다."""
-    d = decide(170.0, 83.0, 10.0, 1, True, 0, FIXED)      # 83 + 85 = 168 → 153~187 안
+    """158 g 목표는 두 스쿱짜리다 — 첫 스쿱이 부족해도 한 번 더 퍼면 들어온다. 죽이면 안 된다."""
+    d = decide(158.0, 75.0, 10.0, 1, True, 0, FIXED)      # 75 + 79 = 154 → 142.2~173.8 안
     assert d.action == 'SCOOP' and d.verdict == 'UNDER'
 
 
 def test_fixed_scoop_gives_up_when_one_more_scoop_would_overshoot():
-    """같은 170 g 이라도 actual 이 102 g 을 넘으면 한 번 더 퍼는 순간 187 g 을 넘는다."""
-    assert decide(170.0, 102.0, 10.0, 1, True, 0, FIXED).action == 'SCOOP'   # 102+85 = 187 = 상한
-    d = decide(170.0, 110.0, 10.0, 1, True, 0, FIXED)                        # 110+85 = 195 > 187
+    """같은 158 g 이라도 actual 이 94.8 g 을 넘으면 한 번 더 퍼는 순간 173.8 g 을 넘는다."""
+    assert decide(158.0, 94.0, 10.0, 1, True, 0, FIXED).action == 'SCOOP'    # 94+79 = 173 ≤ 173.8
+    d = decide(158.0, 100.0, 10.0, 1, True, 0, FIXED)                        # 100+79 = 179 > 173.8
     assert (d.action, d.kind) == ('DEVIATION', 'TIMEOUT')
     assert '보충 불가' in d.detail
 
@@ -280,29 +282,30 @@ def test_fixed_scoop_always_asks_for_a_full_scoop():
     """고정 스쿱이 SCOOP 을 내면 깊이는 **언제나 1.0** 이어야 한다.
 
     A 의 고정 경로는 `depth_fraction != 1.0` 을 거부한다 — 부분 깊이가 나오면 보충 스쿱이
-    튕겨 배치가 ERROR 로 죽는다. 위 두 시험이 이것을 못 잡은 이유는 고른 actual 이
-    우연히 frac 1.0 을 내는 값(83 → need 87 > 85)이었고, frac 을 아예 안 봤기 때문이다.
-    아래 범위는 **첫 스쿱이 공칭 85 g 언저리에 떨어지는 정상 회차** 전체를 덮는다.
+    튕겨 배치가 ERROR 로 죽는다. 9/23 에 이것을 못 잡은 이유는 고른 actual 이
+    우연히 frac 1.0 을 내는 값(need ≥ nominal)이었고, frac 을 아예 안 봤기 때문이다.
+    아래 범위는 **첫 스쿱이 공칭 79 g 언저리에 떨어지는 정상 회차** 전체를 덮는다
+    (need = 158 − actual < 79 가 되는 79.1 g 이상이 부분 깊이가 나오던 구간이다).
     """
-    for actual in (0.0, 50.0, 85.0, 85.1, 90.0, 95.0, 102.0):
-        d = decide(170.0, actual, 10.0, 1, True, 0, FIXED)
+    for actual in (0.0, 50.0, 79.0, 79.1, 85.0, 90.0, 94.0):
+        d = decide(158.0, actual, 10.0, 1, True, 0, FIXED)
         assert d.action == 'SCOOP', (actual, d)
         assert d.fraction == 1.0, f'actual {actual} g 에서 깊이 {d.fraction} — 고정 경로가 거부한다'
 
 
 def test_depth_control_still_asks_for_a_partial_scoop():
     """짝 시험 — 깊이 제어에서는 부분 깊이가 그대로 나와야 한다. 위 수정이 여기까지 덮으면 안 된다."""
-    d = decide(170.0, 90.0, 10.0, 1, True, 0, DEPTH)
-    assert d.action == 'SCOOP' and abs(d.fraction - 80.0 / 85.0) < 1e-9
+    d = decide(158.0, 90.0, 10.0, 1, True, 0, DEPTH)
+    assert d.action == 'SCOOP' and abs(d.fraction - 68.0 / 79.0) < 1e-9
 
 
 def test_depth_control_never_gives_up_while_deadlock_condition_holds():
     """깊이 제어 모드에서 이 분기는 **교착 조건과 동치**라, 조건이 지켜지면 발동하지 않는다.
 
-    min_fraction×nominal = 8.5 g ≤ 2×target×tol (85 g→17, 170 g→34) 이므로
+    min_fraction×nominal = 7.9 g ≤ 2×target×tol (79 g→15.8, 158 g→31.6) 이므로
     허용 하한 직전까지 전부 SCOOP 이어야 한다.
     """
-    for target in (85.0, 170.0):
+    for target in (79.0, 158.0):
         low = target * 0.9
         for actual in (0.0, low * 0.5, low - 0.01):
             assert decide(target, actual, 10.0, 1, True, 0, DEPTH).action == 'SCOOP', (target, actual)
@@ -310,15 +313,15 @@ def test_depth_control_never_gives_up_while_deadlock_condition_holds():
 
 def test_depth_control_gives_up_when_deadlock_condition_is_broken():
     """교착 조건을 깨는 설정(min_fraction 0.25)이면 무한 루프 대신 QA 로 보낸다 — 안전망."""
-    broken = DosingConfig(max_attempts=8, scoop_nominal_g=85.0, min_fraction=0.25)
-    d = decide(85.0, 76.0, 10.0, 1, True, 0, broken)      # 76 + 21.25 = 97.25 > 93.5
+    broken = DosingConfig(max_attempts=8, scoop_nominal_g=79.0, min_fraction=0.25)
+    d = decide(79.0, 70.0, 10.0, 1, True, 0, broken)      # 70 + 19.75 = 89.75 > 86.9
     assert (d.action, d.kind) == ('DEVIATION', 'TIMEOUT')
     assert '보충 불가' in d.detail
 
 
 def test_attempts_exhausted_keeps_its_own_detail():
     """시도 소진과 보충 불가는 같은 kind 지만 detail 로 갈린다 — 호출자가 술어를 다시 계산하지 않게."""
-    d = decide(170.0, 50.0, 10.0, 8, True, 0, FIXED)      # 50+85 = 135 ≤ 187 이라 보충 가능하나 시도 소진
+    d = decide(158.0, 50.0, 10.0, 8, True, 0, FIXED)      # 50+79 = 129 ≤ 173.8 이라 보충 가능하나 시도 소진
     assert (d.action, d.kind) == ('DEVIATION', 'TIMEOUT')
     assert d.detail == '보정 8회 후에도 미달'
 
@@ -327,4 +330,4 @@ def test_fixed_scoop_is_keyword_only():
     """위치 인자로 잘못 넘기는 것을 막는다 — 설정 dataclass 는 키워드만 (AGENTS)."""
     import pytest
     with pytest.raises(TypeError):
-        DosingConfig(8, 85.0, 0.10, 2, True)
+        DosingConfig(8, 79.0, 0.10, 2, True)

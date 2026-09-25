@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 @dataclass
 class DosingConfig:
     max_attempts: int = 3
-    scoop_nominal_g: float = 85.0     # 스쿱 1회 퍼올림 평균 (9/23 조장 결정, 종전 9/18 실측 40.0)
+    scoop_nominal_g: float = 79.0     # 스쿱 1회 투입량 평균 (9/25 D-35, #272 실측 78.9 g. 종전 85.0·40.0)
     min_fraction: float = 0.10        # 담그기 깊이 비율의 하한 (계약 v1.5). 이보다 얕게는 제어가 안 된다
                                       # ⚠️ 교착 조건 min_fraction × scoop_nominal_g ≤ 2 × target × tol 을
                                       #    지켜야 한다. common.yaml 주석과 test_dosing 의 단언 참조

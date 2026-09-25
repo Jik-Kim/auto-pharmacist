@@ -17,7 +17,7 @@
 사용법:
     python3 scoop_sigma.py --template > records/scoop_sigma_0924.csv   # 빈 기록지
     python3 scoop_sigma.py records/scoop_sigma_0924.csv                # 분석·판정
-    python3 scoop_sigma.py records/scoop_sigma_0924.csv --nominal 85 --tol 10
+    python3 scoop_sigma.py records/scoop_sigma_0924.csv --nominal 79 --tol 10
 """
 from __future__ import annotations
 
@@ -327,9 +327,12 @@ def report(rows: list[dict], nominal: float, tol: float, max_attempts: int,
         w("  ← 흐름이다. 원료면을 먼저 의심한다\n" if abs(drift) > 2 * se
           else "  (우연 범위 — 흐름 없음)\n")
 
-    recipes = {'recipe-01 (85·85·85)': [(85.0, tol)] * 3,
-               'recipe-02 (170·85)': [(170.0, tol), (85.0, tol)],
-               'recipe-03 (85·85·170)': [(85.0, tol), (85.0, tol), (170.0, tol)]}
+    # 레시피 구조(D-33·D-35)는 한 스쿱 목표 = nominal, 두 스쿱 목표 = 2 x nominal 이다.
+    # 숫자를 박아 두면 nominal 이 바뀔 때(85 → 79, D-35) 완주율이 옛 목표로 계산된다.
+    one, two = nominal, 2.0 * nominal
+    recipes = {f'recipe-01 ({one:g}·{one:g}·{one:g})': [(one, tol)] * 3,
+               f'recipe-02 ({two:g}·{one:g})': [(two, tol), (one, tol)],
+               f'recipe-03 ({one:g}·{one:g}·{two:g})': [(one, tol), (one, tol), (two, tol)]}
     cr = completion_rates(delivered, recipes, nominal, max_attempts, trials, seed)
     w(f"\n■ 배치 완주율 — 측정값 부트스트랩 {trials}회, 판정 엔진 {cr['engine']}\n")
     for name in recipes:
@@ -349,7 +352,7 @@ def main(argv=None) -> int:
     ap.add_argument('csv', nargs='?', help='기록 CSV')
     ap.add_argument('--template', nargs='?', const='pour', choices=['pour', 'three'],
                     help='빈 기록지를 표준출력으로. pour(기본)=붓기 방식 1회 계량, three=3회 계량')
-    ap.add_argument('--nominal', type=float, default=85.0, help='기대 1회량 [g] (common.yaml dosing.scoop_nominal_g)')
+    ap.add_argument('--nominal', type=float, default=79.0, help='기대 1회량 [g] (common.yaml dosing.scoop_nominal_g)')
     ap.add_argument('--tol', type=float, default=10.0, help='레시피 허용 오차 [%%]')
     ap.add_argument('--max-attempts', type=int, default=8, help='common.yaml dosing.max_attempts')
     ap.add_argument('--trials', type=int, default=20000, help='완주율 부트스트랩 횟수')
