@@ -45,7 +45,29 @@
     | 나 | 목표 79 + tol **12 %** | 01 **100 %** | tol 은 제품 규격이라 조장·BRD 판단 |
     | 다 | 스쿱을 더 깊게/크게 | — | 고정 티칭 경로라 깊이를 못 바꾼다. 재티칭은 A |
     | 라 | 고정 스쿱 폐기, 깊이 제어로 | — | #274 를 되돌린다 |
-    **B 권고: (가) 를 먼저.** 파라미터 한 줄이고, 82 % 면 시연이 돈다.
+    **B 권고: (가) 를 먼저.** 82 % 면 시연이 돈다.
+    ⚠️ **「파라미터 한 줄」이 아니다 — 13 곳이다** (9/24 실측 조사, 팀장 지적으로 D 범위 포함):
+
+    | 파트 | 파일 | 바꿀 것 |
+    |---|---|---|
+    | B | `params/common.yaml:114` | `scoop_nominal_g` 85 → 79 |
+    | B | `gmp_dosing/core/dosing.py:21` | `DosingConfig` 기본값 (시험이 params 와 일치를 단언) |
+    | A | `params/recipes/recipe-01.yaml:7-9` | 85 ×3 → 79 |
+    | A | `params/recipes/recipe-02.yaml:8-9` | 170 → 158, 85 → 79 |
+    | A | `params/recipes/recipe-03.yaml:7-9` | 85 ×2 → 79, 170 → 158 |
+    | D | `gmp_hmi/config/test_recipes/v4/recipe-01~03.yaml` | 운영 레시피와 **같아야** 대조 시험이 통과한다 |
+    | D | `gmp_hmi/launch/hmi_comm_test.launch.py:44` | `test_scoop_nominal_g: 85.0` |
+    | D | `gmp_hmi/tools/run_hmi_full_ros_test.py:72` | `test_initial_g:=[170.0,…]` — **재고 소진 시험의 전제**가 바뀐다. 170 은 A 목표 170 에 맞춰 잡은 값이라 158 이 되면 소진이 안 일어날 수 있다. D 확인 필요 |
+
+    교착 조건은 새 값에서도 성립한다 — `min_fraction 0.10 × 79 = 7.9 ≤ 2 × 79 × 0.10 = 15.8`.
+    `test_dosing.py` 가 파라미터 파일을 읽어 단언하므로 값만 바꾸면 시험이 따라온다.
+  - ### ⛔ 결재 전에 `fixed_scoop` 를 끄면 안 된다 (9/24 팀장 지적, B 확인)
+    B 가 한 번 제안했다가 철회했다. 끄면 **지금보다 나쁘다**:
+    세 원료 모두 `execution_mode: taught_fixed`(`stations.yaml:140·158·177`)이고
+    `skill_node.py:1189` 가 `depth_fraction != 1.0` 을 거부한다. 플래그를 끄면
+    `decide()` 가 첫 보충에서 부분 깊이를 내므로 **배치가 ERROR 로 죽는다.**
+    깊이 제어 경로는 `calibrated: true` 를 요구하는데 세 원료 모두 `false` 다(118·159·178).
+    **시연 가능 최소 조건 = #287 머지 + (가) 적용.** #287 전에는 첫 스쿱에서 무한 보충 루프다.
     (나) 를 얹으면 100 % 지만 tol 완화는 규격 문제라 B 가 정할 수 없다.
   - ### ⚠️ 이 값을 쓸 때의 한계
     · **원료 A 만** 쟀다. B·C 는 스쿱 폭이 18.0·28.0 mm 로 달라 1회량이 다르다 (`stations.yaml`).
