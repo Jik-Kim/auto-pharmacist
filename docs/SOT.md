@@ -61,7 +61,7 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
   내부 경로 설정은 `start_from: above`, `arrival: at`이고 MoveToStation 요청은 `approach: 1`이다.
 - `stations.yaml: transfers`가 출발·도착 조합과 파지 조건, 티칭 관절각의 단일 출처다.
   두 경로는 아직 **비활성**이다. **실물에서는** 해당 이동을 거부하며 직선 이동으로 우회하지 않는다. **가상 모드는** 활성 여부와 무관하게 기존 직선 이동을 사용하고 보호 목적지 제한도 적용하지 않는다.
-  `common.yaml`의 관절 이송 속도·가속도도 0(미확정)으로 두었다.
+  `common.yaml`의 관절 이송 속도·가속도는 DRL 기준 60 deg/s·100 deg/s²이며 `vel_scale`을 적용한다(PR #290).
 - 높이 확정: workbench **파지점** `[423,93,100,90,-90,-90]`에서 ABOVE +100/EXIT +200 mm,
   passbox_empty·passbox_done·reject_bin은 AT Z=100에서 ABOVE +50/EXIT +150 mm.
   BASE Z 상대 높이로 계산한다. workbench.posx는 파지 AT로 통합하며 용기 계량은 ABOVE다. 스쿱·원료 접근 높이는 유지한다.
@@ -241,7 +241,7 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 - 기존 workbench→passbox_done 관절 경로는 새 접근 방식으로 대체한다.
   passbox_done→nudge_wait는 이전 티칭값을 보존하되 비활성 유지한다. 새 높이·sol에 맞춰
   ABOVE/EXIT 재티칭이 필요하므로 실물 전체 배치 완주 가능 상태를 의미하지 않는다.
-- 기존 사용자 변경 좌표를 유지한다: 네 스테이션 AT Z=130, ABOVE Z=180, EXIT Z=280.
+- 기존 사용자 변경 좌표를 유지한다: 네 스테이션 AT Z=130, 로컬 ABOVE Z=180, EXIT Z=330(`exit_mm=200`). workbench 빈 용기 파지 진입은 EXIT에서 AT까지 200 mm 직선 하강한다.
   원료 스쿠핑·스쿱 붓기 자세와 외부 ROS 계약은 변경하지 않는다.
 - 단일 워커·비동기 취소 감시를 유지하고 IDLE·목표 TCP·sol을 확인한다.
   D-01 읽기 전용 조회 예외에 get_current_solution_space의 기존 벤더 클라이언트 사용을 포함한다.
@@ -312,7 +312,7 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
 
 - **현재 우선순위:** 힘 측정이 신뢰되지 않고 스쿱도 파지부에서 상대 회전하므로 최초 접촉 정지와 원료 높이 측정 경로를 운영에서 비활성화한다. 관련 로직은 설정·파라미터와 단위 테스트만 유지하고 `calibrated=false`를 해제하지 않는다. 높이 보정 활성화보다 전체 노드 통합과 공정 플로우 검증을 먼저 진행한다.
 - 파지부에서 스쿱이 상대 회전하므로 고정 TCP 오프셋으로 계산한 끝 높이와 힘 threshold 기반 접촉 검증은 TBD다. 기존 측정 파라미터·진단 코드는 유지하며 이번 시험에서 Scoop/check_depth를 실행하지 않는다.
-- 현재 원료 A의 원료면은 `stations.yaml`의 `material_1.surface_z_base_mm=90.0` (BASE mm)으로 고정한다. 센서 측정값이 아닌 사용자 지정값이다. 실제 스쿠핑은 미구현이며 이 필드를 소비하는 스쿠핑 계산은 후속 구현 대상이다. B/C 높이는 이번 결정으로 추정하지 않는다.
+- `stations.yaml`의 `material_1.surface_z_base_mm`는 센서 측정값이 아닌 잔존 설정이며 현재 실행 코드가 소비하지 않는다. 고정 티칭 스쿠핑 경로에는 영향을 주지 않는다. 후속 높이 보정 경로를 다시 설계할 때 유지·삭제를 결정한다.
 - 빈 스쿱을 파지한 상태로 기존 Pour Action의 workbench.pour_start_posx → pour_end_posx → 0.5초 유지 → pour_start_posx 경로만 검증한다. 실제 스쿠핑·투입량 검증을 대신하지 않는다.
 - 이번 빈 스쿱 Pour 실행: Action SUCCEEDED, APPROACH/TILT/HOLD/RETURN 전이와 관절 피드백 변화 확인. 종료 TCP는 BASE `[420.001,219.999,233.001]mm`로 붓기 시작점과 일치했다. 작업자 육안 검증은 미확인이다. 관절 기록은 `records/force_traces/pour_empty_1790081052860161976.csv`이며 실제 원료 투입량·파지부 상대 회전은 검증하지 않았다.
 

@@ -105,8 +105,8 @@ ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거�
 | `passbox_done → nudge_wait` | 기존 값은 보존했지만 passbox_done ABOVE·EXIT 관절각은 새 Z/sol=3에 맞춰 재티칭 필요 | 놓기 후 ABOVE 후퇴 완료 상태에서 EXIT로 직선 이탈하고 nudge_wait AT로 관절 직접 도착. 간섭 검증은 사용자 담당 |
 
 - ABOVE·EXIT는 기준점에 **BASE Z 상대 높이**를 더해 계산한다. XYZ/자세 절대값은 중복 저장하지 않는다.
-  - workbench 파지: AT Z=130, `approach_mm: 50`, `exit_mm: 150` → Z=180/280.
-  - passbox_empty·passbox_done·reject_bin: AT Z=130, `approach_mm: 50`, `exit_mm: 150` → Z=180/280.
+  - workbench 파지: AT Z=130, 로컬 `approach_mm: 50` → ABOVE Z=180, `exit_mm: 200` → EXIT Z=330. 빈 그리퍼가 workbench에서 용기를 집을 때는 `middle_posx → empty_approach_posj` 뒤 EXIT Z≈330에서 `empty_descent_mm: 200`만큼 AT까지 직선 하강한다.
+  - passbox_empty·passbox_done·reject_bin: AT Z=130, `approach_mm: 50` → ABOVE Z=180, `exit_mm: 200` → EXIT Z=330.
   - 스쿱·원료·계량의 높이는 바꾸지 않는다. **nudge_wait ABOVE는 사용하지 않는다.**
   workbench는 AT/ABOVE→EXIT를 확인한다. passbox_done은 놓기 후 AT→ABOVE 후퇴를 먼저 완료하고,
   넛지 이송에서는 ABOVE→EXIT만 수행한다. AT에서 넛지로 바로 요청하면 이동 없이 거부한다.
@@ -118,8 +118,8 @@ ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거�
 - 기존 `arrival: above` 경로는 `approach: 0`이면 ABOVE에서 끝나고, `approach: 1`이면 AT까지 직선 접근한다.
   넛지의 `arrival: at` 경로는 **`approach: 1`만 허용**하며 최종 직선 접근 없이 관절 이동으로 끝난다.
   `approach: 0` 요청을 AT로 바꿔 처리하지 않고 거부한다.
-- `robot.transfer_joint_vel_deg_s`·`robot.transfer_joint_acc_deg_s2`는 현재 0이다.
-  사용자가 검증할 양수 값을 설정해야 한다. Action `vel_scale`을 곱해 적용하며,
+- `robot.transfer_joint_vel_deg_s=60`·`robot.transfer_joint_acc_deg_s2=100`이다(PR #290).
+  Action `vel_scale`을 곱해 적용하며,
   직선 이동의 `robot.task_vel`·`robot.task_acc`와는 별개다.
 - 출발 AT/ABOVE에서 확인된 관절 구성과 마지막 도착 상태가 맞아야 한다.
   티칭 도중 수동 이동하거나 노드를 재시작한 뒤에는 이전 위치·파지 이력을 재사용하지 않는다.
