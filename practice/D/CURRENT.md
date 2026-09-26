@@ -1,4 +1,4 @@
-# D HMI·기록 현행 상태 (갱신: 2026-09-23 20:10, D 본인 — 규칙 5: 남의 파트 수치를 이름으로)
+# D HMI·기록 현행 상태 (갱신: 2026-09-26, D 본인 — D-35 운영 레시피 79/158 g, 레시피 담당 D)
 
 **담당**: aszx4880-star
 
@@ -23,9 +23,10 @@
 | 배치 완료·폐기 알림 | 모든 화면에서 **떠 있는 알림**(PC 왼쪽 아래·휴대폰 아래), `COMPLETION_SHOW_MS` 5 s 뒤 자동 숨김, ✕ 닫기. 한 자리라 새 알림이 이전 것을 대신하고, 한 번 보인 배치·결과는 옛 상태를 다시 받아도 안 뜸. 칸 사이에 끼우지 않는다(아래 카드를 밀었다) | `hmi.js` `renderCompletion`, 이 PR | PR #229 (`hmi.css:1`·`:73`), 통합 전 정리 PR(`hmi.css` 끝 모바일 블록) |
 | 시연 기기 | 로봇 PC 1대 + **휴대폰 브라우저 HMI 기본**, 같은 네트워크(`http://<로봇 PC Wi-Fi IP>:5000`) | PR #259, `docs/demo_run_procedure.md` T0·G6 |
 | ROS 도메인 | 본운영 70, 격리 시험 88 | `docs/demo_run_procedure.md:38` |
-| 통신 검증 기준선 | `tools/verify_ros_http.py` **20 항목 PASS** (실제 DDS, `/hmi_test`, 배치 9 건) — D-33 레시피 기준(값은 `gmp_bringup/params/recipes` 참조). 시작 재고 `test_initial_g:='[170.0,1000.0,1000.0]'`. launch 와 검증기의 `GMP_HMI_ADMIN_PASSWORD` 가 **같아야** 한다(다르면 로그인 401) | 9/23 19:50 실행, PR #276 |
+| 통신 검증 기준선 | `tools/verify_ros_http.py` 20 항목 — D-33(85/170 g)으로는 9/23 실제 DDS **PASS**. **D-35(79/158 g) 기대값으로 바꾼 뒤는 재실행 전(미검증)**. 시작 재고 `test_initial_g:='[158.0,1000.0,1000.0]'`. launch 와 검증기의 `GMP_HMI_ADMIN_PASSWORD` 가 **같아야** 한다(다르면 로그인 401) | 9/23 19:50 실행(PR #276), D-35 PR(이 변경) |
 | 시험 시나리오 | `normal`·`overfill`(과다 배율 `OVERFILL_RATIO` 1.15 — 레시피 `tol_pct` 를 확실히 넘어야 해서 1.10 에서 올림)·`batch_out_of_spec`·`wrong_tool`·`weigh_invalid`·`material_empty` | `gmp_hmi/nodes/hmi_test_process.py` |
-| 시험 레시피 사본 | `config/test_recipes/v4` = 운영 `gmp_bringup/params/recipes` 와 **같다**(값은 운영 파일 참조). `test_v4_recipes.py` 가 운영과 대조해 어긋나면 실패한다. 통신 시험 launch 가 시험 노드에 `test_scoop_nominal_g` 85 g 을 넘긴다 | SOT D-33, PR #276 |
+| 시험 레시피 사본 | `config/test_recipes/v4` = 운영 `gmp_bringup/params/recipes` 와 **같다**(값은 운영 파일 참조). `test_v4_recipes.py` 가 운영과 대조해 어긋나면 실패한다. 통신 시험 launch 가 시험 노드에 `test_scoop_nominal_g` 79 g 을 넘긴다 | SOT D-35, PR #276·D-35 PR(이 변경) |
+| 운영 레시피 | **D 담당(9/25 팀 공지)** — `gmp_bringup/params/recipes/recipe-01~03.yaml` 파일·값. A79/B79/C79 · A158/B79 · A79/B79/C158, ±10 % (SOT D-35). 스키마·검증은 C(`gmp_process/core/recipe.py`). 사본과 한 PR 로 바꾼다 | SOT D-35, `docs/interfaces.md` §4 |
 
 ## 열린 과제 (이슈 번호)
 - **G6 휴대폰 리허설** — 9/23 390px 에서 고정 영역이 화면 절반(데모)~30 %(운영)를 먹던 것을 페이지 스크롤로 바꿨다(통합 전 정리 PR). QA 승인·폐기·진입·안전 복구·주문 버튼 도달·클릭은 playwright 로 확인. **실제 로봇 PC + 휴대폰 실물 리허설은 미검증**.
