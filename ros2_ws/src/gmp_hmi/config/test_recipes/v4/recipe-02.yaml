@@ -1,7 +1,7 @@
 # 운영 레시피 gmp_bringup/params/recipes/recipe-02.yaml 의 시험 사본이다. 값은 운영과 같아야 한다
-# (test_v4_recipes.py 가 대조한다). 9/23 조장 결정 SOT D-33 — 고정 스쿱 85 g 에 맞춘 목표량, 허용오차 ±10 %.
+# (test_v4_recipes.py 가 대조한다). SOT D-35(9/25) — 스쿱 실측 79 g 에 맞춘 목표량, 허용오차 ±10 %.
 # C는 사용하지 않으므로 items에 넣지 않는다 (0 g 항목 금지).
 product: "레시피 2"
 items:
-  - {material_id: A, target_g: 170.0, tol_pct: 10.0}
-  - {material_id: B, target_g: 85.0, tol_pct: 10.0}
+  - {material_id: A, target_g: 158.0, tol_pct: 10.0}
+  - {material_id: B, target_g: 79.0, tol_pct: 10.0}

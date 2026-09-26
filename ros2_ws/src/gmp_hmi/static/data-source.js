@@ -36,9 +36,9 @@ class HttpSource {
  batchUrl(id){return '/batch/'+encodeURIComponent(id)+'/download'}
 }
 const RECIPES=[
- {name:'recipe-01',product:'레시피 1',items:[['A',85],['B',85],['C',85]]},
- {name:'recipe-02',product:'레시피 2',items:[['A',170],['B',85]]},
- {name:'recipe-03',product:'레시피 3',items:[['A',85],['B',85],['C',170]]},
+ {name:'recipe-01',product:'레시피 1',items:[['A',79],['B',79],['C',79]]},
+ {name:'recipe-02',product:'레시피 2',items:[['A',158],['B',79]]},
+ {name:'recipe-03',product:'레시피 3',items:[['A',79],['B',79],['C',158]]},
 ].map(r=>({...r,total_g:r.items.reduce((sum,item)=>sum+item[1],0),items:r.items.map(([material_id,target_g])=>({material_id,target_g,tol_pct:10}))}));
 const RECIPE=RECIPES[0];
 class DemoSource {
@@ -52,9 +52,9 @@ class DemoSource {
   if(!['idle','empty','low_grams','height_low'].includes(scenario)){
    this.startBatch('B-001','OP-01');
    if(scenario==='qa'){
-    this.elapsed=18;this.addResult(0,85);this.addResult(1,96);this.state={...this.state,mode:'DEVIATION',step:'WEIGH_RESIDUAL',item_index:1,note:'원료 B 과다 투입 · QA 판정을 기다립니다.'};
-    this.weights=[{t:now(),net_g:96,gross_g:111,tare_g:15,std_g:.4,valid:true,station:'workbench',subject:'scoop',samples:30}];
-    this.pending=[{deviation_id:'DEV-001',batch_id:'B-001',material_id:'B',kind:'OVERFILL',detail:'목표 85g / 실측 96g. 과다 투입분을 포함해 원료 B 96g이 차감되었습니다.',requires_decision:true,decision:'PENDING',t:now()}];
+    this.elapsed=18;this.addResult(0,79);this.addResult(1,90);this.state={...this.state,mode:'DEVIATION',step:'WEIGH_RESIDUAL',item_index:1,note:'원료 B 과다 투입 · QA 판정을 기다립니다.'};
+    this.weights=[{t:now(),net_g:90,gross_g:105,tare_g:15,std_g:.4,valid:true,station:'workbench',subject:'scoop',samples:30}];
+    this.pending=[{deviation_id:'DEV-001',batch_id:'B-001',material_id:'B',kind:'OVERFILL',detail:'목표 79g / 실측 90g. 과다 투입분을 포함해 원료 B 90g이 차감되었습니다.',requires_decision:true,decision:'PENDING',t:now()}];
    }else{
     this.elapsed=10;this.updateProcess();
     if(scenario==='error')this.finish('ERROR','파지 재시도 한도 초과 · 담당자 확인 필요');
@@ -66,7 +66,7 @@ class DemoSource {
   this.lastTick=now();this.sync();
  }
  seedHistory(){
-  for(let i=0;i<4;i++){const end=now()-600-i*500,start=end-300-i*15,b=this.makeBatch('B-'+String(100-i).padStart(3,'0'),start);b.finished_at=end;b.result=i===3?'ERROR':'DONE';b.items=RECIPE.items.map(it=>({...it,batch_id:b.batch_id,actual_g:it.target_g,error_pct:0,verdict:'OK',attempts:1,t:start+15}));b.weights=[{t:start+30,gross_g:100,tare_g:15,net_g:85,valid:true,station:'workbench',subject:'scoop',samples:30}];b.events=[{t:start,level:'INFO',code:'BATCH_START',text:'예시 배치 시작'},{t:end,level:i===3?'ERROR':'INFO',code:i===3?'INTERVENTION_FORCED':'BATCH_END',text:'이전 운전 예시'}];b.scoop_cycles=RECIPE.items.map(it=>this.cycle(b.batch_id,it.material_id,it.target_g,start+40));if(i===1)b.deviations=[{deviation_id:'DEV-H1',batch_id:b.batch_id,material_id:'B',kind:'WEIGH_INVALID',decision:'AUTO_RECOVERED',operator_id:'',detail:'재계량으로 자동 복구',raised_at:start+100}];this.batches.push(b);}
+  for(let i=0;i<4;i++){const end=now()-600-i*500,start=end-300-i*15,b=this.makeBatch('B-'+String(100-i).padStart(3,'0'),start);b.finished_at=end;b.result=i===3?'ERROR':'DONE';b.items=RECIPE.items.map(it=>({...it,batch_id:b.batch_id,actual_g:it.target_g,error_pct:0,verdict:'OK',attempts:1,t:start+15}));b.weights=[{t:start+30,gross_g:94,tare_g:15,net_g:79,valid:true,station:'workbench',subject:'scoop',samples:30}];b.events=[{t:start,level:'INFO',code:'BATCH_START',text:'예시 배치 시작'},{t:end,level:i===3?'ERROR':'INFO',code:i===3?'INTERVENTION_FORCED':'BATCH_END',text:'이전 운전 예시'}];b.scoop_cycles=RECIPE.items.map(it=>this.cycle(b.batch_id,it.material_id,it.target_g,start+40));if(i===1)b.deviations=[{deviation_id:'DEV-H1',batch_id:b.batch_id,material_id:'B',kind:'WEIGH_INVALID',decision:'AUTO_RECOVERED',operator_id:'',detail:'재계량으로 자동 복구',raised_at:start+100}];this.batches.push(b);}
  }
  makeBatch(id,t,recipe=RECIPE){return {batch_id:id,product:recipe.product,started_at:t,finished_at:null,result:null,items:[],weights:[],deviations:[],events:[],scoop_cycles:[],note:''};}
  startBatch(id,actor,recipe=RECIPE){
@@ -78,7 +78,7 @@ class DemoSource {
  addResult(index,actual){
   const it=this.activeRecipe.items[index];if(this.debited.has(it.material_id))return;this.debited.add(it.material_id);
   const inv=this.inventory.find(x=>x.material_id===it.material_id);inv.consumed_g+=actual;delete this.reservations[it.material_id];
-  const attempts=Math.max(1,Math.ceil(it.target_g/85));
+  const attempts=Math.max(1,Math.ceil(it.target_g/79));
   this.results.push({batch_id:this.state.batch_id,material_id:it.material_id,target_g:it.target_g,actual_g:actual,error_pct:(actual-it.target_g)/it.target_g*100,verdict:actual>it.target_g*(1+it.tol_pct/100)?'OVER':'OK',attempts,t:now()});
   for(let attempt=1;attempt<=attempts;attempt++)this.scoopCycles.push(this.cycle(this.state.batch_id,it.material_id,actual/attempts,now(),attempt,actual/attempts*(attempt-1)));
   this.current.events.push({t:now(),level:'INFO',code:'DISPENSE_RESULT',text:`원료 ${it.material_id} ${actual}g 사용`});
