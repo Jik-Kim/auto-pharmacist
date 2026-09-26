@@ -221,12 +221,14 @@ def test_baseline_reuses_valid_empty_scoop_raw_force_only(monkeypatch, valid_src
     node._held_payload = 'scoop'
     params = {'scale.samples': 20, 'scale.settle_s': 1., 'scale.method': 'tool_force',
               'scale.simulated': False, 'scale.gain': 1., 'scale.offset_g': 195.,
-              'scale.min_resolvable_g': 5., 'scale.max_std_g': 8., 'scale.fz_sign': -1.}
+              'scale.min_resolvable_g': 5., 'scale.max_std_g': 8.,
+              'scale.max_hf_std_g': 9.5, 'scale.fz_sign': -1.}
     node.get_parameter = lambda key: SimpleNamespace(value=params[key])
     node._scale_period_s = lambda: .82
     node._observe_force = lambda _: None
     node.get_clock = lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=lambda: None))
-    node.arm.measure_force = lambda *a, **k: ([0, 0, 2., 0, 0, 0], 2., std, valid_src)
+    node.arm.measure_force = lambda *a, **k: (
+        [0, 0, 2., 0, 0, 0], 2., std, valid_src, [2.] * 20)
     node._measure_weight_reading(35., 'scoop', 'material_1')
     baseline = node._empty_scoop_force_baseline
     assert (baseline is not None) is expect
@@ -234,7 +236,7 @@ def test_baseline_reuses_valid_empty_scoop_raw_force_only(monkeypatch, valid_src
         assert baseline['fz_mean_n'] == 2.0
         assert baseline['fz_std_n'] == std
         assert not node._empty_scoop_baseline_pending
-        node.arm.measure_force = lambda *a, **k: ([0]*6, 4., std, True)
+        node.arm.measure_force = lambda *a, **k: ([0]*6, 4., std, True, [4.] * 20)
         node._measure_weight_reading(35., 'scoop', 'material_1')
         assert node._empty_scoop_force_baseline == baseline
 

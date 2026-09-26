@@ -19,14 +19,16 @@
 | 공구 설정 | B CURRENT 참조: 1.36 kg · CoG `[5.31, -34.68, 8.28]` mm 동결 | [B CURRENT](../B/CURRENT.md), [PR #235](https://github.com/Jik-Kim/auto-pharmacist/pull/235) |
 | 스쿱 최소 깊이 | `dosing.min_fraction=0.10`, `scooping.A.min_fraction=0.10`. 중복 선언은 남아 있으므로 항상 함께 바꿔야 한다 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [#222](https://github.com/Jik-Kim/auto-pharmacist/issues/222) |
 | Scoop Action 종료 코드 | 내부 시간 초과는 ABORTED, 실제 클라이언트 취소만 CANCELED | [skill_node.py](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py), [PR #236](https://github.com/Jik-Kim/auto-pharmacist/pull/236) |
+| 계량 표본 품질 | `measure_force`/`measure_workpiece` 원시 표본열을 운영 계량 경로에서 받아 `fit_oscillation()` 잔차 σ와 고주파 σ를 각각 `max_std_g`/`max_hf_std_g` 게이트에 전달 | [skill_node.py](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py), [dsr_arm.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/dsr_arm.py), [#208](https://github.com/Jik-Kim/auto-pharmacist/issues/208) |
 
 ## 검증 기준선
+- 9/26 #208 계량 품질 배선: `gmp_skills` 모의 시험 **490건 통과**. `gmp_process` 회귀까지 합쳐 634 passed / 2 skipped / 1 xfailed. 실물 Fz 표본의 적합 결과와 임계값 재검증은 남아 있다. [#208](https://github.com/Jik-Kim/auto-pharmacist/issues/208)
 - 9/23 DRL 속도 정합화: `gmp_skills` 모의 테스트 **488건 통과**. 배율 1.0/0.2에서 관절·병진·회전 명령값, 초기 속도 설정, B 계측용 기존 생성자 호출 호환성을 확인했다. 공정 그림 재생성 diff 없음. 새 속도의 ROS 실물 검증은 미수행.
 - `gmp_skills` 모의 테스트 **474건 통과**. Python 구문·YAML/XML 파싱·diff 공백 검사와 공정 다이어그램 재생성도 통과했다. [DRL·DIO 일지](2026-09-23_DRL_고정경로_DIO.md)
 - 사용자 제공 DRL의 핵심 플로우는 실물 검증됐지만, **ROS로 이식한 경로의 통합 기동·실물 재검증은 수행하지 않았다.** [PR #277](https://github.com/Jik-Kim/auto-pharmacist/pull/277)
 
 ## 열린 과제 (이슈 번호)
-- [#208](https://github.com/Jik-Kim/auto-pharmacist/issues/208) 계량 고주파 σ(`measure_force` 원시 표본) + `skill_node`의 `raw_hf_std` 전달 → [#219](https://github.com/Jik-Kim/auto-pharmacist/issues/219) 리베이스.
+- [#208](https://github.com/Jik-Kim/auto-pharmacist/issues/208) A 배선·설정·회귀시험은 9/26 완료. 남은 일은 B [#219](https://github.com/Jik-Kim/auto-pharmacist/issues/219) 병합과 실물 표본 재검증.
 - [#222](https://github.com/Jik-Kim/auto-pharmacist/issues/222) `min_fraction` 중복 선언 해소. 현재 두 원본은 모두 0.10으로 맞춰져 있다.
 - workbench 자세 Mx ≈ +0.9 Nm 원인, material_1/2 계량 σ·무효율 기전(B 인계분).
 - `common.yaml`의 `robot.tool_name` 옆 공구 질량·CoG 주석은 두 세대 전 값이므로 B CURRENT 동결값으로 정정 필요.
