@@ -1,9 +1,10 @@
 # #161: gmp_hmi/config/test_recipes/v4/recipe-03.yaml 를 운영 경로에 등록.
-# 목표량·허용오차는 **9/23 조장 결정**으로 확정했다 — 고정 스쿱 85 g 에 맞춰 목표량을 올리고
-# 허용오차를 ±10 % 로 넓혔다. 교착 조건(min_fraction × scoop_nominal_g ≤ 2 × target × tol)을
-# 만족한다: 8.5 g ≤ 17 g(85 g) · 34 g(170 g). 종전 40 g·±5 % 조합은 이 조건을 위반했다.
+# 목표량·허용오차는 SOT D-35(9/25)를 따른다 — 스쿱 1회 실측 78.9 g(#272, 원료 A)에 맞춰 목표를
+# 79 g·158 g(2스쿱)으로 내리고 허용오차 ±10 % 는 유지했다. 교착 조건(min_fraction × scoop_nominal_g
+# ≤ 2 × target × tol) 만족: 7.9 g ≤ 15.8 g(79 g) · 31.6 g(158 g). 이전 85/170 g 은 D-33(9/23).
+# 파일·값은 D 담당(9/25), 스키마·검증은 C(gmp_process/core/recipe.py). gmp_hmi 시험 사본과 한 PR 로 바꾼다.
 product: "레시피 3"
 items:
-  - {material_id: A, target_g: 85.0, tol_pct: 10.0}
-  - {material_id: B, target_g: 85.0, tol_pct: 10.0}
-  - {material_id: C, target_g: 170.0, tol_pct: 10.0}
+  - {material_id: A, target_g: 79.0, tol_pct: 10.0}
+  - {material_id: B, target_g: 79.0, tol_pct: 10.0}
+  - {material_id: C, target_g: 158.0, tol_pct: 10.0}
