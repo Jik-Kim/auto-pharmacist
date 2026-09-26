@@ -23,7 +23,7 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from gmp_hmi.core.trial_inventory import TrialInventory
 
-# overfill 시나리오의 과다 투입 배율. 허용오차(D-33 ±10 %)를 확실히 넘어야 OVER 가 말이 된다 —
+# overfill 시나리오의 과다 투입 배율. 허용오차(±10 %, D-33·D-35)를 확실히 넘어야 OVER 가 말이 된다 —
 # 옛 1.10 은 ±5 % 시절 값이라 ±10 % 에서는 경계값이 된다.
 OVERFILL_RATIO = 1.15
 
@@ -482,7 +482,7 @@ class HmiTestProcess(Node):
         self._weight(actual)
         attempts = max(1, math.ceil(actual / self.test_scoop_nominal_g))
         delivered_before = 0.0
-        # 원료 완료 시 test_scoop_nominal_g 기준 시험 사이클을 생성한다(통신 시험 launch 는 85 g, D-33).
+        # 원료 완료 시 test_scoop_nominal_g 기준 시험 사이클을 생성한다(통신 시험 launch 는 79 g, D-35).
         # 실제 로봇 계량/횟수 검증은 아니다.
         for attempt in range(1, attempts + 1):
             portion = min(self.test_scoop_nominal_g, actual - delivered_before)
