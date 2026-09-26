@@ -6,6 +6,8 @@ from pathlib import Path
 HMI_JS = Path(__file__).resolve().parents[1] / 'static/hmi.js'
 # 빌드 없이도 돌도록 소스 트리 상대 경로로 읽는다 (.resolve() 라 --symlink-install 에서도 같다).
 PROCESS_FSM = Path(__file__).resolve().parents[2] / 'gmp_process/gmp_process/core/process_fsm.py'
+# 취소·안전 정지 때 FSM 상태를 덮어쓰는 곳 (ABORTED 는 여기서만 나온다).
+PROCESS_NODE = Path(__file__).resolve().parents[2] / 'gmp_process/gmp_process/nodes/process_node.py'
 
 # process_fsm 이 CellState.step 으로 내보내는 상태 이름을 뽑는 패턴들.
 _STATE_PATTERNS = (
@@ -20,7 +22,9 @@ _STATE_PATTERNS = (
 
 def _fsm_states():
     source = PROCESS_FSM.read_text(encoding='utf-8')
-    return {m for p in _STATE_PATTERNS for m in re.findall(p, source)}
+    node = PROCESS_NODE.read_text(encoding='utf-8')
+    return ({m for p in _STATE_PATTERNS for m in re.findall(p, source)} |
+            set(re.findall(r"fsm\.state,\s*(?:self\.)?fsm\.mode\s*=\s*'([A-Z_]+)'", node)))
 
 
 def _hmi_step_keys():
