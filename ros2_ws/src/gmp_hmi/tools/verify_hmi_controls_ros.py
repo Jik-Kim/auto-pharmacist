@@ -62,8 +62,9 @@ def main():
     status = wait(lambda: request('/status'), lambda s: s['state'].get('batch_id') == batch and
                   s.get('batch_control', {}).get('can_cancel'), 'HMI 주문 · 소유 Goal 취소 가능')
     band = status['target_band']
-    assert abs(band['target_g']-120) < .001 and abs(band['lower_g']-114) < .001 and abs(band['upper_g']-126) < .001
-    print('PASS 수락 레시피 용기 총량 목표120 g · 허용114–126 g')
+    # recipe-01 = A/B/C 79 g ±10 % (SOT D-35) → 용기 총량 237 g, 허용폭 Σ(79×0.1)=23.7 g
+    assert abs(band['target_g']-237) < .001 and abs(band['lower_g']-213.3) < .001 and abs(band['upper_g']-260.7) < .001, band
+    print('PASS 수락 레시피 용기 총량 목표237 g · 허용213.3–260.7 g')
     wait(lambda: request('/restart-state'), lambda s: any(
         r['batch_id'] == batch and r['checkpoint'] and r['recipe'] for r in s['records']),
         'record_node 상태·수락 레시피 저장', seconds=8)

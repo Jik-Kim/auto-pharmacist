@@ -13,6 +13,13 @@ vm.runInContext(code.slice(code.indexOf('let recoveryGeneration='),code.indexOf(
 const render=s=>{context.snapshot=s;context.renderSafetyPopup(s);};
 render({state:{mode:'PAUSED',note:'NUDGE'}});
 assert.match($('safetyModeTitle').textContent,/진입 허가 아님/);
+// 세트 끝 대기·접촉 정지·보충 대기는 사람이 할 일이 달라 제목으로 가른다 (시험 공정도 실제와 같은 사유를 낸다).
+render({state:{mode:'PAUSED',step:'NUDGE_WAIT',pause_reason:'SET_COMPLETE'}});
+assert.match($('safetyModeTitle').textContent,/세트 완료 · 로봇을 건드리면 다음 세트/);
+render({state:{mode:'PAUSED',step:'SCOOP',pause_reason:'NUDGE'}});
+assert.match($('safetyModeTitle').textContent,/접촉 감지 정지 · 다시 건드리면 재개 · 진입 허가 아님/);
+render({state:{mode:'PAUSED',step:'PAUSED',pause_reason:'REFILL'}});
+assert.match($('safetyModeTitle').textContent,/원료 보충 대기/);
 render({state:{mode:'PAUSED'},interlock:{entry_granted:true}});
 assert.match($('safetyModeTitle').textContent,/인터락 진입 허가/);
 const safety={state:{mode:'ERROR'},safety_recovery:{active:true,phase:'stopped',generation:1,robot_state:5,reason:'stop'},diagnostics:{services:{request_safety_recovery:true}}};

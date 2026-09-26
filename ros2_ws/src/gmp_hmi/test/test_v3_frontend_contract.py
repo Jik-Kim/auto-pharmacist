@@ -6,6 +6,8 @@ from pathlib import Path
 HMI_JS = Path(__file__).resolve().parents[1] / 'static/hmi.js'
 # 빌드 없이도 돌도록 소스 트리 상대 경로로 읽는다 (.resolve() 라 --symlink-install 에서도 같다).
 PROCESS_FSM = Path(__file__).resolve().parents[2] / 'gmp_process/gmp_process/core/process_fsm.py'
+# 취소·안전 정지 때 FSM 상태를 덮어쓰는 곳 (ABORTED 는 여기서만 나온다).
+PROCESS_NODE = Path(__file__).resolve().parents[2] / 'gmp_process/gmp_process/nodes/process_node.py'
 
 # process_fsm 이 CellState.step 으로 내보내는 상태 이름을 뽑는 패턴들.
 _STATE_PATTERNS = (
@@ -20,7 +22,9 @@ _STATE_PATTERNS = (
 
 def _fsm_states():
     source = PROCESS_FSM.read_text(encoding='utf-8')
-    return {m for p in _STATE_PATTERNS for m in re.findall(p, source)}
+    node = PROCESS_NODE.read_text(encoding='utf-8')
+    return ({m for p in _STATE_PATTERNS for m in re.findall(p, source)} |
+            set(re.findall(r"fsm\.state,\s*(?:self\.)?fsm\.mode\s*=\s*'([A-Z_]+)'", node)))
 
 
 def _hmi_step_keys():
@@ -71,6 +75,8 @@ def _emitted_steps():
     for line in node.splitlines():
         if re.search(r"\bself\.step\b[^=]*=(?!=)", line):
             names |= set(re.findall(r"'([A-Z][A-Z_]{2,})'", line))
+    # 단계 계획에 넣는 이름 — self._add('SCOOP', …)
+    names |= set(re.findall(r"self\._add\('([A-Z][A-Z_]{2,})'", node))
     for segment in re.findall(r"step\s*[:=]\s*([^;,}]*)", demo):
         names |= set(re.findall(r"'([A-Z][A-Z_]{2,})'", segment))
     return names
@@ -80,7 +86,7 @@ def test_test_process_and_demo_emit_only_known_steps():
     # /hmi_test·/demo 화면도 같은 steps 맵으로 그린다. 없는 이름은 영문 원시 문자열로 보인다 —
     # 9/23 까지 WAIT_QA·INTERLOCK·MOVING_TO_SAFE·DISCARD_MOVING·WEIGH·VERIFY_FINAL·DISCARD_FINISH 가 그랬다.
     emitted = _emitted_steps()
-    assert {'SCOOP', 'DEVIATION', 'FINISH'} <= emitted, emitted   # 추출이 비어 통과하는 것을 막는다
+    assert {'SCOOP', 'DEVIATION', 'FINISH', 'NUDGE_WAIT'} <= emitted, emitted   # 추출이 비어 통과하는 것을 막는다
     assert not emitted - _hmi_step_keys(), f'steps 맵에 없는 시험·데모 단계: {sorted(emitted - _hmi_step_keys())}'
 
 
