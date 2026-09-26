@@ -75,6 +75,8 @@ def _emitted_steps():
     for line in node.splitlines():
         if re.search(r"\bself\.step\b[^=]*=(?!=)", line):
             names |= set(re.findall(r"'([A-Z][A-Z_]{2,})'", line))
+    # 단계 계획에 넣는 이름 — self._add('SCOOP', …)
+    names |= set(re.findall(r"self\._add\('([A-Z][A-Z_]{2,})'", node))
     for segment in re.findall(r"step\s*[:=]\s*([^;,}]*)", demo):
         names |= set(re.findall(r"'([A-Z][A-Z_]{2,})'", segment))
     return names
@@ -84,7 +86,7 @@ def test_test_process_and_demo_emit_only_known_steps():
     # /hmi_test·/demo 화면도 같은 steps 맵으로 그린다. 없는 이름은 영문 원시 문자열로 보인다 —
     # 9/23 까지 WAIT_QA·INTERLOCK·MOVING_TO_SAFE·DISCARD_MOVING·WEIGH·VERIFY_FINAL·DISCARD_FINISH 가 그랬다.
     emitted = _emitted_steps()
-    assert {'SCOOP', 'DEVIATION', 'FINISH'} <= emitted, emitted   # 추출이 비어 통과하는 것을 막는다
+    assert {'SCOOP', 'DEVIATION', 'FINISH', 'NUDGE_WAIT'} <= emitted, emitted   # 추출이 비어 통과하는 것을 막는다
     assert not emitted - _hmi_step_keys(), f'steps 맵에 없는 시험·데모 단계: {sorted(emitted - _hmi_step_keys())}'
 
 
