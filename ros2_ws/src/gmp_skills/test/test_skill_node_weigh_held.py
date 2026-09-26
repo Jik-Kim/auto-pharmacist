@@ -88,7 +88,8 @@ def _load_skill_node(monkeypatch):
         'gmp_dosing': _module('gmp_dosing'),
         'gmp_dosing.core': _module('gmp_dosing.core'),
         'gmp_dosing.core.scale': _module(
-            'gmp_dosing.core.scale', ScaleConfig=object, WeightModel=object),
+            'gmp_dosing.core.scale', ScaleConfig=object, WeightModel=object,
+            fit_oscillation=lambda samples, period_s: (0.0, 0.0, 0.0, period_s)),
         'gmp_skills.adapters.dsr_arm': _module(
             'gmp_skills.adapters.dsr_arm', DsrArm=object),
         'gmp_skills.adapters.rg2_gripper': _module(
@@ -230,6 +231,49 @@ def test_weigh_held_rejects_unknown_material_history_before_motion(monkeypatch):
         skill_node.SkillNode._do_weigh_held(
             node, skill_node.Job('weigh_held', {'tare_g': 0.0}))
     assert moves == []
+
+
+def test_measure_weight_fits_raw_samples_and_applies_hf_gate(monkeypatch):
+    skill_node = _load_skill_node(monkeypatch)
+    fitted = []
+    model_calls = []
+
+    class Model:
+        def __init__(self, config):
+            model_calls.append(config)
+
+        def set_tare(self, _tare):
+            pass
+
+        def reading(self, mean, std, valid, raw_hf_std):
+            model_calls.append((mean, std, valid, raw_hf_std))
+            return 10.0, 0.0, 10.0, 0.4, True
+
+    skill_node.ScaleConfig = lambda **values: values
+    skill_node.WeightModel = Model
+    skill_node.fit_oscillation = lambda values, period: (
+        fitted.append((values, period)) or (1.2, 0.03, 0.04, 4.1))
+    params = {
+        'scale.samples': 4, 'scale.settle_s': 1.0, 'scale.method': 'tool_force',
+        'scale.simulated': False, 'scale.gain': 1.0, 'scale.offset_g': 0.0,
+        'scale.max_std_g': 8.0, 'scale.max_hf_std_g': 9.5, 'scale.fz_sign': 1.0,
+    }
+    node = SimpleNamespace(
+        get_parameter=lambda name: SimpleNamespace(value=params[name]),
+        _scale_period_s=lambda: 0.82,
+        arm=SimpleNamespace(measure_force=lambda *args, **kwargs: (
+            [0.0] * 6, 1.0, 0.2, True, [1.0, 1.4, 0.9, 1.5])),
+        _observe_force=lambda _: None,
+        get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=lambda: 'stamp')),
+        _empty_scoop_baseline_pending=False,
+    )
+
+    reading = skill_node.SkillNode._measure_weight_reading(node, 0.0, 'container')
+
+    assert fitted == [([1.0, 1.4, 0.9, 1.5], 0.82)]
+    assert model_calls[0]['max_hf_std_g'] == 9.5
+    assert model_calls[1] == (1.2, 0.03, True, 0.04)
+    assert reading.valid is True and reading.std_g == 0.4
 
 
 def test_weigh_held_cancel_after_material_move_does_not_measure(monkeypatch):
@@ -506,18 +550,23 @@ def test_sampling_parameter_reaches_all_measurement_paths(monkeypatch, entry):
               'scale.method': 'workpiece' if entry == 'workpiece' else 'tool_force',
               'scale.simulated': entry == 'simulated', 'scale.gain': 1,
               'scale.offset_g': 0,
-              'scale.max_std_g': 10, 'scale.fz_sign': -1}
+              'scale.max_std_g': 10, 'scale.max_hf_std_g': 9.5, 'scale.fz_sign': -1}
     node = SimpleNamespace(
         get_parameter=lambda name: SimpleNamespace(value=params[name]),
         _observe_force=lambda _: None,
         get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=lambda: None)),
         arm=SimpleNamespace(
-            measure_force=lambda *a, **kw: (calls.append((a, kw)) or ([0]*6, 2, 0, True)),
-            measure_workpiece=lambda *a, **kw: (calls.append((a, kw)) or (2, 0, True))))
+            measure_force=lambda *a, **kw: (calls.append((a, kw)) or
+                                             (([0]*6, 2, 0, True, [2]*3)
+                                              if kw.get('include_samples') else ([0]*6, 2, 0, True))),
+            measure_workpiece=lambda *a, **kw: (calls.append((a, kw)) or (2, 0, True, [2]*3))))
     node._scale_period_s = lambda: module.SkillNode._scale_period_s(node)
     monkeypatch.setattr(module, 'ScaleConfig', lambda **kw: kw)
+    monkeypatch.setattr(module, 'fit_oscillation',
+                        lambda values, period: (sum(values)/len(values), 0, 0, period))
     monkeypatch.setattr(module, 'WeightModel', lambda _: SimpleNamespace(
-        set_tare=lambda _: None, reading=lambda mean, std, valid: (mean, 0, mean, std, valid)))
+        set_tare=lambda _: None,
+        reading=lambda mean, std, valid, raw_hf_std: (mean, 0, mean, std, valid)))
     if entry == 'service':
         module.SkillNode._do_measure(node, module.Job('measure', {'samples': 3, 'settle_s': 0.2}))
     else:
@@ -525,7 +574,10 @@ def test_sampling_parameter_reaches_all_measurement_paths(monkeypatch, entry):
     if entry == 'simulated':
         assert calls == []
     else:
-        assert calls == [((3, 0.2), {'period_s': 0.82, 'observer': node._observe_force})]
+        expected = {'period_s': 0.82, 'observer': node._observe_force}
+        if entry != 'service':
+            expected['include_samples'] = True
+        assert calls == [((3, 0.2), expected)]
 
 
 @pytest.mark.parametrize('end', [None, [1.0] * 5, [float('nan')] * 6])
