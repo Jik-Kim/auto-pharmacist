@@ -911,6 +911,9 @@ def test_refill_wait_with_nudge_and_enter_needs_one_exit(cell):
     _submit(col, [('A', 100.0, 5.0)])
     assert _wait_until(lambda: proc._refill_waiting), _why(proc)
     fake.nudge()                                   # 보충 대기 중에 건드렸다
+    # NUDGE 는 DDS 이벤트라 늦게 닿을 수 있다. 닿기 전에 ENTER 를 부르면 「보충 대기(안전 자세)」로만
+    # 보여 '이미 대기 중' 이 돌아온다 — 시험이 확인하려는 겹침이 아직 안 생긴 것이다 (9/28 간헐 실패)
+    assert _wait_until(lambda: proc._nudge_paused, 5.0), _why(proc)
     r = _lock(col, InterlockRequest.Request.ENTER, 'REFILL')
     assert r.granted and not r.message.startswith('이미'), r.message   # NUDGE 정지는 안전 자세가 아니므로 safe_pose
     assert _lock(col, InterlockRequest.Request.EXIT, 'REFILL').message == 'resume'
