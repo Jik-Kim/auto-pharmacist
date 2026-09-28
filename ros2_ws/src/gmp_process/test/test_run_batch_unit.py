@@ -436,7 +436,8 @@ def codes(node):
     return [e.code for e in node.published['event']]
 
 
-@pytest.mark.parametrize('state,mode', [('NUDGE_WAIT', 'PAUSED'), ('FINISH', 'RUNNING'), ('DISCARDED', 'DONE')])
+@pytest.mark.parametrize('state,mode', [('NUDGE_WAIT', 'PAUSED'), ('FINISH', 'RUNNING'),
+                                        ('DISCARDED', 'RUNNING'), ('DISCARDED', 'DONE')])   # 폐기 반송: 수정 후·전
 def test_set_end_order_is_queued_not_rejected(node, state, mode):
     _at_set_end(node, state, mode)
     batch1 = node._batch_handle

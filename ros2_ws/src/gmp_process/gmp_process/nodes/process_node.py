@@ -364,13 +364,15 @@ class ProcessNode(Node):
     def _at_set_end(self) -> bool:
         """지금 배치의 결과가 정해지고 반송·넛지 대기만 남았나 — 다음 주문을 예약해 둘 수 있는 구간.
 
-        FINISH(완성품 반송) · DISCARDED(폐기 판정 뒤 폐기함 반송, mode DONE) · NUDGE_WAIT.
-        루프가 살아 있을 때만이다 — 끝난 배치의 `DISCARDED` 가 남아 있어도 세트 끝이 아니다.
+        FINISH(완성품 반송) · DISCARDED(폐기 판정 뒤 스쿱 반납·폐기함 반송) · NUDGE_WAIT.
+        mode 는 보지 않는다 — 폐기 반송의 mode 는 판정 즉시 DONE 이던 것이 RUNNING 으로 바뀐다
+        (fix/discard-done-at-end, D #295). 루프가 살아 있을 때만이다 — 끝난 배치의 `DISCARDED` 가
+        남아 있어도 세트 끝이 아니다.
         """
         f = self.fsm
         if not f or not (self._thread and self._thread.is_alive()):
             return False
-        return f.state in ('FINISH', 'NUDGE_WAIT') or (f.state == 'DISCARDED' and f.mode == 'DONE')
+        return f.state in ('FINISH', 'DISCARDED', 'NUDGE_WAIT')
 
     def _set_end_note(self) -> str:
         """세트 끝 대기 사유. HMI 가 앞머리 `NUDGE_WAIT —` 로 사유를 가르므로 앞은 바꾸지 않는다."""
