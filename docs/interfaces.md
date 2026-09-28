@@ -93,7 +93,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 |---|---|---|
 | `RecipeItem` | HMI → process (`Recipe.items`) | `material_id`: 원료 ID, `target_g`: 목표 순량, `tol_pct`: 허용 오차율. 전용 스쿱은 메시지가 아니라 `stations.yaml` 의 `scoop_N`(`material_id` 일치)으로 찾는다 |
 | `Recipe` | HMI → process (`SubmitOrder`/`RunBatch`) | `header`: 생성 시각, `batch_id`: 빈 값이면 process가 발급, `product`: 표시명, `items`: 투입 순서 그대로의 원료 배열 |
-| `CellState` | process → HMI·record | `mode`: 셀 운전 모드, `batch_id`: 현재 배치, `step`: FSM 상태, `item_index`: 0 기반 원료 순번, `station`: 마지막 도착 위치, `note`: 화면용 보충 설명 |
+| `CellState` | process → HMI·record | `mode`: 셀 운전 모드 — **`DONE` 은 배치가 물리적으로 끝난 뒤(세트 끝 넛지 뒤) 한 번만**, 그때 `step` 은 `DONE`\|`DISCARDED`. 폐기 판정 뒤 스쿱 반납·폐기함 반송·넛지 대기 동안은 `step=DISCARDED`·`mode=RUNNING`(대기는 `PAUSED`)이다 — record_node 가 이 DONE 으로 배치를 닫는다(9/28 명확화, 종전 C 는 판정 즉시 DONE 을 냈다 — D #295), `batch_id`: 현재 배치, `step`: FSM 상태, `item_index`: 0 기반 원료 순번, `station`: 마지막 도착 위치, `note`: 화면용 보충 설명 |
 | `WeightReading` | skill → process (`WeighContainer.Result`), process → HMI·record (`weight`) | `gross_g`: 기준 차감 전 값, `tare_g`: 동일 자세·파지의 빈 용기/스쿱 기준, `net_g`: 차감값, `std_g`·`samples`: 분산과 표본 수, `valid`: 사용 가능 여부, `station`: 계량 자세 ID |
 | `ScoopCycle` | process → record | 스쿠핑 시도 한 건의 완결 기록. 세부 필드는 1.1 표를 따른다 |
 | `DispenseResult` | process → HMI·record | `batch_id`·`material_id`, `target_g`·`actual_g`, `error_pct`, `verdict`(`OK/UNDER/OVER/INVALID`), `attempts`, `duration_s` |

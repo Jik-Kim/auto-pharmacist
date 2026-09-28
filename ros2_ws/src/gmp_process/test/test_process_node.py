@@ -978,6 +978,34 @@ def test_discarded_batch_also_parks_at_nudge_wait(cell):
     assert _wait_done(proc) == 'DONE' and proc.fsm.state == 'DISCARDED', _why(proc)
 
 
+def test_discard_carry_stays_running_and_done_is_published_once_at_the_end(cell):
+    """D #295 (9/28): 폐기 판정 뒤 반송 중에는 mode=RUNNING 이다 — 넛지 전에 DONE 이 나가면
+    record_node 가 반송 전에 배치를 닫아 반송 실패가 기록에 안 남는다. 반송 중 ENTER 도 PAUSED 로 보여야 한다."""
+    from gmp_interfaces.srv import InterlockRequest
+    proc, fake, col = cell
+    fake.attendant = False
+    fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
+    _submit(col, [('A', 10.0, 5.0)])
+    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
+    bid = proc.batch_id
+    fake.delay['move'] = 0.3                       # 반송 도중에 끼어들 틈
+    assert _qa(col, proc._pending_dev().deviation_id, Deviation.DISCARDED).accepted
+    assert _wait_until(lambda: proc.fsm.state == 'DISCARDED', 5.0), _why(proc)
+    assert proc.fsm.mode == 'RUNNING', '폐기 판정은 완료가 아니다'
+    assert _lock(col, InterlockRequest.Request.ENTER).granted
+    assert _wait_until(lambda: any(s.batch_id == bid and s.step == 'DISCARDED' and s.mode == CellState.PAUSED
+                                   for s in col.states), 5.0), '반송 중 ENTER 가 PAUSED 로 안 보인다'
+    fake.delay.clear()
+    assert _lock(col, InterlockRequest.Request.EXIT).granted
+    assert _wait_until(lambda: proc._nudge_waiting, 30.0), _why(proc)
+    assert not any(s.batch_id == bid and s.mode == CellState.DONE for s in col.states), \
+        '넛지 전에 DONE 이 나가면 record_node 가 배치를 닫는다'
+    fake.nudge()
+    assert _wait_done(proc) == 'DONE' and proc.fsm.state == 'DISCARDED', _why(proc)
+    assert _wait_until(lambda: any(s.batch_id == bid and s.mode == CellState.DONE and s.step == 'DISCARDED'
+                                   for s in col.states), 5.0)
+
+
 def test_enter_during_nudge_wait_goes_to_safe_pose(cell):
     """NUDGE_WAIT 는 PAUSED 지만 안전 자세가 아니다 — ENTER 는 safe_pose 를 실제로 불러야 하고, EXIT 뒤 NUDGE 로 끝난다."""
     proc, fake, col = cell
