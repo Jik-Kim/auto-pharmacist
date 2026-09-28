@@ -6,7 +6,7 @@
 
 **버전:** 1.0
 
-**상위 요구사항:** `GMP_Dispense_BRD_v1.0.md`
+**상위 요구사항:** `GMP_Dispense_BRD_v1.1.md`
 **기준 원장:** `PROJECT_RULES.md`, `docs/SOT.md`, `docs/interfaces.md` 계약 v1.8
 
 ## 1. 목적과 설계 원칙
@@ -52,23 +52,29 @@ skill/process/hmi ── CellEvent·계량·결과 ──> gmp_hmi/record_node �
 
 현행 상태와 전이의 구현 원본은 `ros2_ws/src/gmp_process/gmp_process/core/process_fsm.py`이다.
 
-```text
-SELF_CHECK → PICK_CONTAINER → TARE
-→ PICK_SCOOP → SCOOP_TARE → SCOOP → WEIGH_SCOOP
-→ RETURN_MATERIAL 또는 POUR → WEIGH_RESIDUAL → RETURN_SCOOP
-→ 다음 원료 또는 VERIFY → FINISH → NUDGE_WAIT → DONE
-```
-
-| 상태군 | 주요 처리 | 실패·분기 |
+| 현재 상태 | 성공 입력·조건 | 다음 상태·요청 |
 |---|---|---|
-| 준비 | 자가진단, 빈 용기 이송, TARE | 실패 시 정리 후 ERROR |
-| 스쿱 | 전용 스쿱 파지, 빈 스쿱 기준, 고정 스쿱 수행 | 계량 무효·파지 실패 처리 |
-| 사전 판정 | 든 양 계량 및 도징 판단 | 초과는 `RETURN_MATERIAL`, 허용 시 `POUR` |
-| 투입 후 | 잔량 계량, 실제 투입량 누적, 스쿱 반환 | 투입 후 계량 무효는 QA 경로 |
-| 종료 | 용기 순량 `VERIFY`, 완성품 반송 | 규격 이탈은 `DEVIATION` |
-| 마감 | `NUDGE_WAIT`에서 회수 터치 대기 | 승인된 미측정 종료는 `DONE_UNMEASURED` |
+| `SELF_CHECK` | 자가진단 계량 완료 | `PICK_CONTAINER` · 빈 용기 carry |
+| `PICK_CONTAINER` | carry 및 파지 성공 | `TARE` · 빈 그리퍼 영점과 빈 용기 계량 |
+| `TARE` | 유효한 빈 용기 계량 | `PICK_SCOOP` · 해당 원료 전용 스쿱으로 이동 |
+| `PICK_SCOOP` | 이동·파지·도구 확인 성공 | `SCOOP_TARE` · 빈 스쿱 계량 |
+| `SCOOP_TARE` | 유효한 빈 스쿱 계량 | `SCOOP` · 스쿠핑 |
+| `SCOOP` | 스쿠핑 완료 | `WEIGH_SCOOP` · 붓기 전 계량 |
+| `WEIGH_SCOOP` | 유효하며 허용 투입량 이하 | `POUR` · 전량 붓기 |
+| `WEIGH_SCOOP` | 남은 목표량과 허용량 초과 | `RETURN_MATERIAL` · 원료통 반환 |
+| `RETURN_MATERIAL` | 반환 성공·반환 한도 미만 | `SCOOP` · 재스쿱 |
+| `POUR` | 붓기 성공 | `WEIGH_RESIDUAL` · 붓기 후 잔량 계량 |
+| `WEIGH_RESIDUAL` | 목표 미달이며 보충 가능 | `SCOOP` · 보충 스쿱 |
+| `WEIGH_RESIDUAL` | 원료 목표 완료 | `RETURN_SCOOP` · 전용 스쿱 반납 |
+| `RETURN_SCOOP` | 다음 원료 있음 | `PICK_SCOOP` |
+| `RETURN_SCOOP` | 모든 원료 완료 | `VERIFY` · 빈 그리퍼 영점 재확인 후 용기 계량 |
+| `VERIFY` | 배치 총량 규격 안 | `FINISH` · 완성품 carry |
+| `FINISH` | 완성품 반송·파지 확인 | `NUDGE_WAIT` · 대기 위치 이동 |
+| `NUDGE_WAIT` | 회수 터치 입력 | 최종 결과 `DONE` 또는 `DONE_UNMEASURED` |
 
-`PAUSED`, `DEVIATION`, `CLEANUP`은 정상 직선 흐름 바깥의 제어 상태다. `WEIGH_INVALID`는 투입 전이면 정리 후 오류, 투입 후이면 QA 판정으로 분리한다. 재시도 상한은 설정값을 따른다.
+`PAUSED`, `DEVIATION`, `CLEANUP`, `DISCARDED`는 정상 전이 밖의 제어 상태다. `WEIGH_INVALID`는 `TARE`·`SCOOP_TARE`·`WEIGH_SCOOP`에서 재계량 한도 초과 시 스쿱·용기를 정리하고 `ERROR`로 끝난다. `WEIGH_RESIDUAL`·`VERIFY`에서는 QA로 보내며, 승인되면 미측정 표식을 보존한다. `DONE_UNMEASURED`는 FSM 상태가 아니라 `RunBatch.result` 값이다.
+
+`GRIP_FAIL`은 상태별 재시도 상한 뒤 `FORCED`로 끝난다. `WRONG_TOOL`은 즉시 QA로 보낸다. QA가 폐기를 선택하면 들고 있는 스쿱을 먼저 반납하고 용기를 `reject_bin`으로 옮긴 뒤 `NUDGE_WAIT`에서 세트를 마감한다. 따라서 폐기 경로도 회수 터치 전에는 완료 결과를 내지 않는다.
 
 ## 5. 로봇 동작과 스테이션
 
@@ -90,9 +96,9 @@ SELF_CHECK → PICK_CONTAINER → TARE
 
 ## 7. 계량과 도징
 
-계량은 고정 자세에서 `get_tool_force`의 Fz 표본을 수집하여 질량으로 환산한다. 부호, 오프셋, 표본 수, 표준편차 상한과 유효성 기준은 `common.yaml` 파라미터를 사용한다. 스쿱은 빈 기준, 원료를 든 상태, 붓고 난 잔량을 각각 측정하며 실제 투입량은 두 측정의 차이로 누적한다.
+계량은 고정 자세에서 `get_tool_force`의 Fz 표본을 수집하여 질량으로 환산한다. 부호, 오프셋, 표본 수, 잔차·고주파 표준편차 상한과 유효성 기준은 `common.yaml` 파라미터를 사용한다. 스쿱은 빈 기준, 원료를 든 상태, 붓고 난 잔량을 각각 측정하며 실제 투입량은 두 측정의 차이로 누적한다. 고정 스쿱의 빈 스쿱 판정은 유효한 순중량과 `dosing.empty_scoop_g`를 사용하도록 #287에서 통합하며, 그 전 main의 접촉 신호 판정은 고정 경로의 `contact_detected=false`와 맞지 않는 알려진 통합 차단점이다.
 
-`VERIFY`는 종료 용기 순량을 레시피 규격과 비교한다. 스쿱 누적값과 용기값의 이중 계측 일치 판정은 SOT D-26에 따라 합격 조건으로 사용하지 않는다. 레시피 현행값은 `ros2_ws/src/gmp_bringup/params/recipes/`가 원본이다. D-33에 따라 각 품목의 원료 목표는 85 g 또는 170 g 단위이며 허용 오차는 ±10%다.
+`VERIFY`는 종료 용기 순량을 `Σ목표량 ± Σ허용오차`와 비교하는 유일한 제품 합격 판정이다. 원료별 `decide()`는 스쿱 회계와 다음 행동을 정할 뿐, 배치 종료의 독립 제품 판정이 아니다. 스쿱 누적값과 용기값의 이중 계측 일치 판정은 SOT D-26에 따라 사용하지 않는다. 레시피 파일·목표값은 D 담당, 스키마와 `recipe.py` 검증은 C 담당이며 원본은 `ros2_ws/src/gmp_bringup/params/recipes/`다. 이 문서 기준 main은 D-33의 85 g 또는 170 g, ±10%이고 D-35의 79/158 g은 관련 PR 머지 뒤 갱신한다.
 
 ## 8. 안전과 복구
 
@@ -113,7 +119,7 @@ SELF_CHECK → PICK_CONTAINER → TARE
 | skills/process | record | 상태, 계량, 사이클, 일탈, 이벤트 |
 | HMI | DB | 읽기 전용 조회 |
 
-`record_node`는 SQLite의 단일 writer다. 이벤트와 판정에는 배치 식별자와 순서를 남겨 재시작 뒤에도 감사 추적을 재구성할 수 있게 한다.
+`record_node`는 SQLite의 단일 writer다. 이벤트와 판정에는 배치 식별자와 순서를 남겨 재시작 뒤에도 감사 추적을 재구성할 수 있게 한다. 계량 무효를 승인한 원료는 `DispenseResult.verdict=INVALID(3)`으로 기록하며, `actual_g`를 목표와 비교해 `UNDER`로 해석하지 않는다.
 
 ## 10. 배포와 설정
 

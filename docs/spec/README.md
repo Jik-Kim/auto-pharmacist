@@ -3,7 +3,8 @@
 | 파일 | 문서 | 상태 |
 |---|---|---|
 | `GMP_Dispense_BRD_v0.1.md` | 사업 요구사항 — 규칙 원장(`PROJECT_RULES.md`)의 R·Q 와 평가 기준(3-8)을 강사 BRD 양식(8장 + BR/SR/FR/NFR/IR/TR 정의서)으로 옮긴다 | **v0.1 초안 9/17 (보존)** |
-| `GMP_Dispense_BRD_v1.0.md` | 사업 요구사항 — 실물 계측, 작업대·Pass Box, 고정 스쿱, 전량 붓기·초과 반환, Fz 계량과 계약 v1.8 반영본 | **v1.0 9/26 현행화** |
+| `GMP_Dispense_BRD_v1.0.md` | 사업 요구사항 — 9/26 현행화 당시 기록 | **v1.0 보존** |
+| `GMP_Dispense_BRD_v1.1.md` | 사업 요구사항 — 고정 스쿱, 실제 FSM, 배치 총량 VERIFY, DIO 운용을 정합화한 현행본 | **v1.1 9/29 현행** |
 | `GMP_Dispense_SDD_v1.0.md` | 시스템 설계 — `docs/SOT.md` 결정, 계약 v1.8, 실제 패키지 구조와 FSM 전이를 연결한 구현 기준 | **v1.0 9/26 작성** |
 
 ## 규칙
