@@ -1,4 +1,8 @@
-"""용기·스쿱 계량 순서와 측정값 구성을 담당한다. 보정 모델은 B 라이브러리를 사용한다."""
+"""용기 또는 스쿱을 계량 자세로 옮겨 힘을 읽고 WeightReading을 만든다.
+
+로봇은 외력의 평균·흔들림을 측정한다. gmp_dosing의 WeightModel이 이를
+그램으로 보정하고 tare_g(미리 잰 빈 물체 무게)를 빼 순량 net_g를 만든다.
+"""
 import json
 import math
 
@@ -17,14 +21,15 @@ class WeighingSkills:
         self.runtime = runtime
 
     def _scale_period_s(self):
-        # 역할: 계량 표본 주기를 읽고 유한한 양수인지 검증해 초 단위로 반환한다.
+        # 센서 표본을 시작하는 최소 간격을 ROS 파라미터에서 읽는다.
         period = float(self.ctx.parameter('scale.period_s').value)
         if not math.isfinite(period) or period <= 0:
             raise ValueError('scale.period_s는 유한한 양수여야 한다')
         return period
 
     def _do_measure(self, job: Job):
-        # 역할: 원시 힘 표본의 평균·표준편차·유효성을 반환한다. 가상 측정은 실측 유효값으로 보고하지 않는다.
+        # MeasureForce 요청에는 보정 전 힘의 평균·표준편차를 돌려준다.
+        # 가상 모드의 0값은 실제 센서 측정이 아니므로 valid=False로 표시한다.
         period_s = self._scale_period_s()
         if self.ctx.parameter('scale.simulated').value:
             return [0.0] * 6, 0.0, 0.0, False, 'simulated'
@@ -34,7 +39,8 @@ class WeighingSkills:
 
     def _measure_weight_reading(self, tare_g: float, subject: str,
                                 station_id: str = 'workbench') -> WeightReading:
-        # 역할: 원시 측정에 B의 보정 모델과 tare를 적용해 WeightReading을 만들고 조건부 빈 스쿱 기준을 저장한다.
+        # 센서 원시값 → gmp_dosing의 보정 → 빈 물체 무게(tare_g) 차감 순서다.
+        # 빈 스쿱 첫 계량이면 이후 원료면 진단에 쓸 힘 기준값도 저장한다.
         p = self.ctx.parameter
         capture_baseline = (subject == 'scoop'
                             and getattr(self.ctx.state, 'empty_scoop_baseline_pending', False))
@@ -94,9 +100,8 @@ class WeighingSkills:
         return reading
 
     def _do_weigh(self, job: Job):
-        # 용기 계량: workbench 접근 → 파지 → 계량 높이로 상승 → 측정.
-        # 측정 완료·취소 없음이 확인된 경우에만 내려놓기 → 열기 → 상승까지 수행한다.
-        # 역할: 용기를 집어 들어 계량하고 정상 완료 시 내려놓고 그리퍼를 연 뒤 상승한다.
+        # workbench의 용기를 집어 상부 계량 위치에서 측정한다. 측정이 정상
+        # 완료되고 취소되지 않았을 때만 원래 자리에 내려놓고 그리퍼를 연다.
         self.motion._require_scoop_extracted()
         p = self.ctx.parameter
         station = self.ctx.stations.get('workbench')
@@ -114,7 +119,8 @@ class WeighingSkills:
             measure_posx = list(pick_posx)
             measure_posx[2] += station.extra['approach_mm']
         elif 'solution_space' in station.extra:
-            # Weigh의 내부 이동도 MoveToStation과 같은 상부 접근 정책을 따른다.
+            # 지정 관절 분기(solution_space)가 있는 스테이션은 일반 이동과 동일하게
+            # ABOVE 접근점을 거쳐 들어간다.
             self.motion._do_move(job, station_id='workbench', approach=MoveToStation.Goal.ABOVE)
         else:
             # MOVEL · TCP 직선 이동: measure_posx
@@ -154,9 +160,9 @@ class WeighingSkills:
         return reading
 
     def _do_weigh_held(self, job: Job):
-        # 파지 중인 스쿱 계량. 첫 요청은 거치대 측면 인출 → 상승을 먼저 완료한다.
-        # 이후 해당 원료 계량 자세로 이동해 측정한다. 재요청 때 인출을 반복하지 않는다.
-        # 역할: 잡고 있는 스쿱을 필요 시 인출·상승시킨 후 해당 원료 계량 자세에서 무게를 측정한다.
+        # 거치대에서 스쿱을 막 집었다면 첫 WeighHeld에서 +Y 측면 인출과 수직
+        # 상승을 수행한다. 이미 인출했다면 반복하지 않고 material_N 계량
+        # 자세로 직선 이동해 스쿱에 담긴 원료 무게를 측정한다.
         if self.ctx.state.scoop_extract_uncertain:
             raise RuntimeError('스쿱 인출 상태가 불확실하다. SafePose 후 수동 확인이 필요하다')
         self.motion._require_held_scoop()
@@ -179,8 +185,8 @@ class WeighingSkills:
             self.ctx.arm.movel(target, self.ctx.config.vel_scale)
             if job.cancel:
                 raise RuntimeError('cancelled')
-            # 원료통으로 대각선 진입하기 전에 인출 완료 위치에서 수직 상승한다.
-            # 실제 BASE 자세의 X/Y·회전은 유지하고 Z에만 설정 높이를 더한다.
+            # 거치대에서 빠져나온 뒤 원료통으로 이동하기 전에 BASE 좌표의
+            # X/Y와 TCP 회전은 유지하고 Z만 설정 높이만큼 올린다.
             lift_target = list(self.ctx.arm.current_posx())
             if len(lift_target) != 6 or not all(math.isfinite(v) for v in lift_target):
                 raise ValueError('스쿱 상승 기준 posx는 유한한 6개 값이어야 한다')
@@ -202,4 +208,3 @@ class WeighingSkills:
         reading = self._measure_weight_reading(float(job.args['tare_g']), 'scoop', material.station_id)
         job.feedback and job.feedback('MEASURE')
         return reading
-

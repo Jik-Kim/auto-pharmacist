@@ -1,4 +1,8 @@
-"""OnRobot RG Modbus 상태 레지스터를 ROS로 중계하는 노드."""
+"""벤더 RG2 서버가 읽은 Modbus 상태를 /onrobot/status로 발행한다.
+
+원래 서버의 JointState에는 파지·안전 비트가 없다. 이 확장 노드가 원시
+상태를 OnRobotRGInput으로 변환해 skill_node가 실제 파지를 판정하게 한다.
+"""
 
 import rclpy
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor

@@ -1,9 +1,15 @@
-"""티칭한 스테이션 간 이송 경로 검증. ROS·장치 호출은 하지 않는다."""
+"""stations.yaml의 스테이션 간 이송 경로와 실제 출발 자세를 비교한다.
+
+TCP 자세(posx)는 끝점의 XYZ·회전, 관절 자세(posj)는 각 관절각이다.
+같은 TCP에도 여러 관절 자세가 가능하므로 양쪽을 따로 확인한다.
+이 파일은 값만 검사하며 ROS나 로봇 장치를 호출하지 않는다.
+"""
 from dataclasses import dataclass
 import math
 
 
 def vector6(value, name):
+    """TCP 자세나 6개 관절각을 유한한 숫자 6개로 검증해 반환한다."""
     if (not isinstance(value, (list, tuple)) or len(value) != 6
             or any(isinstance(v, bool) or not isinstance(v, (int, float))
                    or not math.isfinite(v) for v in value)):
@@ -12,7 +18,8 @@ def vector6(value, name):
 
 
 def _rotation(pose):
-    # 두산 posx의 Z-Y-Z Euler 표현. 동등한 각 표현을 직접 빼지 않는다.
+    # 두산 posx의 회전각 3개는 Z-Y-Z Euler 각이다. 같은 회전을 여러 각도
+    # 조합으로 표현할 수 있어 각도끼리 빼지 않고 회전 행렬로 변환한다.
     a, b, c = map(math.radians, pose[3:])
     ca, sa, cb, sb, cc, sc = (math.cos(a), math.sin(a), math.cos(b),
                              math.sin(b), math.cos(c), math.sin(c))
@@ -22,6 +29,7 @@ def _rotation(pose):
 
 
 def pose_matches(actual, target, xyz_mm, rotation_deg):
+    """현재 TCP의 XYZ 차이와 실제 회전 차이가 각각 허용오차 이내인지 확인한다."""
     actual, target = vector6(actual, '현재 posx'), vector6(target, '목표 posx')
     if max(abs(a-b) for a, b in zip(actual[:3], target[:3])) > xyz_mm:
         return False
@@ -32,13 +40,15 @@ def pose_matches(actual, target, xyz_mm, rotation_deg):
 
 
 def joints_match(actual, target, tolerance_deg):
-    # 360도 차이를 지우면 케이블 감김·다른 티칭 구성을 놓치므로 그대로 비교한다.
+    # 관절각 0°와 360°는 TCP 방향이 같아도 케이블 감김은 다를 수 있다.
+    # 따라서 360°를 지우지 않고 티칭한 각도와 직접 비교한다.
     return max(abs(a-b) for a, b in zip(vector6(actual, '현재 posj'),
                                       vector6(target, '목표 posj'))) <= tolerance_deg
 
 
 @dataclass(frozen=True)
 class MotionAnchor:
+    """마지막으로 확인한 스테이션·AT/ABOVE·TCP·관절각의 출발 기록."""
     station: str
     approach: int
     pose: tuple
@@ -47,6 +57,7 @@ class MotionAnchor:
 
 @dataclass(frozen=True)
 class TransferRoute:
+    """출발점, 이탈점, 중간 관절점, 필요한 파지물과 도착 방식을 담은 경로."""
     source: str
     destination: str
     payload: str
@@ -63,6 +74,7 @@ class TransferRoute:
 
 
 def parse_routes(rows, stations, approach_mm=60.0):
+    """YAML의 transfers 목록을 검증해 (출발, 도착)별 경로로 만든다."""
     if not isinstance(rows, list):
         raise ValueError('transfers는 목록이어야 한다')
     routes = {}
@@ -115,6 +127,11 @@ def parse_routes(rows, stations, approach_mm=60.0):
 
 def validate_start(route, anchor, actual_pose, actual_joints, payload,
                    xyz_mm, rotation_deg, joint_deg):
+    """저장된 도착 기록과 현재 센서값이 티칭 경로의 출발점에 맞는지 확인한다.
+
+    파지물과 현재 TCP·관절각까지 비교한다. 작업자가 펜던트로 로봇을
+    움직였거나 파지물이 바뀌었으면 이 경로로 자동 이송하지 않는다.
+    """
     if not route.enabled:
         raise ValueError(f'{route.source} → {route.destination}: 미티칭/비활성 이송 경로')
     if anchor is None or anchor.station != route.source or anchor.approach not in (0, 1):

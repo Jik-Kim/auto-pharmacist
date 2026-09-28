@@ -1,4 +1,9 @@
-"""안전 감시·차단·복구와 넛지 관측. 상태 잠금 및 복구 세대 검증을 유지한다."""
+"""로봇 알람과 외력을 감시하고 안전 차단·작업자 복구를 처리한다.
+
+넛지는 사람이 로봇에 준 외력을 입력으로 인식하는 기능이다. safety_latched는
+새 작업을 막는 차단 상태이고, safety_revision은 그 상태가 바뀔 때 증가한다.
+복구 요청은 시작 시의 revision과 현재 값을 비교해 중간 알람을 놓치지 않는다.
+"""
 import json
 import math
 import time
@@ -14,7 +19,8 @@ class SafetyController:
         self.runtime = runtime
 
     def _observe_force(self, force6):
-        # 역할: 계량·대기 중 받은 외력 표본으로 취소를 확인하고 넛지 입력을 판정한다.
+        # 외력 6축 표본 중 앞의 3개 힘 성분을 넛지 판정에 사용한다.
+        # 취소가 먼저 들어왔으면 입력 이벤트를 내지 않고 현재 작업을 중단한다.
         if self.runtime._cancel_requested():
             raise RuntimeError('cancelled')
         if self.ctx.state.nudge_enabled and self.ctx.state.nudge.update(force6, self.ctx.now()):
@@ -22,7 +28,8 @@ class SafetyController:
             self.ctx.event('INFO', 'NUDGE', f'외력 nudge 입력 감지: |F|={magnitude_n:.2f} N')
 
     def _poll_nudge(self):
-        # 역할: 워커에서 외력을 읽어 넛지를 감시한다. 조회 실패는 안전 차단으로 연결한다.
+        # 워커가 로봇의 현재 외력을 읽어 넛지 입력으로 처리한다.
+        # 센서 조회가 실패하면 입력을 신뢰할 수 없어 안전 차단을 건다.
         if not self.ctx.state.nudge_enabled or self.ctx.state.safety_latched or not self.ctx.state.configured:
             return
         try:
@@ -41,7 +48,7 @@ class SafetyController:
                 raise
 
     def _wait_with_nudge(self, duration_s: float, job: Job):
-        # 역할: 정해진 시간 동안 대기하되 취소와 외력 감시를 계속 수행한다.
+        # Pour 자세 유지 등 대기 중에도 취소와 넛지 외력 감시를 계속한다.
         end_s = self.ctx.now() + max(0.0, duration_s)
         while self.ctx.now() < end_s:
             if job.cancel:
@@ -50,8 +57,9 @@ class SafetyController:
             time.sleep(min(0.1, max(0.0, end_s - self.ctx.now())))
 
     def _latch_safety(self, reason, *, alarm=False, recovery_request=None):
-        # 콜백은 상태만 저장한다. 정지·복구 명령은 워커에서만 실행한다.
-        # 역할: 안전 차단을 걸고 진행·대기 작업과 위치/파지 이력을 무효화하며 정지 원인을 기록한다.
+        # 알람 콜백에서도 호출되므로 여기서는 공유 상태와 대기 Job만 변경한다.
+        # 현재 작업을 취소하고 위치·파지 기록을 지운다. 장치 정지·복구 명령은
+        # DSR 호출을 소유한 워커에서 실행한다.
         with self.ctx.state.job_lock:
             changed = not self.ctx.state.safety_latched or reason != self.ctx.state.safety_reason
             if changed or alarm or recovery_request is not None:
@@ -67,7 +75,8 @@ class SafetyController:
             if self.ctx.state.current and self.ctx.state.current.kind != 'startup':
                 self.ctx.state.current.cancel = True
             self.runtime._drain_jobs_locked(f'SAFETY_STOP: {reason}')
-            # 상태 변경과 발행을 직렬화한다. 실제 알람에는 복구 요청 상관관계를 붙이지 않는다.
+            # 잠금 안에서 revision 갱신과 이벤트 발행을 같은 순서로 처리한다.
+            # 실제 로봇 알람에는 특정 작업자의 복구 요청 ID를 붙이지 않는다.
             if changed or alarm or recovery_request is not None:
                 detail = dict(robot_state=self.ctx.state.last_robot_state, reason=reason,
                               origin='robot_alarm' if alarm else 'state_monitor',
@@ -81,7 +90,8 @@ class SafetyController:
             return self.ctx.state.safety_revision
 
     def _poll_safety(self, force=False):
-        # 역할: 실물 로봇 상태를 주기적으로 조회하고 허용 상태가 아니거나 조회 실패 시 차단한다.
+        # 실물 컨트롤러의 상태 번호를 읽는다. 허용된 상태 1/2가 아니거나
+        # 조회에 실패하면 새로운 이동을 막는 안전 차단을 건다.
         if self.ctx.config.mode == 'virtual':
             return
         now = self.ctx.now()
@@ -98,7 +108,8 @@ class SafetyController:
             self._latch_safety(f'로봇 상태 {self.ctx.state.last_robot_state}: 작업자 복구 필요')
 
     def _do_recover(self, job):
-        # 역할: 워커에서 승인된 복구 단계를 실행하고 상태·자가진단을 재확인한다. 배치를 자동 재개하지 않는다.
+        # 작업자가 확인한 현재 상태에 맞는 두산 복구 명령만 워커에서 보낸다.
+        # 기대 상태 도달과 툴·TCP·충돌 감도를 다시 확인해야 차단을 해제한다.
         args = job.args
         if self.ctx.config.mode == 'virtual':
             return False, True, -1, '가상 모드의 안전 복구는 실물 복구 성공으로 처리하지 않습니다'
@@ -114,8 +125,8 @@ class SafetyController:
             if self.ctx.state.stopping.is_set() or job.cancel:
                 raise RuntimeError('복구 요청 취소됨')
             def dispatch(operation):
-                # 비동기 전송 순간만 잠근다. 응답 대기 중에는 알람 콜백이 실행돼야 한다.
-                # 역할: 복구 명령 전송 직전에 잠금 아래 새 알람·종료·취소 여부를 재검증한다.
+                # 복구 명령을 보내는 순간에만 잠근다. 전송 직전 revision·종료·취소를
+                # 다시 검사하고, 응답 대기 중에는 새 알람 콜백이 실행되도록 잠금을 푼다.
                 with self.ctx.state.job_lock:
                     if (self.ctx.state.safety_revision != revision or self.ctx.state.stopping.is_set()
                             or job.cancel):
@@ -135,7 +146,8 @@ class SafetyController:
             time.sleep(self.ctx.config.state_poll_s)
         if step.manual_required:
             return False, True, state, '복구 모드 진입. 펜던트에서 원인 제거·자세 교정 후 새 복구 요청 필요'
-        # STANDBY에서도 남아 있는 힘제어 해제 실패를 숨기지 않는다.
+        # 로봇 상태가 STANDBY(대기)여도 힘/순응 제어가 남아 있을 수 있다.
+        # 해제 실패 시 복구 성공으로 보고하지 않는다.
         self.ctx.arm.compliance_off()
         if not self.ctx.state.configured:
             self.ctx.arm.initialize()
@@ -161,12 +173,14 @@ class SafetyController:
             self.ctx.state.empty_scoop_force_baseline = None
             self.ctx.state.empty_scoop_baseline_pending = False
             self.ctx.state.pending_scoop_extract = False
-            # 자동 재개는 금지하고 이후 명시적 SafePose/현장 재설정을 요구한다.
+        # 로봇 상태 복구는 이전 배치의 재개가 아니다. 스쿱 인출 여부를 불확실하게
+        # 표시해 이후 이동 전 SafePose와 현장 확인을 요구한다.
             self.ctx.state.scoop_extract_uncertain = True
         return True, False, state, '로봇 복구 확인. 배치 재개·자세 이동은 수행하지 않았습니다'
 
     def _do_safe(self, job: Job):
-        # 역할: 힘제어 해제를 시도한 뒤 지정 안전 관절 자세로 이동하고 위치·인출 상태를 재설정한다.
+        # 남은 힘/순응 제어 해제를 시도하고 stations.yaml의 safe.posj로
+        # 관절 이동한다. 이후 내부 위치·스쿱 인출 기록을 새 상태로 갱신한다.
         try:
             self.ctx.arm.compliance_off()
         except Exception:  # noqa: BLE001 — 힘제어 중이 아니었으면 무시
@@ -184,4 +198,3 @@ class SafetyController:
         self.ctx.state.empty_scoop_force_baseline = None
         self.ctx.state.empty_scoop_baseline_pending = False
         return True
-

@@ -1,4 +1,8 @@
-"""스킬 실행 객체의 조립. 별도 ROS 노드나 추가 워커를 생성하지 않는다."""
+"""한 ExecutionContext를 실행 담당 객체들이 공유하도록 연결한다.
+
+여기서는 ROS 노드나 워커 스레드를 새로 만들지 않는다. Job 실행 스레드는
+SkillRuntime 하나이며, 이동·안전·스쿠핑·계량 객체가 같은 상태를 사용한다.
+"""
 from .context import ExecutionContext, Job
 from .runtime import SkillRuntime
 from .safety import SafetyController
@@ -9,7 +13,7 @@ from .weighing import WeighingSkills
 
 class SkillExecution:
     def __init__(self, ctx):
-        """공유 상태를 한 번 만들고 필요한 실행 객체끼리 명시적으로 연결한다."""
+        """실행 객체를 만들고 runtime.handlers에 작업 종류별 담당 메서드를 등록한다."""
         self.runtime = SkillRuntime(ctx)
         self.motion = MotionSkills(ctx, self.runtime)
         self.safety = SafetyController(ctx, self.runtime)

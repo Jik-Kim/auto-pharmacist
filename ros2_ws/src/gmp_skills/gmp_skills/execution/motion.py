@@ -1,4 +1,9 @@
-"""스테이션 이동·그리퍼 개폐·파지와 출발/도착 조건을 담당한다."""
+"""로봇의 스테이션 이동과 그리퍼 개폐를 실행한다.
+
+스테이션은 stations.yaml의 작업 위치다. AT는 그 위치의 작업점, ABOVE는
+접근/이탈용 상부 위치를 뜻한다. TCP 자세(posx)는 그리퍼 끝의 위치와 회전이고,
+관절 자세(posj)는 로봇 각 관절의 각도다. 같은 TCP 자세에도 관절 자세는 여러 개일 수 있다.
+"""
 import math
 
 from .context import Job
@@ -9,19 +14,21 @@ from gmp_skills.core.transfer import MotionAnchor, joints_match, pose_matches, v
 
 class MotionSkills:
     def __init__(self, ctx, runtime):
-        # 노드 전체 대신 필요한 장치·설정·상태·콜백만 공유한다.
+        # ctx에는 로봇/그리퍼, 스테이션 설정, 작업 간에 유지할 상태가 들어 있다.
         self.ctx = ctx
         self.runtime = runtime
 
     def _require_scoop_extracted(self):
-        # 역할: 스쿱 인출이 미완료이거나 불확실하면 후속 이동을 예외로 차단한다.
+        # 거치대에서 스쿱을 잡은 직후에는 옆으로 빼는 인출 동작이 필요하다.
+        # 그 동작이 끝나지 않았거나 성공 여부를 모르면 다른 위치로 이동하지 않는다.
         if self.ctx.state.scoop_extract_uncertain:
             raise RuntimeError('스쿱 인출 상태가 불확실하다. SafePose 후 수동 확인이 필요하다')
         if self.ctx.state.pending_scoop_extract:
             raise RuntimeError('스쿱 파지 후 WeighHeld로 +Y 인출을 먼저 수행해야 한다')
 
     def _do_move(self, job: Job, *, station_id=None, approach=None):
-        # 역할: 스테이션 이동의 진입점이다. 실패하면 출발/파지 이력을 지워 후속 동작의 오판을 막는다.
+        # 이동 실패 후에는 현재 위치와 파지물을 확신할 수 없다. 다음 작업이 이전
+        # 성공 이력을 근거로 움직이지 않도록 위치·파지·빈 스쿱 영점 정보를 지운다.
         self._require_scoop_extracted()
         try:
             return self._move_checked(job, station_id=station_id, approach=approach)
@@ -34,11 +41,12 @@ class MotionSkills:
             raise
 
     def _pose_matches(self, actual, target):
-        # 역할: 위치·회전 허용오차 안에서 실제 TCP 자세가 목표와 일치하는지 반환한다.
+        # 실제 그리퍼 끝의 XYZ와 회전을 목표값과 비교한다. 각각 설정된 허용오차를 쓴다.
         return pose_matches(actual, target, self.ctx.config.pose_xyz_tolerance, self.ctx.config.pose_rotation_tolerance)
 
     def _record_arrival(self, station_id, approach, target):
-        # 역할: 실제 목표 도착을 확인한 뒤 위치·관절각을 다음 이동의 출발 이력으로 저장한다.
+        # 로봇에서 읽은 TCP가 목표에 도달했을 때만 현재 TCP·관절각을 저장한다.
+        # 이 기록(motion_anchor)은 다음 이송에서 출발 자세가 맞는지 확인하는 기준이다.
         actual = self.ctx.arm.current_posx()
         if not self._pose_matches(actual, target):
             raise RuntimeError(f'이동 위치/자세 미도달: target={target}, actual={actual}')
@@ -47,16 +55,17 @@ class MotionSkills:
         self.ctx.state.station_id = station_id
 
     def _move_checked(self, job: Job, *, station_id=None, approach=None):
-        # 목적지 설정으로 티칭 경로/전용 이송/sol 접근/일반 이동을 선택한다.
-        # 경로 선택 뒤에도 출발 이력과 실제 도착 자세를 확인해야 다음 파지 요청이 가능하다.
-        # 역할: 목적지와 출발 상태에 맞는 이동 경로를 선택하고 실행·도착 확인을 수행한다.
+        # stations.yaml의 목적지 설정으로 이동 방식을 고른다: 티칭한 관절 경로,
+        # 스테이션 간 전용 경로, 지정 관절 구성(solution_space), 일반 TCP 직선 이동.
+        # 이동 후 실제 도착 자세를 기록해야 다음 파지·이송의 출발점을 검증할 수 있다.
         if job.cancel:
             raise RuntimeError('cancelled')
         approach = job.args['approach'] if approach is None else approach
         if approach not in (MoveToStation.Goal.ABOVE, MoveToStation.Goal.AT):
             raise ValueError('approach는 ABOVE(0) 또는 AT(1)이어야 한다')
         st = self.ctx.stations.get(station_id or job.args['station_id'])
-        # 티칭 관절 경로만 가상에서 직선 폴백한다. solution_space 접근은 양 모드에 적용한다.
+        # approach_posj/return_entry_posx가 있으면 아래 티칭 경로를 사용한다.
+        # 전용 스테이션 간 이송 경로는 가상 모드에서 사용하지 않는다.
         if 'approach_posj' in st.extra or 'return_entry_posx' in st.extra:
             return self._move_taught_station(job, st, approach)
         transfers = self.ctx.stations.transfers if self.ctx.config.mode != 'virtual' else {}
@@ -73,13 +82,15 @@ class MotionSkills:
             return st.station_id
         protected = any(r.destination == st.station_id for r in transfers.values())
         if protected:
-            # 같은 스테이션의 AT↔ABOVE만 기존 직선 접근으로 허용한다.
+            # 이 목적지는 등록된 이송 경로로만 진입한다. 같은 스테이션에서
+            # 작업점(AT)과 상부점(ABOVE)을 오가는 경우에만 직선 이동을 허용한다.
             anchor = self.ctx.state.motion_anchor
             if (anchor is None or anchor.station != st.station_id
                     or not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)
                     or not joints_match(self.ctx.arm.current_posj(), anchor.joints, self.ctx.config.joint_tolerance)):
-                # 재기동·수동 티칭 후 이미 출발점에 있다면 움직이지 않고 확인만 한다.
-                # 다른 위치에서 그 점으로 자동 복구하는 경로는 추측하지 않는다.
+                # 재기동했거나 작업자가 펜던트로 로봇을 움직이면 저장한 출발 이력이 없다.
+                # 이때 실제 TCP 위치·회전과 관절각이 티칭된 출발점에 이미 맞으면
+                # 이동 없이 기록만 복원한다. 맞지 않으면 이동 경로를 추측하지 않는다.
                 for outgoing in self.ctx.stations.transfers.values():
                     if outgoing.source != st.station_id or not outgoing.enabled:
                         continue
@@ -100,7 +111,8 @@ class MotionSkills:
             # MOVEJ · 관절각 목표: safe_posj
             self.ctx.arm.movej_cancellable(safe_posj, vel_scale, lambda: job.cancel,
                                        self.ctx.config.motion_timeout_s)
-            # safe.posx는 자리표시자일 수 있다. 실제 관절 목표가 도착 기준이다.
+            # safe 스테이션의 posx는 실제 도착 TCP가 아닐 수 있다. 관절 이동이 끝난
+            # 뒤 로봇에서 읽은 TCP를 도착값으로 사용한다.
             target = self.ctx.arm.current_posx()
         else:
             job.feedback and job.feedback('MOVING')
@@ -124,7 +136,8 @@ class MotionSkills:
         return scale
 
     def _leave_taught_station(self, job, destination):
-        # 역할: 현재 티칭 스테이션의 출발 이력을 확인하고 다음 목적지로 가기 전 이탈 높이를 확보한다.
+        # 현재 위치를 떠날 때 저장된 TCP·관절각이 실제 위치와 같은지 확인한다.
+        # 확인되면 그 스테이션의 exit_mm 높이까지 TCP를 수직으로 올린다.
         source = self.ctx.stations.stations.get(self.ctx.state.station_id)
         if source is None or source.station_id == destination:
             return
@@ -149,8 +162,11 @@ class MotionSkills:
         self.ctx.state.motion_anchor = None
 
     def _move_taught_station(self, job, station, approach):
-        # 역할: 티칭 설정에 따라 용기 접근/이탈 또는 스쿱 거치대 진입/반납 이동을 수행한다.
-        """DRL 관절 진입·직선 하강과 거치대 측면 반납을 외부 AT/ABOVE에 연결한다."""
+        """설정된 관절각으로 용기에 접근하거나 스쿱 거치대에 진입·반납한다.
+
+        외부 AT 요청은 작업점까지, ABOVE 요청은 접근 또는 이탈 높이까지 간다.
+        용기 스테이션은 티칭한 관절각으로 진입한 뒤 필요하면 TCP를 직선 하강시킨다.
+        """
         scale = job.args.get('vel_scale') or self.ctx.config.vel_scale
         if not math.isfinite(scale) or not 0 < scale <= 1:
             raise ValueError('vel_scale은 0 초과 1 이하여야 한다')
@@ -200,7 +216,8 @@ class MotionSkills:
             if local:
                 target = list(anchor.pose)
                 if approach == MoveToStation.Goal.AT:
-                    # 빈 그리퍼의 workbench 진입 관절각은 놓기와 다르다.
+                    # 빈 그리퍼로 workbench에 들어오는 관절각은 용기를 들고 들어올 때와
+                    # 다르다. 저장된 회전·XY를 유지하고 Z만 작업점 높이로 내린다.
                     target[2] = station.posx[2]
                     if self.ctx.state.held_payload == 'cup':
                         target = list(station.posx)
@@ -241,19 +258,24 @@ class MotionSkills:
             self._require_transfer_payload(self.ctx.state.held_payload)
         if job.cancel or self.runtime._cancel_requested():
             raise RuntimeError('cancelled')
-        # 각 어댑터는 실제 관절/직선 목표 도달을 확인한다. 관절각 TCP를 임의 합성하지 않는다.
+        # 장치 어댑터가 목표 도달을 확인했다. 관절각에서 TCP를 계산해 가정하지 않고
+        # 로봇이 보고한 현재 TCP·관절각을 다음 출발 기록으로 저장한다.
         self._record_arrival(station.station_id, approach, self.ctx.arm.current_posx())
         return station.station_id
 
     def _require_solution(self, station):
-        # 역할: 현재 로봇의 관절 구성이 스테이션에 지정된 solution_space와 다르면 거부한다.
+        # solution_space는 같은 TCP 위치를 만드는 관절 자세의 분기 번호(0~7)다.
+        # 실제 로봇의 분기 번호가 stations.yaml 지정값과 같은지 확인한다.
         sol = self.ctx.arm.solution_space()
         if sol != station.extra['solution_space']:
             raise RuntimeError(f'{station.station_id}: 관절 구성 불일치 sol={sol}')
 
     def _leave_solution_station(self, job, destination, vel_scale):
-        # 역할: solution_space 방식의 용기 스테이션을 떠나기 전 파지·자세 확인과 직선 이탈을 수행한다.
-        """용기 위치를 떠날 때는 파지·출발 이력을 확인하고 직선으로 이탈한다."""
+        """지정 관절 분기의 용기 스테이션에서 다음 위치로 가기 전 수직 이탈한다.
+
+        저장된 도착 자세와 실제 TCP·관절각, 그리퍼 파지, 관절 분기 번호를
+        확인한 뒤 station.exit()까지 TCP 직선 이동한다.
+        """
         if self.ctx.state.station_id == destination or self.ctx.state.station_id not in self.ctx.stations.stations:
             return
         source = self.ctx.stations.get(self.ctx.state.station_id)
@@ -276,8 +298,7 @@ class MotionSkills:
         self.ctx.state.motion_anchor = None
 
     def _move_solution_station(self, job, station, target, vel_scale):
-        # 역할: solution_space 방식으로 ABOVE까지 관절 접근하고 필요하면 목표까지 직선 이동한다.
-        """ABOVE에서 관절 구성을 선택하고 AT 접근은 직선으로 유지한다."""
+        """지정된 관절 분기로 ABOVE에 접근한 뒤 필요하면 AT까지 직선 이동한다."""
         if self.ctx.state.held_payload in ('cup', 'empty'):
             self._require_transfer_payload(self.ctx.state.held_payload)
         above = station.above(self.ctx.stations.approach_mm)
@@ -285,7 +306,9 @@ class MotionSkills:
         at_station = (self._pose_matches(actual, station.posx)
                       or self._pose_matches(actual, above))
         if at_station:
-            # 작업점에서 손목을 뒤집지 않는다. 수동 이동 뒤에도 구성 확인이 먼저다.
+            # 이미 작업점(AT) 또는 상부점(ABOVE)에 있으면 관절 이동을 반복하지 않는다.
+            # 작업자가 펜던트로 같은 TCP 위치에 옮겼을 수도 있으므로, 현재 관절
+            # 분기 번호가 station.extra['solution_space']와 같은지는 반드시 확인한다.
             self._require_solution(station)
         else:
             # MOVEJX · TCP 목표까지 관절 이동: above
@@ -301,7 +324,8 @@ class MotionSkills:
         self._require_solution(station)
 
     def _require_transfer_payload(self, expected):
-        # 역할: 이송 경로가 요구하는 빈 그리퍼/용기/스쿱 상태와 최신 파지 피드백을 확인한다.
+        # 내부 파지 기록(held_payload)과 최신 그리퍼 센서가 둘 다 expected와
+        # 맞는지 확인한다. DIO는 닫힘/열림 입력, Modbus는 파지 비트와 폭을 쓴다.
         if getattr(self.ctx.gripper, 'backend', '') == 'dio':
             self.ctx.gripper.refresh_dio()
             state = self.ctx.gripper.state(self.ctx.now())
@@ -321,7 +345,8 @@ class MotionSkills:
             raise RuntimeError('빈 그리퍼의 열림 폭을 확인할 수 없다')
 
     def _run_transfer(self, route, job, target, vel_scale):
-        # 역할: 출발 조건을 검증한 전용 이송 경로를 실행하며 중간 구간과 도착 상태를 확인한다.
+        # route에는 출발 TCP·관절각, 이탈점, 중간 관절점, 도착 방식이 저장돼 있다.
+        # 실제 출발 자세·파지물을 검증한 뒤 각 구간을 실행하고 도착을 확인한다.
         if route.arrival == 'at' and job.args['approach'] != MoveToStation.Goal.AT:
             raise ValueError('관절 직접 도착 경로는 AT 요청만 허용한다')
         validate_start(route, self.ctx.state.motion_anchor, self.ctx.arm.current_posx(),
@@ -335,12 +360,13 @@ class MotionSkills:
         job.feedback and job.feedback('MOVING')
 
         def checkpoint():
-            # 역할: 전용 이송 구간에서 요구 파지 상태를 다시 확인하는 감시 콜백이다.
+            # 각 이동 구간 사이에 취소 여부와 용기/빈 그리퍼 센서 상태를 다시 확인한다.
             if job.cancel:
                 raise RuntimeError('cancelled')
             self._require_transfer_payload(route.payload)
 
-        # 이미 이탈점이면 다시 움직이지 않는다. 마지막 관절점은 경로의 도착 방식에 따른다.
+        # 출발 이탈점에 이미 있으면 중복 이동하지 않는다. 마지막 관절점이
+        # 목적지 작업점(AT)인지 상부점(ABOVE)인지는 route.arrival로 정한다.
         checkpoint()
         if not self._pose_matches(self.ctx.arm.current_posx(), route.exit_posx):
             # MOVEL · TCP 직선 이동: route.exit_posx
@@ -367,9 +393,8 @@ class MotionSkills:
         self._record_arrival(route.destination, job.args['approach'], target)
 
     def _do_grip(self, job: Job):
-        # 그리퍼 개폐와 파지 이력만 처리한다. 스쿱을 잡아도 여기서 인출하지 않는다.
-        # DIO의 출력·입력 완료 확인은 Rg2Gripper가 담당하고, 인출은 _do_weigh_held에서 한다.
-        # 역할: 개폐를 실행하고 성공한 위치와 파지 대상에 따라 용기/스쿱 및 인출 대기 상태를 갱신한다.
+        # 현재 위치와 실제 그리퍼 입력으로 스쿱/용기 파지를 판정한다. 스쿱을
+        # 잡은 직후에는 인출 대기만 표시한다. +Y 인출은 다음 WeighHeld가 수행한다.
         a = job.args
         self.ctx.state.held_payload = 'unknown'
         self.ctx.state.held_material_id = ''
@@ -428,7 +453,8 @@ class MotionSkills:
         return released, self.ctx.gripper.width_mm() or -1.0, False
 
     def _require_held_scoop(self, material_id=None):
-        # 역할: 원료 ID가 맞는 스쿱 파지 이력과 현재 그리퍼 피드백이 모두 확인되지 않으면 거부한다.
+        # 이전 작업이 저장한 스쿱·원료 ID와 최신 그리퍼 파지 입력을 함께 검사한다.
+        # 반환 요청이라면 들고 있는 스쿱의 원료 ID도 요청값과 같아야 한다.
         if self.ctx.state.held_payload != 'scoop' or not self.ctx.state.held_material_id:
             raise RuntimeError('원료 ID가 확인된 스쿱 파지 이력이 필요하다')
         if material_id is not None and self.ctx.state.held_material_id != material_id:
@@ -441,11 +467,11 @@ class MotionSkills:
 
     @staticmethod
     def _pose_from_extra(station, key):
-        # 역할: 스테이션 부가 설정에서 유한한 6축 자세를 검증하고 원본과 분리된 리스트로 반환한다.
+        # stations.yaml의 해당 6축 좌표가 숫자 6개인지 확인한다. 복사본을
+        # 반환해 경유점 Z를 수정해도 원래 스테이션 설정은 바뀌지 않게 한다.
         pose = station.extra.get(key)
         if (not isinstance(pose, list) or len(pose) != 6
                 or any(isinstance(v, bool) or not isinstance(v, (int, float))
                        or not math.isfinite(float(v)) for v in pose)):
             raise ValueError(f'{station.station_id}.{key} 6개 유한 좌표가 필요하다')
         return list(pose)
-

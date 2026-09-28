@@ -1,4 +1,9 @@
-"""작업 큐·단일 워커·기동·종료를 관리한다. 로봇 호출은 이 워커에서만 실행한다."""
+"""ROS 요청을 작업 큐에 넣고 단일 워커에서 순서대로 실행한다.
+
+ROS 콜백은 _submit()에서 Job 완료를 기다리고, _worker()가 handlers를 통해
+해당 실행 객체를 부른다. DSR_ROBOT2는 자체 ROS 노드를 기다리며 호출하므로
+로봇 장치 메서드는 이 워커 한 곳에서만 호출한다.
+"""
 import math
 import queue
 import time
@@ -9,12 +14,12 @@ from gmp_skills.core.recovery import STANDBY
 
 class SkillRuntime:
     def __init__(self, ctx):
-        # 노드 전체 대신 필요한 장치·설정·상태·콜백만 공유한다.
+        # ROS 노드 대신 장치와 현재 상태가 들어 있는 ExecutionContext를 공유한다.
         self.ctx = ctx
         self.handlers = {}
 
     def configure(self, *, safety, motion, scooping, weighing):
-        """모든 객체를 연결한 뒤에만 워커를 시작한다."""
+        """Job.kind별 담당 메서드를 등록한다. 워커는 이 표로 실행 대상을 찾는다."""
         self.safety, self.motion = safety, motion
         self.handlers = {
             'startup': self._do_startup,
@@ -31,7 +36,8 @@ class SkillRuntime:
         }
 
     def _cancel_requested(self):
-        # 역할: 종료·안전 차단·현재 작업 취소 여부를 장치 어댑터가 읽을 수 있는 bool로 반환한다.
+        # 장치 이동 대기 중 반복 호출된다. 종료·안전 차단·Job 취소가 있으면
+        # 참을 반환해 어댑터가 이동 정지를 요청하게 한다.
         if self.ctx.state.current and self.ctx.state.current.kind not in ('startup', 'recover'):
             self.safety._poll_safety()
         return (self.ctx.state.stopping.is_set() or bool(self.ctx.state.current and self.ctx.state.current.cancel)
@@ -39,7 +45,8 @@ class SkillRuntime:
                     and self.ctx.state.current.kind not in ('startup', 'recover')))
 
     def _drain_jobs_locked(self, reason):
-        # 역할: 잠금 상태에서 대기 큐를 비우고 각 요청에 실패 원인과 완료 신호를 전달한다.
+        # 호출자가 job_lock을 잡은 상태에서 대기 요청을 모두 실패 처리한다.
+        # done을 세워야 _submit()에서 기다리는 ROS 콜백이 깨어난다.
         while True:
             try:
                 job = self.ctx.state.q.get_nowait()
@@ -49,8 +56,11 @@ class SkillRuntime:
             job.done.set()
 
     def shutdown(self):
-        # 역할: 진행 작업 취소와 큐 정리를 요청하고 워커 종료 확인 여부를 반환한다.
-        """DSR 호출은 워커에 맡기고 정해진 시간까지만 기다린다."""
+        """현재 Job을 취소하고 대기 Job을 깨운 뒤 워커 종료를 기다린다.
+
+        로봇 정지·힘제어 해제는 워커의 finally에서 실행한다. 정해진 시간 안에
+        워커가 끝나지 않으면 정상 종료로 보고하지 않는다.
+        """
         with self.ctx.state.job_lock:
             self.ctx.state.stopping.set()
             if self.ctx.state.current:
@@ -65,8 +75,8 @@ class SkillRuntime:
         return stopped and not self.ctx.state.cleanup_error
 
     def _submit(self, kind: str, feedback=None, **args) -> Job:
-        # 콜백에서는 로봇을 움직이지 않는다. 실행 가능한 요청만 큐에 넣고 워커 완료를 기다린다.
-        # 역할: 요청을 Job으로 만들고 기동·안전 상태를 검사한 뒤 큐에 넣어 결과를 기다린다.
+        # ROS 콜백은 여기서 요청을 Job으로 포장한다. 종료/안전 차단/자가진단 미완료면
+        # 즉시 오류를 돌려주고, 허용된 요청은 큐에 넣어 워커가 done을 세울 때까지 기다린다.
         job = Job(kind, args, feedback=feedback)
         with self.ctx.state.job_lock:
             if self.ctx.state.stopping.is_set() or self.ctx.state.worker_stopped.is_set():
@@ -86,8 +96,9 @@ class SkillRuntime:
         return job
 
     def _worker(self):
-        # 로봇 명령을 직렬 실행하는 단일 소비자. 큐가 비면 안전·DI·넛지 상태를 점검한다.
-        # 역할: Job을 하나씩 꺼내 _do_*를 실행하고 결과·예외·완료 신호를 원래 콜백에 전달한다.
+        # 로봇 명령을 실행하는 유일한 스레드다. 큐가 비면 로봇 안전 상태,
+        # DIO 그리퍼 입력, 외력 넛지를 확인한다. Job마다 결과나 오류를 저장하고
+        # done을 세워 기다리는 ROS 콜백에 완료를 알린다.
         try:
             while self.ctx.ok() and not self.ctx.state.stopping.is_set():
                 try:
@@ -117,7 +128,7 @@ class SkillRuntime:
                         self.ctx.state.held_material_id = ''
                         self.ctx.state.empty_scoop_force_baseline = None
                         self.ctx.state.empty_scoop_baseline_pending = False
-                    # 아래 configure()의 명시적 작업 목록에서 실행 객체를 선택한다.
+                    # configure()의 표에서 요청 종류에 해당하는 실행 메서드를 찾는다.
                     job.result = self.handlers[job.kind](job)
                 except Exception as e:  # noqa: BLE001
                     self.ctx.state.motion_anchor = None
@@ -141,7 +152,8 @@ class SkillRuntime:
                         self.ctx.state.current = None
                         job.done.set()
         finally:
-            # 정지 요청 실패와 무관하게 두 힘제어 해제를 시도한다.
+            # 워커가 끝날 때 로봇 이동 정지와 힘/순응 제어 해제를 각각 시도한다.
+            # 한쪽이 실패해도 다른 쪽을 시도하고 실패 내용은 cleanup_error에 남긴다.
             errors = []
             for name in ('stop_motion', 'compliance_off'):
                 try:
@@ -155,7 +167,8 @@ class SkillRuntime:
                 self.ctx.state.worker_stopped.set()
 
     def check_startup(self):
-        # 역할: 워커 초기화 결과를 확인해 준비 상태를 반영한다. 초기화 실패는 정상 기동으로 처리하지 않는다.
+        # 기동 Job이 끝났을 때 장치 초기화·자가진단 성공 여부를 확인한다.
+        # 실패했으면 ready를 세우지 않아 일반 스킬 요청을 받지 않는다.
         if self.ctx.state.ready or not self.ctx.state.startup_job.done.is_set():
             return
         job = self.ctx.state.startup_job
@@ -165,7 +178,8 @@ class SkillRuntime:
         self.ctx.event('INFO', 'SELF_CHECK', f'OK {job.result[1]}')
 
     def _do_startup(self, job: Job):
-        # 역할: 워커에서 장치를 초기화하고 자가진단 및 요청된 스쿱 상태 복원을 수행한다.
+        # DSR 컨트롤러·그리퍼를 준비하고 등록 툴, TCP, 충돌 감도를 점검한다.
+        # 작업자가 요청한 경우에만 이미 인출된 스쿱 상태를 검증해 복원한다.
         restore_requested = any(job.args.get(k) for k in
                                 ('restore_material_id', 'restore_operator_id', 'restore_confirmed'))
         self.safety._poll_safety(force=True)
@@ -187,8 +201,11 @@ class SkillRuntime:
         return result
 
     def _restore_extracted_scoop(self, job: Job):
-        # 역할: 작업자 확인·실제 자세·최신 파지 상태를 검증해 이미 인출된 스쿱의 내부 이력만 복원한다.
-        """작업자가 확인한 인출 완료 스쿱만 계량 자세에서 복원한다. 이동·개폐는 없다."""
+        """재기동 후 들고 있는 스쿱의 내부 상태만 다시 기록한다.
+
+        작업자 확인, 로봇 대기 상태, 해당 material_N 계량 자세, 최신 Modbus
+        파지·폭·안전 입력이 모두 맞아야 한다. 로봇 이동이나 그리퍼 명령은 없다.
+        """
         self.ctx.state.empty_scoop_force_baseline = None
         self.ctx.state.empty_scoop_baseline_pending = False
         material_id = job.args.get('restore_material_id', '')
@@ -208,7 +225,8 @@ class SkillRuntime:
             raise RuntimeError('스쿱 복원은 안전 차단 없는 대기 상태에서만 가능합니다')
         if not self.motion._pose_matches(self.ctx.arm.current_posx(), station.posx):
             raise RuntimeError('현재 자세가 해당 원료 계량 자세와 다릅니다. 파지 복원 거부')
-        # 기동 직후 첫 표본의 도착만 제한 시간 동안 기다린다. 실제 미파지/안전 이상은 즉시 거부한다.
+        # 재기동 직후 Modbus 센서의 첫 최신 표본이 올 때까지만 기다린다.
+        # 표본이 도착하면 아래에서 파지·폭·안전 상태를 검사한다.
         timeout_s = float(self.ctx.parameter('robot.startup_timeout_s').value)
         if not math.isfinite(timeout_s) or timeout_s <= 0:
             raise ValueError('스쿱 복원 센서 대기 시간은 유한한 양수여야 합니다')
@@ -242,10 +260,9 @@ class SkillRuntime:
             self.ctx.state.empty_scoop_baseline_pending = job.args.get('restore_empty_scoop_confirmed') is True
             self.ctx.state.held_material_id = material_id
             self.ctx.state.station_id = station.station_id
-            self.ctx.state.motion_anchor = None  # 관절 이송 출발 이력으로 사용하지 않는다.
+            self.ctx.state.motion_anchor = None  # 복원된 위치를 티칭 이송의 출발 검증 기록으로 쓰지 않는다.
             self.ctx.state.pending_scoop_extract = False
             self.ctx.state.scoop_extract_uncertain = False
         self.ctx.logger().info(
             f'[SCOOP_STATE_RESTORED] operator={operator_id} material={material_id} '
             f'station={station.station_id} width_mm={width}; 공정 자동 재개 없음')
-

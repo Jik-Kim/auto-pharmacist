@@ -1,4 +1,8 @@
-"""실행 객체가 공유하는 상태·설정과 명시적 외부 의존성. ROS 노드를 저장하지 않는다."""
+"""한 로봇 워커가 사용하는 설정, 현재 상태, 외부 기능을 모아 둔다.
+
+Action/Service 콜백은 Job을 큐에 넣고 기다린다. 워커가 Job을 처리하며
+SkillState를 갱신한다. 여러 실행 객체가 같은 상태를 보도록 이 문맥을 공유한다.
+"""
 from __future__ import annotations
 
 import queue
@@ -11,19 +15,20 @@ from gmp_skills.core.transfer import MotionAnchor
 
 @dataclass
 class Job:
+    """ROS 요청 하나를 워커에 전달하고 완료·실패·취소를 콜백에 알리는 봉투."""
     kind: str
     args: dict
     done: threading.Event = field(default_factory=threading.Event)
     result: object = None
     error: str = ''
     cancel: bool = False
-    feedback: object = None      # callable(phase) — 액션이면 피드백 발행
+    feedback: object = None      # Action 진행 단계(phase)를 ROS 피드백으로 보내는 함수
 
 
 
 @dataclass(kw_only=True)
 class SkillConfig:
-    """YAML에서 읽는 운영 설정. 초기화 후 실행 객체들이 함께 참조한다."""
+    """common.yaml 등의 ROS 파라미터에서 읽은 값을 실행 객체에 전달한다."""
     mode: str | None = None
     height_measure_only: bool | None = None
     vel_scale: float | None = None
@@ -43,7 +48,12 @@ class SkillConfig:
 
 @dataclass(kw_only=True)
 class SkillState:
-    """위치·파지·안전·큐 상태의 단일 원본. 잠금 범위는 기존 정책을 따른다."""
+    """작업 사이에 이어지는 로봇 위치·파지·안전·큐 상태의 단일 원본.
+
+    motion_anchor는 확인된 출발 TCP/관절 자세, held_payload는 파지물의 종류다.
+    safety_latched가 참이면 새 일반 작업을 막는다. safety_revision은 새 알람이나
+    차단 변경마다 증가하며, 복구 도중 상태가 바뀌었는지 검사하는 데 쓴다.
+    """
     station_id: str = ''
     motion_anchor: MotionAnchor | None = None
     held_payload: str = 'unknown'
@@ -78,7 +88,11 @@ class SkillState:
 
 @dataclass(kw_only=True)
 class ExecutionContext:
-    """장치와 ROS 기능의 최소 포트. 모든 시각은 주입한 노드 시계를 사용한다."""
+    """실행 객체가 사용할 로봇·그리퍼·스테이션과 ROS 기능을 연결한다.
+
+    실행 객체는 ROS 노드 자체를 받지 않고 필요한 함수만 받는다. now/clock은
+    skill_node의 같은 ROS 시계를 사용해 계량값과 이벤트 시각을 맞춘다.
+    """
     parameter: Callable
     clock: Callable
     now: Callable

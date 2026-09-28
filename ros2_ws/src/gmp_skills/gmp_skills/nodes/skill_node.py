@@ -1,9 +1,11 @@
-"""ROS 스킬 입출력 창구. 장치 호출은 execution/runtime.py의 단일 워커만 수행한다."""
-# 전체 공정: gmp_process/core/process_fsm.py → process_node.py → ROS 요청.
-# 이 파일: _exec_* / _srv_* → execution.runtime._submit → Job 큐.
-# 실행: runtime.handlers → motion/scooping/weighing/safety 객체 → 장치 어댑터.
-# 결과: Job.result/error → ROS Result → C의 다음 공정 단계.
-# 좌표는 stations.yaml, 속도·계량·안전 설정은 common.yaml에서 읽는다.
+"""공정 노드의 ROS 요청을 받아 스킬 실행 결과를 돌려주는 창구.
+
+호출 순서: process_node의 Action/Service 요청 → 이 파일의 _exec_*/_srv_*
+→ runtime._submit()의 Job 큐 → 단일 로봇 워커 → execution의 이동/스쿠핑/
+계량/안전 객체 → adapters의 실제 장치 호출. 결과는 Job을 거쳐 ROS 응답으로
+돌아간다. 이 파일의 ROS 콜백에서는 로봇을 직접 움직이지 않는다.
+위치 설정은 stations.yaml, 속도·계량·안전 설정은 common.yaml에서 읽는다.
+"""
 
 import queue
 import json
@@ -36,9 +38,8 @@ from gmp_skills.execution import ExecutionContext, Job, SkillExecution
 
 class SkillNode(Node):
     def __init__(self):
-        # 기본값과 설명은 gmp_bringup/params/common.yaml 한 곳에서 관리한다.
-        # launch 또는 --params-file로 전달된 값만 자동 선언해 코드와 YAML의 중복을 없앤다.
-        # 역할: 설정을 읽고 장치·상태·통신 인터페이스를 구성한 뒤 초기화 작업을 워커에 맡긴다.
+        # launch가 넘긴 ROS 파라미터를 읽어 장치, 공유 상태, Action/Service를 만든다.
+        # 설정 기본값은 common.yaml에 있으며 장치 초기화는 별도 워커가 수행한다.
         super().__init__('skill_node', automatically_declare_parameters_from_overrides=True)
         self.ctx = ExecutionContext(parameter=self.get_parameter, clock=self.get_clock,
                                     now=self._now_s, logger=self.get_logger,
@@ -179,12 +180,12 @@ class SkillNode(Node):
 
 
     def _now_s(self):
-        # 역할: 노드의 ROS 시각을 초 단위로 반환한다. 계량·이벤트의 시간 기준을 통일한다.
+        # 계량·이벤트에 같은 ROS 시계를 쓰도록 현재 시각을 초 단위로 반환한다.
         return self.get_clock().now().nanoseconds / 1e9
 
 
     def event(self, level: str, code: str, text: str, batch_id: str = ''):
-        # 역할: CellEvent를 발행하고 같은 코드·내용을 노드 로그에도 기록한다.
+        # 배치·안전 이벤트를 /cell/event로 발행하고 운영 로그에도 같은 내용을 남긴다.
         m = CellEvent(level=getattr(CellEvent, level), code=code, text=text, batch_id=batch_id)
         m.header.stamp = self.get_clock().now().to_msg()
         self.pub_event.publish(m)
@@ -195,19 +196,21 @@ class SkillNode(Node):
 
 
     def _send_gripper_command(self, cmd: str) -> bool:
-        # 역할: Modbus/가상 그리퍼 서비스에 명령을 보내 제한 시간 내 성공 응답 여부를 반환한다.
+        # 그리퍼 어댑터가 요청한 문자열을 /onrobot/sendCommand 서비스로 보낸다.
+        # 서비스 미준비 또는 3초 내 응답 없음은 실패로 돌려준다.
         if not self._grip_cli.wait_for_service(timeout_sec=2.0):
             self.event('ERROR', 'GRIPPER_SVC', '/onrobot/sendCommand 없음')
             return False
         fut = self._grip_cli.call_async(SetCommand.Request(command=cmd))
         t0 = self._now_s()
         while not fut.done() and self._now_s() - t0 < 3.0:
-            time.sleep(0.01)          # 워커 스레드에서 호출되므로 spin 하지 않는다 — executor 가 돌린다
+            time.sleep(0.01)          # ROS executor가 서비스 응답을 처리하므로 워커에서는 추가 spin을 하지 않는다.
         return bool(fut.done() and fut.result().success)
 
 
     def _on_js(self, msg: JointState):
-        # 역할: 그리퍼 JointState에서 손가락 위치와 시각을 추출해 어댑터의 관측 상태를 갱신한다.
+        # 가상 그리퍼의 JointState에서 손가락 관절각과 표본 시각을 꺼내
+        # 어댑터에 전달한다. Modbus 실물 상태는 /onrobot/status로 따로 받는다.
         source_s = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
         stamp_s = source_s if source_s > 0.0 else self._now_s()
         for n, pos in zip(msg.name, msg.position):
@@ -217,7 +220,8 @@ class SkillNode(Node):
 
 
     def _pub_gripper_state(self):
-        # 역할: 캐시된 그리퍼 상태를 발행하고 폭 변화에 따른 미끄러짐 이벤트를 보고한다.
+        # 어댑터가 마지막 센서 입력으로 판단한 폭·동작 중·파지 상태를 발행한다.
+        # 이전 파지 폭에서 slip_mm 이상 달라졌다면 미끄러짐 이벤트도 낸다.
         state = self.ctx.gripper.state(self._now_s())
         w = state['width_mm']
         m = GripperState(width_mm=-1.0 if w is None else w, busy=state['busy'],
@@ -230,13 +234,15 @@ class SkillNode(Node):
 
 
     def _on_robot_alarm(self, msg):
-        # 역할: 벤더 알람의 심각도를 확인해 차단 대상 알람을 안전 상태에 반영한다.
+        # 두산 알람의 level/group이 차단 기준에 해당하면 안전 차단을 건다.
+        # 이 콜백은 상태만 변경하며 로봇 정지 명령은 단일 워커가 처리한다.
         if msg.level >= 3 or (msg.group == 5 and msg.level >= 2):
             self.execution.safety._latch_safety(f'vendor alarm {msg.group}/{msg.code}: {msg.msg1}', alarm=True)
 
 
     def _srv_recover(self, req, res):
-        # 역할: 작업자 확인과 요청 ID를 검증하고 중복 복구 요청에 같은 결과를 반환하도록 관리한다.
+        # 같은 request_id의 복구 명령이 중복 전송되지 않게 기록한다. 작업자 ID,
+        # 기대 로봇 상태, 현장 확인 여부가 이전 요청과 같아야 결과를 재사용한다.
         fingerprint = (req.operator_id, req.expected_state, req.operator_confirmed)
         if not req.request_id.strip() or not req.operator_id.strip() or not req.operator_confirmed:
             res.success, res.manual_required, res.robot_state = False, True, -1
@@ -265,7 +271,8 @@ class SkillNode(Node):
             return res
         if owner:
             try:
-                # 복구 요청 자체도 동작 차단을 먼저 설정한다. 자동 리셋된 상태도 명시 확인한다.
+                # 복구 요청을 받으면 먼저 새 일반 동작을 막는다. 컨트롤러가 이미
+                # 대기 상태로 돌아왔더라도 워커가 상태와 자가진단을 확인해야 푼다.
                 revision = self.execution.safety._latch_safety('HMI 안전 복구 요청', recovery_request=req)
                 job = self.execution.runtime._submit('recover', operator_id=req.operator_id,
                                    safety_revision=revision,
@@ -303,7 +310,8 @@ class SkillNode(Node):
 
 
     def _on_cancel(self, _goal):
-        # 역할: Action 취소를 수락하고 현재 워커 작업에 취소 플래그를 전달한다.
+        # Action 취소 요청을 현재 Job에 기록한다. 실제 이동 정지는 워커와
+        # DsrArm의 취소 감시 경로에서 실행한다.
         with self.ctx.state.job_lock:
             if self.ctx.state.current:
                 self.ctx.state.current.cancel = True
@@ -311,11 +319,11 @@ class SkillNode(Node):
 
 
     def _exec_move(self, gh):
-        # 역할: MoveToStation Goal을 move 작업으로 보내고 도착 정보 및 Action 종료 상태를 반환한다.
+        # MoveToStation 요청의 스테이션·AT/ABOVE·속도를 move Job에 전달한다.
         g = gh.request
         fb = MoveToStation.Feedback()
         def feedback(phase):
-            # 역할: 워커가 전달한 진행 정보를 해당 ROS Action의 Feedback 메시지로 발행한다.
+            # 워커가 알린 이동 단계(phase)를 이 Action의 진행 피드백으로 전달한다.
             fb.phase = phase
             gh.publish_feedback(fb)
         job = self.execution.runtime._submit('move', feedback, station_id=g.station_id, approach=g.approach, vel_scale=g.vel_scale)
@@ -327,13 +335,12 @@ class SkillNode(Node):
 
 
     def _exec_scoop(self, gh):
-        # ROS 입구: Goal을 Job으로 전달하고 워커 결과를 Action Result로 돌려준다.
-        # 이동 코드는 이 콜백이 아니라 _do_scoop/_do_fixed_scoop에 있다.
-        # 역할: Scoop Goal을 scoop 작업으로 보내고 접촉/깊이 또는 미측정 진단과 Action 종료 상태를 반환한다.
+        # Scoop 요청을 Job으로 전달한다. 실제 로봇 이동은 execution/scooping.py가
+        # 수행하고, 여기서는 접촉·깊이 또는 미측정 결과를 ROS 메시지에 담는다.
         fb = Scoop.Feedback()
 
         def feedback(phase, contact_detected=False, contact_force_n=0.0, insertion_depth_mm=0.0):
-            # 역할: 워커가 전달한 진행 정보를 해당 ROS Action의 Feedback 메시지로 발행한다.
+            # 워커가 알린 이동 단계(phase)를 이 Action의 진행 피드백으로 전달한다.
             fb.phase = phase
             fb.contact_detected = bool(contact_detected)
             fb.contact_force_n = float(contact_force_n)
@@ -351,16 +358,17 @@ class SkillNode(Node):
             message=job.error or ('cancelled' if job.cancel else
                                   data.get('measurement_message', data.get('message', ''))),
         )
-        # 내부 중단/시간 초과는 ROS 클라이언트의 취소 요청과 다르다.
+        # 로봇 내부 오류·시간 초과는 Action ABORTED다. CANCELED는 클라이언트가
+        # 명시적으로 취소를 요청했을 때만 사용한다.
         gh.succeed() if res.success else (gh.canceled() if gh.is_cancel_requested else gh.abort())
         return res
 
 
     def _exec_pour(self, gh):
-        # 역할: Pour Goal을 pour 작업으로 전달하고 진행 피드백과 Action 성공·실패·취소를 응답한다.
+        # Pour의 투입 비율을 Job에 전달하고 워커의 단계·결과를 ROS로 응답한다.
         fb = Pour.Feedback()
         def feedback(phase):
-            # 역할: 워커가 전달한 진행 정보를 해당 ROS Action의 Feedback 메시지로 발행한다.
+            # 워커가 알린 이동 단계(phase)를 이 Action의 진행 피드백으로 전달한다.
             fb.phase = phase
             gh.publish_feedback(fb)
         job = self.execution.runtime._submit('pour', feedback, fraction=gh.request.fraction)
@@ -371,11 +379,11 @@ class SkillNode(Node):
 
 
     def _exec_return_material(self, gh):
-        # 역할: 원료 ID를 반환 작업에 전달하고 진행 피드백과 Action 종료 상태를 응답한다.
+        # ReturnMaterial 요청의 원료 ID를 전달해 해당 원료통의 반환 경로를 고른다.
         fb = ReturnMaterial.Feedback()
 
         def feedback(phase):
-            # 역할: 워커가 전달한 진행 정보를 해당 ROS Action의 Feedback 메시지로 발행한다.
+            # 워커가 알린 이동 단계(phase)를 이 Action의 진행 피드백으로 전달한다.
             fb.phase = phase
             gh.publish_feedback(fb)
 
@@ -387,10 +395,10 @@ class SkillNode(Node):
 
 
     def _exec_weigh(self, gh):
-        # 역할: 용기 계량 요청을 weigh 작업으로 보내고 WeightReading과 Action 종료 상태를 반환한다.
+        # WeighContainer의 빈 용기 무게(tare_g)를 전달하고 측정 결과를 응답한다.
         fb = WeighContainer.Feedback()
         def feedback(phase):
-            # 역할: 워커가 전달한 진행 정보를 해당 ROS Action의 Feedback 메시지로 발행한다.
+            # 워커가 알린 이동 단계(phase)를 이 Action의 진행 피드백으로 전달한다.
             fb.phase = phase
             gh.publish_feedback(fb)
         job = self.execution.runtime._submit('weigh', feedback, tare_g=gh.request.tare_g)
@@ -402,11 +410,11 @@ class SkillNode(Node):
 
 
     def _exec_weigh_held(self, gh):
-        # 역할: 파지물 계량 요청을 weigh_held 작업으로 보내고 WeightReading과 Action 종료 상태를 반환한다.
+        # WeighHeld의 빈 스쿱 무게(tare_g)를 전달하고 측정 결과를 응답한다.
         fb = WeighHeld.Feedback()
 
         def feedback(phase):
-            # 역할: 워커가 전달한 진행 정보를 해당 ROS Action의 Feedback 메시지로 발행한다.
+            # 워커가 알린 이동 단계(phase)를 이 Action의 진행 피드백으로 전달한다.
             fb.phase = phase
             gh.publish_feedback(fb)
 
@@ -419,7 +427,8 @@ class SkillNode(Node):
 
 
     def _srv_set_gripper(self, req, res):
-        # 역할: 개폐·폭·힘·제한시간 요청을 grip 작업으로 전달하고 파지 결과를 서비스 응답에 담는다.
+        # 그리퍼 닫기/열기와 목표 폭·힘·제한시간을 워커에 전달한다.
+        # DIO 방식에서는 목표 폭·힘을 실제 장치에 설정하지 않는다.
         job = self.execution.runtime._submit('grip', close=req.close, width_mm=req.width_mm, force_n=req.force_n, timeout_s=req.timeout_s)
         if job.error:
             res.success, res.message = False, job.error
@@ -429,7 +438,8 @@ class SkillNode(Node):
 
 
     def _srv_measure(self, req, res):
-        # 역할: 측정 요청과 기본 표본 설정을 measure 작업으로 전달해 원시 힘 통계를 응답한다.
+        # 로봇 외력의 보정 전 표본 통계를 요청한다. 0으로 온 표본 수·안정
+        # 시간은 scale 설정 기본값으로 채운다.
         p = self.get_parameter
         job = self.execution.runtime._submit('measure', samples=req.samples or int(p('scale.samples').value),
                            settle_s=req.settle_s or float(p('scale.settle_s').value))
@@ -441,7 +451,8 @@ class SkillNode(Node):
 
 
     def _srv_safe(self, req, res):
-        # 역할: 대기 작업을 비우고 진행 작업을 취소한 다음 safe 작업을 큐에 넣어 결과를 응답한다.
+        # 안전 자세 요청은 기존 대기 Job을 취소하고 현재 Job에도 취소를 표시한다.
+        # 이어서 safe Job을 큐에 넣으며 실제 관절 이동은 워커가 수행한다.
         with self.ctx.state.job_lock:
             self.execution.runtime._drain_jobs_locked('cancelled by safe_pose')
             if self.ctx.state.current:
@@ -463,7 +474,8 @@ class SkillNode(Node):
 
 def main(args=None):
     # SIGINT/SIGTERM에서 먼저 ROS 문맥이 종료되면 DSR 해제 응답을 받을 수 없다.
-    # 역할: ROS 노드와 executor를 구동하고, 종료 시 워커 정리 후 노드·ROS 문맥을 해제한다.
+    # ROS executor는 콜백을 처리하고 DSR 워커는 로봇 호출을 처리한다.
+    # 종료할 때 워커의 정지·힘제어 해제를 기다린 뒤 ROS 노드를 파괴한다.
     from rclpy.signals import SignalHandlerOptions
     rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
     exit_requested = threading.Event()

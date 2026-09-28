@@ -1,11 +1,12 @@
-"""DSR_ROBOT2 어댑터 — DR_init 노드를 소유하고 블로킹 함수를 감싼다.
+"""스킬 실행 코드가 두산 로봇 API를 안전한 한 경로로 호출하게 하는 어댑터.
 
-**워커 스레드에서만 부른다** (SOT D-02). DSR_ROBOT2 는 호출마다
-`rclpy.spin_until_future_complete(g_node, …)` 로 여기서 만든 노드를 직접 spin 하므로
-이 노드는 executor 에 넣지 않는다.
+스킬 워커 한 스레드에서만 호출한다(SOT D-02). DSR_ROBOT2는 호출 도중
+자체 ROS 노드의 응답을 기다린다. 그 노드를 skill_node의 executor에도 넣으면
+동시에 두 곳에서 spin해 충돌할 수 있어 어댑터가 따로 소유한다.
 
-교육 방식(rokey/move.py) 그대로: DR_init 채움 → 노드 생성 → DSR_ROBOT2 import.
-실물로만 검증되는 것: 힘·작업물무게·툴/TCP 설정(가상은 에뮬레이터에 미등록이라 건너뛴다).
+초기화 순서: DR_init에 로봇 ID·모델 등록 → 전용 ROS 노드 생성 →
+DSR_ROBOT2 import. TCP는 로봇이 사용하는 그리퍼 끝 기준점이다.
+힘·작업물 무게·툴/TCP 설정의 실제 성능은 실물 로봇에서 검증해야 한다.
 
 TODO([A]): 9/17 G1 — measure_force / measure_workpiece 분해능 실측.
 TODO([A]): I-004 — 이동 취소 수단 (amovel + check_motion).
@@ -26,7 +27,8 @@ class DsrArm:
                  startup_timeout_s: float = 15.0, virtual_tcp_name: str = '',
                  tcp_offset_mm_deg=None, *, task_vel=None, task_acc=None):
         self.mode = mode
-        # vel/acc는 관절 기준. 기존 B 계측 스크립트의 위치 인자 호출은 유지한다.
+        # vel/acc는 관절 이동 속도·가속도다. task_vel/task_acc는 TCP의
+        # 병진·회전 속도·가속도다. B 계측 스크립트의 기존 호출 순서를 유지한다.
         self.vel, self.acc = vel, acc
         self.task_vel = list(task_vel) if task_vel is not None else [vel, vel]
         self.task_acc = list(task_acc) if task_acc is not None else [acc, acc]
@@ -36,12 +38,12 @@ class DsrArm:
                        for v in [vel, acc, *self.task_vel, *self.task_acc])):
             raise ValueError('관절 및 병진/회전 속도·가속도는 유한한 양수여야 한다')
         self.log = logger
-        # 클래스 안의 ``DR_init.__dsr__*`` 표기는 Python 이름 맹글링을 받으므로 setattr을 쓴다.
+        # 클래스 안에서 DR_init.__dsr__id처럼 쓰면 Python이 이중 밑줄 이름을
+        # 클래스 전용 이름으로 바꾼다. DR_init의 실제 필드를 지정하려고 setattr을 쓴다.
         setattr(DR_init, '__dsr__id', robot_id)
         setattr(DR_init, '__dsr__model', robot_model)
-        # 네임스페이스는 반드시 ROBOT_ID 와 같아야 한다 (교육 자료)
-        # skill_node의 __node/__ns 리맵을 상속하면 /cell/skill_node로 중복 생성되고
-        # 상대 DSR 서비스가 /cell 아래를 보게 된다. 전용 노드는 dsr01 네임스페이스를 고정한다.
+        # DSR 서비스 경로는 robot_id 네임스페이스를 기준으로 찾는다. skill_node의
+        # /cell 리맵을 물려받으면 잘못된 서비스로 연결되므로 전용 노드를 만든다.
         self.node = rclpy.create_node('gmp_dsr_client', namespace=robot_id,
                                       use_global_arguments=False)
         setattr(DR_init, '__dsr__node', self.node)
@@ -66,7 +68,11 @@ class DsrArm:
         self._sleep = sleep_fn or time.sleep
 
     def initialize(self):
-        """DSR 초기 설정. 반드시 skill_node의 DSR 워커에서 호출한다."""
+        """컨트롤러 준비를 기다리고 툴·TCP와 이동 속도 기본값을 설정한다.
+
+        로봇 서비스가 응답하지 않는 상태에서 설정 호출을 먼저 보내면 응답을
+        무한히 기다릴 수 있어, 공통 이동 서비스의 준비 여부를 먼저 확인한다.
+        """
         R = self.R
         # DSR_ROBOT2의 일부 설정 함수는 서비스 대기 없이 call_async부터 실행한다.
         # 컨트롤러 활성화 전에 호출하면 future가 끝나지 않으므로 공통 motion 서비스로 준비를 확인한다.
@@ -88,7 +94,8 @@ class DsrArm:
                 finally:
                     self._set_mode_checked(R.ROBOT_MODE_AUTONOMOUS)
             else:
-                # 재기동 시 선택값이 맞으면 수동 전환·동일 설정 재전송을 생략한다.
+                # 실물 재기동 때 이미 원하는 툴·TCP가 선택돼 있으면 컨트롤러를
+                # MANUAL 모드로 전환하거나 같은 값을 다시 설정할 필요가 없다.
                 self._set_mode_checked(R.ROBOT_MODE_AUTONOMOUS)
         elif self.virtual_tcp_name:
             if len(self.tcp_offset_mm_deg) != 6:
@@ -143,7 +150,8 @@ class DsrArm:
                                   acc=self.acc * vel_scale))
 
     def movel(self, x6, vel_scale=1.0):
-        # 스킬 내부 이동도 같은 워커의 취소 플래그로 감시한다.
+        # 현재 Job의 취소 요청 함수가 있으면 비동기 이동 후 취소·도착을
+        # 감시하는 movel_cancellable 경로로 실행한다.
         cancel = getattr(self, 'cancel_requested', None)
         if cancel is not None:
             return self.movel_cancellable(x6, vel_scale, cancel, self.motion_timeout_s)
@@ -165,14 +173,14 @@ class DsrArm:
                                     mod=self.R.DR_MV_MOD_ABS))
 
     def solution_space(self):
-        """단일 워커에서 현재 관절 구성을 제한 시간 내 조회한다."""
+        """현재 TCP 위치를 만드는 관절 자세의 분기 번호(0~7)를 조회한다."""
         sol = self._bounded_query('get_current_solution_space').sol_space
         if type(sol) is not int or not 0 <= sol <= 7:
             raise RuntimeError(f'잘못된 solution_space: {sol!r}')
         return sol
 
     def movejx_cancellable(self, x6, sol, vel_scale, cancel_requested, timeout_s):
-        """상부 접근점으로 관절 이동하고 TCP와 선택한 관절 구성을 함께 확인한다."""
+        """지정 TCP에 관절 이동한 뒤 위치·회전과 관절 분기 번호를 모두 확인한다."""
         if type(sol) is not int or not 0 <= sol <= 7:
             raise ValueError('solution_space는 0~7 정수여야 한다')
         if not math.isfinite(timeout_s) or timeout_s <= 0:
@@ -331,7 +339,7 @@ class DsrArm:
 
     def wait_motion_cancellable(self, cancel_requested, timeout_s: float, observer=None,
                                 target_reached=None, stop_requested=None):
-        """시작 대기를 완료로 간주하지 않고 정지 상태와 실제 목표 도착을 확인한다."""
+        """이동 명령 뒤 로봇 정지와 목표 자세 도달을 확인하며 취소·시간 초과를 감시한다."""
         if not math.isfinite(timeout_s) or timeout_s <= 0:
             raise ValueError('motion timeout must be finite and positive')
         deadline = self._now() + timeout_s
