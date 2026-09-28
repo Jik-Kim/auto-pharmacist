@@ -189,6 +189,9 @@ class SafetyController:
         posj = safe.extra.get('posj')
         if posj is None:
             raise ValueError('safe station에 posj 6개가 필요하다')
+        # 안전 자세 요청이 시작되면 이전 스테이션에서 검증한 TCP/관절 출발 이력은 더는
+        # 유효하지 않다. 이동이 실패해도 중간 자세일 수 있으므로 성공 뒤까지 보존하지 않는다.
+        self.ctx.state.motion_anchor = None
         # MOVEJ · 관절각 목표: posj
         self.ctx.arm.movej_cancellable(posj, 0.3, lambda: job.cancel, self.ctx.config.motion_timeout_s)
         self.ctx.state.station_id = 'safe'

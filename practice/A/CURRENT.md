@@ -23,6 +23,7 @@
 ## 주문 시작 준비 (C 연결 대기)
 - A의 숨은 안전 자세 MOVEJ와 `cartesian_ready` 제거. 이동 호출부에 명령을 직접 표시한다.
 - 첫 주문: SafePose 성공 → 빈 통 파지. 후속 주문: 기존 넛지 대기 완료 → 같은 준비 순서.
+- SafePose 요청을 시작하면 이전 스테이션의 `motion_anchor`를 즉시 무효화한다. 성공·실패 어느 경우에도 SafePose 전 출발 이력으로 티칭 이송하지 않는다.
 - C의 SELF_CHECK→PICK_CONTAINER에 safe 요청/성공 대기 추가 필요. A만 반영한 현재는 이 순서 미연결. [SOT](../../docs/SOT.md).
 
 ## 코드 탐색

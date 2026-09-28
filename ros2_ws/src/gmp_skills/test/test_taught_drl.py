@@ -335,7 +335,9 @@ def test_bad_joint_speed_never_moves_even_departure(motion):
 def test_explicit_safe_then_empty_container_approach(motion):
     node, job, calls, _, module = motion
     node.arm.compliance_off = lambda: None
+    node._motion_anchor = object()
     assert node._do_safe(module.Job('safe', {'reason': 'ORDER_START'}))
+    assert node._motion_anchor is None
     node._do_move(job)
     # 주문 준비 MOVEJ 한 번, 빈 통 접근 MOVEJ, 파지 높이 MOVEL.
     assert [c[0] for c in calls] == ['J', 'J', 'L']
@@ -354,9 +356,11 @@ def test_plain_cartesian_move_has_no_implicit_joint_home(motion):
 def test_failed_explicit_safe_does_not_start_container_approach(motion):
     node, _, calls, _, module = motion
     node.arm.compliance_off = lambda: None
+    node._motion_anchor = object()
     def fail(*args, **kwargs):
         raise TimeoutError('safe pose timeout')
     node.arm.movej_cancellable = fail
     with pytest.raises(TimeoutError, match='safe pose timeout'):
         node._do_safe(module.Job('safe', {'reason': 'ORDER_START'}))
     assert not calls
+    assert node._motion_anchor is None
