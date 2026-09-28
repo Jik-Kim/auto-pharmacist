@@ -26,18 +26,36 @@
 #                      cd ros2_ws/src/gmp_dosing/calibration/records && ./scoop_run.sh setup
 #                        스쿱 파지 → 인출 → 원료통 계량 자세
 #                      ./scoop_run.sh trial   Scoop → Pour(workbench 저울 위 시료통) → 저울값 입력 → 원료통 자세 복귀
-#                    2~15회차: 파이썬 코드로 실행 (측정자 기억, 9/25). 파일명·명령은 기록이 없고
-#                      측정 PC records/(gitignore) 에서도 찾지 못했다(9/25).
-#                      (9/25 이 세션이 적은 「scoop_run.sh trial 반복 추정」은 철회)
-#                      #290 반영 뒤 재기동 때 setup(또는 파지 복원)을 다시 했는지는 모른다.
-#   기록 방식        총무게_g·원료면 모두 측정자가 직접 적었다 (15회 전부).
+#                    2~15회차 (9/28 측정 PC 원본으로 확인 — bash 기록 · ~/.ros/log · 파일 시각):
+#                      21:45:55 로컬 main 이 d4eeb67(#290 포함)로 ff → 21:45:59 colcon build
+#                      21:46:06 브링업 재기동 (vel_scale:=1.0)
+#                      ros2 service call /cell/set_gripper ... "{close: false, ...}"   그리퍼 열기
+#                      ./scoop_run.sh setup    21:46:44 이동 → 21:47:22 [EMPTY_SCOOP_FZ_BASELINE]
+#                                              = 스쿱 AT 에서 새로 파지했다 (**재기동 뒤 setup 을 다시 했다**)
+#                      ./scoop_run.sh trial    21:47:41 Scoop·Pour — **기록지에 남지 않았다** (아래)
+#                      ./scoop_run.sh run 14   21:49:01 ~ 21:59:34 Scoop·Pour 14번 → 2~15회차
+#                    「파이썬 코드로 실행」(측정자 기억)은 scoop_run.sh 가 부르는 record.py 다.
+#                      저울값·원료면을 프롬프트에 입력하면 record.py put 이 기록지에 적는다.
+#                      record.py 는 저장소 calibration/record.py 와 같은 파일이다(sha256 942aad94…).
+#                      (9/25 「파일명·명령은 못 찾았다」 → 측정 PC ros2_ws/src/gmp_dosing/calibration/records/ 에
+#                       scoop_run.sh·record.py·scoop_sigma_0924.csv 원본이 남아 있었다. 9/28 정정)
+#                    ⚠️ 재기동 뒤 Scoop·Pour 는 15번, 기록은 14행(2~15)이다. 기록 안 된 한 번은
+#                      run 14 직전의 trial(21:47:41)로 본다 — run 14 가 정확히 14번 돌았고(모션 로그) 기록지가
+#                      15행에서 멈추므로, run 시작 때 빈 행이 14개(2~15)였어야 한다. 그 trial 의 저울값과
+#                      버린 이유는 기록이 없다(측정자 확인 필요). 재기동 직후 속도 확인용이었을 가능성이 있다.
+#   기록 방식        총무게_g·원료면 모두 측정자가 입력했다 (15회 전부).
 #                      총무게_g = 빈 시료통 79 g + 투입된 시료, 저울값 그대로
 #                      원료면   = 원료통에 남은 시료의 양. **매 회차 원료통을 가득 채운 뒤 쟀다**
 #                               → 15회 전부 「가득」은 우연이 아니라 통제한 조건이다
-#                    1회차의 형식 차이(소수점·원료면 공란·비고)는 입력 도구 차이가 아니다 — 위 기록 방식 참조.
+#                    1회차의 형식(158.0·원료면 공란·비고)은 record.py 출력이 아니다 — record.py 는 158 로 쓴다.
+#                      1회차는 파일에 직접 적은 것으로 보인다(record.py 최종 수정 21:43:50 은 1회차 21:39 뒤).
+#                      2~15회차는 프롬프트 입력을 record.py 가 적었다.
+#                      ~~형식 차이는 입력 도구 차이가 아니다~~ → 철회(9/28). 값 자체는 둘 다 측정자가 읽은 저울값이다.
 #                    scoop_run.sh 는 당시 records/(gitignore) 에 있었고 9/25 eb046b5 가 A/B/C 공용판으로
-#                    calibration/ 에 옮겼다 — 당시 원본은 저장소에 없다. process_node(FSM) 는 거치지 않았다.
-#   저장소           1회차 main 5b658e0 · 2~15회차 #290(545ef89, 직선속도 60 → 250 mm/s) 적용 후
+#                    calibration/ 에 옮겼다. 당시판(sha256 25072e94…)은 원료 A 고정·기록지 경로 고정만 다르다.
+#                    process_node(FSM) 는 거치지 않았다.
+#   저장소           1회차 로컬 main 25e40a0(= 5b658e0 + HMI·문서 변경, skill_node 쪽 차이 없음) · 21:37:48 기동
+#                      · 21:39:08 Scoop·Pour 1번(모션 로그) · 2~15회차 #290(545ef89, 직선속도 60 → 250 mm/s) 적용 후
 #
 # ⚠️ vel_scale 을 바꾸면 채취량이 바뀐다. 다른 값으로 잰 회차를 여기 섞지 말 것.
 #
