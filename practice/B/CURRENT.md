@@ -120,6 +120,13 @@
     5회 ≈ 2~3분. 스쿱 교체 포함 B·C 합쳐 ≈ 10분.
   - **판정** A 와 같다 — 평균이 기준값 ±5 g 안인가(`scoop_sigma.py` 기본 `--nominal` 79), σ ≤ 3 / 3~5 / > 5.
     ⚠️ **파라미터가 실측을 따라가야지 반대가 아니다.**
+- **#156 가상 계량 흔들림 재생 자료 — PR #301** (리뷰어 A, 9/28). A 가 「가상 장부 질량 + 실측 흔들림」 재생을 구현하고 B 가 자료를 낸다.
+  - `gmp_dosing/calibration/virtual_weigh/manifest.yaml` — `container_empty`·`container_loaded` **ready**(9/23 동결 공구),
+    `scoop_empty`·`scoop_loaded` **pending** → 9/29 실측 뒤 채운다. 9/22 이전 스쿱 자료는 넣지 않는다(사용자 결정 9/28).
+  - **흔들림은 창 평균을 뺀다, 파일 평균이 아니다** — A 에 전달(#156 9/28 답글). 시험 `test_virtual_weigh_manifest.py`.
+  - 스쿱 흔들림은 **운영 계량 자세**에서 잰다: 셀 브링업에서 `GetCurrentPosj` 로 관절각을 읽고 `measure_g1 --goto-posj` 로 재현.
+- ⏭ **9/29 새벽 실측(측정 PC)** — 구간 A `cell.launch.py`: B·C 1회량 5회·손잡이 파지 폭·운영 계량 자세 관절각 /
+  구간 B `new_bringup.launch.py`: #187 용기 3점 + 316 g · #156 스쿱 흔들림. 도구 워크트리 `~/auto-pharmacist-meas`(이 브랜치).
 - #187 재파지 σ·`max_std_g` 확정 — 범위 되돌림(9/23).
   - **용기 경로 gain·offset 확정 (로봇 가용 시, ≈3분)** — 조장 지시로 계량 후 도징이 확정한다(9/23).
     ```
@@ -139,7 +146,7 @@
     확정 후 `common.yaml` scale.gain/offset_g(·max_std_g) 갱신 PR — B 작성, A 리뷰.
 - ~~#221 `scoop_nominal_g` 40→65 + `decide()` 하한 + #210 `max_attempts` 하한~~ → **닫힘**(#221 9/24 Closed).
   40→65 는 D-33 의 85 를 거쳐 D-35 의 79 로 대체됐고, 교착 조건은 `test_dosing.py` 가 파라미터 파일로 단언한다.
-- #208 고주파 게이트 `max_hf_std_g` 배선(A) → #219 리베이스(현재 main 과 충돌).
+- #208 고주파 게이트 `max_hf_std_g` 배선(A) → #219 리베이스(현재 main 과 충돌). #208 배선은 A 의 PR #293. **#219 는 9/28 사용자 결정으로 보류** — #293 머지 뒤, 로봇 없는 날에.
 - ⏸ **조장 결정(9/23, SOT D-31): (라) 파지 반복성 개선 먼저 → 9/25 시연 뒤 과제로 미룸**(#249 닫음, 현 반복성으로 시연). (다) 제외, (가) 보류(필요 시 규격과 분리된
   계량 불확실성 게이트 + QA 처리로 별도 설계), (나) 는 BRD 정합성 판단으로 분리.
   치구는 A 이슈, **합격 시험은 B 이슈**. gain 3점 시험은 보정 확정용이고 재파지 근거로 쓰지 않는다.
@@ -209,6 +216,11 @@
 - 원인 미상: workbench 자세 Mx ≈ +0.9 Nm, material_1/2 계량 σ 4.3~5.7 g·무효율 50 %(A 인계).
 
 ## 알려진 함정
+- **측정 도구마다 브링업이 다르다** — `measure_g1.py` 는 로봇 드라이버만(`m0609_rg2_bringup new_bringup.launch.py`, skill_node 없음),
+  `scoop_run.sh` 는 `gmp_bringup cell.launch.py`(skill_node 필요). 한 세션에서 둘 다 하면 브링업을 바꿔 띄운다.
+- **`expected_scoop_width_mm`(stations.yaml)는 손잡이 폭**(SOT Q-04)이다 — 스쿱 뜨는 부분 크기가 아니다. 세 스쿱의 뜨는 부분은 같다(9/28).
+  시료는 어항용 자갈이고 A·B·C 는 같은 제품·색만 다르다.
+- **한 CSV 안에 여러 조건이 섞인다** — 재파지 세트·`--load-series` 하중이 한 파일에 들어간다. 흔들림·σ 는 (실험명, 반복번호) 창 단위로 낸다.
 - **영점(`baseline`)은 기록에 반영되지 않는다 — 진단 출력일 뿐이다.** `measure_g1.py` 는 CSV 에
   `arm.tool_force()` **원시값**을 그대로 쓰고 어디서도 영점을 빼지 않는다(`baseline()` 의 반환값을
   쓰는 곳도 없다). `core/calib.py` 의 `offset_g` 도 `actual_g − mean(means)` 로 **측정 데이터에서**
