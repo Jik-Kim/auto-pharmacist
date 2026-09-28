@@ -275,6 +275,7 @@ A 구현: `Scoop.depth_fraction` → 접촉 자세로 표면 WORLD Z 계산 → 
 **현재 운용 결정:** 힘 측정이 신뢰되지 않고 파지부에서 스쿱이 상대 회전하므로 최초 접촉 정지와 접촉 자세 기반 원료 높이 측정을 운영에서 비활성화한다. 관련 설정·파라미터와 단위 테스트는 유지하지만 `calibrated=false`를 해제하지 않는다. 높이 보정 시험보다 전체 노드 통합과 공정 플로우 검증을 먼저 수행한다.
 
 인계 목록(다른 담당 코드는 수정하지 않음):
+> **9/25 문서 관리 대조 — 아래 목록은 9/22 기록이다.** 「기준 순량 65 g」「`min_fraction` 0.15」「첫 시도 1.0 고정」은 SOT D-33(`scoop_nominal_g`·`min_fraction` 현행값은 `common.yaml` `dosing`)과 PR #289(고정 모드는 첫·재스쿱 깊이 1.0, `dosing.fixed_scoop`)로 대체됐다. 지우지 않고 남긴다(practice 규칙 3).
 - B `gmp_dosing/core/dosing.py:DosingConfig.scoop_nominal_g`와 C 설정: 원료 A 기준 순량65 g과 통일할 것. 기본40 g을 그대로 사용하면 요청량과 맞지 않는다. 원료별 계수를 다른 원료에 그대로 적용하지 않는다.
 - C `gmp_process/core/process_fsm.py:_scoop` 및 첫 SCOOP 진입: 첫 시도부터 남은 목표/기준 순량을 깊이 비율로 전달할 것. 현재 첫 시도1.0 고정은 작은 레시피를 반영하지 못한다. 큰 목표는 검증 최대 깊이1.0 이내에서 여러 번 계량하며 분할한다.
 - B/C `min_fraction`: A profile 하한0.15와 일치 필요. 하한보다 적은 목표를 조용히 올려 과다 채취하지 말고 별도 처리한다. 무효 계량의 fraction=0 경로는 A에서 거부된다.
