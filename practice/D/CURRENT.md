@@ -1,4 +1,4 @@
-# D HMI·기록 현행 상태 (갱신: 2026-09-26, D 본인 — D-35 운영 레시피 79/158 g, 레시피 담당 D, 시험 공정을 실제 흐름에 맞춤)
+# D HMI·기록 현행 상태 (갱신: 2026-09-28, D 본인 — 조장 9/28 대조 반영: 표 칸·PR 번호·줄 번호. 9/26 D-35 운영 레시피 79/158 g·시험 공정을 실제 흐름에 맞춤)
 
 **담당**: aszx4880-star
 
@@ -7,7 +7,7 @@
 ## 지금 유효한 값
 | 항목 | 값 | 근거 |
 |---|---|---|
-| `DispenseResult.verdict` 이름표 | `VERDICTS = {0 OK, 1 UNDER, 2 OVER, 3 INVALID}` (`core/db.py:15`). DB 기록(`db.item`)과 실시간 스냅샷(`hmi_web_node.py:339`)이 **같은 표**를 쓴다 | PR #240 (계약 v1.8, #241 과 짝) |
+| `DispenseResult.verdict` 이름표 | `VERDICTS = {0 OK, 1 UNDER, 2 OVER, 3 INVALID}` (`core/db.py:15`). DB 기록(`db.item`)과 실시간 스냅샷(`hmi_web_node.py:340`·재고 차감 `:342`)이 **같은 표**를 쓴다 | PR #240 (계약 v1.8, #241 과 짝) |
 | 판정 배지 `hmi.js verdict()` | good: OK·DONE·AUTO_RECOVERED / bad: ERROR·DISCARDED·**INVALID** / warn: OVER·UNDER·PENDING·**DONE_UNMEASURED** / 그 외 info | PR #240·#261 |
 | 진행 스트립 INVALID 원료 | 「투입량 미확인」(hold) — 「완료」 아님 | PR #245 (#242 해소) |
 | 배치 결과 `DONE_UNMEASURED` 기록 | 종료 시 `db.has_unmeasured` = `events.code='BATCH_UNMEASURED'` **또는** `items.verdict='INVALID'` 이면 DONE_UNMEASURED. DB 로 판정하므로 record_node 재시작에도 같다 | PR #261, SOT D-32 |
@@ -15,38 +15,38 @@
 | QA 폐기 대사 | `reconcile_discard` 는 `result IN ('DONE','DONE_UNMEASURED')` | PR #261 |
 | KPI | `batch_success_pct` = **DONE 만**(카드 이름 「계량 검증 완료율」), `unmeasured_done`·`unmeasured_done_pct` = 미측정 승인 완료, `run_complete_pct` = 둘의 합(완주율). 카드 수 5개 불변 | PR #261, SOT D-32 (5) |
 | 결과 필터 | 전체·정상 종료·**미측정 승인 완료**·폐기·오류·진행 중 | `templates/index.html` `#reportResult`, PR #261 |
-| `hmi.js steps` 맵 | FSM 상태와 1:1 (CLEANUP 포함). 시험 공정·데모가 내는 단계도 이 맵 안에서만 쓴다(`test_v3_frontend_contract.py` 대조) | PR #232, 통합 전 정리 PR |
-| 계약 이름표 대조 | `db.py` `KINDS`·`DECISIONS`·`VERDICTS`·`LEVELS`, `hmi.js` `outcomeNames` 를 `gmp_interfaces/msg/*.msg` 와 시험으로 대조(`test_db.py`). 통신 시험 launch 의 시나리오 목록도 시험 노드와 대조 | 통합 전 정리 PR |
+| `hmi.js steps` 맵 | FSM 상태와 1:1 (CLEANUP 포함). 시험 공정·데모가 내는 단계도 이 맵 안에서만 쓴다(`test_v3_frontend_contract.py` 대조) | PR #232, #280(통합 전 정리) |
+| 계약 이름표 대조 | `db.py` `KINDS`·`DECISIONS`·`VERDICTS`·`LEVELS`, `hmi.js` `outcomeNames` 를 `gmp_interfaces/msg/*.msg` 와 시험으로 대조(`test_db.py`). 통신 시험 launch 의 시나리오 목록도 시험 노드와 대조 | #280(통합 전 정리) |
 | 프런트 시험 2 종 | `tools/test_safety_popup.cjs`(DOM 스텁·안전 복구 팝업 가드)·`tools/test_frontend_render.cjs`(playwright) **둘 다 PASS**. 후자는 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium` 필요 | 9/23 실행, PR #267 |
 | 재고 차감 `session_inventory.observe` | OK·OVER 만 차감(UNDER·INVALID 제외) — 「재고를 모른다」 표현은 별건 | `core/session_inventory.py:39`, #108 논의 |
-| 레이아웃 | 데스크톱: `body` 가 `display:flex; height:100dvh; overflow:hidden` — **스크롤은 `main` 안에서만**. 기록·통계 탭은 grid 4행 `1fr` 로 카드 3개 하단 정렬. **휴대폰(≤760px)은 페이지 전체가 스크롤**되고 비상정지 안내띠만 위에 고정, 헤더 버튼 44px(로그아웃은 상태 줄 오른쪽), `main` 은 화면 폭에 묶고 표는 표 상자 안에서만 가로 스크롤, 기간 필터는 한 줄씩. 갱신 때 높이가 바뀌지 않게 상태 바·결과표·일탈 목록 높이 고정, (iOS 는 스크롤 앵커링이 없다) |
-| 배치 완료·폐기 알림 | 모든 화면에서 **떠 있는 알림**(PC 왼쪽 아래·휴대폰 아래), `COMPLETION_SHOW_MS` 5 s 뒤 자동 숨김, ✕ 닫기. 한 자리라 새 알림이 이전 것을 대신하고, 한 번 보인 배치·결과는 옛 상태를 다시 받아도 안 뜸. 칸 사이에 끼우지 않는다(아래 카드를 밀었다) | `hmi.js` `renderCompletion`, 이 PR | PR #229 (`hmi.css:1`·`:73`), 통합 전 정리 PR(`hmi.css` 끝 모바일 블록) |
+| 레이아웃 | 데스크톱: `body` 가 `display:flex; height:100dvh; overflow:hidden` — **스크롤은 `main` 안에서만**. 기록·통계 탭은 grid 4행 `1fr` 로 카드 3개 하단 정렬. **휴대폰(≤760px)은 페이지 전체가 스크롤**되고 비상정지 안내띠만 위에 고정, 헤더 버튼 44px(로그아웃은 상태 줄 오른쪽), `main` 은 화면 폭에 묶고 표는 표 상자 안에서만 가로 스크롤, 기간 필터는 한 줄씩. 갱신 때 높이가 바뀌지 않게 상태 바·결과표·일탈 목록 높이 고정(iOS 는 스크롤 앵커링이 없다) | PR #229 (`hmi.css:1`·`:73`), #280(`hmi.css` 끝 모바일 블록), #288 |
+| 배치 완료·폐기 알림 | 모든 화면에서 **떠 있는 알림**(PC 왼쪽 아래·휴대폰 아래), `COMPLETION_SHOW_MS` 5 s 뒤 자동 숨김, ✕ 닫기. 한 자리라 새 알림이 이전 것을 대신하고, 한 번 보인 배치·결과는 옛 상태를 다시 받아도 안 뜸. 칸 사이에 끼우지 않는다(아래 카드를 밀었다) | `hmi.js` `renderCompletion`·`COMPLETION_SHOW_MS`, #288 |
 | 시연 기기 | 로봇 PC 1대 + **휴대폰 브라우저 HMI 기본**, 같은 네트워크(`http://<로봇 PC Wi-Fi IP>:5000`) | PR #259, `docs/demo_run_procedure.md` T0·G6 |
 | ROS 도메인 | 본운영 70, 격리 시험 88 | `docs/demo_run_procedure.md:38` |
-| 통신 검증 기준선 | `tools/verify_ros_http.py` **22 항목**(시험 공정 최신화 PR — NUDGE_WAIT·운전 중 접촉·유휴 접촉·원료 소진 보충 대기 추가) — **9/26 실제 DDS 22/22 PASS**(동권님 집 PC, 도메인 88, `feature/hmi-test-process-latest` `fc174ac`, 배치 9건). 직전 20 항목판은 D-35(79/158 g) 기대값으로 **9/26 실제 DDS 20/20 PASS**(동권님 집 PC, 도메인 88, `feature/d35-recipes-79`). 그 전 D-33(85/170 g)은 9/23 PASS. 시작 재고 `test_initial_g:='[158.0,1000.0,1000.0]'`. launch 와 검증기의 `GMP_HMI_ADMIN_PASSWORD` 가 **같아야** 한다(다르면 로그인 401) | 9/23 19:50 실행(PR #276), 9/26 실행(PR #291) |
+| 통신 검증 기준선 | `tools/verify_ros_http.py` **22 항목**(#295 — NUDGE_WAIT·운전 중 접촉·유휴 접촉·원료 소진 보충 대기 추가) — **9/26 실제 DDS 22/22 PASS**(동권님 집 PC, 도메인 88, `feature/hmi-test-process-latest` `fc174ac`, 배치 9건). 직전 20 항목판은 D-35(79/158 g) 기대값으로 **9/26 실제 DDS 20/20 PASS**(동권님 집 PC, 도메인 88, `feature/d35-recipes-79`). 그 전 D-33(85/170 g)은 9/23 PASS. 시작 재고 `test_initial_g:='[158.0,1000.0,1000.0]'`. launch 와 검증기의 `GMP_HMI_ADMIN_PASSWORD` 가 **같아야** 한다(다르면 로그인 401) | 9/23 19:50 실행(PR #276, #280 이전 코드 — 지금 기준선 아님), 9/26 실행(#291 20/20·#295 22/22) |
 | 시험 시나리오 | `normal`·`overfill`(과다 배율 `OVERFILL_RATIO` 1.15 — 레시피 `tol_pct` 를 확실히 넘어야 해서 1.10 에서 올림)·`batch_out_of_spec`·`wrong_tool`·`weigh_invalid`·`material_empty`(**QA 아님** — 빈 스쿱 3회 자동 재시도 → REFILL 보충 대기 → EXIT, 실제 `deviation.RULES` 와 같게) | `gmp_hmi/nodes/hmi_test_process.py` |
-| 시험 공정 흐름 | 실제 `process_fsm` 단계 순서(SELF_CHECK … RETURN_SCOOP → VERIFY → FINISH → **NUDGE_WAIT** → DONE). NUDGE 는 `/hmi_test/event` `code='NUDGE'`(skill_node 대역): 운전 중 정지/재개 · 세트 끝 다음 세트 · 유휴 주문 차단. RunBatch Goal 은 세트가 끝날 때까지 유지(옛 판은 시작 1 초 뒤 Result 가 와서 취소 버튼이 안 켜졌다). 스쿱 기록은 고정 스쿱(접촉 미측정·전량 붓기)·`material_N` 계량 | 시험 공정 최신화 PR |
-| 시험 레시피 사본 | `config/test_recipes/v4` = 운영 `gmp_bringup/params/recipes` 와 **같다**(값은 운영 파일 참조). `test_v4_recipes.py` 가 운영과 대조해 어긋나면 실패한다. 통신 시험 launch 가 시험 노드에 `test_scoop_nominal_g` 79 g 을 넘긴다 | SOT D-35, PR #276·D-35 PR(이 변경) |
+| 시험 공정 흐름 | 실제 `process_fsm` 단계 순서(SELF_CHECK … RETURN_SCOOP → VERIFY → FINISH → **NUDGE_WAIT** → DONE). NUDGE 는 `/hmi_test/event` `code='NUDGE'`(skill_node 대역): 운전 중 정지/재개 · 세트 끝 다음 세트 · 유휴 주문 차단. RunBatch Goal 은 세트가 끝날 때까지 유지(옛 판은 시작 1 초 뒤 Result 가 와서 취소 버튼이 안 켜졌다). 스쿱 기록은 고정 스쿱(접촉 미측정·전량 붓기)·`material_N` 계량 | #295 |
+| 시험 레시피 사본 | `config/test_recipes/v4` = 운영 `gmp_bringup/params/recipes` 와 **같다**(값은 운영 파일 참조). `test_v4_recipes.py` 가 운영과 대조해 어긋나면 실패한다. 통신 시험 launch 가 시험 노드에 `test_scoop_nominal_g` 를 넘긴다(값은 `launch/hmi_comm_test.launch.py` — 스쿱 기준값은 B 몫이라 여기 숫자를 적지 않는다, 규칙 5) | SOT D-35, PR #276·#291 |
 | 운영 레시피 | **D 담당(9/25 팀 공지)** — `gmp_bringup/params/recipes/recipe-01~03.yaml` 파일·값. A79/B79/C79 · A158/B79 · A79/B79/C158, ±10 % (SOT D-35). 스키마·검증은 C(`gmp_process/core/recipe.py`). 사본과 한 PR 로 바꾼다 | SOT D-35, `docs/interfaces.md` §4 |
 
 ## 열린 과제 (이슈 번호)
-- **G6 휴대폰 리허설** — 9/23 390px 에서 고정 영역이 화면 절반(데모)~30 %(운영)를 먹던 것을 페이지 스크롤로 바꿨다(통합 전 정리 PR). QA 승인·폐기·진입·안전 복구·주문 버튼 도달·클릭은 playwright 로 확인. **실제 로봇 PC + 휴대폰 실물 리허설은 미검증**.
-- **#261 실제 `/cell` 확인** — `/hmi_test` DDS 경로는 **9/23 검증 완료**(아래 통신 검증 20 항목). 남은 것은 **실제 C 공정·로봇**에서 같은 경로가 도는지다. 가상 `/cell` 은 파지에서 막히므로(아래 함정) 실물이어야 한다.
-- `docs/interfaces.md:188` KPI 이름이 아직 「배치 성공률」 — 계약 문서라 조장 몫(#261 본문에 적음).
+- **G6 휴대폰 리허설** — 9/23 390px 에서 고정 영역이 화면 절반(데모)~30 %(운영)를 먹던 것을 페이지 스크롤로 바꿨다(#280). QA 승인·폐기·진입·안전 복구·주문 버튼 도달·클릭은 playwright 로 확인. **실제 로봇 PC + 휴대폰 실물 리허설은 미검증**.
+- **#261 실제 `/cell` 확인** — `/hmi_test` DDS 경로는 **9/26 검증 완료**(위 통신 검증 22 항목, #295). 남은 것은 **실제 C 공정·로봇**에서 같은 경로가 도는지다. 가상 `/cell` 은 파지에서 막히므로(아래 함정) 실물이어야 한다.
+- `docs/interfaces.md:190` KPI 이름이 아직 「배치 성공률」 — 계약 문서라 조장 몫(#261 본문에 적음).
 - **C 에 전달: QA 폐기 직후 DONE** — `process_fsm._after_qa` 가 폐기 판정 즉시 `DISCARDED/DONE` 을 낸 뒤 반송·NUDGE_WAIT 로 간다. record_node 는 첫 DONE 에 배치를 닫고, HMI 는 반송 중 주문 버튼을 켠다(C 가 거부). 시험 공정은 물리 종료 뒤 DONE. `docs/interface_alignment.md` 「종료」 행.
 - ~~`tools/test_safety_popup.cjs` 살릴지 지울지 D 판단~~ → **살린다**. 실패 원인은 팝업 로직이 아니라 스텁이었다(9/22 `f349fe2` 가 `hmi.js:151` 에 `appendChild` 추가 → 스텁에 없어 `TypeError`). 스텁 한 줄로 PASS, 가드 17 건 유효(고의로 `robot_state` 허용 목록을 넓히면 실패 확인). `tools/test_frontend_render.cjs` 는 **환경 문제였다** — playwright·Chromium 이 있는 샌드박스에서 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium node tools/test_frontend_render.cjs` 로 9/23 PASS. 심볼릭 링크 불필요.
 
 ## 알려진 함정
-- HMI 는 판정 정수를 직접 받지 않는다 — `hmi_web_node:339` 가 `VERDICTS` 로 바꾼 문자열을 받는다. 새 열거값은 `db.py:15` 가 본체.
+- HMI 는 판정 정수를 직접 받지 않는다 — `hmi_web_node.py:340` 이 `VERDICTS` 로 바꾼 문자열을 받는다. 새 열거값은 `db.py:15` 가 본체.
 - 배치 결과·판정을 정확 일치(`='DONE'`)로 거르는 곳이 새 값을 조용히 흘린다. 새 값 추가 시 `grep -rn "'DONE'" ros2_ws/src/gmp_hmi`.
 - `RunBatch.result` 는 **DB 에 안 닿는다** — record_node 는 배치 결과를 `CellState` 로 만든다. C 가 결과 문자열을 늘리면 이벤트가 같이 와야 기록된다(D-32).
 - **배치가 즉시 ERROR/CANCELLED 면 먼저 도메인 충돌을 의심** — 9/22 공유 `ROS_DOMAIN_ID=70` 에서 다른 팀원 노드가 우리 배치를 취소했다(`BATCH_CANCEL_REQUEST` 감사 기록 없이 `BATCH_CANCELLED`). 격리 도메인에서 재현되면 우리 문제.
 - `ros2 node list`·`service list` 가 옛 목록이면 `ros2 daemon stop && ros2 daemon start`.
 - `static/*` 를 고친 뒤 화면이 그대로면 `colcon build --symlink-install --packages-select gmp_hmi` + HMI 재시작, `curl http://127.0.0.1:5000/static/hmi.css | grep <바꾼 문자열>` 로 서빙 확인.
-- **ROS 없는 샌드박스에서 `gmp_hmi` pytest 는 `PYTHONPATH` 없이 돌리면 거짓 기준선이 된다** — `gmp_process` import 실패로 `test_v4_process.py` 등 69 건이 ERROR 로 빠지고 「55 passed」만 보인다. 9/23 #266 에서 이것을 「회귀 없음」으로 적었다가 조장 검토에서 실패 1 건이 드러났다. `PYTHONPATH=../gmp_process:.:../gmp_dosing python3 -m pytest -q test` 로 **140 passed** 가 기준(PR #276 사본↔운영 대조 1 건, 통합 전 정리 PR 계약 대조 4 건, 시험 공정 최신화 PR 흐름 9 건 추가).
+- **ROS 없는 샌드박스에서 `gmp_hmi` pytest 는 `PYTHONPATH` 없이 돌리면 거짓 기준선이 된다** — `gmp_process` import 실패로 수집 오류·ERROR 가 섞이고, 숫자는 환경·시점마다 다르다(9/23 「55 passed」, 9/28 조장 main 「59 passed / 1 failed / 70 errors」, 9/28 이 브랜치는 수집 단계에서 중단). 9/23 #266 에서 이것을 「회귀 없음」으로 적었다가 조장 검토에서 실패 1 건이 드러났다. `PYTHONPATH=../gmp_process:.:../gmp_dosing python3 -m pytest -q test` 로 **140 passed** 가 기준(PR #276 사본↔운영 대조 1 건, #280 계약 대조 4 건, #295 흐름 9 건 추가).
 - gmp_hmi 와 gmp_process 시험을 같은 pytest 실행에 넣지 않는다 — 노드 경합으로 process 시험이 깨진다(C CURRENT).
-- **가상 모드로는 `PICK_CONTAINER` 를 통과 못 한다** — 파지 판정이 `grip = w > width_mm + grip_margin_mm`(`gmp_skills/adapters/rg2_gripper.py:246`)인데 `virtual` 백엔드(`:175`)는 명령한 관절각으로 그대로 이동해 `w ≈ width_mm` 이라 `grip_margin_mm`(`common.yaml`)을 못 넘는다. 9/23 실행에서 `GRIP_FAIL` ×4 → ERROR. **가상은 이동·상태 전이·기록 확인용이고 전체 사이클 완주 검증에는 못 쓴다.**
-- **가상 모드 `NUDGE_WAIT` 은 안 풀린다** — `skill_node.py:126` 이 `scale.simulated` 면 NUDGE 감지를 끄는데 `process_node` 쪽 `safety.nudge_enabled`(`common.yaml`)는 이 조건을 모르고 `_await` 에 타임아웃이 없다(`process_node.py:315-318`). 우회: `/cell/event` 에 `code='NUDGE'` 를 한 번 발행하면 사람이 건드린 것과 같은 경로로 풀린다(파라미터 변경 불필요).
+- **가상 모드로는 `PICK_CONTAINER` 를 통과 못 한다** — 파지 판정이 `w > width_mm + self.grip_margin_mm`(`gmp_skills/adapters/rg2_gripper.py`, main `d4eeb67` 에서 :326)인데 `virtual` 백엔드(`elif self.backend == 'virtual'`, 같은 기준 :264)는 명령한 관절각으로 그대로 이동해 `w ≈ width_mm` 이라 `grip_margin_mm`(`common.yaml`)을 못 넘는다. 9/23 실행에서 `GRIP_FAIL` ×4 → ERROR. **가상은 이동·상태 전이·기록 확인용이고 전체 사이클 완주 검증에는 못 쓴다.**
+- **가상 모드 `NUDGE_WAIT` 은 안 풀린다** — `skill_node.py` `_nudge_enabled`(main `d4eeb67` 에서 :133)가 `scale.simulated` 면 NUDGE 감지를 끄는데 `process_node` 쪽 `safety.nudge_enabled`(`common.yaml`)는 이 조건을 모르고 `_await` 에 타임아웃이 없다(`process_node.py` `_await`, main `d4eeb67` 에서 :318-326). 남의 파트 줄 번호는 밀리므로 함수·식 이름으로 찾는다. 우회: `/cell/event` 에 `code='NUDGE'` 를 한 번 발행하면 사람이 건드린 것과 같은 경로로 풀린다(파라미터 변경 불필요).
 
 ## 철회 이력 (최근 것 위)
 - 2026-09-23 ~~KPI 완료율에서 DONE_UNMEASURED 「제외」만~~ → 두 지표로 분리(계량 검증 완료율 / 미측정 승인 완료, 완주율은 합). SOT D-32, PR #261.
