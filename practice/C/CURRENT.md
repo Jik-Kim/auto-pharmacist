@@ -1,4 +1,4 @@
-# C 공정 현행 상태 (갱신: 2026-09-25)
+# C 공정 현행 상태 (갱신: 2026-09-28)
 
 **담당**: Jik-Kim
 
@@ -14,12 +14,12 @@
 | 첫 SCOOP 깊이 | `max(min_fraction, min(1, 남은 목표 ÷ scoop_nominal_g))` — 둘째 사이클부터 `decide()` 와 같은 식. **고정 모드면 1.0** | #221 C 몫, PR #224 · #289(A) |
 | 고정 스쿱 모드 | **`dosing.fixed_scoop` 하나**가 네 곳을 움직인다 — `decide()` 의 깊이·보충 판정(**#274**, e301cc9·e62b8da), `_first_fraction()`·`_rescoop_fraction()`·노드 배선(**A #289**), **FSM 의 접촉 우회**(C #287). 무게 그물(`empty_scoop_g`)은 플래그와 무관하게 늘 돈다(#287). 켜면 깊이는 언제나 1.0 | SOT **D-34**(#284) · #282 |
 | 무효 계량 통합 시험 | fake_skill_node 손잡이 없이 `_publish_result` 직접 호출 | PR #225 |
-| 통합 시험 기준선 | gmp_process **201 passed / 6 skipped** (9/25 C 실측, `3c68261`). ⚠️ 6be0c83 이 시험 1건을 더했다 — ROS 환경에서 재측정 필요. **내 파트 것만 적는다** — 다른 파트 현황은 `practice/<파트>/CURRENT.md` (규칙 5) | ROS 소싱 필수. **숫자로 소싱 누락을 가리지 말 것** — ROS 없이 돌려도 150 passed / 2 skipped 가 나온다(9/25). `python3 -c "import rclpy"` 로 확인한다. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
+| 통합 시험 기준선 | gmp_process **202 passed / 6 skipped** (9/28 C 실측, `5f47d15`, ROS Jazzy 소싱·`ROS_DOMAIN_ID` 격리). skip 6 은 전부 `test_run_batch_ros.py` 의 **DOMAIN 88 전용** — `ROS_DOMAIN_ID=88` 로 따로 돌려 **6 passed**(9/28, 88 에 다른 노드 없음을 `ros2 node list` 로 먼저 확인). **내 파트 것만 적는다** — 다른 파트 현황은 `practice/<파트>/CURRENT.md` (규칙 5) | ROS 소싱 필수. **숫자로 소싱 누락을 가리지 말 것** — ROS 없이 돌려도 150 passed / 2 skipped 가 나온다(9/25). `python3 -c "import rclpy"` 로 확인한다. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
 
 ## 열린 과제 (이슈 번호)
 - #108 본래 주제: `ScoopCycle` 6축 wrench 채울 경로 — 전제(모멘트 = 파지 품질) 근거 부족(노션 9/22), 미정리.
 - #221 C 몫 완료, B 몫 대기 — `scoop_nominal_g` 를 낮추면 교착 구간에 들어간다(`decide()` 하한 동반). **값은 `common.yaml` 참조**(여기 숫자를 적으면 상한다).
-- **D-35 (9/25 사용자 결정) — 스쿱 기준값·레시피 목표를 #272 실측에 맞춘다.** 결정 전문은 SOT D-35(PR #284 `8dddcc1`·`cc9b444`), 실측 수치는 `practice/B/CURRENT.md`·#272 (규칙 5 — 여기 숫자를 적지 않는다). **C 몫은 하나** — `process_node` 선언 기본값(`scoop_nominal_g`·`min_fraction`·`scale.zero_drift_limit_n`)을 운영값과 맞추기 — **#287 에서 했다**(9/25). ROS 시험 두 곳(`test_process_node`·`test_run_batch_ros`)은 가짜 스킬 노드의 공칭 40 g 과 짝을 맞추려고 옛 값(40·0.15·0.5)을 `parameter_overrides` 로 **명시**한다 — 노드 기본값을 바꿀 때 시험 거동이 따라 바뀌지 않게. ⚠️ 이 컨테이너에 ROS 가 없어 그 두 시험은 **재실행하지 못했다**. **운영 레시피 `params/recipes/*.yaml` 은 D 담당**이고 D 가 시험 사본과 한 PR 에서 바꾼다. C 에는 레시피 **스키마·검증**(`gmp_process/core/recipe.py`)만 남는다. **머지 순서: #287 → D 레시피·사본 PR.**
+- **D-35 (9/25 사용자 결정) — 스쿱 기준값·레시피 목표를 #272 실측에 맞춘다.** 결정 전문은 SOT D-35(PR #284 `8dddcc1`·`cc9b444`), 실측 수치는 `practice/B/CURRENT.md`·#272 (규칙 5 — 여기 숫자를 적지 않는다). **C 몫은 하나** — `process_node` 선언 기본값(`scoop_nominal_g`·`min_fraction`·`scale.zero_drift_limit_n`)을 운영값과 맞추기 — **#287 에서 했다**(9/25). ROS 시험 두 곳(`test_process_node`·`test_run_batch_ros`)은 가짜 스킬 노드의 공칭 40 g 과 짝을 맞추려고 옛 값(40·0.15·0.5)을 `parameter_overrides` 로 **명시**한다 — 노드 기본값을 바꿀 때 시험 거동이 따라 바뀌지 않게. ~~⚠️ 이 컨테이너에 ROS 가 없어 그 두 시험은 **재실행하지 못했다**.~~ → **9/28 ROS 환경에서 재실행, 둘 다 통과**(`test_run_batch_ros` 는 DOMAIN 88 로 6/6). #291(D 레시피)·#284 와 로컬 합본에서도 실패 0. **운영 레시피 `params/recipes/*.yaml` 은 D 담당**이고 D 가 시험 사본과 한 PR 에서 바꾼다. C 에는 레시피 **스키마·검증**(`gmp_process/core/recipe.py`)만 남는다. **머지 순서: #287 → D 레시피·사본 PR.**
   - ~~C 몫 ① `params/recipes/recipe-01~03.yaml` 목표값(recipes 담당은 C — `interfaces.md` §4. B CURRENT 의 「A」는 오기)~~ → **철회 (9/25, SOT D-35 `cc9b444` 사용자 확인)**: 운영 레시피는 D 담당이다(D 시험 사본을 옮겨 등록한 파일, #217). `interfaces.md` §4 의 「recipes 담당 C」는 계약 문서라 팀 공지 뒤 팀장이 고친다 — **그 줄을 근거로 레시피를 고치지 말 것.** 9/25 에 그 줄만 보고 레시피 커밋을 만들었다가 버렸다(푸시 전).
   - ~~SOT D-35 `8141c98`(main 미반영)~~ → #284 로 옮겨졌다.
   - C 자체 후속(D-35 몫 아님): `test_process_fsm.py` 에 박힌 85·170 을 cfg·레시피에서 읽게 — 레시피가 79·158 로 바뀌면 낡는다.
