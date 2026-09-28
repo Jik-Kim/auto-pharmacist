@@ -386,3 +386,19 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
    깊이 조절·계량 보정·지문 검증도 별도다. 다른 담당 코드와 계량 보정값은 수정하지 않는다.
 4. DI 폴링 시간 제한은 완료 신호 대기에 적용된다. 기존 DSR 동기 IO 함수 자체가
    응답하지 않는 경우까지 선점하는 기능은 없다. ROS 이식 후 실물 완료·취소 확인이 필요하다.
+
+
+## 스킬 실행 객체 분리 (2026-09-28 사용자 승인)
+
+`gmp_skills/nodes/skill_node.py`는 기존 ROS 진입점과 Action/Service 콜백을 유지하고,
+내부 실행을 `execution/`의 `SkillRuntime`, `SafetyController`, `MotionSkills`,
+`ScoopingSkills`, `WeighingSkills`로 분리한다. 구성 원본은
+[gmp_skills README](../ros2_ws/src/gmp_skills/README.md)의 구조/호출 순서다.
+
+- `SkillRuntime.handlers`가 작업 종류와 실행 메서드를 명시적으로 연결한다.
+  DSR 호출은 기존 단일 워커에서 직렬 실행하며 DR_init 노드는 executor에 넣지 않는다.
+- 하나의 `ExecutionContext`에 `SkillConfig`·`SkillState`·장치·ROS 기능 콜백을 둔다.
+  실행 객체별 위치/파지/안전 상태 복제나 노드 전체 전달은 하지 않는다.
+- 기존 `SkillNode`, `main`, `Job` import 경로와 ROS 계약은 유지한다.
+  이동 좌표·속도·고정 경로 fraction 제한·접촉 미측정 의미·계량 보정값은 변경하지 않는다.
+  B/C/D 노드 수정은 필요하지 않다. 내부 `_do_*` 직접 참조 테스트는 새 실행 객체로 연결한다.

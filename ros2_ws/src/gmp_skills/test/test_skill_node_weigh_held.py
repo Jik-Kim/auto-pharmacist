@@ -13,7 +13,7 @@ def _module(name, **members):
     return module
 
 
-def _load_skill_node(monkeypatch):
+def _load_skill_node(monkeypatch, node_base=object):
     class Interface:
         class Goal:
             ABOVE = 0
@@ -50,7 +50,7 @@ def _load_skill_node(monkeypatch):
             'rclpy.callback_groups', ReentrantCallbackGroup=object),
         'rclpy.executors': _module(
             'rclpy.executors', MultiThreadedExecutor=object),
-        'rclpy.node': _module('rclpy.node', Node=object),
+        'rclpy.node': _module('rclpy.node', Node=node_base),
         'rclpy.qos': _module(
             'rclpy.qos',
             QoSProfile=lambda **_: None,
@@ -96,8 +96,12 @@ def _load_skill_node(monkeypatch):
     }
     for name, module in fake_modules.items():
         monkeypatch.setitem(sys.modules, name, module)
+    for name in list(sys.modules):
+        if name == 'gmp_skills.execution' or name.startswith('gmp_skills.execution.'):
+            monkeypatch.delitem(sys.modules, name)
     sys.modules.pop('gmp_skills.nodes.skill_node', None)
-    return importlib.import_module('gmp_skills.nodes.skill_node')
+    from skill_execution_fixture import install_legacy_fixture
+    return install_legacy_fixture(importlib.import_module('gmp_skills.nodes.skill_node'))
 
 
 def test_scoop_grip_marks_extraction_pending(monkeypatch):
@@ -515,8 +519,8 @@ def test_sampling_parameter_reaches_all_measurement_paths(monkeypatch, entry):
             measure_force=lambda *a, **kw: (calls.append((a, kw)) or ([0]*6, 2, 0, True)),
             measure_workpiece=lambda *a, **kw: (calls.append((a, kw)) or (2, 0, True))))
     node._scale_period_s = lambda: module.SkillNode._scale_period_s(node)
-    monkeypatch.setattr(module, 'ScaleConfig', lambda **kw: kw)
-    monkeypatch.setattr(module, 'WeightModel', lambda _: SimpleNamespace(
+    monkeypatch.setattr(sys.modules['gmp_skills.execution.weighing'], 'ScaleConfig', lambda **kw: kw)
+    monkeypatch.setattr(sys.modules['gmp_skills.execution.weighing'], 'WeightModel', lambda _: SimpleNamespace(
         set_tare=lambda _: None, reading=lambda mean, std, valid: (mean, 0, mean, std, valid)))
     if entry == 'service':
         module.SkillNode._do_measure(node, module.Job('measure', {'samples': 3, 'settle_s': 0.2}))
@@ -525,7 +529,7 @@ def test_sampling_parameter_reaches_all_measurement_paths(monkeypatch, entry):
     if entry == 'simulated':
         assert calls == []
     else:
-        assert calls == [((3, 0.2), {'period_s': 0.82, 'observer': node._observe_force})]
+        assert calls == [((3, 0.2), {'period_s': 0.82, 'observer': node.execution.safety._observe_force})]
 
 
 @pytest.mark.parametrize('end', [None, [1.0] * 5, [float('nan')] * 6])

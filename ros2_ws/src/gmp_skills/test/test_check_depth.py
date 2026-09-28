@@ -1,3 +1,4 @@
+import sys
 """티칭한 원료 측정 목표로 이동하며 관측하고 성공한 경우에만 복귀한다."""
 from pathlib import Path
 import json
@@ -214,8 +215,8 @@ def test_invalid_empty_scoop_baseline_blocks_before_motion(monkeypatch, fault):
 def test_baseline_reuses_valid_empty_scoop_raw_force_only(monkeypatch, valid_src, std, pending, expect):
     node, _, _, _ = depth_node(monkeypatch)
     module = sys.modules[node.__class__.__module__]
-    monkeypatch.setattr(module, 'ScaleConfig', ScaleConfig)
-    monkeypatch.setattr(module, 'WeightModel', WeightModel)
+    monkeypatch.setattr(sys.modules['gmp_skills.execution.weighing'], 'ScaleConfig', ScaleConfig)
+    monkeypatch.setattr(sys.modules['gmp_skills.execution.weighing'], 'WeightModel', WeightModel)
     node._empty_scoop_force_baseline = None
     node._empty_scoop_baseline_pending = pending
     node._held_payload = 'scoop'

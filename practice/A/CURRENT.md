@@ -9,9 +9,9 @@
 |---|---|---|
 | 스쿠핑 실행 | A/B/C `execution_mode=taught_fixed`, `fixed_path.verified=true`. `calibrated=false`는 **높이 보정 경로만 차단**하며, 고정 티칭 경로는 실행한다. 현재 공정 요청은 `depth_fraction=1` | [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [SOT](../../docs/SOT.md), [PR #277](https://github.com/Jik-Kim/auto-pharmacist/pull/277) |
 | 원료 A 원료면 | `material_1.surface_z_base_mm = 90.0` (사용자 지정값, 센서값 아님). 고정 티칭 경로의 높이를 만드는 값은 아니다 | [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [PR #236](https://github.com/Jik-Kim/auto-pharmacist/pull/236) |
-| Pour 경로 | middle → ABOVE Z290 → start Z243 → end Z320 → ABOVE → Z+50 → middle | [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [skill_node](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py) |
-| 용기 스테이션 | `workbench/passbox_empty/passbox_done/reject_bin` AT Z=130, 진입 관절각의 TCP가 접근점 Z=180, 이탈점 Z=330. 다른 스테이션에서 진입할 때 `approach_posj`로 이동한 뒤 AT까지 직선 하강한다 | [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [`_move_taught_station`](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py) |
-| 용기 이송의 `ABOVE` | 목적지 최초 `ABOVE`는 티칭 접근점(Z=180), 같은 스테이션에서 AT→`ABOVE` 또는 다음 스테이션으로 출발할 때는 안전 이탈점(Z=330)이다. 외부 이름 하나가 진입점과 이탈점을 함께 표현한다 | [`_move_taught_station`](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py), [`_leave_taught_station`](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py) |
+| Pour 경로 | middle → ABOVE Z290 → start Z243 → end Z320 → ABOVE → Z+50 → middle | [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [scooping.py](../../ros2_ws/src/gmp_skills/gmp_skills/execution/scooping.py) |
+| 용기 스테이션 | `workbench/passbox_empty/passbox_done/reject_bin` AT Z=130, 진입 관절각의 TCP가 접근점 Z=180, 이탈점 Z=330. 다른 스테이션에서 진입할 때 `approach_posj`로 이동한 뒤 AT까지 직선 하강한다 | [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [`_move_taught_station`](../../ros2_ws/src/gmp_skills/gmp_skills/execution/motion.py) |
+| 용기 이송의 `ABOVE` | 목적지 최초 `ABOVE`는 티칭 접근점(Z=180), 같은 스테이션에서 AT→`ABOVE` 또는 다음 스테이션으로 출발할 때는 안전 이탈점(Z=330)이다. 외부 이름 하나가 진입점과 이탈점을 함께 표현한다 | [`_move_taught_station`](../../ros2_ws/src/gmp_skills/gmp_skills/execution/motion.py), [`_leave_taught_station`](../../ros2_ws/src/gmp_skills/gmp_skills/execution/motion.py) |
 | 관절 이송 | `transfer_joint_vel_deg_s=60`, `transfer_joint_acc_deg_s2=100`; 실행 시 `vel_scale` 적용 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [DRL·DIO 일지](2026-09-23_DRL_고정경로_DIO.md) |
 | DRL 이동 속도 | 관절 60°/s·100°/s², 병진 250 mm/s·1000 mm/s², 회전 80.625°/s·322.5°/s². `vel_scale`을 속도·가속도에 적용하며 1.0이면 DRL 기준값. ROS 실물 재검증 필요 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [dsr_arm.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/dsr_arm.py) |
 | 그리퍼 | 기본 백엔드 DIO. DO1/2 개폐, 약통 `DI1=1`, 스쿱 `DI1=DI2=1` 뒤 0.8초 안정, 열림 `DI1=0`. 폭·파지력은 측정/설정하지 않으며 폭 지문은 `fingerprint_tolerance_mm=0`으로 비활성 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [rg2_gripper.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/rg2_gripper.py) |
@@ -20,7 +20,13 @@
 | 스쿱 최소 깊이 | `dosing.min_fraction=0.10`, `scooping.A.min_fraction=0.10`. 중복 선언은 남아 있으므로 항상 함께 바꿔야 한다 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [#222](https://github.com/Jik-Kim/auto-pharmacist/issues/222) |
 | Scoop Action 종료 코드 | 내부 시간 초과는 ABORTED, 실제 클라이언트 취소만 CANCELED | [skill_node.py](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py), [PR #236](https://github.com/Jik-Kim/auto-pharmacist/pull/236) |
 
+## 코드 탐색
+- ROS 입출력: [skill_node.py](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py).
+- 실제 실행: [runtime.py](../../ros2_ws/src/gmp_skills/gmp_skills/execution/runtime.py)의 `handlers` → `motion/safety/scooping/weighing` 실행 객체. 공유 상태는 `execution/context.py` 한 곳에 둔다.
+- 실행 진입점·ROS 계약·단일 워커 유지. [구조와 호출 순서](../../ros2_ws/src/gmp_skills/README.md).
+
 ## 검증 기준선
+- 9/28 실행 객체 분리: 회귀·구성 테스트 **490건 통과**, `colcon build --symlink-install --packages-select gmp_skills` 성공, 설치 후 기존 진입점·Job import 확인. 공정 그림 재생성 diff 없음. 실물 구동 미수행. [작업 일지](2026-09-28_스킬_호출흐름_주석.md)
 - 9/28 호출 흐름 및 함수 74개 역할 주석 추가: 실행 AST 동일·구문 검사 통과. 동작/현행값 변경 없음. [작업 일지](2026-09-28_스킬_호출흐름_주석.md)
 - 9/23 DRL 속도 정합화: `gmp_skills` 모의 테스트 **488건 통과**. 배율 1.0/0.2에서 관절·병진·회전 명령값, 초기 속도 설정, B 계측용 기존 생성자 호출 호환성을 확인했다. 공정 그림 재생성 diff 없음. 새 속도의 ROS 실물 검증은 미수행.
 - `gmp_skills` 모의 테스트 **474건 통과**. Python 구문·YAML/XML 파싱·diff 공백 검사와 공정 다이어그램 재생성도 통과했다. [DRL·DIO 일지](2026-09-23_DRL_고정경로_DIO.md)
