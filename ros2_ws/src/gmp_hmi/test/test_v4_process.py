@@ -357,16 +357,20 @@ class FakeGoal:
 def test_set_end_order_is_queued_and_starts_after_nudge(process):
     """계약 v1.9 — 세트 끝(FINISH·폐기 반송·NUDGE_WAIT)의 RunBatch 주문은 1건 예약된다."""
     assert order(process, A=79).accepted
+    first = process.batch_id
     run_until(process, lambda: process.step == 'FINISH')
     request, accepted = queue_request(process, B=79)      # 반송 중(RUNNING)에도 예약
     assert accepted and process.queued['batch_id'] == request.recipe.batch_id
-    assert events(process, 'ORDER_QUEUED')[-1].text.startswith(request.recipe.batch_id)
+    queued_event = events(process, 'ORDER_QUEUED')[-1]
+    # 예약 이벤트는 예약 주문 ID 로, SET_NEXT 는 끝난 세트(앞 배치) ID 로 남는다 (C #303 f654f12)
+    assert queued_event.text.startswith(request.recipe.batch_id) and queued_event.batch_id == request.recipe.batch_id
     assert not queue_request(process, C=79)[1]            # 1건만
     assert '이미 예약' in events(process, 'TEST_ORDER_REJECTED')[-1].text
     run_until(process, lambda: process.nudge_waiting)
     assert process.note == f'NUDGE_WAIT — 세트 완료, 다음 주문 {request.recipe.batch_id} 예약 — 건드리면 시작'
     nudge(process)
-    assert f'예약 주문 {request.recipe.batch_id} 시작' in events(process, 'SET_NEXT')[-1].text
+    set_next = events(process, 'SET_NEXT')[-1]
+    assert f'예약 주문 {request.recipe.batch_id} 시작' in set_next.text and set_next.batch_id == first
     # 앞 배치가 끝나고 예약이 시작되기 전 — 슬롯이 비어도 새치기 주문은 받지 않는다 (process_node)
     assert process.mode == DONE and not order(process, C=79).accepted
     assert '이미 예약' in events(process, 'TEST_ORDER_REJECTED')[-1].text
@@ -386,7 +390,8 @@ def test_queued_order_dropped_when_set_ends_without_nudge_or_cancelled(process):
     goal = FakeGoal(request)
     result = process._execute_batch(goal)
     assert goal.ended == 'abort' and result.result == 'ABORTED' and '넛지 없이 끝남(ABORTED)' in result.message
-    assert events(process, 'ORDER_DROPPED')[-1].level == CellEvent_WARN(process)
+    dropped = events(process, 'ORDER_DROPPED')[-1]
+    assert dropped.level == CellEvent_WARN(process) and dropped.batch_id == request.recipe.batch_id
     assert process.queued is None and process.batch_id != request.recipe.batch_id
     # 예약 주문 자체의 취소는 CANCELED 로 끝난다.
     assert order(process, A=79).accepted
@@ -394,6 +399,7 @@ def test_queued_order_dropped_when_set_ends_without_nudge_or_cancelled(process):
     request, _ = queue_request(process, B=79)
     goal = FakeGoal(request, cancel=True)
     assert process._execute_batch(goal).message == '예약 주문 취소 요청' and goal.ended == 'canceled'
+    assert events(process, 'ORDER_DROPPED')[-1].batch_id == request.recipe.batch_id
     assert process.mode == PAUSED and process.nudge_waiting            # 진행 배치는 그대로
 
 

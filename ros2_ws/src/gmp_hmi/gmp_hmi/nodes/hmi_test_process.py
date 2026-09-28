@@ -196,9 +196,10 @@ class HmiTestProcess(Node):
         self._publish_inventory()
         self.pub_state.publish(self._state_message())
 
-    def _event(self, code, text, level=CellEvent.INFO):
+    def _event(self, code, text, level=CellEvent.INFO, batch_id=None):
+        # 예약 주문의 ORDER_QUEUED·ORDER_DROPPED 는 그 예약 ID 로 낸다 — 진행 배치 기록에 붙지 않게 (C #303 f654f12)
         self.pub_event.publish(self._stamp(CellEvent(
-            batch_id=self.batch_id, code=code, text=text, level=level)))
+            batch_id=self.batch_id if batch_id is None else batch_id, code=code, text=text, level=level)))
 
     @staticmethod
     def _material_station(material_id):
@@ -248,7 +249,7 @@ class HmiTestProcess(Node):
         self.queued = dict(request=goal_request, batch_id=recipe.batch_id, done=self.batch_done)
         if self.nudge_waiting:
             self.note = self._set_end_note()
-        self._event('ORDER_QUEUED', f'{recipe.batch_id} — 세트 끝 넛지 뒤 시작')
+        self._event('ORDER_QUEUED', f'{recipe.batch_id} — 세트 끝 넛지 뒤 시작', batch_id=recipe.batch_id)
         self._state()
         return True, ''
 
@@ -382,7 +383,7 @@ class HmiTestProcess(Node):
             with self.lock:
                 reason = self._take_queued(goal_handle.is_cancel_requested)
                 if reason:
-                    self._event('ORDER_DROPPED', reason, CellEvent.WARN)
+                    self._event('ORDER_DROPPED', reason, CellEvent.WARN, batch_id=queued['batch_id'])
             if reason:
                 if goal_handle.is_cancel_requested:
                     goal_handle.canceled()

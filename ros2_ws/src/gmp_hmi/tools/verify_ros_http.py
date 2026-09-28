@@ -304,8 +304,13 @@ class RosHttpCheck:
         time.sleep(1.0)
         if not self.mode('PAUSED',first): raise CheckFailed('NUDGE 없이 세트가 끝났거나 예약 취소가 진행 배치를 멈춤')
         self.finish_set(first)
-        self.wait('SET_DONE·SET_NEXT·ORDER_QUEUED·ORDER_DROPPED 기록',lambda:{'SET_DONE','SET_NEXT','ORDER_QUEUED','ORDER_DROPPED'}<=
+        self.wait('SET_DONE·SET_NEXT 기록',lambda:{'SET_DONE','SET_NEXT'}<=
                   {e.get('code') for e in self.get('/batch/'+first).get('events',[])})
+        # 예약 이벤트는 예약 주문 ID 로 남는다(C #303 f654f12). 시작 못 한 예약은 batches 행이 없어 /events 로 찾는다.
+        self.wait('ORDER_QUEUED·ORDER_DROPPED 기록 (예약 주문 ID)',lambda:{'ORDER_QUEUED','ORDER_DROPPED'}<=
+                  {e.get('code') for e in self.get('/events?query='+parse.quote(queued,safe='')) if e.get('batch_id')==queued})
+        if any(e.get('code') in ('ORDER_QUEUED','ORDER_DROPPED') for e in self.get('/batch/'+first).get('events',[])):
+            raise CheckFailed('예약 이벤트가 진행 배치 기록에 붙음')
         self.report('세트 끝 NUDGE_WAIT — PAUSED·SET_COMPLETE·주문 1건 예약·중복 거부·예약 취소(ORDER_DROPPED) → NUDGE 로만 DONE')
         rec=self.wait('정상 SQLite 기록',lambda:self.record(first))
         subjects={w.get('subject') for w in rec['weights']}
