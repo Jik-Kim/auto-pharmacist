@@ -27,7 +27,7 @@
   - **시연 가능 최소 조건 = #287 머지 + D-35 적용** (B, 9/25). #287 전에는 첫 스쿱에서 무한 보충 루프다.
   - ⛔ **`dosing.fixed_scoop` 를 끄지 말 것** (D-35 도 유지) — B 가 한 번 제안했다가 철회했다(9/24 팀장 지적). 세 원료가 모두 `taught_fixed` 이고 A 가 깊이 1.0 외를 거부하므로, 끄면 `decide()` 가 첫 보충에서 부분 깊이를 내 **배치가 ERROR 로 죽는다** — 지금보다 나쁘다.
   - #272 는 원료 **A 만** 쟀다. B·C 는 스쿱 폭이 달라 1회량이 다를 수 있다(B 최우선 과제). 측정이 D-35 값 ±5 g 밖이면 원료별로 다시 결정한다 — 그러면 레시피(D)와 C 시험의 고정값도 원료별로 갈라야 한다.
-- **계약 v1.9 세트 끝 주문 예약 (9/28)** — C 구현 `feat/nudge-wait-order-queue`(#287 위). 남은 것: ① 팀 채널 공지·영향 담당(D) 승인 ② **D 소비** — `canStartOrder` 에 세트 끝 상태 허용, 「물리적 완료 확인 대기」 거부 완화, 진행 goal 과 예약 goal 을 따로 추적(취소 대상 분리), `ORDER_QUEUED`·`ORDER_DROPPED` 표시. ③ D #295 가 짚은 「폐기 판정 즉시 DISCARDED/DONE 발행」(record_node 가 반송 전에 배치를 닫음)은 **별건으로 남았다**.
+- **계약 v1.9 세트 끝 주문 예약 (9/28)** — C 구현 `feat/nudge-wait-order-queue`(#287 위). 남은 것: ① 팀 채널 공지·영향 담당(D) 승인 ② **D 소비** — `canStartOrder` 에 세트 끝 상태 허용, 「물리적 완료 확인 대기」 거부 완화, 진행 goal 과 예약 goal 을 따로 추적(취소 대상 분리), `ORDER_QUEUED`·`ORDER_DROPPED` 표시. ③ ~~D #295 가 짚은 「폐기 판정 즉시 DISCARDED/DONE 발행」은 별건으로 남았다~~ → `fix/discard-done-at-end` 로 처리(9/28). 이 브랜치의 `_at_set_end` 는 그에 맞춰 mode 대신 step 만 본다(`6305175`).
 - 붓기 뒤 잔량 계량(WEIGH_RESIDUAL) 제거 검토 — 9/29 잔량 실측 뒤 결정(조장 제기). 계량은 `actual_g` 누적·`decide()`·`ScoopCycle.post_pour` 자리라 빼면 계약 변경이다.
 - #228·#242 (D): DONE_UNMEASURED 소비 4곳, 진행 스트립 INVALID 「완료」 표시 — C 는 대기.
 - 계량 경로 전체를 태우는 무효 계량 통합 시험(후속). **막힘 해소** — `fake_skill_node` 에 무효 손잡이가 필요해 `test/t6-fault-injection` 과 같은 파일에서 충돌하던 것이, 양쪽 다 머지돼 지금은 가능하다.
@@ -46,7 +46,7 @@
 - 빈 verdict ≠ 미측정. 첫 사이클 TIMEOUT 뒤 전량 반환은 `actual_g` 0 이 참값 → UNDER 가 맞고 INVALID 는 거짓(#241 시험 2건이 고정).
 - 교착 구간: `decide()` 하한 × 반환 가드 → 최소채취 > 2×허용오차 일 때 (허용오차, 최소채취−허용오차) 구간에서 스쿱↔반환 반복. 조건 자체는 `gmp_dosing/test/test_dosing.py` 가 운영 레시피로 지킨다(B 소관) — 여기서 겹쳐 재지 않는다.
 - 설정 dataclass 는 키워드 인자만(AGENTS). `.msg` 바꾼 브랜치는 **워크트리 안에서** `colcon build --packages-select gmp_interfaces --cmake-force-configure` 뒤 시험. 공유 install 갈아끼우기 금지.
-- **9/28 전체 실행 2회에서 1건씩 실패(매번 다른 시험: `test_qa_rejects_invalid_decision_value` · `test_refill_wait_with_nudge_and_enter_needs_one_exit`)** — 다른 세션 없이였다. 단독 5/5, `test_process_node.py` 를 변경 전(#287)·후로 **번갈아 3회씩 둘 다 52/52**, 이어서 전체 215/8 깨끗. 재현되지 않아 원인 미확정 — **다시 보이면 이 줄부터** 보고, 변경 전후를 같은 조건에서 번갈아 잰다.
+- **9/28 전체 실행 2회에서 1건씩 실패(매번 다른 시험: `test_qa_rejects_invalid_decision_value` · `test_refill_wait_with_nudge_and_enter_needs_one_exit`)** — 다른 세션 없이였다. 단독 5/5, `test_process_node.py` 를 변경 전(#287)·후로 **번갈아 3회씩 둘 다 52/52**, 이어서 전체 215/8 깨끗. 재현되지 않아 원인 미확정 — **다시 보이면 이 줄부터** 보고, 변경 전후를 같은 조건에서 번갈아 잰다. → **앞의 것은 원인 확정**: 예약 변경이 없는 `fix/discard-done-at-end` 에서도 깨졌고, `fake.nudge()`(DDS) 도착 전에 ENTER 를 부르는 시험 경합이었다(`9b8590c` 로 수정). `test_qa_rejects…` 1회는 여전히 미확정.
 - **NUDGE 계열 시험은 경합에 약하다.** 다른 세션과 겹쳐 돌면 무더기로 깨진다 (9/23: 9건 실패 → 단독 재실행 205/6 전부 통과). **실행 시간이 평소의 2~3배면 경합을 의심한다** — 84 s 가 224 s 였다. 실패를 볼 수 있는 실행에는 `tail` 을 붙이지 말 것 (9/23 에 `tail -4` 로 9건 중 3건만 남겨 판단이 한 번 막혔다). `-rf` 로 요약을 뽑는다.
 - gmp_hmi 를 gmp_process 와 **같은 pytest 실행**에 넣으면 노드 경합으로 `test_scoop_cycle_attempt_numbers_are_unique_per_material` 이 `FORCE_LIMIT @PICK_CONTAINER` 로 깨진다(격리 3/3 통과, #242 코멘트). 기준선은 패키지별로 따로 잰다.
 - 스크래치패드는 통째로 지워질 수 있다 — 멈추기 전 커밋·푸시.
