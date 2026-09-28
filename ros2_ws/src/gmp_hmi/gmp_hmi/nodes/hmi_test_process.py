@@ -268,6 +268,9 @@ class HmiTestProcess(Node):
     def _validate_batch(self, recipe):
         if self.nudge_waiting:
             return False, '세트 완료 — 로봇을 건드리면 다음 주문을 받는다 (NUDGE_WAIT)', None
+        if self.queued is not None:
+            # 예약이 있으면 슬롯이 잠깐 비어도 그 주문이 먼저다 — 새치기로 넛지 근거가 바뀌지 않게 (process_node)
+            return False, f'다음 주문 {self.queued["batch_id"]} 이 이미 예약돼 있다 — 넛지 뒤 시작', None
         if self.mode not in (CellState.IDLE, CellState.DONE, CellState.ERROR):
             return False, '시험 배치가 이미 실행 또는 대기 중입니다.', None
         if self.idle_nudge:

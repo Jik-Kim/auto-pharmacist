@@ -59,12 +59,15 @@ LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 TOPICS = ('state', 'weight', 'gripper', 'dispense_result', 'deviation', 'scoop_cycle', 'event')
 # 계약 v1.9 — 결과가 정해지고 반송·넛지 대기만 남은 구간. 이때의 RunBatch 주문은 공정이 1건 예약한다.
 SET_END_STEPS = ('FINISH', 'DISCARDED', 'NUDGE_WAIT')
+QUEUE_DROP_SHOW_S = 60.0   # 시작 못 한 예약의 사유를 화면에 두는 시간
 
 
 def order_queueable(state):
     """세트 끝 구간이라 새 주문이 예약되는가(v1.9). 배치가 아직 살아 있는(RUNNING·PAUSED) 반송·넛지 대기만이다 —
-    끝난 배치의 `DONE/DISCARDED` 는 예약이 아니라 보통 주문이다."""
-    return state.get('step') in SET_END_STEPS and state.get('mode') in ('RUNNING', 'PAUSED')
+    끝난 배치의 `DONE/DISCARDED` 는 예약이 아니라 보통 주문이다. 세트 끝이어도 인터락 ENTER·접촉 정지 중이면
+    C 가 거부하므로(`_pause`·`_nudge_paused`) 막는다 — NUDGE_WAIT 자체의 정지(SET_COMPLETE)만 허용."""
+    return (state.get('step') in SET_END_STEPS and state.get('mode') in ('RUNNING', 'PAUSED') and
+            state.get('pause_reason', '') in ('', 'SET_COMPLETE'))
 
 
 class CommandUnavailable(RuntimeError):
@@ -177,6 +180,7 @@ class HmiRosNode(Node):
         # 세트 끝 예약 주문(v1.9). 진행 중 배치와 따로 추적해야 취소 대상이 섞이지 않는다.
         # dict(batch_id, handle, actor, detail, pending, cancel_state) — 공정 상태가 이 batch_id 로 바뀌면 진행 배치로 옮긴다.
         self._queued = None
+        self._queued_last = None    # 시작 못 하고 끝난 예약의 사유 — 운영자가 이유를 바로 보게 잠깐 보여 준다
         self.lock = threading.Lock()
         self.safety_recovery = SafetyRecovery()
         self.snap = {'state': {}, 'gripper': {}, 'weights': [], 'results': [], 'deviations': {}, 'events': [], 'scoop_cycles': []}
@@ -667,10 +671,13 @@ class HmiRosNode(Node):
         queued = None if q is None else dict(
             batch_id=q['batch_id'], accepted=not q['pending'], cancel_state=q['cancel_state'],
             can_cancel=bool(q['handle'] is not None and not q['cancel_state']))
+        last = self._queued_last
+        dropped = None if q is not None or last is None or time.monotonic() - last['at'] > QUEUE_DROP_SHOW_S else {
+            k: last[k] for k in ('batch_id', 'result', 'message')}
         return dict(batch_id=self._batch_id, can_cancel=bool(owned and active and not self._batch_cancel_state),
                     cancel_state=self._batch_cancel_state,
                     submitting=bool(self._batch_submission_pending or (q and q['pending'])),
-                    reason=reason, queued=queued)
+                    reason=reason, queued=queued, queued_dropped=dropped)
 
     def _send_batch_goal(self, goal, batch_id, timeout_s=3.0, detail=None, actor='', queued=False):
         """응답이 늦어도 수락 콜백을 유지한다. 무응답 주문을 다시 전송하지 않는다.
@@ -738,6 +745,9 @@ class HmiRosNode(Node):
             if self._queued and self._queued['batch_id'] == batch_id:
                 # 예약이 시작되지 못하고 끝났다(ORDER_DROPPED·예약 취소) — 진행 배치 표시는 건드리지 않는다.
                 self._queued = None
+                dropped = future.result().result
+                self._queued_last = dict(batch_id=batch_id, result=dropped.result, message=dropped.message,
+                                         at=time.monotonic())
                 current = False
             elif self._batch_id == batch_id:
                 self._batch_handle = None

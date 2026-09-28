@@ -367,6 +367,9 @@ def test_set_end_order_is_queued_and_starts_after_nudge(process):
     assert process.note == f'NUDGE_WAIT — 세트 완료, 다음 주문 {request.recipe.batch_id} 예약 — 건드리면 시작'
     nudge(process)
     assert f'예약 주문 {request.recipe.batch_id} 시작' in events(process, 'SET_NEXT')[-1].text
+    # 앞 배치가 끝나고 예약이 시작되기 전 — 슬롯이 비어도 새치기 주문은 받지 않는다 (process_node)
+    assert process.mode == DONE and not order(process, C=79).accepted
+    assert '이미 예약' in events(process, 'TEST_ORDER_REJECTED')[-1].text
     with process.lock:
         assert process._take_queued(False) == ''
     started, _ = process._start_batch(request.recipe)

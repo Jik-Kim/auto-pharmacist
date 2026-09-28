@@ -181,6 +181,10 @@ def test_set_end_order_is_queued_apart_from_running_goal_then_promoted(node):
     # 끝난 배치의 DONE/DISCARDED 는 예약이 아니라 보통 주문이다.
     assert not order_queueable(dict(step='DISCARDED', mode='DONE'))
     assert order_queueable(dict(step='DISCARDED', mode='RUNNING')) and order_queueable(dict(step='FINISH', mode='RUNNING'))
+    # 세트 끝이어도 인터락 ENTER·접촉 정지 중이면 C 가 거부한다 — NUDGE_WAIT 자체의 정지만 허용.
+    assert order_queueable(dict(step='NUDGE_WAIT', mode='PAUSED', pause_reason='SET_COMPLETE'))
+    assert not order_queueable(dict(step='NUDGE_WAIT', mode='PAUSED', pause_reason='INTERLOCK'))
+    assert not order_queueable(dict(step='FINISH', mode='PAUSED', pause_reason='NUDGE'))
 
 
 def test_queued_cancel_and_drop_leave_running_goal_alone(node):
@@ -197,3 +201,5 @@ def test_queued_cancel_and_drop_leave_running_goal_alone(node):
     control = node.snapshot()['batch_control']
     assert control['queued'] is None and node._batch_handle is first and control['can_cancel']
     assert 'run_batch' not in node.snapshot() or node.snapshot()['run_batch'].get('result') != 'ABORTED'
+    # 시작 못 한 예약의 사유를 잠깐 보여 준다 — 운영자가 왜 시작 안 됐는지 바로 안다.
+    assert control['queued_dropped'] == dict(batch_id=queued_id, result='ABORTED', message='예약 주문 취소 요청')
