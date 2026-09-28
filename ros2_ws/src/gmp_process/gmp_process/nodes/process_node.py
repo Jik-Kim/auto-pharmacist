@@ -197,6 +197,15 @@ class ProcessNode(Node):
         self._seq = 0
         self._used_batch_ids = set()  # 이 프로세스 세션 내 중복 ID 금지
         self._execution_uncertain = False  # 스킬 응답 유실 후 새 주문으로 겹쳐 실행하지 않는다
+        # 세트 끝 구간(반송·NUDGE_WAIT)에 들어온 **다음 주문 한 건** (9/28 조장 제기·사용자 결정 A안).
+        # 거부하면 운영자가 「주문 → 거부 → 넛지 → 다시 주문」을 해야 했다. 예약만 해 두고 넛지로
+        # 세트가 끝나면 바로 시작한다 — 넛지가 곧 회수 확인이라는 D-23 의미는 그대로다.
+        self._queued = None                # (spec, batch_id)
+        self._queued_goal = None           # goal_callback 이 받은 요청 — handle 과 짝을 짓는다
+        self._queued_handle = None
+        self._queued_cancel = threading.Event()
+        self._set_next = False             # 지금 배치가 넛지(SET_NEXT)로 끝났다 — 예약을 시작할 근거
+        self._slot_cv = threading.Condition(self._order_lock)   # 슬롯이 비면 예약 주문을 깨운다
         self.batch_server = ActionServer(
             self, RunBatch, 'run_batch', self._execute_batch,
             goal_callback=self._goal_batch, cancel_callback=self._cancel_batch,
@@ -352,21 +361,25 @@ class ProcessNode(Node):
         if self._stop.is_set() or not rclpy.ok():
             raise BatchCancelled('공정 노드 종료 — 자동 재개 없음')
 
-    def _reserve_batch(self, recipe):
-        """_order_lock 안에서 호출. 검증 실패 시 슬롯·현재 배치를 변경하지 않는다."""
-        if self._stop.is_set() or not rclpy.ok():
-            raise ValueError('공정 노드 종료 중')
-        if self._safety_stop:
-            raise ValueError('로봇 안전 정지 — 복구 필요: ' + self._safety_stop_reason)
-        if self._execution_uncertain:
-            raise ValueError('이전 스킬 종료 미확인 — 현장 확인 및 노드 재기동 필요')
-        if (self._reserved or (self._thread and self._thread.is_alive()) or
-                (self.fsm and self.fsm.mode in ('RUNNING', 'PAUSED', 'DEVIATION'))):
-            if self.fsm and self.fsm.state == 'NUDGE_WAIT':
-                raise ValueError('세트 완료 — 로봇을 건드리면 다음 주문을 받는다 (NUDGE_WAIT)')
-            raise ValueError('기존 배치 실행 / 종료 처리 중')
-        if self._pause or self._nudge_paused:
-            raise ValueError('구역 진입 / 일시 정지 중에는 새 주문을 받지 않습니다')
+    def _at_set_end(self) -> bool:
+        """지금 배치의 결과가 정해지고 반송·넛지 대기만 남았나 — 다음 주문을 예약해 둘 수 있는 구간.
+
+        FINISH(완성품 반송) · DISCARDED(폐기 판정 뒤 폐기함 반송, mode DONE) · NUDGE_WAIT.
+        루프가 살아 있을 때만이다 — 끝난 배치의 `DISCARDED` 가 남아 있어도 세트 끝이 아니다.
+        """
+        f = self.fsm
+        if not f or not (self._thread and self._thread.is_alive()):
+            return False
+        return f.state in ('FINISH', 'NUDGE_WAIT') or (f.state == 'DISCARDED' and f.mode == 'DONE')
+
+    def _set_end_note(self) -> str:
+        """세트 끝 대기 사유. HMI 가 앞머리 `NUDGE_WAIT —` 로 사유를 가르므로 앞은 바꾸지 않는다."""
+        if self._queued is not None:
+            return f'NUDGE_WAIT — 세트 완료, 다음 주문 {self._queued[1]} 예약 — 건드리면 시작'
+        return 'NUDGE_WAIT — 세트 완료, 건드리면 다음 세트'
+
+    def _parse_order(self, recipe):
+        """레시피 검증과 batch_id 발급. 슬롯은 건드리지 않는다."""
         spec = parse_recipe({'product': recipe.product,
                              'items': [{'material_id': i.material_id, 'target_g': i.target_g,
                                         'tol_pct': i.tol_pct} for i in recipe.items]})
@@ -384,7 +397,11 @@ class ProcessNode(Node):
                     break
         if batch_id in self._used_batch_ids:
             raise ValueError('이 세션에서 이미 사용한 batch_id')
-        self._reserved_recipe = (spec, batch_id)
+        return spec, batch_id
+
+    def _claim_slot(self, order):
+        """_order_lock 안에서 호출. 검증이 끝난 주문을 실행 슬롯에 올린다."""
+        self._reserved_recipe = order
         self._interlock_exit.clear()
         self._batch_cancel.clear()
         self._batch_safety_stop.clear()
@@ -392,9 +409,46 @@ class ProcessNode(Node):
         self._batch_outcome = ''
         self._reserved = True
 
+    def _reserve_batch(self, recipe, *, queue=False) -> bool:
+        """_order_lock 안에서 호출. 검증 실패 시 슬롯·현재 배치를 변경하지 않는다.
+
+        `queue=True`(RunBatch 경로)이면 세트 끝 구간(`_at_set_end`)의 주문을 거부하지 않고
+        다음 주문 칸에 **예약**한다. 예약이면 True, 바로 슬롯을 잡았으면 False 를 돌려준다.
+        `SubmitOrder` 는 접수만 하고 끝나는 서비스라 예약을 걸어 둘 곳이 없어 종전대로 거부한다.
+        """
+        if self._stop.is_set() or not rclpy.ok():
+            raise ValueError('공정 노드 종료 중')
+        if self._safety_stop:
+            raise ValueError('로봇 안전 정지 — 복구 필요: ' + self._safety_stop_reason)
+        if self._execution_uncertain:
+            raise ValueError('이전 스킬 종료 미확인 — 현장 확인 및 노드 재기동 필요')
+        busy = bool(self._reserved or (self._thread and self._thread.is_alive()) or
+                    (self.fsm and self.fsm.mode in ('RUNNING', 'PAUSED', 'DEVIATION')))
+        if busy and not (queue and self._at_set_end()):
+            if self.fsm and self.fsm.state == 'NUDGE_WAIT':
+                raise ValueError('세트 완료 — 로봇을 건드리면 다음 주문을 받는다 (NUDGE_WAIT)')
+            raise ValueError('기존 배치 실행 / 종료 처리 중')
+        if self._queued is not None:
+            # 예약이 있으면 슬롯이 잠깐 비어도 그 주문이 먼저다 — 새치기로 넛지 근거가 바뀌지 않게
+            raise ValueError(f'다음 주문 {self._queued[1]} 이 이미 예약돼 있다 — 넛지 뒤 시작')
+        if self._pause or self._nudge_paused:
+            raise ValueError('구역 진입 / 일시 정지 중에는 새 주문을 받지 않습니다')
+        order = self._parse_order(recipe)
+        if not busy:
+            self._claim_slot(order)
+            return False
+        self._queued = order
+        self._queued_cancel.clear()
+        if self.fsm.state == 'NUDGE_WAIT' and self._nudge_waiting:
+            self.note = self._set_end_note()
+        self.event('INFO', 'ORDER_QUEUED', f'{order[1]} — 세트 끝 넛지 뒤 시작')
+        self._pub_state()
+        return True
+
     def _start_reserved_batch(self):
         spec, self.batch_id = self._reserved_recipe
         self._used_batch_ids.add(self.batch_id)
+        self._set_next = False
         self._reset_batch()
         self._last_result = DispenseResult()
         fingerprint = ToolFingerprint(scoop_widths_mm=self.smap.widths, cup_width_mm=self.p('gripper.cup_width_mm'),
@@ -409,7 +463,8 @@ class ProcessNode(Node):
     def _goal_batch(self, request):
         with self._order_lock:
             try:
-                self._reserve_batch(request.recipe)
+                if self._reserve_batch(request.recipe, queue=True):
+                    self._queued_goal = request
             except (ValueError, KeyError) as e:
                 self.get_logger().warning(f'RunBatch 거부: {e}')
                 return GoalResponse.REJECT
@@ -417,20 +472,78 @@ class ProcessNode(Node):
 
     def _accept_batch(self, handle):
         with self._order_lock:
-            self._batch_handle = handle
+            # rclpy 는 goal_callback 에 준 요청 객체를 그대로 handle.request 로 둔다 (server.py)
+            if self._queued_goal is not None and getattr(handle, 'request', None) is self._queued_goal:
+                self._queued_handle = handle
+            else:
+                self._batch_handle = handle
         # rclpy execute callback이 시작한 뒤 worker를 시작한다.
         # 수락 직후 cancel이 와도 _batch_cancel을 초기화하지 않는다.
         handle.execute()
 
     def _cancel_batch(self, handle):
         with self._order_lock:
+            if handle is self._queued_handle:
+                self._queued_cancel.set()
+                self._slot_cv.notify_all()
+                return CancelResponse.ACCEPT
             if (handle is not self._batch_handle or self._batch_done.is_set() or
                     not self._reserved):
                 return CancelResponse.REJECT
             self._batch_cancel.set()
             return CancelResponse.ACCEPT
 
+    def _promote_queued(self, handle) -> str:
+        """예약 주문의 차례를 기다렸다가 실행 슬롯에 올린다. 못 올리면 사유를 돌려준다.
+
+        직전 배치가 **넛지로 정상 종료**됐을 때만 시작한다 — 넛지가 곧 회수 확인이다 (D-23).
+        취소·안전 정지·오류로 끝났으면 완성품 칸이 비었다는 근거가 없으므로 시작하지 않는다.
+        """
+        with self._slot_cv:
+            while ((self._reserved or (self._thread and self._thread.is_alive())) and
+                   not self._queued_cancel.is_set() and not self._stop.is_set()):
+                self._slot_cv.wait(0.2)
+            order = self._queued
+            self._queued = self._queued_goal = self._queued_handle = None
+            if self._queued_cancel.is_set():
+                return '예약 주문 취소 요청'
+            if self._stop.is_set() or not rclpy.ok():
+                return '공정 노드 종료 — 예약 주문 시작 안 함'
+            if not (self._set_next and self._batch_outcome in ('DONE', 'DONE_UNMEASURED', 'DISCARDED')):
+                return (f'직전 배치가 넛지 없이 끝남({self._batch_outcome or "?"}) — '
+                        f'회수 확인이 없어 예약 주문 {order[1]} 을 시작하지 않는다')
+            if self._safety_stop:
+                return '로봇 안전 정지 — 복구 필요: ' + self._safety_stop_reason
+            if self._execution_uncertain:
+                return '이전 스킬 종료 미확인 — 현장 확인 및 노드 재기동 필요'
+            if self._pause or self._nudge_paused:
+                return '구역 진입 / 일시 정지 중에는 새 주문을 받지 않습니다'
+            self._claim_slot(order)
+            self._batch_handle = handle
+            return ''
+
+    def _end_queued(self, handle, reason: str):
+        """시작하지 못한 예약 주문을 끝낸다 — 취소 요청이면 CANCELED, 그 외 ABORTED."""
+        self.event('WARN', 'ORDER_DROPPED', reason)
+        self.get_logger().warning(f'예약 주문 종료: {reason}')
+        if self._queued_cancel.is_set():
+            # cancel_callback 응답 뒤 rclpy가 CANCELING으로 전이할 틈을 준다 (아래 본 경로와 같다).
+            deadline = time.monotonic() + float(self.p('server_wait_s'))
+            while handle.is_active and not handle.is_cancel_requested and time.monotonic() < deadline:
+                time.sleep(0.01)
+        if handle.is_cancel_requested:
+            handle.canceled()
+        elif handle.is_active:
+            handle.abort()
+        return RunBatch.Result(success=False, result='ABORTED', message=reason)
+
     def _execute_batch(self, handle):
+        with self._order_lock:
+            queued = handle is self._queued_handle
+        if queued:
+            reason = self._promote_queued(handle)
+            if reason:
+                return self._end_queued(handle, reason)
         try:
             with self._order_lock:
                 self._start_reserved_batch()
@@ -466,6 +579,7 @@ class ProcessNode(Node):
                 self._batch_handle = None
                 self._reserved = False
                 self._reserved_recipe = None
+                self._slot_cv.notify_all()
 
     def _srv_submit(self, req, res):
         with self._order_lock:
@@ -753,12 +867,14 @@ class ProcessNode(Node):
             # 정지(PAUSE/RESUME)가 아니라 세트 경계(SET_DONE/SET_NEXT)다 — 반자동 운전의 설계된 대기 (D-23).
             if not self.get_parameter('safety.nudge_enabled').value:
                 self.event('INFO', 'SET_DONE', '세트 완료 — nudge 비활성이라 대기 없이 종료')
+                self._set_next = True
                 return {}
             with self._nudge_lock:
                 self._nudge_paused = False
                 self._nudge_go.clear()
                 self._nudge_waiting = True
-            self.note = 'NUDGE_WAIT — 세트 완료, 건드리면 다음 세트'
+            with self._order_lock:
+                self.note = self._set_end_note()      # 반송 중에 예약된 주문이 있으면 그 ID 를 보인다
             self._pub_state()
             self.event('INFO', 'SET_DONE', self.note)
             try:
@@ -768,7 +884,10 @@ class ProcessNode(Node):
                     self._nudge_waiting = False
                     self._nudge_go.clear()
             self.note = ''
-            self.event('INFO', 'SET_NEXT', '사람이 건드림 — 세트 종료, 다음 주문을 받는다')
+            with self._order_lock:
+                self._set_next = True
+                nxt = f'예약 주문 {self._queued[1]} 시작' if self._queued is not None else '다음 주문을 받는다'
+            self.event('INFO', 'SET_NEXT', f'사람이 건드림 — 세트 종료, {nxt}')
             return {}
         if k == 'measure':
             r = self._call_srv('measure', MeasureForce.Request(samples=int(self.p('scale.samples')),
@@ -960,6 +1079,7 @@ class ProcessNode(Node):
                     if self._batch_handle is None:  # SubmitOrder의 슬롯도 루프 종료까지 유지
                         self._reserved = False
                         self._reserved_recipe = None
+                        self._slot_cv.notify_all()
 
     def _fail(self, message: str):
         self.note = message

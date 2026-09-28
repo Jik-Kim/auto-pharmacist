@@ -1,4 +1,4 @@
-# Interfaces — 계약 v1.8 (2026-09-23)
+# Interfaces — 계약 v1.9 (2026-09-28)
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
@@ -22,6 +22,7 @@
 > **v1.7 (9/22 사용자 승인):** A 내부 읽기 전용 `GetCollisionSensitivity` 서비스를 추가한다. 벤더 원본을 보존하는 상속 플러그인이 기존 연결로 전역 충돌 감도를 조회하며, `skill_node`는 기대값 50%와 비교해 기동·복구 자가진단을 수행한다. 실물 검증은 별도다.
 > **v1.8 (9/23 조장 결정, #108):** `DispenseResult.verdict` 에 **`INVALID=3`** 을 추가한다. 계량 무효를 QA 가 승인해 **투입량을 모르는 채** 끝난 원료를 위한 값이다 — `UNDER`(모자랐다)와 다르다. **상수 추가이며 필드 레이아웃은 바뀌지 않는다**(기존 구독자의 역직렬화에 영향 없음). 다만 **모르는 열거값을 받는 쪽이 어떻게 보이는지는 소비자 문제**라 D 쪽 **두 곳이 같은 시점에 머지돼야 한다**. (1) `gmp_hmi/core/db.py:15` `VERDICTS` 에 `3: 'INVALID'` — 없으면 `db.py:122` 가 배치 기록에 문자열 `'3'` 을 저장하고 `hmi_web_node:339` 가 `'?'` 를 내보낸다. **기록 문제라 이것이 먼저다.** (2) `static/hmi.js:8` `verdict()` 의 배지 분류·한국어 라벨 — (1) 이 없으면 `hmi.js` 는 `'INVALID'` 가 아니라 `'?'` 를 받으므로 **(2) 는 (1) 에 딸린다**. 재고(`core/session_inventory.py` `observe`)는 `OK`·`OVER` 만 차감하므로 **거동이 바뀌지 않는다** — 지금 `UNDER` 도 제외되고 있다. 「미측정분만큼 재고가 실제보다 많게 보인다」는 전부터 있던 문제이고 v1.8 이 만들지 않는다(별건으로 D·조장이 정할 사안).
 > 배경: #213 결정 3 이 `WEIGH_RESIDUAL` 무효를 QA 로 보내면서 **「투입량을 모르는 원료」가 처음으로 도달 가능해졌고**, 그때까지 `verdict` 가 빈 채 `OK` 로 떨어지고 있었다(I-008). #225 가 임시로 `UNDER` 되매김을 넣어 막았고, v1.8 이 그것을 정확한 값으로 바꾼다. `INVALID` 는 `unmeasured > 0` 일 때만 나가며, 「안 들어갔다」(첫 사이클 TIMEOUT 등)는 그대로 `UNDER` 다.
+> **v1.9 (9/28 조장 제기·사용자 결정 A안 — 팀 채널 공지·영향 담당 D 승인 대기):** `RunBatch` Goal **수락의 의미**를 넓힌다. 세트 끝 구간(FINISH 반송·폐기 반송·`NUDGE_WAIT`)에 온 Goal 은 거부하지 않고 **다음 주문 1건으로 예약**한다 — 수락되지만 직전 배치가 **넛지(`SET_NEXT`)로 끝나야** 시작하고, 취소·안전 정지·오류로 끝나면 시작하지 않고 `result=ABORTED`(사유는 `message`)로 끝난다. 넛지가 곧 완성품 회수 확인이라는 D-23 의미를 지키기 위해서다. `CellEvent.code` 에 `ORDER_QUEUED`(INFO)·`ORDER_DROPPED`(WARN)를 추가한다. **메시지·서비스·액션 정의는 바뀌지 않는다.** `SubmitOrder` 는 접수만 하는 서비스라 예약을 걸어 둘 곳이 없어 종전대로 거부한다. 배경: 종전에는 대기 중 주문을 거부해 운영자가 「주문 → 거부 → 넛지 → 다시 주문」을 해야 했다.
 > **변경 절차:** 계약을 바꿔야 하면 **먼저 팀 채널에 알리고**, `gmp_interfaces` 와 이 문서를 **같은 커밋에서** 고친다. 리뷰는 영향받는 담당 전원, 최소 2명 승인 (PM 없음 — AGENTS 교차검수).
 
 ---
@@ -122,7 +123,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `ReturnMaterial` | process → skill | Goal `material_id`; Result `success`, `message`; Feedback `phase`(`APPROACH/TILT/HOLD`; `RETURN` 미발행). 동일 원료의 `return_start_posx` 직선 이동 → `return_end_posj` 관절 이동 후 끝 자세에서 종료. 반환 끝 관절 이동 시도부터 후속 Scoop은 연결 경로 구현 전까지 이동 없이 실패한다. 반환 동작 완료는 완전 배출량의 측정 보증이 아니다 |
 | `WeighHeld` | process → skill | Goal `tare_g`; Result `reading`, `success`, `message`; Feedback `phase`. 파지 이력의 원료를 확인해 `material_N.posx`에서 측정. 원료를 알 수 없으면 실패 |
 | `WeighContainer` | process → skill | Goal `tare_g`; Result `reading`, `success`, `message`; Feedback `phase`. 고정 `workbench`의 용기를 들어 측정하고 내려놓는다 |
-| `RunBatch` | HMI/CLI → process | Goal `recipe`; Result `success`, 완료 원료 수, 일탈 수, 종료 `result`, `message`; Feedback `state`, `last_result`. 접수만 하는 `SubmitOrder`와 달리 진행·최종 결과가 필요한 클라이언트용이다 |
+| `RunBatch` | HMI/CLI → process | Goal `recipe`; Result `success`, 완료 원료 수, 일탈 수, 종료 `result`, `message`; Feedback `state`, `last_result`. 접수만 하는 `SubmitOrder`와 달리 진행·최종 결과가 필요한 클라이언트용이다. **v1.9:** 세트 끝 구간의 Goal 은 1건 예약 — 직전 배치가 넛지로 끝나면 시작, 그 외 끝이면 `ABORTED`. 예약 중에는 피드백이 없고 대기 사유는 `CellState.note` 에 실린다 |
 
 ## 2. 확정된 값 — 더 논의하지 않는다
 
@@ -211,7 +212,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 
 **규칙**
 - 배치 종료 시 `records/<batch_id>.json` 으로 내보낸다 — **DB 가 원본, JSON 은 사본**(제출·인쇄용).
-- 사람 접촉(D-21): `skill_node` 가 `CellEvent(code='NUDGE', text='<|F| N>')` 발행 → process `RUNNING→PAUSED(NUDGE)`, 다음 `NUDGE` 로 재개 (`PAUSED→이전 상태`). 일탈이 아니라 이벤트다 — MTBI 분모에 들지 않는다. process 는 정지에 들어갈 때 `CellEvent(code='PAUSE', level=WARN, text='<이유> 정지 — …')`, 풀릴 때 `CellEvent(code='RESUME', text='<이유> 해제')` 를 낸다 (이유 `NUDGE` | `INTERLOCK`). HMI 타임라인·PAUSED 사유 표시용. **세트 경계(D-23)** 는 정지가 아니라 별도 코드다: 반송 뒤 `nudge_wait` 에서 기다리기 시작할 때 `CellEvent(code='SET_DONE', text='NUDGE_WAIT — 세트 완료, 건드리면 다음 세트')`, 사람이 건드려 배치가 끝날 때 `CellEvent(code='SET_NEXT')`. 그동안 `state.mode=PAUSED`, `step=NUDGE_WAIT`, 주문은 거부된다.
+- 사람 접촉(D-21): `skill_node` 가 `CellEvent(code='NUDGE', text='<|F| N>')` 발행 → process `RUNNING→PAUSED(NUDGE)`, 다음 `NUDGE` 로 재개 (`PAUSED→이전 상태`). 일탈이 아니라 이벤트다 — MTBI 분모에 들지 않는다. process 는 정지에 들어갈 때 `CellEvent(code='PAUSE', level=WARN, text='<이유> 정지 — …')`, 풀릴 때 `CellEvent(code='RESUME', text='<이유> 해제')` 를 낸다 (이유 `NUDGE` | `INTERLOCK`). HMI 타임라인·PAUSED 사유 표시용. **세트 경계(D-23)** 는 정지가 아니라 별도 코드다: 반송 뒤 `nudge_wait` 에서 기다리기 시작할 때 `CellEvent(code='SET_DONE', text='NUDGE_WAIT — 세트 완료, 건드리면 다음 세트')`, 사람이 건드려 배치가 끝날 때 `CellEvent(code='SET_NEXT')`. 그동안 `state.mode=PAUSED`, `step=NUDGE_WAIT`. **v1.9:** 이때(와 그 앞 반송 중)의 `RunBatch` 주문은 거부하지 않고 1건 예약한다 — `CellEvent(code='ORDER_QUEUED', text='<batch_id> — 세트 끝 넛지 뒤 시작')`, `note` 는 `NUDGE_WAIT — 세트 완료, 다음 주문 <batch_id> 예약 — 건드리면 시작`(앞머리 `NUDGE_WAIT —` 유지), 넛지 때 `SET_NEXT` 의 `text` 에 `예약 주문 <batch_id> 시작`. 직전 배치가 넛지 없이 끝나 예약을 시작하지 않으면 `CellEvent(WARN, code='ORDER_DROPPED', text=<사유>)`. `SubmitOrder` 는 종전대로 거부된다.
 - HMI 조작은 `CellEvent(code='HMI_ORDER'|'HMI_QA_APPROVE'|'HMI_QA_DISCARD'|'HMI_INTERLOCK_ENTER'|'HMI_INTERLOCK_EXIT', text='<actor> <detail>')` 로 발행한다. actor 가 비면 `unknown` — 시연에서는 반드시 ID 를 넣는다.
 - 지표(6절)는 `tools/report.py` 가 이 DB 에서만 읽는다. CSV 를 따로 두지 않는다 — 두 기록이 갈라지면 둘 다 못 믿는다.
 
