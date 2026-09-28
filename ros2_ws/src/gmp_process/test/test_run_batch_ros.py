@@ -139,6 +139,7 @@ def test_order_during_nudge_wait_is_queued_and_starts_on_nudge(rig):
     wait_until(lambda: proc._nudge_waiting,60)
     second=send('ROS-Q2');assert second.accepted,'세트 끝 주문은 예약된다'
     wait_until(lambda: any(e.code=='ORDER_QUEUED' for e in probe.events))
+    assert [e.batch_id for e in probe.events if e.code=='ORDER_QUEUED']==['ROS-Q2'],'예약 사건은 예약 주문의 기록이다'
     time.sleep(.3)
     assert proc.fsm.state=='NUDGE_WAIT' and proc.batch_id=='ROS-Q1','넛지 전에는 시작하지 않는다'
     assert 'ROS-Q2' in proc.note
@@ -147,7 +148,7 @@ def test_order_during_nudge_wait_is_queued_and_starts_on_nudge(rig):
     assert result(first.get_result_async(),60).result.result=='DONE'
     reply=result(second.get_result_async(),60)
     assert reply.status==GoalStatus.STATUS_SUCCEEDED and reply.result.result=='DONE'
-    assert any(e.code=='SET_NEXT' and 'ROS-Q2' in e.text for e in probe.events)
+    assert any(e.code=='SET_NEXT' and e.batch_id=='ROS-Q1' and 'ROS-Q2' in e.text for e in probe.events)
 
 
 def test_cancel_at_nudge_wait_drops_the_queued_order(rig):
@@ -164,6 +165,7 @@ def test_cancel_at_nudge_wait_drops_the_queued_order(rig):
     assert '넛지 없이' in reply.result.message
     assert proc.batch_id=='ROS-C1' and not any(c.startswith('move:') and 'ROS-C2' in c for c in fake.calls)
     wait_until(lambda: any(e.code=='ORDER_DROPPED' for e in probe.events))
+    assert [e.batch_id for e in probe.events if e.code=='ORDER_DROPPED']==['ROS-C2'],'시작 못 한 예약의 근거는 그 주문 기록에'
 
 
 def test_qa_discard_returns_discarded(rig):

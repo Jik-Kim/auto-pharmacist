@@ -409,6 +409,7 @@ def test_refill_enter_does_not_grant_on_paused_mode_alone(node):
 def _at_set_end(node, state='NUDGE_WAIT', mode='PAUSED'):
     """배치 1 이 세트 끝에 있는 모양 — 루프가 살아 있고 슬롯을 쥐고 있다."""
     node.fsm = NS(mode=mode, state=state, idx=0)
+    node.batch_id = 'B1'                            # 지금 배치 — 예약 사건이 이 ID 로 새면 안 된다
     node._thread = NS(is_alive=lambda: True)
     node._reserved = True
     node._nudge_waiting = state == 'NUDGE_WAIT'
@@ -436,6 +437,11 @@ def codes(node):
     return [e.code for e in node.published['event']]
 
 
+def batch_of(node, code):
+    """그 코드 이벤트들이 실린 batch_id — 예약 사건은 예약 주문 ID 여야 한다 (#303 조장 리뷰 P2)."""
+    return [e.batch_id for e in node.published['event'] if e.code == code]
+
+
 @pytest.mark.parametrize('state,mode', [('NUDGE_WAIT', 'PAUSED'), ('FINISH', 'RUNNING'),
                                         ('DISCARDED', 'RUNNING'), ('DISCARDED', 'DONE')])   # 폐기 반송: 수정 후·전
 def test_set_end_order_is_queued_not_rejected(node, state, mode):
@@ -444,7 +450,7 @@ def test_set_end_order_is_queued_not_rejected(node, state, mode):
     h = accept_queued(node, recipe('B2'))
     assert node._queued[1] == 'B2' and node._queued_handle is h
     assert node._batch_handle is batch1, '예약이 실행 중 배치의 handle 을 덮으면 안 된다'
-    assert 'ORDER_QUEUED' in codes(node)
+    assert batch_of(node, 'ORDER_QUEUED') == ['B2'], '예약 사건은 B1 이 아니라 예약 주문 B2 의 기록이다'
 
 
 def test_nudge_wait_note_names_the_queued_order(node):
@@ -488,7 +494,7 @@ def test_queued_order_is_dropped_unless_batch_ended_by_nudge(node, outcome, nudg
     assert r.result == 'ABORTED' and not r.success and h.terminal == 'aborted', r.message
     assert '넛지 없이' in r.message
     assert not node._reserved and node._queued is None
-    assert 'ORDER_DROPPED' in codes(node)
+    assert batch_of(node, 'ORDER_DROPPED') == ['B2'], '시작 못 한 B2 의 종료 근거가 B1 기록에 붙으면 안 된다'
     assert node._goal_batch(Message(recipe=recipe('B3'))) == 1, '버린 예약이 슬롯을 막으면 안 된다'
 
 
@@ -499,6 +505,7 @@ def test_queued_order_can_be_canceled_while_batch1_still_waits(node):
     h.is_cancel_requested = True
     r = node._execute_batch(h)                      # 배치 1 이 아직 넛지 대기여도 바로 돌아온다
     assert h.terminal == 'canceled' and r.result == 'ABORTED'
+    assert batch_of(node, 'ORDER_DROPPED') == ['B2'], '예약 취소도 B2 의 기록이다'
     assert node._reserved and node._batch_handle is not h, '배치 1 의 슬롯은 그대로다'
     assert node._queued is None
 
@@ -545,4 +552,6 @@ def test_queued_order_runs_after_real_nudge_wait(node):
     assert h1.terminal == h2.terminal == 'succeeded'
     assert h2.feedback and all(f.state.batch_id == 'B2' for f in h2.feedback)
     assert any('예약 주문 B2 시작' in e.text for e in node.published['event'] if e.code == 'SET_NEXT')
+    assert batch_of(node, 'SET_NEXT')[0] == 'B1', 'SET_NEXT 는 B1 세트가 끝났다는 B1 의 사건이다'
+    assert batch_of(node, 'ORDER_QUEUED') == ['B2']
     assert not node._reserved and node._queued is None

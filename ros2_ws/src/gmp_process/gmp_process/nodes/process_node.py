@@ -215,8 +215,10 @@ class ProcessNode(Node):
     def _now(self) -> float:
         return self.get_clock().now().nanoseconds / 1e9
 
-    def event(self, level: str, code: str, text: str = ''):
-        m = CellEvent(level=getattr(CellEvent, level), code=code, text=text, batch_id=self.batch_id)
+    def event(self, level: str, code: str, text: str = '', *, batch_id: str | None = None):
+        """`batch_id` 를 안 주면 지금 배치다. 다른 주문에 관한 사건(세트 끝 예약)은 그 주문 ID 로 낸다."""
+        m = CellEvent(level=getattr(CellEvent, level), code=code, text=text,
+                      batch_id=self.batch_id if batch_id is None else batch_id)
         m.header.stamp = self.get_clock().now().to_msg()
         self.pub_event.publish(m)
         self.get_logger().info(f'[{code}] {text}')
@@ -443,7 +445,9 @@ class ProcessNode(Node):
         self._queued_cancel.clear()
         if self.fsm.state == 'NUDGE_WAIT' and self._nudge_waiting:
             self.note = self._set_end_note()
-        self.event('INFO', 'ORDER_QUEUED', f'{order[1]} — 세트 끝 넛지 뒤 시작')
+        # 예약 주문(B2)의 사건이다 — 지금 배치(B1) ID 로 내면 B2 가 시작 못 하고 끝났을 때 그 근거가
+        # B1 기록에 붙어 감사 추적이 틀어진다 (#303 조장 리뷰 P2).
+        self.event('INFO', 'ORDER_QUEUED', f'{order[1]} — 세트 끝 넛지 뒤 시작', batch_id=order[1])
         self._pub_state()
         return True
 
@@ -524,9 +528,12 @@ class ProcessNode(Node):
             self._batch_handle = handle
             return ''
 
-    def _end_queued(self, handle, reason: str):
-        """시작하지 못한 예약 주문을 끝낸다 — 취소 요청이면 CANCELED, 그 외 ABORTED."""
-        self.event('WARN', 'ORDER_DROPPED', reason)
+    def _end_queued(self, handle, reason: str, batch_id: str):
+        """시작하지 못한 예약 주문을 끝낸다 — 취소 요청이면 CANCELED, 그 외 ABORTED.
+
+        `ORDER_DROPPED` 는 **예약 주문 ID** 로 낸다 — 시작 못 한 B2 의 종료 근거는 B2 기록에 남아야 한다.
+        """
+        self.event('WARN', 'ORDER_DROPPED', reason, batch_id=batch_id)
         self.get_logger().warning(f'예약 주문 종료: {reason}')
         if self._queued_cancel.is_set():
             # cancel_callback 응답 뒤 rclpy가 CANCELING으로 전이할 틈을 준다 (아래 본 경로와 같다).
@@ -542,10 +549,11 @@ class ProcessNode(Node):
     def _execute_batch(self, handle):
         with self._order_lock:
             queued = handle is self._queued_handle
+            queued_id = self._queued[1] if queued and self._queued else ''
         if queued:
             reason = self._promote_queued(handle)
             if reason:
-                return self._end_queued(handle, reason)
+                return self._end_queued(handle, reason, queued_id)
         try:
             with self._order_lock:
                 self._start_reserved_batch()
