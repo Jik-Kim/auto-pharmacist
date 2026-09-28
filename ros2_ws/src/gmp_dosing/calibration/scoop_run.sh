@@ -2,7 +2,7 @@
 # 스쿱 1회량 측정 (#272) — 붓기 방식. 저울은 workbench 용기 자리에 둔다.
 #   MAT=A ./scoop_run.sh setup       스쿱 잡고 원료통 계량 자세까지 (1회)
 #   MAT=A ./scoop_run.sh run 15      Scoop -> Pour -> 저울값 입력 -> 복귀 를 15회
-#                                    기록지를 새로 만들 때 CUP_G=79 를 앞에 주면 빈 시료통 무게가 채워진다
+#                                    기록지를 새로 만들 때 빈 시료통은 79 g 으로 채운다. 다르면 CUP_G=<g> 를 앞에 준다
 #   MAT=A ./scoop_run.sh park        스쿱 반납하고 safe 로
 # MAT 은 A|B|C (기본 A). 세 원료는 같은 자갈(색만 다름)이고 스쿱 뜨는 부분도 같다(9/28 확인).
 # 원료별로 다른 것은 스테이션·티칭 경로뿐이라, 기록지는 원료별로 따로 둔다 (scoop_sigma_<날짜>_mat<MAT>.csv).
@@ -77,13 +77,13 @@ trial|run)
       echo "#   계량: 외부 저울. 로봇 계량값은 쓰지 않는다 (scale.gain 미검증)"
       echo "#   ⚠️ vel_scale 을 바꾸면 채취량이 바뀐다. 다른 값으로 잰 회차를 섞지 말 것."
       echo "#"
-      echo "# 용기_g: ${CUP_G:-}"
+      echo "# 용기_g: ${CUP_G:-79}"
       echo "#   ↑ 빈 시료통을 한 번 정확히 재서 적는다. 비어 있으면 분석이 거부한다."
       echo "#"
       echo "회차,총무게_g,원료면,비고"
       for i in $(seq 1 15); do echo "$i,,,"; done
     } > "$CSV"
-    echo "### 기록지 새로 만듦: $CSV"
+    echo "### 기록지 새로 만듦: $CSV  (빈 시료통 ${CUP_G:-79} g — 다르면 CUP_G=<g> 로 다시 만들거나 그 줄을 고친다)"
   fi
   python3 "$HERE/record.py" "$CSV" check || exit 1
   for ((k=1; k<=N; k++)); do
@@ -121,8 +121,9 @@ trial|run)
   echo "python3 $HERE/scoop_sigma.py $CSV"
   ;;
 park)
-  move $SCOOP 0                                  || exit 1
-  act "이동 $SCOOP (AT, 0.3)" /cell/move_to_station gmp_interfaces/action/MoveToStation \
+  # 스쿱을 쥔 채 거치대로 갈 때는 AT 한 번으로 반납 경로(옆 진입 → 하강 → 거치)를 탄다.
+  # ABOVE 를 먼저 부르면 skill_node 가 「스쿱 반납은 AT 요청으로」 로 거부한다 (9/29 실물).
+  act "반납 $SCOOP (AT, 0.3)" /cell/move_to_station gmp_interfaces/action/MoveToStation \
       "{station_id: $SCOOP, approach: 1, vel_scale: 0.3}" || exit 1
   srv "스쿱 놓기" /cell/set_gripper gmp_interfaces/srv/SetGripper \
       "{close: false, width_mm: 0.0, force_n: 0.0, timeout_s: 15.0}" 'success=True' || exit 1
