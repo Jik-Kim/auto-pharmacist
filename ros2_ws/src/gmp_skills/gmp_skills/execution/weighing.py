@@ -117,9 +117,11 @@ class WeighingSkills:
             # Weigh의 내부 이동도 MoveToStation과 같은 상부 접근 정책을 따른다.
             self.motion._do_move(job, station_id='workbench', approach=MoveToStation.Goal.ABOVE)
         else:
+            # MOVEL · TCP 직선 이동: measure_posx
             self.ctx.arm.movel(measure_posx, self.ctx.config.vel_scale)
         if not bool(p('scale.simulated').value):
             self.ctx.arm.reset_workpiece()
+        # MOVEL · TCP 직선 이동: pick_posx
         self.ctx.arm.movel(pick_posx, self.ctx.config.vel_scale)
         job.feedback and job.feedback('GRIP')
         grip_commanded = True
@@ -131,6 +133,7 @@ class WeighingSkills:
             if not ok or not inferred:
                 raise RuntimeError('용기 파지 실패')
             job.feedback and job.feedback('LIFT')
+            # MOVEL · TCP 직선 이동: measure_posx
             self.ctx.arm.movel(measure_posx, self.ctx.config.vel_scale)
             job.feedback and job.feedback('SETTLE')
             reading = self._measure_weight_reading(float(job.args['tare_g']), 'container')
@@ -139,9 +142,11 @@ class WeighingSkills:
         finally:
             if completed and grip_commanded and not job.cancel:
                 job.feedback and job.feedback('PLACE')
+                # MOVEL · TCP 직선 이동: pick_posx
                 self.ctx.arm.movel(pick_posx, self.ctx.config.vel_scale)
                 if not self.ctx.gripper.release(3.0):
                     raise RuntimeError('용기 계량 후 열림 미확인')
+                # MOVEL · TCP 직선 이동: measure_posx
                 self.ctx.arm.movel(measure_posx, self.ctx.config.vel_scale)
                 if 'approach_posj' in station.extra:
                     self.ctx.state.held_payload = 'empty'
@@ -170,6 +175,7 @@ class WeighingSkills:
             target[1] += self.ctx.config.scoop_extract_y_mm
             self.ctx.state.pending_scoop_extract = False
             self.ctx.state.scoop_extract_uncertain = True
+            # MOVEL · TCP 직선 이동: target
             self.ctx.arm.movel(target, self.ctx.config.vel_scale)
             if job.cancel:
                 raise RuntimeError('cancelled')
@@ -181,11 +187,13 @@ class WeighingSkills:
             lift_target[2] += lift_z_mm
             if job.cancel:
                 raise RuntimeError('cancelled')
+            # MOVEL · TCP 직선 이동: lift_target
             self.ctx.arm.movel(lift_target, self.ctx.config.vel_scale)
             if job.cancel:
                 raise RuntimeError('cancelled')
             self.ctx.state.scoop_extract_uncertain = False
 
+        # MOVEL · TCP 직선 이동: material.posx
         self.ctx.arm.movel(material.posx, self.ctx.config.vel_scale)
         if job.cancel:
             raise RuntimeError('cancelled')

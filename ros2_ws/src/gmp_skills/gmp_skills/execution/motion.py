@@ -91,33 +91,24 @@ class MotionSkills:
                             and joints_match(self.ctx.arm.current_posj(), taught, self.ctx.config.joint_tolerance)):
                         self.ctx.state.held_payload = 'unknown'
                         self._record_arrival(st.station_id, approach, target)
-                        self.ctx.state.cartesian_ready = True
                         return st.station_id
                 raise ValueError('등록된 출발 이력이 없는 보호 대상 이송이다')
         self._leave_taught_station(job, st.station_id)
         safe_posj = st.extra.get('posj') if approach != MoveToStation.Goal.ABOVE else None
         if safe_posj is not None:
             job.feedback and job.feedback('HOMING')
+            # MOVEJ · 관절각 목표: safe_posj
             self.ctx.arm.movej_cancellable(safe_posj, vel_scale, lambda: job.cancel,
                                        self.ctx.config.motion_timeout_s)
-            self.ctx.state.cartesian_ready = True
             # safe.posx는 자리표시자일 수 있다. 실제 관절 목표가 도착 기준이다.
             target = self.ctx.arm.current_posx()
         else:
-            if not self.ctx.state.cartesian_ready:
-                entry = self.ctx.stations.get('safe')
-                entry_posj = entry.extra.get('posj')
-                if not isinstance(entry_posj, list) or len(entry_posj) != 6:
-                    raise ValueError('safe station에 시작 posj 6개가 필요하다')
-                job.feedback and job.feedback('HOMING')
-                self.ctx.arm.movej_cancellable(entry_posj, vel_scale, lambda: job.cancel,
-                                           self.ctx.config.motion_timeout_s)
-                self.ctx.state.cartesian_ready = True
             job.feedback and job.feedback('MOVING')
             self._leave_solution_station(job, st.station_id, vel_scale)
             if 'solution_space' in st.extra:
                 self._move_solution_station(job, st, target, vel_scale)
             else:
+                # MOVEL · TCP 직선 이동: target
                 self.ctx.arm.movel_cancellable(target, vel_scale, lambda: job.cancel,
                                            self.ctx.config.motion_timeout_s)
         if job.cancel:
@@ -125,19 +116,12 @@ class MotionSkills:
         self._record_arrival(st.station_id, approach, target)
         return st.station_id
 
-    def _taught_linear(self, job, target):
-        # 역할: 직선 이동 준비가 안 됐으면 안전 관절 자세를 거친 뒤 지정 TCP 목표로 이동한다.
+    def _motion_scale(self, job):
+        """요청 속도 배율만 검증한다. 로봇 이동이나 상태 변경은 하지 않는다."""
         scale = job.args.get('vel_scale') or self.ctx.config.vel_scale
         if not math.isfinite(scale) or not 0 < scale <= 1:
             raise ValueError('vel_scale은 0 초과 1 이하여야 한다')
-        if not self.ctx.state.cartesian_ready:
-            joints = list(vector6(self.ctx.stations.get('safe').extra['posj'], 'safe.posj'))
-            self.ctx.arm.movej_cancellable(joints, scale,
-                lambda: job.cancel or self.runtime._cancel_requested(), self.ctx.config.motion_timeout_s,
-                joint_vel=self.ctx.config.transfer_joint_vel, joint_acc=self.ctx.config.transfer_joint_acc)
-            self.ctx.state.cartesian_ready = True
-        self.ctx.arm.movel_cancellable(list(target), scale,
-                                   lambda: job.cancel or self.runtime._cancel_requested(), self.ctx.config.motion_timeout_s)
+        return scale
 
     def _leave_taught_station(self, job, destination):
         # 역할: 현재 티칭 스테이션의 출발 이력을 확인하고 다음 목적지로 가기 전 이탈 높이를 확보한다.
@@ -157,7 +141,11 @@ class MotionSkills:
         target = list(anchor.pose)
         target[2] = source.posx[2] + source.extra['exit_mm']
         if not self._pose_matches(self.ctx.arm.current_posx(), target):
-            self._taught_linear(job, target)
+            # MOVEL · TCP 직선 이동: list(target)
+            self.ctx.arm.movel_cancellable(
+                list(target), self._motion_scale(job),
+                lambda: job.cancel or self.runtime._cancel_requested(),
+                self.ctx.config.motion_timeout_s)
         self.ctx.state.motion_anchor = None
 
     def _move_taught_station(self, job, station, approach):
@@ -183,16 +171,28 @@ class MotionSkills:
                 lower = list(entry)
                 lower[2] -= finite(station.extra['return_lower_mm'], '반납 하강량')
                 for target in (entry, lower, station.posx):
-                    self._taught_linear(job, target)
+                    # MOVEL · TCP 직선 이동: list(target)
+                    self.ctx.arm.movel_cancellable(
+                        list(target), self._motion_scale(job),
+                        lambda: job.cancel or self.runtime._cancel_requested(),
+                        self.ctx.config.motion_timeout_s)
             else:
                 self._require_transfer_payload('empty')
                 self._leave_taught_station(job, station.station_id)
                 target = (station.offset_z(station.extra['exit_mm']) if local
                           and approach == MoveToStation.Goal.ABOVE else station.above(self.ctx.stations.approach_mm))
                 if not local or approach == MoveToStation.Goal.ABOVE:
-                    self._taught_linear(job, target)
+                    # MOVEL · TCP 직선 이동: list(target)
+                    self.ctx.arm.movel_cancellable(
+                        list(target), self._motion_scale(job),
+                        lambda: job.cancel or self.runtime._cancel_requested(),
+                        self.ctx.config.motion_timeout_s)
                 if approach == MoveToStation.Goal.AT:
-                    self._taught_linear(job, station.posx)
+                    # MOVEL · TCP 직선 이동: list(station.posx)
+                    self.ctx.arm.movel_cancellable(
+                        list(station.posx), self._motion_scale(job),
+                        lambda: job.cancel or self.runtime._cancel_requested(),
+                        self.ctx.config.motion_timeout_s)
         else:
             if self.ctx.state.held_payload not in ('cup', 'empty'):
                 raise RuntimeError('용기 스테이션 진입 전 파지/열림 이력이 필요하다')
@@ -206,18 +206,26 @@ class MotionSkills:
                         target = list(station.posx)
                 else:
                     target[2] = station.posx[2] + station.extra['exit_mm']
-                self._taught_linear(job, target)
+                # MOVEL · TCP 직선 이동: list(target)
+                self.ctx.arm.movel_cancellable(
+                    list(target), self._motion_scale(job),
+                    lambda: job.cancel or self.runtime._cancel_requested(),
+                    self.ctx.config.motion_timeout_s)
             else:
                 self._leave_taught_station(job, station.station_id)
                 empty_entry = self.ctx.state.held_payload == 'empty' and 'empty_approach_posj' in station.extra
                 if empty_entry:
-                    self._taught_linear(job, self._pose_from_extra(station, 'middle_posx'))
+                    # MOVEL · TCP 직선 이동: list(self._pose_from_extra(station, 'middle_posx'))
+                    self.ctx.arm.movel_cancellable(
+                        list(self._pose_from_extra(station, 'middle_posx')), self._motion_scale(job),
+                        lambda: job.cancel or self.runtime._cancel_requested(),
+                        self.ctx.config.motion_timeout_s)
                 key = 'empty_approach_posj' if empty_entry else 'approach_posj'
                 joints = list(vector6(station.extra[key], key))
+                # MOVEJ · 관절각 목표: joints
                 self.ctx.arm.movej_cancellable(joints, scale,
                     lambda: job.cancel or self.runtime._cancel_requested(), self.ctx.config.motion_timeout_s,
                     joint_vel=self.ctx.config.transfer_joint_vel, joint_acc=self.ctx.config.transfer_joint_acc)
-                self.ctx.state.cartesian_ready = True
                 self._require_transfer_payload(self.ctx.state.held_payload)
                 if approach == MoveToStation.Goal.AT:
                     if empty_entry:
@@ -225,7 +233,11 @@ class MotionSkills:
                         target[2] -= station.extra['empty_descent_mm']
                     else:
                         target = station.posx
-                    self._taught_linear(job, target)
+                    # MOVEL · TCP 직선 이동: list(target)
+                    self.ctx.arm.movel_cancellable(
+                        list(target), self._motion_scale(job),
+                        lambda: job.cancel or self.runtime._cancel_requested(),
+                        self.ctx.config.motion_timeout_s)
             self._require_transfer_payload(self.ctx.state.held_payload)
         if job.cancel or self.runtime._cancel_requested():
             raise RuntimeError('cancelled')
@@ -256,6 +268,7 @@ class MotionSkills:
             raise RuntimeError('용기 이송 전 파지 상태 확인이 필요하다')
         self._require_transfer_payload(self.ctx.state.held_payload)
         self._require_solution(source)
+        # MOVEL · TCP 직선 이동: source.exit()
         self.ctx.arm.movel_cancellable(source.exit(), vel_scale, lambda: job.cancel,
                                    self.ctx.config.motion_timeout_s)
         self._require_solution(source)
@@ -275,12 +288,14 @@ class MotionSkills:
             # 작업점에서 손목을 뒤집지 않는다. 수동 이동 뒤에도 구성 확인이 먼저다.
             self._require_solution(station)
         else:
+            # MOVEJX · TCP 목표까지 관절 이동: above
             self.ctx.arm.movejx_cancellable(above, station.extra['solution_space'], vel_scale,
                                         lambda: job.cancel, self.ctx.config.motion_timeout_s)
             self._require_solution(station)
         if self.ctx.state.held_payload in ('cup', 'empty'):
             self._require_transfer_payload(self.ctx.state.held_payload)
         if not self._pose_matches(self.ctx.arm.current_posx(), target):
+            # MOVEL · TCP 직선 이동: target
             self.ctx.arm.movel_cancellable(target, vel_scale, lambda: job.cancel,
                                        self.ctx.config.motion_timeout_s)
         self._require_solution(station)
@@ -328,6 +343,7 @@ class MotionSkills:
         # 이미 이탈점이면 다시 움직이지 않는다. 마지막 관절점은 경로의 도착 방식에 따른다.
         checkpoint()
         if not self._pose_matches(self.ctx.arm.current_posx(), route.exit_posx):
+            # MOVEL · TCP 직선 이동: route.exit_posx
             self.ctx.arm.movel_cancellable(route.exit_posx, vel_scale, lambda: job.cancel,
                                        self.ctx.config.motion_timeout_s)
         if (not self._pose_matches(self.ctx.arm.current_posx(), route.exit_posx)
@@ -335,6 +351,7 @@ class MotionSkills:
             raise RuntimeError('직선 이탈 후 관절 구성/자세가 티칭값과 다르다')
         for point in route.waypoints_posj:
             checkpoint()
+            # MOVEJ · 관절각 목표: point
             self.ctx.arm.movej_cancellable(point, vel_scale, lambda: job.cancel, self.ctx.config.motion_timeout_s,
                                        joint_vel=self.ctx.config.transfer_joint_vel, joint_acc=self.ctx.config.transfer_joint_acc)
         checkpoint()
@@ -344,6 +361,7 @@ class MotionSkills:
         if not self._pose_matches(self.ctx.arm.current_posx(), entry):
             raise RuntimeError(f'마지막 관절점이 목적지 {route.arrival.upper()} 위치/자세와 일치하지 않는다')
         if route.arrival == 'above' and job.args['approach'] == MoveToStation.Goal.AT:
+            # MOVEL · TCP 직선 이동: target
             self.ctx.arm.movel_cancellable(target, vel_scale, lambda: job.cancel, self.ctx.config.motion_timeout_s)
         checkpoint()
         self._record_arrival(route.destination, job.args['approach'], target)
@@ -401,7 +419,11 @@ class MotionSkills:
             station = self.ctx.stations.get(anchor.station)
             if 'return_entry_posx' in station.extra:
                 target = station.offset_z(station.extra['exit_mm'])
-                self._taught_linear(job, target)
+                # MOVEL · TCP 직선 이동: list(target)
+                self.ctx.arm.movel_cancellable(
+                    list(target), self._motion_scale(job),
+                    lambda: job.cancel or self.runtime._cancel_requested(),
+                    self.ctx.config.motion_timeout_s)
                 self._record_arrival(station.station_id, MoveToStation.Goal.ABOVE, target)
         return released, self.ctx.gripper.width_mm() or -1.0, False
 

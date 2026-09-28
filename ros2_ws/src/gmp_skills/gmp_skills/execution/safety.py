@@ -156,7 +156,6 @@ class SafetyController:
             self.ctx.state.safety_reason = ''
             self.ctx.state.station_id = ''
             self.ctx.state.motion_anchor = None
-            self.ctx.state.cartesian_ready = False
             self.ctx.state.held_payload = 'unknown'
             self.ctx.state.held_material_id = ''
             self.ctx.state.empty_scoop_force_baseline = None
@@ -176,8 +175,8 @@ class SafetyController:
         posj = safe.extra.get('posj')
         if posj is None:
             raise ValueError('safe station에 posj 6개가 필요하다')
+        # MOVEJ · 관절각 목표: posj
         self.ctx.arm.movej_cancellable(posj, 0.3, lambda: job.cancel, self.ctx.config.motion_timeout_s)
-        self.ctx.state.cartesian_ready = True
         self.ctx.state.station_id = 'safe'
         self.ctx.state.pending_scoop_extract = False
         self.ctx.state.scoop_extract_uncertain = False

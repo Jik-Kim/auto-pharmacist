@@ -28,7 +28,6 @@ def setup(monkeypatch):
     node._held_payload = 'empty'
     node._held_material_id = ''
     node._pending_scoop_extract = node._scoop_extract_uncertain = False
-    node._cartesian_ready = True
     node._motion_anchor = None
     node._now_s = lambda: 0
     state = dict(busy=False, width_mm=100, grip_inferred=False)

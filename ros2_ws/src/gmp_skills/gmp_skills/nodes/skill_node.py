@@ -59,7 +59,6 @@ class SkillNode(Node):
         self.ctx.config.scoop_extract_y_mm = float(g('gripper.scoop_extract_y_mm'))
         self.ctx.config.scoop_extract_lift_z_mm = float(g('gripper.scoop_extract_lift_z_mm'))
         self.ctx.stations = StationTable.from_yaml(g('stations_file'))
-        self.ctx.state.cartesian_ready = False
         self.ctx.state.station_id = ''
         self.ctx.state.motion_anchor = None
         self.ctx.state.held_payload = 'unknown'

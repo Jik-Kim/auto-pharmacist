@@ -44,7 +44,6 @@ class SkillConfig:
 @dataclass(kw_only=True)
 class SkillState:
     """위치·파지·안전·큐 상태의 단일 원본. 잠금 범위는 기존 정책을 따른다."""
-    cartesian_ready: bool = False
     station_id: str = ''
     motion_anchor: MotionAnchor | None = None
     held_payload: str = 'unknown'

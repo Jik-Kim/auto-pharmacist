@@ -20,12 +20,18 @@
 | 스쿱 최소 깊이 | `dosing.min_fraction=0.10`, `scooping.A.min_fraction=0.10`. 중복 선언은 남아 있으므로 항상 함께 바꿔야 한다 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [#222](https://github.com/Jik-Kim/auto-pharmacist/issues/222) |
 | Scoop Action 종료 코드 | 내부 시간 초과는 ABORTED, 실제 클라이언트 취소만 CANCELED | [skill_node.py](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py), [PR #236](https://github.com/Jik-Kim/auto-pharmacist/pull/236) |
 
+## 주문 시작 준비 (C 연결 대기)
+- A의 숨은 안전 자세 MOVEJ와 `cartesian_ready` 제거. 이동 호출부에 명령을 직접 표시한다.
+- 첫 주문: SafePose 성공 → 빈 통 파지. 후속 주문: 기존 넛지 대기 완료 → 같은 준비 순서.
+- C의 SELF_CHECK→PICK_CONTAINER에 safe 요청/성공 대기 추가 필요. A만 반영한 현재는 이 순서 미연결. [SOT](../../docs/SOT.md).
+
 ## 코드 탐색
 - ROS 입출력: [skill_node.py](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py).
 - 실제 실행: [runtime.py](../../ros2_ws/src/gmp_skills/gmp_skills/execution/runtime.py)의 `handlers` → `motion/safety/scooping/weighing` 실행 객체. 공유 상태는 `execution/context.py` 한 곳에 둔다.
 - 실행 진입점·ROS 계약·단일 워커 유지. [구조와 호출 순서](../../ros2_ws/src/gmp_skills/README.md).
 
 ## 검증 기준선
+- 9/28 명시적 이동 정리: **493건 통과**. 숨은 초기 MOVEJ 제거, SafePose→빈 통 접근 모의 순서 검증. C 주문 시작 연결은 미적용, 실물 구동 미수행.
 - 9/28 실행 객체 분리: 회귀·구성 테스트 **490건 통과**, `colcon build --symlink-install --packages-select gmp_skills` 성공, 설치 후 기존 진입점·Job import 확인. 공정 그림 재생성 diff 없음. 실물 구동 미수행. [작업 일지](2026-09-28_스킬_호출흐름_주석.md)
 - 9/28 호출 흐름 및 함수 74개 역할 주석 추가: 실행 AST 동일·구문 검사 통과. 동작/현행값 변경 없음. [작업 일지](2026-09-28_스킬_호출흐름_주석.md)
 - 9/23 DRL 속도 정합화: `gmp_skills` 모의 테스트 **488건 통과**. 배율 1.0/0.2에서 관절·병진·회전 명령값, 초기 속도 설정, B 계측용 기존 생성자 호출 호환성을 확인했다. 공정 그림 재생성 diff 없음. 새 속도의 ROS 실물 검증은 미수행.

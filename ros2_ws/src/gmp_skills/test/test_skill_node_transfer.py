@@ -25,7 +25,6 @@ def setup(monkeypatch):
     node._station_id = 'workbench'
     node._held_payload = 'cup'
     node._pending_scoop_extract = node._scoop_extract_uncertain = False
-    node._cartesian_ready = True
     node._now_s = lambda: 0
     node.feedback_state = {'busy': False, 'width_mm': 60, 'grip_inferred': True}
     node.gripper = SimpleNamespace(state=lambda _: node.feedback_state,

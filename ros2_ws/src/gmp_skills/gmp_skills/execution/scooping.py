@@ -87,8 +87,10 @@ class ScoopingSkills:
         # 취소·미도달·관측 실패 시 어댑터가 정지하고 다음 이동은 수행하지 않는다.
         job.feedback and job.feedback('DIP', True, result['max_contact_force_n'],
                                       result['insertion_depth_mm'])
+        # MOVESX · TCP 스플라인: targets
         self.ctx.arm.movesx_cancellable(targets, vel, acc, cancel, self.ctx.config.motion_timeout_s,
                                     observer=observe)
+        # MOVEL · TCP 직선 이동: shake_target
         self.ctx.arm.movel_cancellable(shake_target, self.ctx.config.vel_scale, cancel,
                                    self.ctx.config.motion_timeout_s, observer=observe)
         if cancel():
@@ -103,6 +105,7 @@ class ScoopingSkills:
         except Exception:
             self.ctx.arm.stop_motion()
             raise
+        # MOVEL · TCP 직선 이동: station.posx
         self.ctx.arm.movel_cancellable(station.posx, self.ctx.config.vel_scale, cancel,
                                    self.ctx.config.motion_timeout_s, observer=observe)
         job.feedback and job.feedback('LIFT', True, result['max_contact_force_n'],
@@ -147,7 +150,9 @@ class ScoopingSkills:
         observe()
         job.feedback and job.feedback('DIP')
         # 2) 해당 원료 계량 자세에서 시작해 5점 spline으로 퍼낸 뒤 털기 위치로 이동한다.
+        # MOVESX · TCP 스플라인: points
         self.ctx.arm.movesx_cancellable(points, vel, acc, cancel, self.ctx.config.motion_timeout_s, observer=observe)
+        # MOVEL · TCP 직선 이동: shake
         self.ctx.arm.movel_cancellable(shake, self.ctx.config.vel_scale, cancel, self.ctx.config.motion_timeout_s, observer=observe)
         if cancel():
             raise RuntimeError('cancelled')
@@ -162,6 +167,7 @@ class ScoopingSkills:
             self.ctx.arm.stop_motion()
             raise
         job.feedback and job.feedback('LIFT')
+        # MOVEL · TCP 직선 이동: station.posx
         self.ctx.arm.movel_cancellable(station.posx, self.ctx.config.vel_scale, cancel,
                                    self.ctx.config.motion_timeout_s, observer=observe)
         # 4) 계량 자세 복귀까지가 Scoop의 책임. 실제 무게는 후속 WeighHeld가 측정한다.
@@ -245,6 +251,7 @@ class ScoopingSkills:
         if job.cancel:
             raise RuntimeError('cancelled')
         job.feedback and job.feedback('APPROACH')
+        # MOVEL · TCP 직선 이동: start
         self.ctx.arm.movel(start, self.ctx.config.vel_scale)
         if job.cancel:
             raise RuntimeError('cancelled')
@@ -315,6 +322,7 @@ class ScoopingSkills:
                 self._wait_compliance_settle(job, settle_s)
                 phase = 'APPROACH'
                 # 목표의 XYZ와 회전을 모두 사용한다. 고정 Z 힘·상대 40 mm 담그기는 사용하지 않는다.
+                # MOVEL · TCP 직선 이동: target
                 self.ctx.arm.movel_cancellable(
                     target, self.ctx.config.vel_scale, lambda: job.cancel or self.runtime._cancel_requested(),
                     self.ctx.config.motion_timeout_s, observer=observe_depth,
@@ -328,10 +336,12 @@ class ScoopingSkills:
             # 성공한 경로만 계량 자세로 되짚는다. 실패·취소 시 자동 복귀하지 않는다.
             if trace_only:
                 phase = 'RETURN'
+                # MOVEL · TCP 직선 이동: start
                 self.ctx.arm.movel_cancellable(start, self.ctx.config.vel_scale,
                     lambda: job.cancel or self.runtime._cancel_requested(), self.ctx.config.motion_timeout_s,
                     observer=observe_depth)
             else:
+                # MOVEL · TCP 직선 이동: start
                 self.ctx.arm.movel(start, self.ctx.config.vel_scale)
             job.feedback and job.feedback('LIFT', contact_z is not None, max_force_n, insertion_mm)
             measurement = {
@@ -372,15 +382,18 @@ class ScoopingSkills:
         if job.cancel:
             raise RuntimeError('cancelled')
         job.feedback and job.feedback('APPROACH')
+        # MOVEL · TCP 직선 이동: above
         self.ctx.arm.movel(above, self.ctx.config.vel_scale)
         if job.cancel:
             raise RuntimeError('cancelled')
+        # MOVEL · TCP 직선 이동: start
         self.ctx.arm.movel(start, self.ctx.config.vel_scale)
         if job.cancel:
             raise RuntimeError('cancelled')
         completed = False
         try:
             job.feedback and job.feedback('TILT')
+            # MOVEL · TCP 직선 이동: end
             self.ctx.arm.movel(end, self.ctx.config.vel_scale)
             if job.cancel:
                 raise RuntimeError('cancelled')
@@ -392,6 +405,7 @@ class ScoopingSkills:
         finally:
             if completed and not job.cancel:
                 job.feedback and job.feedback('RETURN')
+                # MOVEL · TCP 직선 이동: start
                 self.ctx.arm.movel(start, self.ctx.config.vel_scale)
         return True
 
@@ -415,6 +429,7 @@ class ScoopingSkills:
                 raise RuntimeError('cancelled')
             self.motion._require_held_scoop()
             job.feedback and job.feedback(phase)
+            # MOVEL · TCP 직선 이동: target
             self.ctx.arm.movel_cancellable(target, self.ctx.config.vel_scale, cancel, self.ctx.config.motion_timeout_s)
         return True
 
@@ -431,6 +446,7 @@ class ScoopingSkills:
         if job.cancel:
             raise RuntimeError('cancelled')
         job.feedback and job.feedback('APPROACH')
+        # MOVEL · TCP 직선 이동: start
         self.ctx.arm.movel(start, self.ctx.config.vel_scale)
         if job.cancel:
             raise RuntimeError('cancelled')
@@ -439,6 +455,7 @@ class ScoopingSkills:
         # SafePose·파지 변경으로 해제하지 않는다. 연결 경로 구현 시 해제 조건을 정한다.
         self.ctx.state.return_rescoop_blocked = True
         # 손목 특이점을 지나는 직선 보간 대신 티칭한 관절각으로 이동한다.
+        # MOVEJ · 관절각 목표: end
         self.ctx.arm.movej_cancellable(end, self.ctx.config.vel_scale, lambda: job.cancel, self.ctx.config.motion_timeout_s)
         if job.cancel:
             raise RuntimeError('cancelled')

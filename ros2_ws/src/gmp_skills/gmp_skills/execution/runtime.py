@@ -242,7 +242,6 @@ class SkillRuntime:
             self.ctx.state.empty_scoop_baseline_pending = job.args.get('restore_empty_scoop_confirmed') is True
             self.ctx.state.held_material_id = material_id
             self.ctx.state.station_id = station.station_id
-            self.ctx.state.cartesian_ready = True
             self.ctx.state.motion_anchor = None  # 관절 이송 출발 이력으로 사용하지 않는다.
             self.ctx.state.pending_scoop_extract = False
             self.ctx.state.scoop_extract_uncertain = False

@@ -95,3 +95,21 @@ SDK 호출 자체의 강제 취소 및 실제 충돌 성능 검증은 이 검사
 C의 `process_fsm.py`와 `process_node.py`가 결정한다. 내부 실행 메서드를 다른 노드에서
 직접 호출하지 않는다. `core/`는 ROS 비의존 계산/검증, `execution/`은 상태 있는
 장치 동작 순서, `nodes/`는 ROS 입출력을 담당한다.
+
+
+## 명시적 이동과 주문 시작 준비 (2026-09-28)
+
+- `motion.py`의 호출부에서 `movej_cancellable`(MOVEJ/관절각),
+  `movel_cancellable`(MOVEL/TCP 직선), `movejx_cancellable`(MOVEJX/TCP 목표 관절 이동)을
+  직접 확인한다. 스쿠핑 스플라인은 `movesx_cancellable`(MOVESX)이다.
+- `_taught_linear` 및 `cartesian_ready`는 제거했다. 일반 직선 이동 요청에
+  안전 자세 MOVEJ를 자동으로 끼워 넣지 않는다. `_motion_scale`은 배율 검증만 한다.
+- 정상 주문 준비는 기존 `SafePose` 요청으로 `safe.posj`에 명시적으로 이동한다.
+  노드 기동/스쿱 복원에서는 이동하지 않는다. SafePose 속도 배율 0.3은 기존대로 유지한다.
+- **C 연결 후 순서:** 첫 주문은 안전 자세 성공 확인 → 빈 통 접근·파지.
+  후속 주문은 기존 주문 경계 넛지 대기 완료 → 안전 자세 성공 확인 → 빈 통 접근·파지.
+  첫 주문에 넛지를 추가하지 않으며 일반 PAUSED 재개에 초기화를 삽입하지 않는다.
+- **현재 C에는 이 연결이 아직 없다.** `process_fsm.start()`/`SELF_CHECK` 뒤
+  `PICK_CONTAINER`로 진행하기 전에 safe 성공을 기다리는 단계를 C가 추가해야 한다.
+  실패·취소 시 빈 통 이송을 요청하지 않아야 한다. 중간 스쿱/도징 테스트는
+  정상 주문 시작과 분리한다. ROS 계약 변경은 없다.
