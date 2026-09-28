@@ -13,6 +13,23 @@
 
 종료 시 ROS 문맥을 유지한 채 워커에서 정지·힘제어 해제를 시도한다.
 """
+# ── 처음 읽을 때: 전체 공정과 실제 로봇 호출 위치 ──────────────────────
+# 전체 배치 순서는 gmp_process/core/process_fsm.py의 start()/on_result()가 결정한다.
+# gmp_process/nodes/process_node.py의 _run_loop() → _execute()가 그 결정을
+# ROS Action/Service로 보낸다. 이 파일은 요청받은 개별 스킬의 이동 순서를 담당한다.
+#
+# 요청 경로: _exec_* / _srv_* → _submit(kind) → Job 큐 → _worker()
+# 실행 경로: _worker() → _do_<kind>() → self.arm.* / self.gripper.*
+# 하드웨어: adapters/dsr_arm.py → DSR_ROBOT2의 amovej/amovel/amovesx 등
+#           adapters/rg2_gripper.py → DsrArm.dout/din (DIO 모드)
+# 완료 경로: job.result/error → job.done → 콜백의 ROS 결과 → C의 다음 단계 결정
+#
+# 예: Scoop 요청 → _exec_scoop → _do_scoop → _do_fixed_scoop
+#     → 5점 spline → 털기 위치 → 주기 운동 → 원료 계량 자세 복귀.
+# 스쿱 파지·거치대 인출·계량·붓기는 각각 별도 요청이다. Scoop 하나가 전부 하지 않는다.
+# 현행 taught_fixed 경로부터 읽고, height_compensated/height_measure_only는
+# 별도 보정·진단 경로로 구분한다. 좌표는 stations.yaml, 속도 등은 common.yaml에 있다.
+
 import queue
 import csv
 from pathlib import Path
@@ -500,6 +517,7 @@ class SkillNode(Node):
         return stopped and not self._cleanup_error
 
     def _submit(self, kind: str, feedback=None, **args) -> Job:
+        # 콜백에서는 로봇을 움직이지 않는다. 실행 가능한 요청만 큐에 넣고 워커 완료를 기다린다.
         job = Job(kind, args, feedback=feedback)
         with self._job_lock:
             if self._stopping.is_set() or self._worker_stopped.is_set():
@@ -519,6 +537,7 @@ class SkillNode(Node):
         return job
 
     def _worker(self):
+        # 로봇 명령을 직렬 실행하는 단일 소비자. 큐가 비면 안전·DI·넛지 상태를 점검한다.
         try:
             while rclpy.ok() and not self._stopping.is_set():
                 try:
@@ -548,6 +567,11 @@ class SkillNode(Node):
                         self._held_material_id = ''
                         self._empty_scoop_force_baseline = None
                         self._empty_scoop_baseline_pending = False
+                    # 동적 분기표: move→_do_move, grip→_do_grip, scoop→_do_scoop,
+                    # pour→_do_pour, return_material→_do_return_material,
+                    # weigh→_do_weigh, weigh_held→_do_weigh_held,
+                    # measure→_do_measure, safe→_do_safe, startup/recover→각 _do_*.
+                    # 콜백에서 기다리는 job.done은 아래 finally에서 성공·실패 모두 알린다.
                     job.result = getattr(self, f'_do_{job.kind}')(job)
                 except Exception as e:  # noqa: BLE001
                     self._motion_anchor = None
@@ -698,6 +722,8 @@ class SkillNode(Node):
         self._station_id = station_id
 
     def _move_checked(self, job: Job, *, station_id=None, approach=None):
+        # 목적지 설정으로 티칭 경로/전용 이송/sol 접근/일반 이동을 선택한다.
+        # 경로 선택 뒤에도 출발 이력과 실제 도착 자세를 확인해야 다음 파지 요청이 가능하다.
         if job.cancel:
             raise RuntimeError('cancelled')
         approach = job.args['approach'] if approach is None else approach
@@ -988,6 +1014,8 @@ class SkillNode(Node):
         self._record_arrival(route.destination, job.args['approach'], target)
 
     def _do_grip(self, job: Job):
+        # 그리퍼 개폐와 파지 이력만 처리한다. 스쿱을 잡아도 여기서 인출하지 않는다.
+        # DIO의 출력·입력 완료 확인은 Rg2Gripper가 담당하고, 인출은 _do_weigh_held에서 한다.
         a = job.args
         self._held_payload = 'unknown'
         self._held_material_id = ''
@@ -1104,6 +1132,7 @@ class SkillNode(Node):
         if getattr(self, 'height_measure_only', False):
             return SkillNode._measure_surface_world(self, job)
         profile = self.stations.scooping.get(material)
+        # 현행 고정 경로는 여기서 분기한다. 아래 높이 보정 계산을 통과하지 않는다.
         if profile and profile.get('execution_mode', 'height_compensated') == 'taught_fixed':
             return SkillNode._do_fixed_scoop(self, job, profile)
         if profile and profile.get('execution_mode', 'height_compensated') != 'height_compensated':
@@ -1188,6 +1217,7 @@ class SkillNode(Node):
         fraction = finite(job.args['depth_fraction'], 'depth_fraction')
         if fraction != 1.0:
             raise ValueError('고정 티칭 경로는 depth_fraction=1.0만 지원한다')
+        # 1) 이동 전 검증: 검증된 BASE 경로·full 요청·5점·속도·주기 운동 설정.
         points = [list(vector6(p, '고정 경유점')) for p in fixed['waypoints_base']]
         if len(points) != 5:
             raise ValueError('고정 스쿠핑은 검증된 경유점 5개가 필요하다')
@@ -1214,12 +1244,14 @@ class SkillNode(Node):
             raise RuntimeError('고정 스쿠핑은 해당 원료 계량 자세에서 시작해야 한다')
         observe()
         job.feedback and job.feedback('DIP')
+        # 2) 해당 원료 계량 자세에서 시작해 5점 spline으로 퍼낸 뒤 털기 위치로 이동한다.
         self.arm.movesx_cancellable(points, vel, acc, cancel, self.motion_timeout_s, observer=observe)
         self.arm.movel_cancellable(shake, self.vel_scale, cancel, self.motion_timeout_s, observer=observe)
         if cancel():
             raise RuntimeError('cancelled')
         job.feedback and job.feedback('LEVEL')
         try:
+            # 3) DRL의 BASE 기준 주기 운동. 완료와 종료 자세를 확인하고 실패하면 정지한다.
             self.arm.amove_periodic(amp, period, atime, repeat, ref_tool=False)
             self.arm.wait_motion_cancellable(cancel, self.motion_timeout_s, observer=observe)
             if not self._pose_matches(self.arm.current_posx(), shake):
@@ -1230,6 +1262,8 @@ class SkillNode(Node):
         job.feedback and job.feedback('LIFT')
         self.arm.movel_cancellable(station.posx, self.vel_scale, cancel,
                                    self.motion_timeout_s, observer=observe)
+        # 4) 계량 자세 복귀까지가 Scoop의 책임. 실제 무게는 후속 WeighHeld가 측정한다.
+        # 고정 경로는 접촉을 측정하지 않으므로 아래 false/0을 실측 결과로 해석하지 않는다.
         return dict(contact_detected=False, max_contact_force_n=0.0, insertion_depth_mm=0.0,
                     message='TAUGHT_FIXED: 검증된 full 경로 완료; 접촉력·삽입 깊이 미측정')
 
@@ -1455,6 +1489,8 @@ class SkillNode(Node):
         return True
 
     def _do_taught_pour(self, job, station):
+        # 고정 붓기 순서: middle → above → start → end(기울이기)
+        #                 → above → 추가 상승(high) → middle. 각 구간에서 파지·취소를 확인한다.
         middle = SkillNode._pose_from_extra(station, 'middle_posx')
         above = SkillNode._pose_from_extra(station, 'pour_above_posx')
         start = SkillNode._pose_from_extra(station, 'pour_start_posx')
@@ -1566,6 +1602,8 @@ class SkillNode(Node):
         return reading
 
     def _do_weigh(self, job: Job):
+        # 용기 계량: workbench 접근 → 파지 → 계량 높이로 상승 → 측정.
+        # 측정 완료·취소 없음이 확인된 경우에만 내려놓기 → 열기 → 상승까지 수행한다.
         self._require_scoop_extracted()
         p = self.get_parameter
         station = self.stations.get('workbench')
@@ -1618,6 +1656,8 @@ class SkillNode(Node):
         return reading
 
     def _do_weigh_held(self, job: Job):
+        # 파지 중인 스쿱 계량. 첫 요청은 거치대 측면 인출 → 상승을 먼저 완료한다.
+        # 이후 해당 원료 계량 자세로 이동해 측정한다. 재요청 때 인출을 반복하지 않는다.
         if self._scoop_extract_uncertain:
             raise RuntimeError('스쿱 인출 상태가 불확실하다. SafePose 후 수동 확인이 필요하다')
         SkillNode._require_held_scoop(self)
@@ -1682,6 +1722,8 @@ class SkillNode(Node):
         return res
 
     def _exec_scoop(self, gh):
+        # ROS 입구: Goal을 Job으로 전달하고 워커 결과를 Action Result로 돌려준다.
+        # 이동 코드는 이 콜백이 아니라 _do_scoop/_do_fixed_scoop에 있다.
         fb = Scoop.Feedback()
 
         def feedback(phase, contact_detected=False, contact_force_n=0.0, insertion_depth_mm=0.0):
