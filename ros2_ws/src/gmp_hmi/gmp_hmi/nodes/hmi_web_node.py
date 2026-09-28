@@ -57,6 +57,14 @@ MODES = {getattr(CellState, name): name
          for name in ('IDLE', 'RUNNING', 'PAUSED', 'DEVIATION', 'ERROR', 'DONE')}
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 TOPICS = ('state', 'weight', 'gripper', 'dispense_result', 'deviation', 'scoop_cycle', 'event')
+# 계약 v1.9 — 결과가 정해지고 반송·넛지 대기만 남은 구간. 이때의 RunBatch 주문은 공정이 1건 예약한다.
+SET_END_STEPS = ('FINISH', 'DISCARDED', 'NUDGE_WAIT')
+
+
+def order_queueable(state):
+    """세트 끝 구간이라 새 주문이 예약되는가(v1.9). 배치가 아직 살아 있는(RUNNING·PAUSED) 반송·넛지 대기만이다 —
+    끝난 배치의 `DONE/DISCARDED` 는 예약이 아니라 보통 주문이다."""
+    return state.get('step') in SET_END_STEPS and state.get('mode') in ('RUNNING', 'PAUSED')
 
 
 class CommandUnavailable(RuntimeError):
@@ -166,6 +174,9 @@ class HmiRosNode(Node):
         self._batch_submission_pending = False
         self._batch_cancel_state = ''
         self._batch_actor = ''
+        # 세트 끝 예약 주문(v1.9). 진행 중 배치와 따로 추적해야 취소 대상이 섞이지 않는다.
+        # dict(batch_id, handle, actor, detail, pending, cancel_state) — 공정 상태가 이 batch_id 로 바뀌면 진행 배치로 옮긴다.
+        self._queued = None
         self.lock = threading.Lock()
         self.safety_recovery = SafetyRecovery()
         self.snap = {'state': {}, 'gripper': {}, 'weights': [], 'results': [], 'deviations': {}, 'events': [], 'scoop_cycles': []}
@@ -295,6 +306,7 @@ class HmiRosNode(Node):
             old = self.snap['state']
             if old.get('batch_id') == m.batch_id and self._t(m.header) < old.get('t', -1):
                 return
+            self._promote_queued_locked(m.batch_id)
             previous = self.received['state']
             stale = previous is None or now - previous > self.local_settings['ui_stale_after_s']
             if stale or m.batch_id != self.entry_batch_id:
@@ -583,11 +595,17 @@ class HmiRosNode(Node):
             if self.safety_recovery.active:
                 raise CommandUnavailable('안전정지 복구가 확인되지 않아 새 주문을 차단했습니다')
             state = self.snap['state']
-            if self._batch_submission_pending or self._batch_handle is not None:
+            queue = order_queueable(state)
+            if self._batch_submission_pending or (self._queued and self._queued['pending']):
+                raise CommandUnavailable('이 HMI의 주문 접수 응답을 기다리는 중입니다')
+            if queue:
+                if self._queued is not None:
+                    raise CommandUnavailable(f'다음 주문 {self._queued["batch_id"]} 이 이미 예약되어 있습니다 · 넛지 뒤 시작')
+            elif self._batch_handle is not None:
                 raise CommandUnavailable('이 HMI의 기존 배치 요청이 종료되지 않았습니다. 결과를 확인하세요')
-            if state.get('mode') not in ('IDLE', 'DONE', 'ERROR'):
-                raise CommandUnavailable('진행 중인 배치가 있어 새 주문을 차단했습니다')
-            if state.get('mode') == 'DONE' and state.get('step') not in ('DONE', 'DISCARDED'):
+            elif state.get('mode') not in ('IDLE', 'DONE', 'ERROR'):
+                raise CommandUnavailable('진행 중인 배치가 있어 새 주문을 차단했습니다 · 세트 끝(반송·넛지 대기)에는 다음 주문 1건을 예약할 수 있습니다')
+            elif state.get('mode') == 'DONE' and state.get('step') not in ('DONE', 'DISCARDED'):
                 raise CommandUnavailable('물리적 완료 확인 대기: 공정의 최종 DONE 또는 DISCARDED 수신 후 주문하세요')
         spec, detail = self._recipe(name)
         if self.test_inventory_enabled:
@@ -610,10 +628,24 @@ class HmiRosNode(Node):
         r.header.stamp = self.get_clock().now().to_msg()
         for it in spec.items:
             r.items.append(RecipeItem(material_id=it.material_id, target_g=it.target_g, tol_pct=it.tol_pct))
-        res = self._send_batch_goal(RunBatch.Goal(recipe=r), batch_id, detail=detail, actor=actor)
-        self.audit('ORDER', actor, f'{name} → {res.batch_id if res else "no-response"} accepted={bool(res and res.accepted)}',
+        res = self._send_batch_goal(RunBatch.Goal(recipe=r), batch_id, detail=detail, actor=actor, queued=queue)
+        self.audit('ORDER', actor, f'{name} → {res.batch_id if res else "no-response"} accepted={bool(res and res.accepted)}'
+                   + (' queued=세트 끝 예약' if queue else ''),
                    batch_id=res.batch_id if res and res.accepted else '')
         return res
+
+    def _promote_queued_locked(self, current_batch_id):
+        """공정이 예약 주문을 시작했으면(상태의 batch_id 가 바뀜) 진행 배치 칸으로 옮긴다. 공유 잠금 안에서 호출."""
+        q = self._queued
+        if not q or q['pending'] or q['handle'] is None or current_batch_id != q['batch_id']:
+            return
+        self._queued = None
+        self._batch_handle, self._batch_id, self._batch_actor = q['handle'], q['batch_id'], q['actor']
+        self._batch_submission_pending = False
+        self._batch_cancel_state = q['cancel_state']
+        if q['detail']:
+            self.active_recipe = copy.deepcopy(q['detail'])
+            self.active_recipe_batch_id = q['batch_id']
 
     def _guard_action(self, client):
         with self.lock:
@@ -631,37 +663,58 @@ class HmiRosNode(Node):
         active = state.get('mode') in ('RUNNING', 'PAUSED', 'DEVIATION')
         reason = ('중단 요청 처리 중 · 최종 결과 확인 필요' if self._batch_cancel_state else
                   '이 HMI가 수락받은 진행 중 배치만 중단할 수 있습니다')
+        q = self._queued
+        queued = None if q is None else dict(
+            batch_id=q['batch_id'], accepted=not q['pending'], cancel_state=q['cancel_state'],
+            can_cancel=bool(q['handle'] is not None and not q['cancel_state']))
         return dict(batch_id=self._batch_id, can_cancel=bool(owned and active and not self._batch_cancel_state),
-                    cancel_state=self._batch_cancel_state, submitting=self._batch_submission_pending,
-                    reason=reason)
+                    cancel_state=self._batch_cancel_state,
+                    submitting=bool(self._batch_submission_pending or (q and q['pending'])),
+                    reason=reason, queued=queued)
 
-    def _send_batch_goal(self, goal, batch_id, timeout_s=3.0, detail=None, actor=''):
-        """응답이 늦어도 수락 콜백을 유지한다. 무응답 주문을 다시 전송하지 않는다."""
+    def _send_batch_goal(self, goal, batch_id, timeout_s=3.0, detail=None, actor='', queued=False):
+        """응답이 늦어도 수락 콜백을 유지한다. 무응답 주문을 다시 전송하지 않는다.
+
+        `queued=True` 는 세트 끝 예약(v1.9) — 진행 중 배치의 handle·목표선을 건드리지 않고 예약 칸에 둔다.
+        """
         if not self.act_batch.wait_for_server(timeout_sec=1.0):
             return None
         done, holder = threading.Event(), {}
         with self.lock:
-            self._batch_submission_pending = True
-            self._batch_id, self._batch_cancel_state, self._batch_actor = batch_id, '', actor
+            if queued:
+                self._queued = dict(batch_id=batch_id, handle=None, actor=actor, detail=copy.deepcopy(detail),
+                                    pending=True, cancel_state='')
+            else:
+                self._batch_submission_pending = True
+                self._batch_id, self._batch_cancel_state, self._batch_actor = batch_id, '', actor
         def accepted(future):
             try:
                 handle = future.result()
                 if not handle.accepted:
                     with self.lock:
-                        self._batch_submission_pending = False
+                        if queued:
+                            self._queued = None
+                        else:
+                            self._batch_submission_pending = False
                     holder['response'] = BatchSubmission(False, batch_id, 'RunBatch Goal이 거부되었습니다')
                     return
                 with self.lock:
-                    self._batch_handle = handle
-                    self._batch_submission_pending = False
-                    if detail:
-                        self.active_recipe = copy.deepcopy(detail)
-                        self.active_recipe_batch_id = batch_id
+                    if queued:
+                        if self._queued and self._queued['batch_id'] == batch_id:
+                            self._queued.update(handle=handle, pending=False)
+                            self._promote_queued_locked(self.snap['state'].get('batch_id', ''))
+                    else:
+                        self._batch_handle = handle
+                        self._batch_submission_pending = False
+                        if detail:
+                            self.active_recipe = copy.deepcopy(detail)
+                            self.active_recipe_batch_id = batch_id
                 if detail:
                     self.audit('ORDER_CONTEXT', actor, json.dumps(detail, ensure_ascii=False), batch_id=batch_id)
                 result_future = handle.get_result_async()
                 result_future.add_done_callback(lambda f: self._on_owned_batch_result(f, batch_id, actor))
-                holder['response'] = BatchSubmission(True, batch_id, 'RunBatch Goal 접수 완료')
+                holder['response'] = BatchSubmission(
+                    True, batch_id, 'RunBatch Goal 예약 접수 · 세트 끝 넛지 뒤 시작' if queued else 'RunBatch Goal 접수 완료')
             except Exception as exc:
                 # 전송/접수 결과를 모르면 차단 유지. 예외를 거부로 취급하지 않는다.
                 self.get_logger().warning(f'RunBatch 접수 결과 미확인: {exc}')
@@ -682,12 +735,19 @@ class HmiRosNode(Node):
             self._on_batch_result(future)
             return
         with self.lock:
-            if self._batch_id != batch_id:
-                return
-            self._batch_handle = None
-            self._batch_submission_pending = False
-            self._batch_cancel_state = ''
-        self._on_batch_result(future)
+            if self._queued and self._queued['batch_id'] == batch_id:
+                # 예약이 시작되지 못하고 끝났다(ORDER_DROPPED·예약 취소) — 진행 배치 표시는 건드리지 않는다.
+                self._queued = None
+                current = False
+            elif self._batch_id == batch_id:
+                self._batch_handle = None
+                self._batch_submission_pending = False
+                self._batch_cancel_state = ''
+                current = True
+            else:
+                current = False   # 예약 주문이 이미 진행 배치로 올라간 뒤 도착한 앞 배치 결과 — 기록만 남긴다
+        if current:
+            self._on_batch_result(future)
         result = future.result().result
         self.audit('BATCH_RESULT', actor, f'result={result.result} success={bool(result.success)}', batch_id=batch_id)
 
@@ -697,11 +757,20 @@ class HmiRosNode(Node):
         self._guard_action(self.act_batch)
         with self.lock:
             controls = self._batch_controls_locked()
-            if batch_id != self._batch_id or not controls['can_cancel']:
-                raise CommandUnavailable(controls['reason'])
-            handle = self._batch_handle
-            self._batch_cancel_state = 'pending'
-        self.audit('BATCH_CANCEL_REQUEST', actor, 'RunBatch cancel 요청 · 실제 정지 미확인', batch_id=batch_id)
+            queued = controls['queued'] is not None and batch_id == controls['queued']['batch_id']
+            if queued:
+                if not controls['queued']['can_cancel']:
+                    raise CommandUnavailable('예약 주문 취소 요청 처리 중이거나 접수 전입니다')
+                handle = self._queued['handle']
+                self._queued['cancel_state'] = 'pending'
+            else:
+                if batch_id != self._batch_id or not controls['can_cancel']:
+                    raise CommandUnavailable(controls['reason'])
+                handle = self._batch_handle
+                self._batch_cancel_state = 'pending'
+        self.audit('BATCH_CANCEL_REQUEST', actor,
+                   '예약 주문 cancel 요청 · 세트 끝 뒤 시작하지 않음' if queued else 'RunBatch cancel 요청 · 실제 정지 미확인',
+                   batch_id=batch_id)
         done, holder = threading.Event(), {}
         def acknowledged(future):
             try:
@@ -709,26 +778,31 @@ class HmiRosNode(Node):
                 accepted = (res.return_code == 0 and any(
                     list(info.goal_id.uuid) == list(handle.goal_id.uuid) for info in res.goals_canceling))
                 with self.lock:
-                    if self._batch_id == batch_id and self._batch_handle is handle:
-                        self._batch_cancel_state = 'accepted' if accepted else ''
+                    self._set_cancel_state_locked(batch_id, handle, 'accepted' if accepted else '')
                 self.audit('BATCH_CANCEL_RESPONSE', actor, f'accepted={accepted}', batch_id=batch_id)
                 holder['response'] = BatchSubmission(accepted, batch_id,
                     '취소 접수 · 실제 정지와 배치 종료는 공정 최종 결과를 확인하세요' if accepted else
                     '공정이 취소를 수락하지 않았습니다. 현재 상태를 확인하세요')
             except Exception:
                 with self.lock:
-                    if self._batch_id == batch_id and self._batch_handle is handle:
-                        self._batch_cancel_state = 'uncertain'
+                    self._set_cancel_state_locked(batch_id, handle, 'uncertain')
             finally:
                 done.set()
         try:
             handle.cancel_goal_async().add_done_callback(acknowledged)
         except Exception:
             with self.lock:
-                self._batch_cancel_state = 'uncertain'
+                self._set_cancel_state_locked(batch_id, handle, 'uncertain')
             return None
         done.wait(timeout_s)
         return holder.get('response')
+
+    def _set_cancel_state_locked(self, batch_id, handle, value):
+        """취소 응답을 요청한 goal(진행 배치 또는 예약 주문)에만 적는다. 공유 잠금 안에서 호출."""
+        if self._queued and self._queued['batch_id'] == batch_id and self._queued['handle'] is handle:
+            self._queued['cancel_state'] = value
+        elif self._batch_id == batch_id and self._batch_handle is handle:
+            self._batch_cancel_state = value
 
     def _on_batch_feedback(self, message):
         feedback = message.feedback
