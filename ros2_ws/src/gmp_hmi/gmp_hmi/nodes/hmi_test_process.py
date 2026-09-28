@@ -633,8 +633,9 @@ class HmiTestProcess(Node):
         """
         self.plan = []
         if self.holding_scoop and self.items:
+            # 실제 C 는 스쿱 반납(move → grip open)도 step=DISCARDED 안에서 한다 — 별도 RETURN_SCOOP 단계가 아니다.
             mid = self.items[self.index].material_id
-            self._add('RETURN_SCOOP', self._scoop_station(mid), BATCH_STEP_S,
+            self._add('DISCARDED', self._scoop_station(mid), BATCH_STEP_S,
                       done=lambda: setattr(self, 'holding_scoop', False))
         self._add('DISCARDED', 'reject_bin', BATCH_STEP_S)
         self._plan_park('DISCARDED')
