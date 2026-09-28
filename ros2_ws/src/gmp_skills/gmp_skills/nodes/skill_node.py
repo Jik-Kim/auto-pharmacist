@@ -83,6 +83,7 @@ class SkillNode(Node):
     def __init__(self):
         # 기본값과 설명은 gmp_bringup/params/common.yaml 한 곳에서 관리한다.
         # launch 또는 --params-file로 전달된 값만 자동 선언해 코드와 YAML의 중복을 없앤다.
+        # 역할: 설정을 읽고 장치·상태·통신 인터페이스를 구성한 뒤 초기화 작업을 워커에 맡긴다.
         super().__init__('skill_node', automatically_declare_parameters_from_overrides=True)
         g = lambda k: self.get_parameter(k).value  # noqa: E731
         self._scale_period_s()  # 장치 생성 전에 잘못된 계량 설정을 거부한다.
@@ -220,9 +221,11 @@ class SkillNode(Node):
 
     # ── 공용 ────────────────────────────────────────────────────────────
     def _now_s(self):
+        # 역할: 노드의 ROS 시각을 초 단위로 반환한다. 계량·이벤트의 시간 기준을 통일한다.
         return self.get_clock().now().nanoseconds / 1e9
 
     def event(self, level: str, code: str, text: str, batch_id: str = ''):
+        # 역할: CellEvent를 발행하고 같은 코드·내용을 노드 로그에도 기록한다.
         m = CellEvent(level=getattr(CellEvent, level), code=code, text=text, batch_id=batch_id)
         m.header.stamp = self.get_clock().now().to_msg()
         self.pub_event.publish(m)
@@ -232,6 +235,7 @@ class SkillNode(Node):
             self.get_logger().info(f'[{code}] {text}')
 
     def _send_gripper_command(self, cmd: str) -> bool:
+        # 역할: Modbus/가상 그리퍼 서비스에 명령을 보내 제한 시간 내 성공 응답 여부를 반환한다.
         if not self._grip_cli.wait_for_service(timeout_sec=2.0):
             self.event('ERROR', 'GRIPPER_SVC', '/onrobot/sendCommand 없음')
             return False
@@ -242,6 +246,7 @@ class SkillNode(Node):
         return bool(fut.done() and fut.result().success)
 
     def _on_js(self, msg: JointState):
+        # 역할: 그리퍼 JointState에서 손가락 위치와 시각을 추출해 어댑터의 관측 상태를 갱신한다.
         source_s = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
         stamp_s = source_s if source_s > 0.0 else self._now_s()
         for n, pos in zip(msg.name, msg.position):
@@ -250,6 +255,7 @@ class SkillNode(Node):
                 break
 
     def _pub_gripper_state(self):
+        # 역할: 캐시된 그리퍼 상태를 발행하고 폭 변화에 따른 미끄러짐 이벤트를 보고한다.
         state = self.gripper.state(self._now_s())
         w = state['width_mm']
         m = GripperState(width_mm=-1.0 if w is None else w, busy=state['busy'],
@@ -261,6 +267,7 @@ class SkillNode(Node):
             self.event('WARN', 'GRIP_SLIP', f'폭 변화가 slip_mm를 초과함: width={m.width_mm:.2f} mm')
 
     def _observe_force(self, force6):
+        # 역할: 계량·대기 중 받은 외력 표본으로 취소를 확인하고 넛지 입력을 판정한다.
         if self._cancel_requested():
             raise RuntimeError('cancelled')
         if self._nudge_enabled and self._nudge.update(force6, self._now_s()):
@@ -268,6 +275,7 @@ class SkillNode(Node):
             self.event('INFO', 'NUDGE', f'외력 nudge 입력 감지: |F|={magnitude_n:.2f} N')
 
     def _poll_nudge(self):
+        # 역할: 워커에서 외력을 읽어 넛지를 감시한다. 조회 실패는 안전 차단으로 연결한다.
         if not self._nudge_enabled or self._safety_latched or not self._configured:
             return
         try:
@@ -286,6 +294,7 @@ class SkillNode(Node):
                 raise
 
     def _wait_with_nudge(self, duration_s: float, job: Job):
+        # 역할: 정해진 시간 동안 대기하되 취소와 외력 감시를 계속 수행한다.
         end_s = self._now_s() + max(0.0, duration_s)
         while self._now_s() < end_s:
             if job.cancel:
@@ -296,6 +305,7 @@ class SkillNode(Node):
     # ── 워커: 로봇 명령은 여기서만 ──────────────────────────────────────
     def _latch_safety(self, reason, *, alarm=False, recovery_request=None):
         # 콜백은 상태만 저장한다. 정지·복구 명령은 워커에서만 실행한다.
+        # 역할: 안전 차단을 걸고 진행·대기 작업과 위치/파지 이력을 무효화하며 정지 원인을 기록한다.
         with self._job_lock:
             changed = not self._safety_latched or reason != self._safety_reason
             if changed or alarm or recovery_request is not None:
@@ -325,6 +335,7 @@ class SkillNode(Node):
             return self._safety_revision
 
     def _poll_safety(self, force=False):
+        # 역할: 실물 로봇 상태를 주기적으로 조회하고 허용 상태가 아니거나 조회 실패 시 차단한다.
         if self.mode == 'virtual':
             return
         now = self._now_s()
@@ -341,10 +352,12 @@ class SkillNode(Node):
             self._latch_safety(f'로봇 상태 {self._last_robot_state}: 작업자 복구 필요')
 
     def _on_robot_alarm(self, msg):
+        # 역할: 벤더 알람의 심각도를 확인해 차단 대상 알람을 안전 상태에 반영한다.
         if msg.level >= 3 or (msg.group == 5 and msg.level >= 2):
             self._latch_safety(f'vendor alarm {msg.group}/{msg.code}: {msg.msg1}', alarm=True)
 
     def _do_recover(self, job):
+        # 역할: 워커에서 승인된 복구 단계를 실행하고 상태·자가진단을 재확인한다. 배치를 자동 재개하지 않는다.
         args = job.args
         if self.mode == 'virtual':
             return False, True, -1, '가상 모드의 안전 복구는 실물 복구 성공으로 처리하지 않습니다'
@@ -361,6 +374,7 @@ class SkillNode(Node):
                 raise RuntimeError('복구 요청 취소됨')
             def dispatch(operation):
                 # 비동기 전송 순간만 잠근다. 응답 대기 중에는 알람 콜백이 실행돼야 한다.
+                # 역할: 복구 명령 전송 직전에 잠금 아래 새 알람·종료·취소 여부를 재검증한다.
                 with self._job_lock:
                     if (self._safety_revision != revision or self._stopping.is_set()
                             or job.cancel):
@@ -412,6 +426,7 @@ class SkillNode(Node):
         return True, False, state, '로봇 복구 확인. 배치 재개·자세 이동은 수행하지 않았습니다'
 
     def _srv_recover(self, req, res):
+        # 역할: 작업자 확인과 요청 ID를 검증하고 중복 복구 요청에 같은 결과를 반환하도록 관리한다.
         fingerprint = (req.operator_id, req.expected_state, req.operator_confirmed)
         if not req.request_id.strip() or not req.operator_id.strip() or not req.operator_confirmed:
             res.success, res.manual_required, res.robot_state = False, True, -1
@@ -477,6 +492,7 @@ class SkillNode(Node):
         return res
 
     def check_startup(self):
+        # 역할: 워커 초기화 결과를 확인해 준비 상태를 반영한다. 초기화 실패는 정상 기동으로 처리하지 않는다.
         if self._ready or not self._startup_job.done.is_set():
             return
         job = self._startup_job
@@ -486,6 +502,7 @@ class SkillNode(Node):
         self.event('INFO', 'SELF_CHECK', f'OK {job.result[1]}')
 
     def _cancel_requested(self):
+        # 역할: 종료·안전 차단·현재 작업 취소 여부를 장치 어댑터가 읽을 수 있는 bool로 반환한다.
         if self._current and self._current.kind not in ('startup', 'recover'):
             self._poll_safety()
         return (self._stopping.is_set() or bool(self._current and self._current.cancel)
@@ -493,6 +510,7 @@ class SkillNode(Node):
                     and self._current.kind not in ('startup', 'recover')))
 
     def _drain_jobs_locked(self, reason):
+        # 역할: 잠금 상태에서 대기 큐를 비우고 각 요청에 실패 원인과 완료 신호를 전달한다.
         while True:
             try:
                 job = self._q.get_nowait()
@@ -502,6 +520,7 @@ class SkillNode(Node):
             job.done.set()
 
     def shutdown(self):
+        # 역할: 진행 작업 취소와 큐 정리를 요청하고 워커 종료 확인 여부를 반환한다.
         """DSR 호출은 워커에 맡기고 정해진 시간까지만 기다린다."""
         with self._job_lock:
             self._stopping.set()
@@ -518,6 +537,7 @@ class SkillNode(Node):
 
     def _submit(self, kind: str, feedback=None, **args) -> Job:
         # 콜백에서는 로봇을 움직이지 않는다. 실행 가능한 요청만 큐에 넣고 워커 완료를 기다린다.
+        # 역할: 요청을 Job으로 만들고 기동·안전 상태를 검사한 뒤 큐에 넣어 결과를 기다린다.
         job = Job(kind, args, feedback=feedback)
         with self._job_lock:
             if self._stopping.is_set() or self._worker_stopped.is_set():
@@ -538,6 +558,7 @@ class SkillNode(Node):
 
     def _worker(self):
         # 로봇 명령을 직렬 실행하는 단일 소비자. 큐가 비면 안전·DI·넛지 상태를 점검한다.
+        # 역할: Job을 하나씩 꺼내 _do_*를 실행하고 결과·예외·완료 신호를 원래 콜백에 전달한다.
         try:
             while rclpy.ok() and not self._stopping.is_set():
                 try:
@@ -609,6 +630,7 @@ class SkillNode(Node):
                 self._worker_stopped.set()
 
     def _do_startup(self, job: Job):
+        # 역할: 워커에서 장치를 초기화하고 자가진단 및 요청된 스쿱 상태 복원을 수행한다.
         restore_requested = any(job.args.get(k) for k in
                                 ('restore_material_id', 'restore_operator_id', 'restore_confirmed'))
         self._poll_safety(force=True)
@@ -630,6 +652,7 @@ class SkillNode(Node):
         return result
 
     def _restore_extracted_scoop(self, job: Job):
+        # 역할: 작업자 확인·실제 자세·최신 파지 상태를 검증해 이미 인출된 스쿱의 내부 이력만 복원한다.
         """작업자가 확인한 인출 완료 스쿱만 계량 자세에서 복원한다. 이동·개폐는 없다."""
         self._empty_scoop_force_baseline = None
         self._empty_scoop_baseline_pending = False
@@ -693,12 +716,14 @@ class SkillNode(Node):
             f'station={station.station_id} width_mm={width}; 공정 자동 재개 없음')
 
     def _require_scoop_extracted(self):
+        # 역할: 스쿱 인출이 미완료이거나 불확실하면 후속 이동을 예외로 차단한다.
         if self._scoop_extract_uncertain:
             raise RuntimeError('스쿱 인출 상태가 불확실하다. SafePose 후 수동 확인이 필요하다')
         if self._pending_scoop_extract:
             raise RuntimeError('스쿱 파지 후 WeighHeld로 +Y 인출을 먼저 수행해야 한다')
 
     def _do_move(self, job: Job, *, station_id=None, approach=None):
+        # 역할: 스테이션 이동의 진입점이다. 실패하면 출발/파지 이력을 지워 후속 동작의 오판을 막는다.
         self._require_scoop_extracted()
         try:
             return self._move_checked(job, station_id=station_id, approach=approach)
@@ -711,9 +736,11 @@ class SkillNode(Node):
             raise
 
     def _pose_matches(self, actual, target):
+        # 역할: 위치·회전 허용오차 안에서 실제 TCP 자세가 목표와 일치하는지 반환한다.
         return pose_matches(actual, target, self.pose_xyz_tolerance, self.pose_rotation_tolerance)
 
     def _record_arrival(self, station_id, approach, target):
+        # 역할: 실제 목표 도착을 확인한 뒤 위치·관절각을 다음 이동의 출발 이력으로 저장한다.
         actual = self.arm.current_posx()
         if not self._pose_matches(actual, target):
             raise RuntimeError(f'이동 위치/자세 미도달: target={target}, actual={actual}')
@@ -724,6 +751,7 @@ class SkillNode(Node):
     def _move_checked(self, job: Job, *, station_id=None, approach=None):
         # 목적지 설정으로 티칭 경로/전용 이송/sol 접근/일반 이동을 선택한다.
         # 경로 선택 뒤에도 출발 이력과 실제 도착 자세를 확인해야 다음 파지 요청이 가능하다.
+        # 역할: 목적지와 출발 상태에 맞는 이동 경로를 선택하고 실행·도착 확인을 수행한다.
         if job.cancel:
             raise RuntimeError('cancelled')
         approach = job.args['approach'] if approach is None else approach
@@ -800,6 +828,7 @@ class SkillNode(Node):
         return st.station_id
 
     def _taught_linear(self, job, target):
+        # 역할: 직선 이동 준비가 안 됐으면 안전 관절 자세를 거친 뒤 지정 TCP 목표로 이동한다.
         scale = job.args.get('vel_scale') or self.vel_scale
         if not math.isfinite(scale) or not 0 < scale <= 1:
             raise ValueError('vel_scale은 0 초과 1 이하여야 한다')
@@ -813,6 +842,7 @@ class SkillNode(Node):
                                    lambda: job.cancel or self._cancel_requested(), self.motion_timeout_s)
 
     def _leave_taught_station(self, job, destination):
+        # 역할: 현재 티칭 스테이션의 출발 이력을 확인하고 다음 목적지로 가기 전 이탈 높이를 확보한다.
         source = self.stations.stations.get(self._station_id)
         if source is None or source.station_id == destination:
             return
@@ -833,6 +863,7 @@ class SkillNode(Node):
         self._motion_anchor = None
 
     def _move_taught_station(self, job, station, approach):
+        # 역할: 티칭 설정에 따라 용기 접근/이탈 또는 스쿱 거치대 진입/반납 이동을 수행한다.
         """DRL 관절 진입·직선 하강과 거치대 측면 반납을 외부 AT/ABOVE에 연결한다."""
         scale = job.args.get('vel_scale') or self.vel_scale
         if not math.isfinite(scale) or not 0 < scale <= 1:
@@ -905,11 +936,13 @@ class SkillNode(Node):
         return station.station_id
 
     def _require_solution(self, station):
+        # 역할: 현재 로봇의 관절 구성이 스테이션에 지정된 solution_space와 다르면 거부한다.
         sol = self.arm.solution_space()
         if sol != station.extra['solution_space']:
             raise RuntimeError(f'{station.station_id}: 관절 구성 불일치 sol={sol}')
 
     def _leave_solution_station(self, job, destination, vel_scale):
+        # 역할: solution_space 방식의 용기 스테이션을 떠나기 전 파지·자세 확인과 직선 이탈을 수행한다.
         """용기 위치를 떠날 때는 파지·출발 이력을 확인하고 직선으로 이탈한다."""
         if self._station_id == destination or self._station_id not in self.stations.stations:
             return
@@ -932,6 +965,7 @@ class SkillNode(Node):
         self._motion_anchor = None
 
     def _move_solution_station(self, job, station, target, vel_scale):
+        # 역할: solution_space 방식으로 ABOVE까지 관절 접근하고 필요하면 목표까지 직선 이동한다.
         """ABOVE에서 관절 구성을 선택하고 AT 접근은 직선으로 유지한다."""
         if self._held_payload in ('cup', 'empty'):
             self._require_transfer_payload(self._held_payload)
@@ -954,6 +988,7 @@ class SkillNode(Node):
         self._require_solution(station)
 
     def _require_transfer_payload(self, expected):
+        # 역할: 이송 경로가 요구하는 빈 그리퍼/용기/스쿱 상태와 최신 파지 피드백을 확인한다.
         if getattr(self.gripper, 'backend', '') == 'dio':
             self.gripper.refresh_dio()
             state = self.gripper.state(self._now_s())
@@ -973,6 +1008,7 @@ class SkillNode(Node):
             raise RuntimeError('빈 그리퍼의 열림 폭을 확인할 수 없다')
 
     def _run_transfer(self, route, job, target, vel_scale):
+        # 역할: 출발 조건을 검증한 전용 이송 경로를 실행하며 중간 구간과 도착 상태를 확인한다.
         if route.arrival == 'at' and job.args['approach'] != MoveToStation.Goal.AT:
             raise ValueError('관절 직접 도착 경로는 AT 요청만 허용한다')
         validate_start(route, self._motion_anchor, self.arm.current_posx(),
@@ -986,6 +1022,7 @@ class SkillNode(Node):
         job.feedback and job.feedback('MOVING')
 
         def checkpoint():
+            # 역할: 전용 이송 구간에서 요구 파지 상태를 다시 확인하는 감시 콜백이다.
             if job.cancel:
                 raise RuntimeError('cancelled')
             self._require_transfer_payload(route.payload)
@@ -1016,6 +1053,7 @@ class SkillNode(Node):
     def _do_grip(self, job: Job):
         # 그리퍼 개폐와 파지 이력만 처리한다. 스쿱을 잡아도 여기서 인출하지 않는다.
         # DIO의 출력·입력 완료 확인은 Rg2Gripper가 담당하고, 인출은 _do_weigh_held에서 한다.
+        # 역할: 개폐를 실행하고 성공한 위치와 파지 대상에 따라 용기/스쿱 및 인출 대기 상태를 갱신한다.
         a = job.args
         self._held_payload = 'unknown'
         self._held_material_id = ''
@@ -1070,12 +1108,14 @@ class SkillNode(Node):
         return released, self.gripper.width_mm() or -1.0, False
 
     def _scale_period_s(self):
+        # 역할: 계량 표본 주기를 읽고 유한한 양수인지 검증해 초 단위로 반환한다.
         period = float(self.get_parameter('scale.period_s').value)
         if not math.isfinite(period) or period <= 0:
             raise ValueError('scale.period_s는 유한한 양수여야 한다')
         return period
 
     def _do_measure(self, job: Job):
+        # 역할: 원시 힘 표본의 평균·표준편차·유효성을 반환한다. 가상 측정은 실측 유효값으로 보고하지 않는다.
         period_s = self._scale_period_s()
         if self.get_parameter('scale.simulated').value:
             return [0.0] * 6, 0.0, 0.0, False, 'simulated'
@@ -1084,6 +1124,7 @@ class SkillNode(Node):
         return mean6, fz, std, valid, ''
 
     def _do_safe(self, job: Job):
+        # 역할: 힘제어 해제를 시도한 뒤 지정 안전 관절 자세로 이동하고 위치·인출 상태를 재설정한다.
         try:
             self.arm.compliance_off()
         except Exception:  # noqa: BLE001 — 힘제어 중이 아니었으면 무시
@@ -1103,6 +1144,7 @@ class SkillNode(Node):
         return True
 
     def _require_held_scoop(self, material_id=None):
+        # 역할: 원료 ID가 맞는 스쿱 파지 이력과 현재 그리퍼 피드백이 모두 확인되지 않으면 거부한다.
         if self._held_payload != 'scoop' or not self._held_material_id:
             raise RuntimeError('원료 ID가 확인된 스쿱 파지 이력이 필요하다')
         if material_id is not None and self._held_material_id != material_id:
@@ -1115,6 +1157,7 @@ class SkillNode(Node):
 
     @staticmethod
     def _pose_from_extra(station, key):
+        # 역할: 스테이션 부가 설정에서 유한한 6축 자세를 검증하고 원본과 분리된 리스트로 반환한다.
         pose = station.extra.get(key)
         if (not isinstance(pose, list) or len(pose) != 6
                 or any(isinstance(v, bool) or not isinstance(v, (int, float))
@@ -1123,6 +1166,7 @@ class SkillNode(Node):
         return list(pose)
 
     def _do_scoop(self, job: Job):
+        # 역할: 파지·인출 조건을 확인한 뒤 고정 티칭/높이 보정/높이 측정 전용 경로로 분기한다.
         """고정 BASE 티칭 또는 보정된 WORLD 경로로 스쿠핑 후 계량 자세에 복귀한다."""
         if getattr(self, '_return_rescoop_blocked', False):
             raise RuntimeError('반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
@@ -1179,6 +1223,7 @@ class SkillNode(Node):
             f'predicted_g={plan.predicted_g:.2f} shift_mm={plan.shift_mm:.2f}')
 
         def observe():
+            # 역할: 이동 중 스쿱 파지와 해당 경로의 관측 조건을 확인하는 워커 감시 콜백이다.
             SkillNode._require_held_scoop(self, material)
             world = self.arm.transform_pose(self.arm.current_posx(), to_world=True)
             if tip_z(world, offset) < plan.floor_z:
@@ -1210,6 +1255,7 @@ class SkillNode(Node):
         return result
 
     def _do_fixed_scoop(self, job, profile):
+        # 역할: 검증된 full 5점 경로와 털기를 실행하고 원료 계량 자세로 복귀한다. 접촉·깊이는 측정하지 않는다.
         """검증된 BASE 경로만 실행한다. 원료면/끝 높이/담금량을 계산하지 않는다."""
         fixed = profile.get('fixed_path', {})
         if fixed.get('verified') is not True or self.stations.frame != 'base':
@@ -1236,6 +1282,7 @@ class SkillNode(Node):
         cancel = lambda: job.cancel or self._cancel_requested()
 
         def observe():
+            # 역할: 이동 중 스쿱 파지와 해당 경로의 관측 조건을 확인하는 워커 감시 콜백이다.
             SkillNode._require_held_scoop(self, material)
 
         if cancel():
@@ -1268,6 +1315,7 @@ class SkillNode(Node):
                     message='TAUGHT_FIXED: 검증된 full 경로 완료; 접촉력·삽입 깊이 미측정')
 
     def _measure_surface_world(self, job: Job):
+        # 역할: 접촉 위치와 스쿱 끝 오프셋으로 WORLD 원료면 높이를 계산해 측정 전용 진단 결과를 만든다.
         """측정 전용: 기존 접촉 경로와 복귀만 실행하고 스쿠핑은 하지 않는다."""
         material = job.args['material_id']
         profile = self.stations.scooping.get(material)
@@ -1291,6 +1339,7 @@ class SkillNode(Node):
         return result
 
     def _wait_compliance_settle(self, job: Job, duration_s: float):
+        # 역할: 순응 제어 안정화 시간을 기다리면서 취소와 넛지 감시를 유지한다.
         """순응 진입 응답 후 컨트롤러 전환 시간을 확보하며 취소를 확인한다."""
         deadline = self._now_s() + duration_s
         while True:
@@ -1302,6 +1351,7 @@ class SkillNode(Node):
             time.sleep(min(0.02, remaining))
 
     def _do_check_depth(self, job: Job):
+        # 역할: 빈 스쿱 힘 기준과 티칭 경로로 접촉/삽입을 관측하고 힘제어 해제 및 복귀를 처리한다.
         """티칭 목표로 접근하다 최초 접촉에서 감속 정지하고 계량 자세로 복귀한다."""
         if getattr(self, '_return_rescoop_blocked', False):
             raise RuntimeError('반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
@@ -1366,6 +1416,7 @@ class SkillNode(Node):
             self.get_logger().info(f'[FORCE_TRACE_CSV] {trace_path}')
 
         def observe_depth():
+            # 역할: 외력·현재 자세로 접촉과 삽입 깊이를 갱신하고 접촉 정지 여부를 판단한다.
             nonlocal contact_z, contact_pose, max_force_n, insertion_mm, next_trace_at
             sample_at = self._now_s()
             if trace_only:
@@ -1445,6 +1496,7 @@ class SkillNode(Node):
                 trace_file.close()
 
     def _do_pour(self, job: Job):
+        # 역할: 인출·파지와 붓기 요청을 확인하고 티칭 경로 또는 기존 붓기 경로를 실행한다.
         self._empty_scoop_baseline_pending = False
         self._require_scoop_extracted()
         SkillNode._require_held_scoop(self)
@@ -1491,6 +1543,7 @@ class SkillNode(Node):
     def _do_taught_pour(self, job, station):
         # 고정 붓기 순서: middle → above → start → end(기울이기)
         #                 → above → 추가 상승(high) → middle. 각 구간에서 파지·취소를 확인한다.
+        # 역할: 중간점·상부·붓기 시작/끝·상승·중간점 순서로 이동하며 각 구간의 파지를 확인한다.
         middle = SkillNode._pose_from_extra(station, 'middle_posx')
         above = SkillNode._pose_from_extra(station, 'pour_above_posx')
         start = SkillNode._pose_from_extra(station, 'pour_start_posx')
@@ -1511,6 +1564,7 @@ class SkillNode(Node):
         return True
 
     def _do_return_material(self, job: Job):
+        # 역할: 원료 반환 시작점과 관절 기울임 자세로 이동한다. 미검증 재스쿱 연결은 차단한 채 끝낸다.
         self._empty_scoop_baseline_pending = False
         self._require_scoop_extracted()
         material_id = job.args['material_id']
@@ -1543,6 +1597,7 @@ class SkillNode(Node):
 
     def _measure_weight_reading(self, tare_g: float, subject: str,
                                 station_id: str = 'workbench') -> WeightReading:
+        # 역할: 원시 측정에 B의 보정 모델과 tare를 적용해 WeightReading을 만들고 조건부 빈 스쿱 기준을 저장한다.
         p = self.get_parameter
         capture_baseline = (subject == 'scoop'
                             and getattr(self, '_empty_scoop_baseline_pending', False))
@@ -1604,6 +1659,7 @@ class SkillNode(Node):
     def _do_weigh(self, job: Job):
         # 용기 계량: workbench 접근 → 파지 → 계량 높이로 상승 → 측정.
         # 측정 완료·취소 없음이 확인된 경우에만 내려놓기 → 열기 → 상승까지 수행한다.
+        # 역할: 용기를 집어 들어 계량하고 정상 완료 시 내려놓고 그리퍼를 연 뒤 상승한다.
         self._require_scoop_extracted()
         p = self.get_parameter
         station = self.stations.get('workbench')
@@ -1658,6 +1714,7 @@ class SkillNode(Node):
     def _do_weigh_held(self, job: Job):
         # 파지 중인 스쿱 계량. 첫 요청은 거치대 측면 인출 → 상승을 먼저 완료한다.
         # 이후 해당 원료 계량 자세로 이동해 측정한다. 재요청 때 인출을 반복하지 않는다.
+        # 역할: 잡고 있는 스쿱을 필요 시 인출·상승시킨 후 해당 원료 계량 자세에서 무게를 측정한다.
         if self._scoop_extract_uncertain:
             raise RuntimeError('스쿱 인출 상태가 불확실하다. SafePose 후 수동 확인이 필요하다')
         SkillNode._require_held_scoop(self)
@@ -1703,15 +1760,18 @@ class SkillNode(Node):
 
     # ── 콜백: 큐에 넣고 기다린다 ────────────────────────────────────────
     def _on_cancel(self, _goal):
+        # 역할: Action 취소를 수락하고 현재 워커 작업에 취소 플래그를 전달한다.
         with self._job_lock:
             if self._current:
                 self._current.cancel = True
         return CancelResponse.ACCEPT
 
     def _exec_move(self, gh):
+        # 역할: MoveToStation Goal을 move 작업으로 보내고 도착 정보 및 Action 종료 상태를 반환한다.
         g = gh.request
         fb = MoveToStation.Feedback()
         def feedback(phase):
+            # 역할: 워커가 전달한 진행 정보를 해당 ROS Action의 Feedback 메시지로 발행한다.
             fb.phase = phase
             gh.publish_feedback(fb)
         job = self._submit('move', feedback, station_id=g.station_id, approach=g.approach, vel_scale=g.vel_scale)
@@ -1724,9 +1784,11 @@ class SkillNode(Node):
     def _exec_scoop(self, gh):
         # ROS 입구: Goal을 Job으로 전달하고 워커 결과를 Action Result로 돌려준다.
         # 이동 코드는 이 콜백이 아니라 _do_scoop/_do_fixed_scoop에 있다.
+        # 역할: Scoop Goal을 scoop 작업으로 보내고 접촉/깊이 또는 미측정 진단과 Action 종료 상태를 반환한다.
         fb = Scoop.Feedback()
 
         def feedback(phase, contact_detected=False, contact_force_n=0.0, insertion_depth_mm=0.0):
+            # 역할: 워커가 전달한 진행 정보를 해당 ROS Action의 Feedback 메시지로 발행한다.
             fb.phase = phase
             fb.contact_detected = bool(contact_detected)
             fb.contact_force_n = float(contact_force_n)
@@ -1749,8 +1811,10 @@ class SkillNode(Node):
         return res
 
     def _exec_pour(self, gh):
+        # 역할: Pour Goal을 pour 작업으로 전달하고 진행 피드백과 Action 성공·실패·취소를 응답한다.
         fb = Pour.Feedback()
         def feedback(phase):
+            # 역할: 워커가 전달한 진행 정보를 해당 ROS Action의 Feedback 메시지로 발행한다.
             fb.phase = phase
             gh.publish_feedback(fb)
         job = self._submit('pour', feedback, fraction=gh.request.fraction)
@@ -1760,9 +1824,11 @@ class SkillNode(Node):
         return res
 
     def _exec_return_material(self, gh):
+        # 역할: 원료 ID를 반환 작업에 전달하고 진행 피드백과 Action 종료 상태를 응답한다.
         fb = ReturnMaterial.Feedback()
 
         def feedback(phase):
+            # 역할: 워커가 전달한 진행 정보를 해당 ROS Action의 Feedback 메시지로 발행한다.
             fb.phase = phase
             gh.publish_feedback(fb)
 
@@ -1773,8 +1839,10 @@ class SkillNode(Node):
         return res
 
     def _exec_weigh(self, gh):
+        # 역할: 용기 계량 요청을 weigh 작업으로 보내고 WeightReading과 Action 종료 상태를 반환한다.
         fb = WeighContainer.Feedback()
         def feedback(phase):
+            # 역할: 워커가 전달한 진행 정보를 해당 ROS Action의 Feedback 메시지로 발행한다.
             fb.phase = phase
             gh.publish_feedback(fb)
         job = self._submit('weigh', feedback, tare_g=gh.request.tare_g)
@@ -1785,9 +1853,11 @@ class SkillNode(Node):
         return res
 
     def _exec_weigh_held(self, gh):
+        # 역할: 파지물 계량 요청을 weigh_held 작업으로 보내고 WeightReading과 Action 종료 상태를 반환한다.
         fb = WeighHeld.Feedback()
 
         def feedback(phase):
+            # 역할: 워커가 전달한 진행 정보를 해당 ROS Action의 Feedback 메시지로 발행한다.
             fb.phase = phase
             gh.publish_feedback(fb)
 
@@ -1799,6 +1869,7 @@ class SkillNode(Node):
         return res
 
     def _srv_set_gripper(self, req, res):
+        # 역할: 개폐·폭·힘·제한시간 요청을 grip 작업으로 전달하고 파지 결과를 서비스 응답에 담는다.
         job = self._submit('grip', close=req.close, width_mm=req.width_mm, force_n=req.force_n, timeout_s=req.timeout_s)
         if job.error:
             res.success, res.message = False, job.error
@@ -1807,6 +1878,7 @@ class SkillNode(Node):
         return res
 
     def _srv_measure(self, req, res):
+        # 역할: 측정 요청과 기본 표본 설정을 measure 작업으로 전달해 원시 힘 통계를 응답한다.
         p = self.get_parameter
         job = self._submit('measure', samples=req.samples or int(p('scale.samples').value),
                            settle_s=req.settle_s or float(p('scale.settle_s').value))
@@ -1817,6 +1889,7 @@ class SkillNode(Node):
         return res
 
     def _srv_safe(self, req, res):
+        # 역할: 대기 작업을 비우고 진행 작업을 취소한 다음 safe 작업을 큐에 넣어 결과를 응답한다.
         with self._job_lock:
             self._drain_jobs_locked('cancelled by safe_pose')
             if self._current:
@@ -1829,6 +1902,7 @@ class SkillNode(Node):
 
 def main(args=None):
     # SIGINT/SIGTERM에서 먼저 ROS 문맥이 종료되면 DSR 해제 응답을 받을 수 없다.
+    # 역할: ROS 노드와 executor를 구동하고, 종료 시 워커 정리 후 노드·ROS 문맥을 해제한다.
     from rclpy.signals import SignalHandlerOptions
     rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
     exit_requested = threading.Event()
