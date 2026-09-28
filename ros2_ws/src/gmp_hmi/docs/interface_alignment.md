@@ -9,8 +9,8 @@
 | 주문 | `RunBatch.Goal(recipe)`로 전달하고 Goal 수락 여부를 사용. Feedback의 `state`·`last_result`와 최종 Result의 `success`·`items_done`·`deviations`·`result`·`message`를 계약 그대로 수신. 운영 주문에 시험 재고 조건을 적용하지 않음 |
 | QA | `QaDecision.Request(deviation_id, decision, operator_id)`, batch_id 전송하지 않음 |
 | 인터락 | Request의 ENTER/EXIT 사용. granted 응답 후 PAUSED 또는 QA 대기 DEVIATION에서 허가 표시. 배치 변경·통신 만료·EXIT 시 해제 |
-| 종료 | C의 DONE/DONE 및 DONE/DISCARDED를 종료로 기록. QA 폐기 판정만으로 종료하지 않음. ⚠️ 9/26 확인: 실제 `process_fsm._after_qa` 는 폐기 판정 **즉시** `DISCARDED/DONE` 을 세우고 그 뒤에 폐기함 반송·`NUDGE_WAIT` 로 간다 — record_node 는 그 첫 DONE 에 배치를 닫고, HMI 는 반송 중에도 주문 버튼을 켠다(C 가 거부). 시험 공정은 「물리 종료 뒤 DONE」으로 둔다. C 와 합의 필요 |
-| 세트 끝 | `NUDGE_WAIT`(mode PAUSED, note `NUDGE_WAIT — …`) 동안 주문 불가. NUDGE 뒤 DONE, 그때 RunBatch Result. HMI 는 `pause_reason=SET_COMPLETE` 로 표시 |
+| 종료 | C의 DONE/DONE 및 DONE/DISCARDED를 종료로 기록. QA 폐기 판정만으로 종료하지 않음. ⚠️ 9/26 확인: 실제 `process_fsm._after_qa` 는 폐기 판정 **즉시** `DISCARDED/DONE` 을 세우고 그 뒤에 폐기함 반송·`NUDGE_WAIT` 로 간다 — record_node 는 그 첫 DONE 에 배치를 닫고, HMI 는 반송 중에도 주문 버튼을 켠다(C 가 거부). 시험 공정은 「물리 종료 뒤 DONE」으로 둔다. → **9/28 C 가 `fix/discard-done-at-end`(`78fb97b`, 머지 전)로 「폐기 판정 즉시 DONE 을 내지 않고 넛지 뒤 한 번만」으로 고쳤다** — 머지되면 이 경고를 지운다 |
+| 세트 끝 | `NUDGE_WAIT`(mode PAUSED, note `NUDGE_WAIT — …`). NUDGE 뒤 DONE, 그때 RunBatch Result. HMI 는 `pause_reason=SET_COMPLETE` 로 표시. **계약 v1.9(9/28, C `feat/nudge-wait-order-queue` — 머지 전):** 세트 끝 구간(step FINISH·DISCARDED·NUDGE_WAIT, mode RUNNING·PAUSED)의 RunBatch 주문은 1건 예약 — HMI 는 예약 goal 을 진행 배치와 따로 추적(`batch_control.queued`)하고, 상태의 batch_id 가 예약 주문으로 바뀌면 진행 칸으로 옮긴다. 예약 취소는 별도 버튼. 이벤트 `ORDER_QUEUED`·`ORDER_DROPPED` 는 그 세트 배치 기록에 남는다 |
 | 강제 개입 | `Deviation.FORCED=4` 판정 매핑 유지 |
 | 계량·스쿱 | WeightReading의 subject/samples 및 ScoopCycle 기록 유지 |
 
