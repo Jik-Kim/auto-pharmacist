@@ -3,8 +3,9 @@
 #   MAT=A ./scoop_run.sh setup       스쿱 잡고 원료통 계량 자세까지 (1회)
 #   MAT=A ./scoop_run.sh run 15      Scoop -> Pour -> 저울값 입력 -> 복귀 를 15회
 #   MAT=A ./scoop_run.sh park        스쿱 반납하고 safe 로
-# MAT 은 A|B|C (기본 A). 원료마다 스쿱 폭이 15.5/18.0/28.0 mm 로 달라 1회량이 다르므로
-# 원료별로 따로 재고, 기록지도 원료별로 따로 둔다 (scoop_sigma_<날짜>_mat<MAT>.csv).
+# MAT 은 A|B|C (기본 A). 세 원료는 같은 자갈(색만 다름)이고 스쿱 뜨는 부분도 같다(9/28 확인).
+# 원료별로 다른 것은 스테이션·티칭 경로뿐이라, 기록지는 원료별로 따로 둔다 (scoop_sigma_<날짜>_mat<MAT>.csv).
+# (stations.yaml 의 expected_scoop_width_mm 는 손잡이 폭이지 뜨는 부분 크기가 아니다.)
 # 실패하면 그 자리에서 멈춘다. 다음 단계로 안 넘어간다.
 # set -u 는 쓰지 않는다 — /opt/ros/jazzy/setup.bash 가 AMENT_TRACE_SETUP_FILES 같은
 # 미설정 변수를 참조해서 source 하는 순간 죽는다 (9/23 실물에서 당함).
