@@ -2,6 +2,7 @@
 # 스쿱 1회량 측정 (#272) — 붓기 방식. 저울은 workbench 용기 자리에 둔다.
 #   MAT=A ./scoop_run.sh setup       스쿱 잡고 원료통 계량 자세까지 (1회)
 #   MAT=A ./scoop_run.sh run 15      Scoop -> Pour -> 저울값 입력 -> 복귀 를 15회
+#                                    기록지를 새로 만들 때 CUP_G=79 를 앞에 주면 빈 시료통 무게가 채워진다
 #   MAT=A ./scoop_run.sh park        스쿱 반납하고 safe 로
 # MAT 은 A|B|C (기본 A). 세 원료는 같은 자갈(색만 다름)이고 스쿱 뜨는 부분도 같다(9/28 확인).
 # 원료별로 다른 것은 스테이션·티칭 경로뿐이라, 기록지는 원료별로 따로 둔다 (scoop_sigma_<날짜>_mat<MAT>.csv).
@@ -76,7 +77,7 @@ trial|run)
       echo "#   계량: 외부 저울. 로봇 계량값은 쓰지 않는다 (scale.gain 미검증)"
       echo "#   ⚠️ vel_scale 을 바꾸면 채취량이 바뀐다. 다른 값으로 잰 회차를 섞지 말 것."
       echo "#"
-      echo "# 용기_g: "
+      echo "# 용기_g: ${CUP_G:-}"
       echo "#   ↑ 빈 시료통을 한 번 정확히 재서 적는다. 비어 있으면 분석이 거부한다."
       echo "#"
       echo "회차,총무게_g,원료면,비고"
@@ -97,7 +98,11 @@ trial|run)
       read -r -p ">>> 저울값(총무게 g)  [s=이 회차 버림, q=중단]: " W
       case "$W" in
         q|Q) echo "중단합니다."; exit 0 ;;
-        s|S) echo "회차 $NO 버림 — 기록하지 않습니다."; break ;;
+        s|S) read -r -p ">>> 버린 이유 (한 줄): " WHY
+             # 버린 회차도 기록지에 남긴다 — 9/23 에 버린 1회가 흔적 없이 빠져 5일 뒤 로그로 되짚었다.
+             # 주석 줄이라 record.py·scoop_sigma.py 는 건너뛴다. 회차 번호는 소비하지 않는다.
+             echo "# 버림: 회차 $NO 자리 · $(date '+%F %T') · ${WHY:-이유 미기재}" >> "$CSV"
+             echo "회차 $NO 버림 — 기록지에 주석으로 남겼습니다."; break ;;
         *) read -r -p ">>> 원료면 [가득/중간/바닥, Enter=생략]: " SF
            if python3 "$HERE/record.py" "$CSV" put "$W" "$SF" ""; then break; fi
            echo "다시 입력하세요." ;;
@@ -113,7 +118,7 @@ trial|run)
     fi
   done
   echo; echo "### 끝. 분석:"
-  echo "python3 $HERE/../scoop_sigma.py $CSV"
+  echo "python3 $HERE/scoop_sigma.py $CSV"
   ;;
 park)
   move $SCOOP 0                                  || exit 1
