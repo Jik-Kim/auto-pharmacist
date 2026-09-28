@@ -211,7 +211,9 @@ def test_qa_discard_returns_scoop_parks_and_is_done_only_after_nudge(process):
     assert process.pending.kind == contract_constants('Deviation')['OVERFILL'] and process.holding_scoop
     assert qa(process, 2).accepted
     run_until(process, lambda: process.nudge_waiting)
-    assert steps_seen(process)[-3:] == ['RETURN_SCOOP', 'DISCARDED', 'NUDGE_WAIT']
+    # 스쿱 반납도 DISCARDED 안에서 한다(실제 C) — 반납 뒤 폐기함으로 가며 스쿱을 놓는다.
+    assert steps_seen(process)[-2:] == ['DISCARDED', 'NUDGE_WAIT'] and 'RETURN_SCOOP' not in steps_seen(process)[-3:]
+    assert not process.holding_scoop
     assert DONE not in {m.mode for m in published(process, 'CellState')}   # 물리 종료 전에 DONE 을 내지 않는다
     nudge(process)
     assert (process.mode, process.step, process.finish_result) == (DONE, 'DISCARDED', 'DISCARDED')

@@ -548,13 +548,15 @@ class HmiTestProcess(Node):
     def _discard(self):
         """QA 폐기 — 스쿱을 들고 있으면 먼저 반납하고 용기째 폐기함으로 옮긴 뒤 세트 끝으로 간다.
 
-        실제 process_fsm 은 폐기 판정 즉시 mode=DONE·state=DISCARDED 를 내고 반송·NUDGE_WAIT 로 간다.
         시험은 record_node·HMI 가 전제하는 「물리 종료 뒤 DONE」을 지켜 반송 동안 RUNNING 으로 둔다.
+        실제 process_fsm 은 폐기 판정 즉시 DONE 을 내던 것을 C 가 같은 방식으로 고치는 중이다
+        (fix/discard-done-at-end, 9/28 — 머지 전).
         """
         self.plan = []
         if self.holding_scoop and self.items:
+            # 실제 C 는 스쿱 반납(move → grip open)도 step=DISCARDED 안에서 한다 — 별도 RETURN_SCOOP 단계가 아니다.
             mid = self.items[self.index].material_id
-            self._add('RETURN_SCOOP', self._scoop_station(mid), BATCH_STEP_S,
+            self._add('DISCARDED', self._scoop_station(mid), BATCH_STEP_S,
                       done=lambda: setattr(self, 'holding_scoop', False))
         self._add('DISCARDED', 'reject_bin', BATCH_STEP_S)
         self._plan_park('DISCARDED')
