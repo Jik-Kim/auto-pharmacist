@@ -11,6 +11,8 @@
 `ros2 topic pub --once -w 3 /hmi_test/event gmp_interfaces/msg/CellEvent "{code: NUDGE}"` 로 낸다.
   · 운전 중 NUDGE — 정지(PAUSED)·재개 토글
   · 세트 끝 NUDGE_WAIT 의 NUDGE — 다음 세트(배치 종료)
+세트 끝 구간(FINISH·폐기 반송·NUDGE_WAIT)의 RunBatch 주문은 실제처럼 1건 예약한다(계약 v1.9, 9/28) —
+넛지로 세트가 끝나면 바로 시작하고, 취소 등 넛지 없이 끝나면 ORDER_DROPPED 로 시작하지 않는다.
   · 유휴 중 NUDGE — 새 주문 차단 토글
 원료 소진은 실제처럼 QA 가 아니다 — SCOOP_EMPTY 자동 재시도 3회 → MATERIAL_EMPTY 보충 대기(PAUSED) → EXIT 로 재개.
 원료 높이(test_height)·개별 보충(test_refill_*)은 실제 계약이 없는 시험 전용 기능이다.
@@ -38,6 +40,8 @@ from gmp_hmi.core.trial_inventory import TrialInventory
 # overfill 시나리오의 과다 투입 배율. 허용오차(±10 %, D-33·D-35)를 확실히 넘어야 OVER 가 말이 된다 —
 # 옛 1.10 은 ±5 % 시절 값이라 ±10 % 에서는 경계값이 된다.
 OVERFILL_RATIO = 1.15
+# 계약 v1.9 — 이 구간의 RunBatch 주문은 거부하지 않고 1건 예약한다 (process_node._at_set_end 와 같은 단계).
+SET_END_STEPS = ('FINISH', 'DISCARDED', 'NUDGE_WAIT')
 # 원료 밖 단계 하나(SELF_CHECK·PICK_CONTAINER·TARE·VERIFY·FINISH·이동)의 시험 시간 [s].
 BATCH_STEP_S = 0.4
 # gmp_process deviation.RULES['SCOOP_EMPTY'] 의 재시도 상한과 같게 둔다 — 넘으면 MATERIAL_EMPTY 보충 대기.
@@ -110,6 +114,8 @@ class HmiTestProcess(Node):
         self.nudge_paused = False     # 사람 접촉으로 멈춤 (D-21). 다음 NUDGE 가 내린다
         self.nudge_saved = ''         # 접촉 정지 전 note
         self.nudge_waiting = False    # 세트 끝 NUDGE_WAIT (D-23)
+        self.set_next = False         # 지금 배치가 넛지(SET_NEXT)로 끝났다 — 예약을 시작할 근거 (v1.9)
+        self.queued = None            # 세트 끝 예약 주문 dict(request, batch_id, done) (v1.9)
         self.idle_nudge, self.idle_note = False, ''   # 유휴 중 접촉 — 새 주문 차단
         self.holding_scoop = False
         self.final_step, self.finish_result = 'DONE', 'DONE'
@@ -217,6 +223,48 @@ class HmiTestProcess(Node):
         return reading
 
     # ── 주문 ─────────────────────────────────────────────────────────
+    def _at_set_end(self):
+        """결과가 정해지고 반송·넛지 대기만 남은 구간 — 다음 주문을 예약할 수 있다 (process_node._at_set_end)."""
+        return (not self.batch_done.is_set() and self.step in SET_END_STEPS and
+                self.mode in (CellState.RUNNING, CellState.PAUSED))
+
+    def _set_end_note(self):
+        """세트 끝 대기 사유. HMI 가 앞머리 `NUDGE_WAIT —` 로 사유를 가르므로 앞은 바꾸지 않는다."""
+        if self.queued is not None:
+            return f'NUDGE_WAIT — 세트 완료, 다음 주문 {self.queued["batch_id"]} 예약 — 건드리면 시작'
+        return 'NUDGE_WAIT — 세트 완료, 건드리면 다음 세트'
+
+    def _queue_order(self, goal_request):
+        """세트 끝 RunBatch 주문을 1건 예약한다(계약 v1.9). 잠금 안에서 호출. (허용, 사유)"""
+        if self.queued is not None:
+            return False, f'다음 주문 {self.queued["batch_id"]} 이 이미 예약돼 있다 — 넛지 뒤 시작'
+        if self.nudge_paused or self.previous is not None:
+            return False, '구역 진입 / 일시 정지 중에는 새 주문을 받지 않습니다'
+        ok, message, _ = self._check_recipe(goal_request.recipe)
+        if not ok:
+            return False, message
+        recipe = goal_request.recipe
+        recipe.batch_id = recipe.batch_id or 'TEST-' + uuid.uuid4().hex[:12].upper()
+        self.queued = dict(request=goal_request, batch_id=recipe.batch_id, done=self.batch_done)
+        if self.nudge_waiting:
+            self.note = self._set_end_note()
+        self._event('ORDER_QUEUED', f'{recipe.batch_id} — 세트 끝 넛지 뒤 시작')
+        self._state()
+        return True, ''
+
+    def _take_queued(self, cancelled):
+        """직전 배치가 끝난 뒤 예약을 꺼낸다. 시작하면 안 되면 사유를 돌려준다. 잠금 안에서 호출.
+
+        직전 배치가 넛지로 정상 종료됐을 때만 시작한다 — 넛지가 곧 회수 확인이다 (D-23, process_node._promote_queued).
+        """
+        order, self.queued = self.queued, None
+        if cancelled:
+            return '예약 주문 취소 요청'
+        if not (self.set_next and self.finish_result in ('DONE', 'DONE_UNMEASURED', 'DISCARDED')):
+            return (f'직전 배치가 넛지 없이 끝남({self.finish_result or "?"}) — '
+                    f'회수 확인이 없어 예약 주문 {order["batch_id"]} 을 시작하지 않는다')
+        return ''
+
     def _validate_batch(self, recipe):
         if self.nudge_waiting:
             return False, '세트 완료 — 로봇을 건드리면 다음 주문을 받는다 (NUDGE_WAIT)', None
@@ -224,6 +272,24 @@ class HmiTestProcess(Node):
             return False, '시험 배치가 이미 실행 또는 대기 중입니다.', None
         if self.idle_nudge:
             return False, '구역 진입 / 일시 정지 중에는 새 주문을 받지 않습니다', None
+        ok, message, values = self._check_recipe(recipe)
+        if not ok:
+            return False, message, None
+        scenario, items, duration, requirements = values
+        if self.inventory.blocked_materials:
+            return False, ('원료 높이 부족: ' + ', '.join(self.inventory.blocked_materials) +
+                           ' · 해당 원료 만충 보충 완료가 필요합니다'), None
+        for material_id, amount in requirements.items():
+            stock = self.inventory.items.get(material_id)
+            if stock is None:
+                return False, f'시험 재고 미등록 원료: {material_id}', None
+            if stock['remaining_g'] + 1e-8 < amount:
+                return False, (f'시험 원료 부족: {material_id} 필요 {amount:g} g / '
+                               f'잔량 {stock["remaining_g"]:g} g · 만충 보충 후 주문하세요'), None
+        return True, '', values
+
+    def _check_recipe(self, recipe):
+        """시나리오·레시피 형식 검사. 재고는 보지 않는다 — 예약 주문은 시작할 때 재고를 확인한다."""
         scenario = self.get_parameter('scenario').value
         # batch_out_of_spec 은 옛 verify_mismatch 를 대신한다 — VERIFY_MISMATCH 는 9/22 폐지라
         # 실제 FSM 이 내지 않는다(Deviation.msg:21). 배치 끝 규격 판정은 BATCH_OUT_OF_SPEC 이다.
@@ -247,21 +313,14 @@ class HmiTestProcess(Node):
         requirements = {item.material_id: float(item.target_g * (
             OVERFILL_RATIO if scenario == 'overfill' and i == min(1, len(items) - 1) else 1.0))
             for i, item in enumerate(items)}
-        if self.inventory.blocked_materials:
-            return False, ('원료 높이 부족: ' + ', '.join(self.inventory.blocked_materials) +
-                           ' · 해당 원료 만충 보충 완료가 필요합니다'), None
-        for material_id, amount in requirements.items():
-            stock = self.inventory.items.get(material_id)
-            if stock is None:
-                return False, f'시험 재고 미등록 원료: {material_id}', None
-            if stock['remaining_g'] + 1e-8 < amount:
-                return False, (f'시험 원료 부족: {material_id} 필요 {amount:g} g / '
-                               f'잔량 {stock["remaining_g"]:g} g · 만충 보충 후 주문하세요'), None
         return True, '', (scenario, items, duration, requirements)
 
     def _goal_batch(self, goal_request):
         with self.lock:
-            ok, message, _ = self._validate_batch(goal_request.recipe)
+            if self._at_set_end():
+                ok, message = self._queue_order(goal_request)
+            else:
+                ok, message, _ = self._validate_batch(goal_request.recipe)
         if not ok:
             self._event('TEST_ORDER_REJECTED', message, CellEvent.WARN)
             return GoalResponse.REJECT
@@ -289,12 +348,14 @@ class HmiTestProcess(Node):
             self.item_duration, self.index, self.elapsed = duration, 0, 0.0
             self.plan, self.pending, self.qa_next, self.previous = [], None, None, None
             self.refill_waiting = self.nudge_paused = self.nudge_waiting = self.holding_scoop = False
+            self.set_next = False
             self.final_step, self.finish_result = 'DONE', 'DONE'
             self.items_done, self.deviation_count = 0, 0
             self.delivered_total, self.unmeasured = 0.0, []
             self.scoop_empty_count, self.cycle_attempts = 0, {}
             self.last_result = DispenseResult()
-            self.batch_done.clear()
+            # 배치마다 새 Event — 예약 주문 실행이 앞 배치의 종료를 기다리다 새 배치의 clear 와 엇갈리지 않게.
+            self.batch_done = threading.Event()
             self._event('BATCH_START', self.product)
             self.mode = CellState.RUNNING
             self._add('SELF_CHECK', 'test_safe', BATCH_STEP_S)
@@ -309,12 +370,30 @@ class HmiTestProcess(Node):
             deviations=self.deviation_count, result=result, message=message)
 
     def _execute_batch(self, goal_handle):
+        with self.lock:
+            queued = self.queued if self.queued and self.queued['request'] is goal_handle.request else None
+        if queued is not None:
+            # 예약 주문 — 앞 배치가 끝날 때까지 Feedback 없이 기다린다 (process_node._promote_queued).
+            while not queued['done'].wait(0.25) and not goal_handle.is_cancel_requested:
+                pass
+            with self.lock:
+                reason = self._take_queued(goal_handle.is_cancel_requested)
+                if reason:
+                    self._event('ORDER_DROPPED', reason, CellEvent.WARN)
+            if reason:
+                if goal_handle.is_cancel_requested:
+                    goal_handle.canceled()
+                else:
+                    goal_handle.abort()
+                return self._batch_result(False, 'ABORTED', reason)
         ok, message = self._start_batch(goal_handle.request.recipe)
         if not ok:
             goal_handle.abort()
             return self._batch_result(False, 'ABORTED', message)
+        with self.lock:
+            done = self.batch_done
         # 실제 process_node 처럼 세트가 끝날 때(NUDGE_WAIT 뒤)까지 Goal 을 붙들고 Feedback 을 낸다.
-        while not self.batch_done.wait(0.25):
+        while not done.wait(0.25):
             if goal_handle.is_cancel_requested:
                 with self.lock:
                     self._abort('RunBatch 취소 — 배치 자동 재개 없음')
@@ -540,16 +619,17 @@ class HmiTestProcess(Node):
 
     def _nudge_wait_arrived(self):
         self.nudge_waiting = True
-        self.mode = CellState.PAUSED   # 로봇은 섰다 — 주문은 거부, HMI 는 사유를 본다
-        self.note = 'NUDGE_WAIT — 세트 완료, 건드리면 다음 세트'
+        self.mode = CellState.PAUSED   # 로봇은 섰다 — 다음 주문은 예약만(v1.9), HMI 는 사유를 본다
+        self.note = self._set_end_note()
         self._event('SET_DONE', self.note)
         self._state()
 
     def _discard(self):
         """QA 폐기 — 스쿱을 들고 있으면 먼저 반납하고 용기째 폐기함으로 옮긴 뒤 세트 끝으로 간다.
 
-        실제 process_fsm 은 폐기 판정 즉시 mode=DONE·state=DISCARDED 를 내고 반송·NUDGE_WAIT 로 간다.
         시험은 record_node·HMI 가 전제하는 「물리 종료 뒤 DONE」을 지켜 반송 동안 RUNNING 으로 둔다.
+        실제 process_fsm 은 폐기 판정 즉시 DONE 을 내던 것을 C 가 같은 방식으로 고치는 중이다
+        (fix/discard-done-at-end, 9/28 — 머지 전).
         """
         self.plan = []
         if self.holding_scoop and self.items:
@@ -720,7 +800,9 @@ class HmiTestProcess(Node):
         if self.nudge_waiting:
             # 세트 끝 대기 — 이 접촉은 「다음 세트」 신호다
             self.nudge_waiting = False
-            self._event('SET_NEXT', '사람이 건드림 — 세트 종료, 다음 주문을 받는다')
+            self.set_next = True
+            nxt = f'예약 주문 {self.queued["batch_id"]} 시작' if self.queued is not None else '다음 주문을 받는다'
+            self._event('SET_NEXT', '사람이 건드림 — 세트 종료, ' + nxt)
             self._complete()
             return
         if self.mode in (CellState.IDLE, CellState.DONE, CellState.ERROR):

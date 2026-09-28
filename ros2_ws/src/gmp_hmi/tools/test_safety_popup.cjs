@@ -16,6 +16,9 @@ assert.match($('safetyModeTitle').textContent,/진입 허가 아님/);
 // 세트 끝 대기·접촉 정지·보충 대기는 사람이 할 일이 달라 제목으로 가른다 (시험 공정도 실제와 같은 사유를 낸다).
 render({state:{mode:'PAUSED',step:'NUDGE_WAIT',pause_reason:'SET_COMPLETE'}});
 assert.match($('safetyModeTitle').textContent,/세트 완료 · 로봇을 건드리면 다음 세트/);
+// 계약 v1.9 — 다음 주문이 예약돼 있으면 넛지가 곧 예약 주문 시작이다.
+render({state:{mode:'PAUSED',step:'NUDGE_WAIT',pause_reason:'SET_COMPLETE',note:'NUDGE_WAIT — 세트 완료, 다음 주문 HMI-1 예약 — 건드리면 시작'}});
+assert.match($('safetyModeTitle').textContent,/세트 완료 · 로봇을 건드리면 예약 주문 시작 · 진입 허가 아님/);
 render({state:{mode:'PAUSED',step:'SCOOP',pause_reason:'NUDGE'}});
 assert.match($('safetyModeTitle').textContent,/접촉 감지 정지 · 다시 건드리면 재개 · 진입 허가 아님/);
 render({state:{mode:'PAUSED',step:'PAUSED',pause_reason:'REFILL'}});
