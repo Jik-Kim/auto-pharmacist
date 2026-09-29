@@ -34,7 +34,7 @@ stations:
     measure_posx: [298.0, -333.79, 120.0, 90.0, 160.06, -90.0]
     note: 원료통 A. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세
     material_id: A
-    expected_scoop_width_mm: 15.5
+    expected_scoop_width_mm: 16.5
   material_2:
     posx: [395.0, -298.0, 200.0, 90.0, -180.0, -90.0]
     return_start_posx: [395.0, -340.0, 170.0, 90.0, -180.0, -90.0]
@@ -43,7 +43,7 @@ stations:
     measure_posx: [395.0, -333.79, 120.0, 90.0, 160.06, -90.0]
     note: 원료통 B. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세
     material_id: B
-    expected_scoop_width_mm: 18.0
+    expected_scoop_width_mm: 17.5
   material_3:
     posx: [490.0, -298.0, 200.0, 90.0, -180.0, -90.0]
     return_start_posx: [490.0, -340.0, 170.0, 90.0, -180.0, -90.0]
@@ -52,7 +52,7 @@ stations:
     measure_posx: [490.0, -333.79, 120.0, 90.0, 160.06, -90.0]
     note: 원료통 C. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세
     material_id: C
-    expected_scoop_width_mm: 28.0
+    expected_scoop_width_mm: 18.5
   scoop_1:
     posx: [298.0, -292.0, 50.0, 90.0, -180.0, -90.0]
     note: 원료 A 전용 스쿱 (material_1 아래)

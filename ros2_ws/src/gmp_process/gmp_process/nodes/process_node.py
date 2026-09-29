@@ -752,23 +752,14 @@ class ProcessNode(Node):
         if getattr(self, '_active_request_kind', None) == 'carry':
             res.granted, res.message = False, '복합 용기 반송 중단 — 중복 파지 방지를 위해 자동 재개 불가'
             return res
-        if self._interlock_exit.is_set():
-            res.granted, res.message = True, '재개 승인 완료 — 실행 루프 소비 대기'
-            return res
         revision = self._interlock_revision
-        material = self.fsm.cur.material_id if self._refill_waiting else ''
         try:
-            restored = self._call_srv('restore_grip', RestoreGrip.Request(
-                expected_payload='scoop' if material else '', expected_material_id=material))
+            restored = self._call_srv('restore_grip', RestoreGrip.Request())
         except SkillError as e:
             res.granted, res.message = False, f'파지 복구 응답 미확인 — 재개 불가: {e}'
             return res
         if not restored.success:
             res.granted, res.message = False, f'파지 복구 실패 — 재개 불가: {restored.message}'
-            return res
-        if material and (restored.payload != 'scoop' or restored.material_id != material
-                         or not restored.scoop_extracted):
-            res.granted, res.message = False, '보충 재개에 필요한 스쿱·원료·인출 확인 실패'
             return res
         with self._safety_event_lock:
             if (self._safety_stop or revision != self._interlock_revision
@@ -908,9 +899,11 @@ class ProcessNode(Node):
 
     def _station_of(self, req: dict) -> str:
         s = req.get('station', '')
+        if s == 'scoop':
+            return self.smap.scoop_of(req['material_id'])
         if s == 'material':
             return self.smap.material_of(req['material_id'])
-        return self.smap.scoop_of(req['material_id']) if s == 'scoop' else s
+        return s
 
     # ── 요청 실행 ─────────────────────────────────────────────────────
     def _execute(self, req: dict) -> dict:
@@ -1229,8 +1222,12 @@ class ProcessNode(Node):
             a.insertion_depth_mm = float(res.get('insertion_depth_mm', 0.0))
         elif step == 'WEIGH_SCOOP' and a is not None and res.get('valid'):
             a.pre_pour = Reading(**res)
-        elif step == 'WEIGH_RESIDUAL' and a is not None and res.get('valid'):
-            a.post_pour = Reading(**res)
+        elif step == 'POUR' and req['kind'] == 'pour' and a is not None and res.get('success'):
+            # 잔량 실측은 없다. 기존 학습 계약의 post_pour/valid를 위조하지 않는다.
+            a._extra['pour_completed'] = True
+            self.event('INFO', 'POUR_ESTIMATE',
+                       f'{a.material_id} attempt={a.attempt}: 전량 붓기 가정 추정 투입량 '
+                       f'{self.fsm.cur.scooped_g:.3f} g (붓기 후 잔량 미측정)')
         elif step == 'RETURN_MATERIAL' and req['kind'] == 'return_material' and a is not None:
             # 반환 성공 뒤에만 닫는다. 실패는 _drain에서 RETURN_FAILED로 기록한다.
             self._close_attempt('RETURNED')
@@ -1254,7 +1251,7 @@ class ProcessNode(Node):
             self._close_attempt('RETURN_FAILED')
         elif outcome:
             self._close_attempt(outcome)
-        elif self._attempt is not None and self._attempt.post_pour is not None:
+        elif self._attempt is not None and self._attempt._extra.get('pour_completed'):
             self._close_attempt('COMPLETE')
 
         for r in fsm.results[self._published_results:]:

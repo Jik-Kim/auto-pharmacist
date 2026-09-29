@@ -21,7 +21,7 @@ kind: move | grip | carry | scoop | pour | weigh | weigh_scoop | measure | safe 
 
 원료 1종의 흐름 (SOT D-22, 9/17 팀 합의 — 로봇이 저울이므로 스쿱을 든 채 재는 것이 가장 싸다):
   PICK_SCOOP → SCOOP_TARE(빈 스쿱 무게) → SCOOP → WEIGH_SCOOP(붓기 전: 퍼낸 양 → 전량 붓기 or 원료통 반환 — v1.3)
-  → POUR → WEIGH_RESIDUAL(붓기 후: 스쿱 잔량 → 실제 투입량 누적 → decide) → RETURN_SCOOP
+  → POUR(추정 투입량 누적 → decide) → RETURN_SCOOP
 원료가 다 끝나면 VERIFY(용기를 들어 계량) → FINISH → NUDGE_WAIT(nudge_wait 로 물러나 NUDGE 대기, D-23) → DONE.
 VERIFY 는 **① 제품 판정 하나만** 한다 (9/22 사용자·조장 확정 — ② 폐지):
   ① |net − Σtarget| > Σ(target×tol) → BATCH_OUT_OF_SPEC (규격 이탈)
@@ -62,8 +62,7 @@ class ItemRun:
     invalid_step: str = ''       # 위 카운터가 세고 있는 단계 (#213 결정 2)
     scoop_tare_g: float = 0.0    # 빈 스쿱 (SCOOP_TARE)
     scooped_g: float = 0.0       # 붓기 전 스쿱 안의 원료 (WEIGH_SCOOP)
-    residual_g: float = 0.0      # 붓기 후 스쿱에 남은 원료 (WEIGH_RESIDUAL)
-    actual_g: float = 0.0        # 용기에 들어간 누적 투입량 = Σ(scooped − residual)
+    actual_g: float = 0.0        # 전량 붓기 가정의 누적 추정 투입량 = Σ(scooped)
     unmeasured: int = 0          # 계량 무효로 투입량을 모르는 채 넘어간 사이클 수 (#213).
                                  # actual_g 에는 안 들어간다 — 그래서 actual_g 가 실제보다 작다
     verdict: str = ''
@@ -220,15 +219,7 @@ class ProcessFSM:
             self.cur.invalid, self.cur.invalid_step = 0, step
         self.cur.invalid += 1
         if self.cur.invalid > self.dosing_cfg.max_invalid_retries:
-            # 투입 전(SCOOP_TARE·WEIGH_SCOOP)은 정리 후 ERROR, 투입 뒤(WEIGH_RESIDUAL)는 QA (#213).
-            # WEIGH_RESIDUAL 은 이미 부은 뒤라 되돌릴 게 없고 투입량만 모르는 상태다.
-            if step in ('SCOOP_TARE', 'WEIGH_SCOOP'):
-                return self._cleanup_then_error('WEIGH_INVALID', step)
-            # WEIGH_RESIDUAL — 이미 부은 뒤라 되돌릴 게 없다. 이 사이클의 투입량은 **모른다**.
-            # actual_g 에 0 을 더하지 않고(누산 자체를 건너뛴다) 미측정으로 센다 (#213).
-            self.cur.unmeasured += 1
-            return self._deviate('WEIGH_INVALID', step,
-                                 detail=f'투입량 불확실 — 미측정 {self.cur.unmeasured}회')
+            return self._cleanup_then_error('WEIGH_INVALID', step)
         return retry
 
     def _wrong_tool_or(self, res: dict, step: str, expected_mm: float):
@@ -263,12 +254,6 @@ class ProcessFSM:
                 return {'kind': 'measure'}
             self.state, self.mode = self._final, 'DONE'
             return None
-        if k == 'move' and req.get('then') == 'resume_refill':
-            if not res.get('success', False):
-                self.state, self.mode = 'ERROR', 'ERROR'
-                return None
-            self.state = self._resume_state
-            return self._resume
         # 종료·대기 전이 — 요청에 then 이 명시된 경우가 우선
         if 'then' in req and k in ('safe', 'move', 'carry'):
             nxt = req['then']
@@ -380,21 +365,14 @@ class ProcessFSM:
             # 같은 깊이로 다시 푸면 초과가 그대로 재현된다. 직전 깊이를 남은 목표량과
             # 실제 퍼올린 양의 비로 줄여서 다시 푼다 (min_fraction 하한 유지).
             return self._scoop(self._rescoop_fraction(), after_return=True)
+        if k == 'move' and st == 'SCOOP':
+            # 붓기 후에는 middle에 있으므로 계량 없이 원료통 시작 자세로 복귀한다.
+            return self._scoop(req['next_scoop_fraction'])
         if k == 'pour' and st == 'POUR':
-            self.state = 'WEIGH_RESIDUAL'
-            return self._weigh_scoop()                 # 붓기 후 — 스쿱 잔량
-        if k == 'weigh_scoop' and st == 'WEIGH_RESIDUAL':
-            r = self._invalid_or(res, 'WEIGH_RESIDUAL', req)
-            if r is not None:
-                return r
-            # 클램프하지 않는다 — 붓고 나면 참 잔량이 0 근처라 측정 잡음의 절반이 음수인데,
-            # max(0, ...) 로 자르면 잔량이 체계적으로 과대평가되고 투입량이 그만큼 과소평가된다
-            # (편향 ≈ σ/√(2π)). 회계 누산기는 편향이 없어야 한다. ② 판정이 없어져도 Σ투입량은
-            # 배치 기록(ScoopCycle·dispense_result)에 그대로 남으므로 편향은 여전히 문제다.
-            # TODO(영점 재확인과 같은 묶음): 잔량이 −3σ 보다 더 음수면 회계가 아니라 **유효성**
-            # 문제다 (파지 이동·원료 손실·계량 오염). 재계량 또는 WEIGH_INVALID 로 거른다.
-            self.cur.residual_g = res.get('gross_g', 0.0) - self.cur.scoop_tare_g
-            self.cur.actual_g += self.cur.scooped_g - self.cur.residual_g
+            if not res.get('success', False):
+                return self.skill_failed(req, res.get('message', '붓기 실패'))
+            # 전량 붓기 성공 시 붓기 전 순량을 추정 투입량으로 누적한다. 잔량은 측정하지 않는다.
+            self.cur.actual_g += self.cur.scooped_g
             d = decide(self.cur.target_g, self.cur.actual_g, self.cur.tol_pct, self.cur.attempts,
                        True, self.cur.invalid, self._cfg())
             self.cur.verdict = d.verdict
@@ -404,11 +382,12 @@ class ProcessFSM:
                 return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}
             if d.action == 'SCOOP':
                 self.state = 'SCOOP'
-                return self._scoop(d.fraction)
+                return {'kind': 'move', 'station': 'material', 'material_id': self.cur.material_id,
+                        'approach': 'AT', 'next_scoop_fraction': d.fraction}
             # `detail` 은 **같은 kind 가 덮는 여러 사실을 가르는 유일한 근거**다 —
             # TIMEOUT 하나가 「보정 소진」과 「보충 불가」를 함께 쓴다 (9/23 합의).
             # 여기서 문구를 새로 만들지 않는다: 술어가 `decide()` 에 있으므로 사유도 거기서 온다.
-            return self._deviate(d.kind, 'WEIGH_RESIDUAL', detail=d.detail)
+            return self._deviate(d.kind, 'POUR', detail=d.detail)
         if k == 'move' and st == 'RETURN_SCOOP':
             return {'kind': 'grip', 'close': False}
         if k == 'grip' and st == 'RETURN_SCOOP':
@@ -486,10 +465,8 @@ class ProcessFSM:
         if k == 'wait_qa':
             return self._after_qa(res.get('decision'))
         if k == 'wait_interlock':
-            self.mode = 'RUNNING'
-            # SafePose에서 고정 Scoop을 바로 시작할 수 없다. 원료별 계량 자세부터 복귀한다.
-            return {'kind': 'move', 'station': 'material', 'material_id': self.cur.material_id,
-                    'approach': 'AT', 'then': 'resume_refill'}
+            self.state, self.mode = self._resume_state, 'RUNNING'
+            return self._resume
         raise RuntimeError(f'전이 없음: state={st} req={k}')   # 전이표 밖 = 버그. 조용히 넘기지 않는다
 
     # ── VERIFY 판정 근거 ──────────────────────────────────────────────

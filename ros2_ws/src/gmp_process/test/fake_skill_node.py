@@ -326,19 +326,15 @@ class FakeSkillNode(Node):
     def _safe(self, req, res):
         with self.lock:
             self.calls.append(f'safe:{req.reason}')
-            self.cancelled = True        # 진행 중 스킬 1건을 실패로 끝낸다 (skill_node 와 같은 규칙)
+            # 주문 경계에는 진행 중 스킬이 없으므로 다음 이동을 취소하면 안 된다.
+            self.cancelled = req.reason not in ('BATCH_START', 'SET_COMPLETE')
         res.success = True
         return res
 
     def _restore_grip(self, req, res):
         with self.lock:
             self.calls.append('restore_grip')
-            res.payload = 'scoop' if self.held else 'empty'
-            res.material_id = self.scoop_of.get(self.held, '')
-            res.scoop_extracted = bool(self.held and res.material_id)
-        res.success = not req.expected_payload or (
-            res.payload == req.expected_payload and res.material_id == req.expected_material_id)
-        res.message = '파지 상태 복구 완료' if res.success else '기대 파지 불일치'
+        res.success, res.payload, res.message = True, 'empty', '파지 상태 복구 완료'
         return res
 
     def _recover(self, req, res):

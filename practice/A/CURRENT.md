@@ -1,4 +1,4 @@
-# A 스킬·로봇 현행 상태 (갱신: 2026-09-23)
+# A 스킬·로봇 현행 상태 (갱신: 2026-09-29)
 
 **담당**: jonnykoh2008-ship-it
 
@@ -14,7 +14,7 @@
 | 용기 이송의 `ABOVE` | `approach=ABOVE`라는 요청 이름이 실제 진입 높이를 뜻하지는 않는다. workbench 빈 용기 진입은 EXIT Z≈330이고, 로컬 AT→ABOVE만 Z=180이다 | [`_move_taught_station`](../../ros2_ws/src/gmp_skills/gmp_skills/execution/motion.py), [`_leave_taught_station`](../../ros2_ws/src/gmp_skills/gmp_skills/execution/motion.py) |
 | 관절 이송 | `transfer_joint_vel_deg_s=60`, `transfer_joint_acc_deg_s2=100`; 실행 시 `vel_scale` 적용 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [DRL·DIO 일지](2026-09-23_DRL_고정경로_DIO.md) |
 | DRL 이동 속도 | 관절 60°/s·100°/s², 병진 250 mm/s·1000 mm/s², 회전 80.625°/s·322.5°/s². `vel_scale`을 속도·가속도에 적용하며 1.0이면 DRL 기준값. ROS 실물 재검증 필요 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [dsr_arm.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/dsr_arm.py) |
-| 그리퍼 | 기본 백엔드 DIO. DO1/2 개폐, 약통 `DI1=1`, 스쿱 `DI1=DI2=1` 뒤 0.8초 안정, 열림 `DI1=0`. 어댑터는 DIO 폭을 `-1`로 반환하고, `process_node`가 `fingerprint_tolerance_mm=0`의 지문을 FSM에 넘겨 현재 비활성화한다 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [process_node.py](../../ros2_ws/src/gmp_process/gmp_process/nodes/process_node.py), [rg2_gripper.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/rg2_gripper.py) |
+| 그리퍼 | 기본 백엔드 DIO. 현 구성(마찰테이프 포함)의 A/B/C 폭 지문은 `16.5/17.5/18.5 mm`. DO1/2 개폐, 약통 `DI1=1`, 스쿱 `DI1=DI2=1` 뒤 0.8초 안정, 열림 `DI1=0`. 어댑터는 DIO 폭을 `-1`로 반환하고, `process_node`가 `fingerprint_tolerance_mm=0`의 지문을 FSM에 넘겨 현재 판정은 비활성화한다 | [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [SOT](../../docs/SOT.md), [process_node.py](../../ros2_ws/src/gmp_process/gmp_process/nodes/process_node.py), [rg2_gripper.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/rg2_gripper.py) |
 | 안전 자가진단 | 실물 기동·복구 때 등록 툴 `tool_weight`, TCP `GripperDA_v1`, 충돌 감도 50%를 조회해 모두 일치해야 통과한다. 자동 변경하지 않는다 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [dsr_arm.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/dsr_arm.py) |
 | 공구 설정 | B CURRENT의 동결 공구 설정을 참조한다. A 문서에는 수치를 복사해 유지하지 않는다 | [B CURRENT](../B/CURRENT.md), [PR #235](https://github.com/Jik-Kim/auto-pharmacist/pull/235) |
 | 스쿱 최소 깊이 | `dosing.min_fraction`과 `scooping.A.min_fraction`은 두 yaml에서 같은 값이어야 하며, 일치는 [도징 시험](../../ros2_ws/src/gmp_dosing/test/test_dosing.py)이 강제한다 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml) |

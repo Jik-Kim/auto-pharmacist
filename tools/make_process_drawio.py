@@ -51,7 +51,7 @@ hmi = p1.box(40, 140, 200, 420, 'hmi_web_node (D)\n\n웹 HMI · Flask :5000\n\n�
 proc = p1.box(560, 100, 700, 560, 'process_node (C)', fill='#FFFFFF', stroke=ACC, bold=True, size=14)
 cb = p1.box(590, 150, 300, 200, 'rclpy 콜백 스레드\n\n_srv_submit → FSM 생성, run_loop 시작\n_srv_qa → _qa_decision 저장, _qa.set()\n_srv_interlock → ENTER: cancel→safe_pose→granted\n                        EXIT: restore_grip 성공 → 재개 신호\nevent(NUDGE) 구독 → 게이트 토글\n   (NUDGE_WAIT 중엔 토글이 아니라 다음 세트 신호)\n\n콜백은 값만 저장한다. 로봇을 부르지 않는다', fill=ACCS, align='left', size=11)
 loop = p1.box(930, 150, 300, 200, 'run_loop 스레드 (배치마다 1개)\n\nreq = fsm.start()\nwhile req:\n    res = _execute(req)   ← 스킬 한 번에 하나\n    req = fsm.on_result(req, res)\n    발행(state·weight·scoop_cycle·result·deviation·event)\n\nwait_qa / wait_interlock 는 Event.wait()', fill=ACCS, align='left', size=11)
-fsm = p1.box(590, 390, 640, 240, 'core/process_fsm.py — ProcessFSM (ROS 비의존, pytest)\n\nstate · mode · idx(원료) · tare_g · verify_net_g · cur(ItemRun: attempts(붓기)·returns(반환)·invalid·scoop_tare·scooped·residual·actual·verdict) · results · deviations · _counts · _resume · _qa_step · slot\n\nstart() → 첫 요청     on_result(req, res) → 다음 요청 dict 또는 None(끝)\n_deviate(kind, step) → deviation.py policy(kind, count) → RETRY / REFILL / QA / FORCED\n_carry(src, dst) → {"kind":"carry", src, dst, slot}\n\n의존: gmp_dosing.core.dosing.decide(target, net, tol, attempts, valid, invalid, cfg) → DONE / SCOOP(fraction) / DEVIATION(kind)\n        core/recipe.py parse() → RecipeSpec(product, items[Item(material_id, target_g, tol_pct)])', fill=OKS, stroke=OK, align='left', size=11)
+fsm = p1.box(590, 390, 640, 240, 'core/process_fsm.py — ProcessFSM (ROS 비의존, pytest)\n\nstate · mode · idx(원료) · tare_g · verify_net_g · cur(ItemRun: attempts(붓기)·returns(반환)·invalid·scoop_tare·scooped·actual·verdict) · results · deviations · _counts · _resume · _qa_step · slot\n\nstart() → 첫 요청     on_result(req, res) → 다음 요청 dict 또는 None(끝)\n_deviate(kind, step) → deviation.py policy(kind, count) → RETRY / REFILL / QA / FORCED\n_carry(src, dst) → {"kind":"carry", src, dst, slot}\n\n의존: gmp_dosing.core.dosing.decide(target, net, tol, attempts, valid, invalid, cfg) → DONE / SCOOP(fraction) / DEVIATION(kind)\n        core/recipe.py parse() → RecipeSpec(product, items[Item(material_id, target_g, tol_pct)])', fill=OKS, stroke=OK, align='left', size=11)
 p1.edge(cb, loop, 'Event / 플래그', color=GRAY, dashed=True)
 p1.edge(loop, fsm, 'dict 요청 ↔ dict 결과', color=OK)
 skill = p1.box(1580, 100, 320, 560, 'skill_node (A)\n\n로봇을 만지는 유일한 노드\nDSR 워커 스레드 1개 — 직렬\n\nAction 서버 6\n  move_to_station · scoop · pour\n  weigh_container · weigh_held · return_material\nService 서버 3\n  set_gripper · measure_force · safe_pose\n\n발행: gripper_state · event(NUDGE)', fill=GRAYS, stroke=GRAY, bold=True)
@@ -101,7 +101,7 @@ scoop = S(2, 1, 'SCOOP', 'req: scoop(material, attempt, depth_fraction)\nA/B/C: 
 wscoop = S(3, 1, 'WEIGH_SCOOP', 'req: weigh_scoop — 붓기 전\n퍼낸 양 → 빈 스쿱 / 반환 / 전량 붓기')
 pour = S(4, 1, 'POUR', 'req: pour(fraction=1)\nmiddle→ABOVE→start→end\n→ABOVE→Z+50→middle')
 wreturn = S(3, 3, 'RETURN_MATERIAL', 'req: return_material(material_id)\n좌표 미티칭이면 실패', 'p')
-wres = S(5, 1, 'WEIGH_RESIDUAL', 'req: weigh_scoop — 붓기 후 스쿱 잔량\n투입량 = 전 − 후 → decide()')
+wres = S(5, 1, 'POUR 내부 판정', '추가 계량 없음\n추정 투입량 += 붓기 전 순량 → decide()')
 ret = S(1, 2, 'RETURN_SCOOP', 'req: move(scoop_N) → grip(open)\n전용 스쿱 = 교차오염 방지')
 verify = S(3, 2, 'VERIFY', 'req: move(workbench ABOVE) → measure(영점 재확인) → weigh\n배치 끝 1회. 판정은 ① 레시피 총량 하나 (② 는 관측)')
 finish = S(4, 2, 'FINISH', 'req: carry workbench→passbox_done')
@@ -122,7 +122,7 @@ p2.edge(stare, scoop, 'scoop_tare_g 저장\nattempts=1', color=ACC, lpos=(0, 22)
 p2.edge(scoop, wscoop, 'contact_detected=true\n(고정 모드: 경로 성공이면 무조건 → 무게로 판정)', color=ACC, lpos=(0, 16))
 p2.edge(wscoop, pour, 'scooped ≤ max(0, need)+target×tol%\n전량 pour(fraction=1)', color=ACC, lpos=(0, 22))
 p2.edge(pour, wres, '', color=ACC)
-p2.edge(wres, ret, 'OK (|err| ≤ tol) · actual += scooped − residual → dispense_result 발행', color=OK,
+p2.edge(wres, ret, 'OK (|err| ≤ tol) · actual += scooped (전량 붓기 추정) → dispense_result 발행', color=OK,
         exit=(0.15, 1), entry=(1, 0.7), points=((cx(5, 0.15), 600), (X[1] + W + 40, 600), (X[1] + W + 40, Y[2] + 45)), lpos=(-0.25, -14))
 p2.edge(ret, picks, 'grip(open) · idx+1 · 다음 원료 있음', color=ACC,
         exit=(0.5, 0), entry=(0.5, 1), points=((cx(1), Y[2] - 40), (cx(0), Y[2] - 40)), lpos=(0, -14))
@@ -132,13 +132,13 @@ p2.edge(finish, nudgew, 'carry ok', color=OK, lpos=(0, -14))
 p2.edge(nudgew, done, 'NUDGE (사람이 건드림)\n→ DONE · 폐기면 DISCARDED', color=OK, lpos=(0, -22))
 p2.edge(disc, nudgew, 'carry ok — 폐기도 세트의 끝\n같은 자리에서 기다린다', color=RED, exit=(0.5, 0), entry=(0.5, 1), lpos=(0.2, 0))
 # ── 보정·재계량 (주황·회색) — 1행 위 복도 (y 340)
-p2.edge(wres, scoop, 'UNDER, attempts<max_attempts(8) → scoop(attempt+1, fraction 힌트)', color=WARM,
+p2.edge(wres, scoop, 'UNDER → 원료통 AT 복귀 → scoop(attempt+1)', color=WARM,
         exit=(0.3, 0), entry=(0.75, 0), points=((cx(5, 0.3), 340), (cx(2, 0.75), 340)), lpos=(0, -14))
 # 계량 무효 자기 루프 (회색) — 상자 아래 y+H+35
 def rew(node, c, then='QA'):
     p2.edge(node, node, f'INVALID ≤2 → 재계량\n3회 WEIGH_INVALID → {then}', color=GRAY, exit=(0.3, 1), entry=(0.7, 1),
             points=((cx(c, 0.3), Y[1] + H + 35), (cx(c, 0.7), Y[1] + H + 35)), lpos=(0, 22))
-rew(stare, 1, 'CLEANUP → ERROR'); rew(wscoop, 3, 'CLEANUP → ERROR'); rew(wres, 5)   # 투입 전은 되돌린다 (#213 결정 3)
+rew(stare, 1, 'CLEANUP → ERROR'); rew(wscoop, 3, 'CLEANUP → ERROR'); p2._id()   # 투입 전은 되돌린다 (#213 결정 3)
 p2.edge(verify, verify, 'INVALID ≤2 → 재계량', color=GRAY, exit=(0.3, 0), entry=(0.7, 0),
         points=((cx(3, 0.3), Y[2] - 30), (cx(3, 0.7), Y[2] - 30)), lpos=(0, -12))
 # ── 일탈 → DEVIATION (주황) — 오른쪽 복도 x=1690, 2·3행 사이 복도 y=840
@@ -166,7 +166,7 @@ p2.edge(wscoop, scoop, 'scooped ≤ empty_scoop_g → SCOOP_EMPTY (모드 무관
 # ── 보충 인터락 (PAUSED) — 2열 2행은 비어 있어 세로로 지난다
 p2.edge(scoop, paused, 'SCOOP_EMPTY 4회 = MATERIAL_EMPTY → REFILL\n_resume = 이 scoop 요청', color=WARM,
         exit=(0.15, 1), entry=(0.15, 0), points=((cx(2, 0.15), Y[3] - 20),), lpos=(0.65, 0))
-p2.edge(paused, scoop, 'EXIT: 스쿱·원료·인출 복구 확인 → material AT → _resume\n(REFILL 은 개입으로 세지 않는다)', color=OK,
+p2.edge(paused, scoop, 'EXIT: restore_grip 성공 → _resume 재실행\n(REFILL 은 개입으로 세지 않는다)', color=OK,
         exit=(0.85, 0), entry=(0.85, 1), points=((cx(2, 0.85), Y[3] - 20),), lpos=(0.65, 0))
 # ── QA 판정 (DEVIATION)
 p2.edge(dev, ret, 'APPROVED (원료 일탈) → 결과에 남기고 스쿱 반납', color=OK,
@@ -182,7 +182,7 @@ p2.edge(selfc, err, 'measure invalid (TODO)', color=RED,
         exit=(0, 0.7), entry=(0.7, 0), points=((cx(0, 0.7), Y[0] + 45),), lpos=(0.5, -14))
 p2.note(1440, 120, 380, 150, '루프 게이트 (FSM 밖, D-21 추가 7)\n\nskill_node 가 event NUDGE 를 쏘면 run_loop 가 다음 요청 전에 멈추고\nstate.mode = PAUSED(note="NUDGE") 발행, 두 번째 NUDGE 로 재개.\n인터락 중·계량 대기 중에만 감지된다 (블로킹 movel 중은 두산 충돌 감지 담당)\n\n세트 끝 NUDGE_WAIT (D-23, 9/19): 그때의 NUDGE 는 정지가 아니라\n「다음 세트」 신호 — _nudge_go 를 세워 wait_nudge 를 푼다. 이벤트 SET_DONE / SET_NEXT')
 p2.note(1660, 880, 240, 270, '일탈 정책 (deviation.py)\n\nGRIP_FAIL  3회 RETRY → FORCED\nSCOOP_EMPTY  3회 RETRY → REFILL\nMATERIAL_EMPTY  즉시 REFILL\nOVERFILL / TIMEOUT  즉시 QA\nWEIGH_INVALID  2회 RETRY → QA\nVERIFY_MISMATCH  9/22 폐지 — 발생 안 함\nBATCH_OUT_OF_SPEC [v1.2]  즉시 QA (규격)\nSLIP 2 · SAFETY_SWITCH 1 · FORCE_LIMIT 1 → FORCED\nWRONG_TOOL [v1.2]  즉시 QA\n\ncount = 같은 배치·같은 스텝·같은 kind')
-p2.note(40, 1180, 1860, 90, 'D-22 원료 1종 = 6단계: 빈 스쿱 계량 → 퍼올림 → 붓기 전 계량(퍼낸 양 → 빈 스쿱·초과 반환 가름, 초과 예방) → 붓기 → 붓기 후 계량(잔량 → 투입량 누적 → 판정) → 반납. 로봇이 저울이라 스쿱을 든 채 재는 것이 가장 싸고, 용기 계량(들어 올림)은 그리퍼가 비어야 해서 배치 끝 VERIFY 한 번.\n범례   파랑 = 정상 경로   주황 = 일탈·재시도   청록 = 복구·완료   빨강 = 강제 개입·폐기(종료)   회색 = 대기·재계량\n전이표 밖 조합은 on_result 가 RuntimeError("전이 없음") 를 던진다 — 새 상태·kind 를 넣으면 전이와 테스트(test_process_fsm.py)를 같이 넣는다')
+p2.note(40, 1180, 1860, 90, '현행 원료 공정: 빈 스쿱 계량 → 퍼올림 → 붓기 전 계량(퍼낸 양 → 빈 스쿱·초과 반환 가름, 초과 예방) → 붓기 성공 → 붓기 전 순량 누적·판정 → 반납 (부족하면 원료통 AT 복귀 후 추가 스쿱). 로봇이 저울이라 스쿱을 든 채 재는 것이 가장 싸고, 용기 계량(들어 올림)은 그리퍼가 비어야 해서 배치 끝 VERIFY 한 번.\n범례   파랑 = 정상 경로   주황 = 일탈·재시도   청록 = 복구·완료   빨강 = 강제 개입·폐기(종료)   회색 = 대기·재계량\n전이표 밖 조합은 on_result 가 RuntimeError("전이 없음") 를 던진다 — 새 상태·kind 를 넣으면 전이와 테스트(test_process_fsm.py)를 같이 넣는다')
 
 # ───────────────────────── 페이지 3: 요청 ↔ 스킬 번역 ─────────────────────────
 p3 = Page('3 요청↔스킬 번역 (_execute)')
@@ -191,7 +191,7 @@ kinds = [
  ('measure', '—', 'measure_force(samples 0, settle 0)', "{'valid', 'fz_std_n'}"),
  ('carry', 'src · dst · slot · target=cup', 'move(src,ABOVE) → move(src,AT) → set_gripper(close, cup_width) →\nmove(src,ABOVE) → move(dst,ABOVE) → move(dst,AT) → set_gripper(open) → move(dst,ABOVE)\n파지 실패면 dst 로 가지 않고 즉시 반환', "{'grip_inferred'}"),
  ('weigh', 'station · tare_g', 'WeighContainer act(tare_g) — 고정 workbench의 용기를 들어 잰다 (TARE · VERIFY). 그리퍼가 비어 있어야 한다 + weight 토픽 발행', "{'gross_g','net_g','std_g','valid','subject=container'}"),
-  ('weigh_scoop', 'station · material_id · tare_g(빈 스쿱)', 'WeighHeld act — 해당 material_N.posx에서 들고 있는 스쿱을 계량 (SCOOP_TARE · WEIGH_SCOOP · WEIGH_RESIDUAL)\n계량 후 계량 자세에 머문다 · 빈 그리퍼면 success=false', "{'gross_g','net_g','std_g','valid','subject=scoop'}"),
+  ('weigh_scoop', 'station · material_id · tare_g(빈 스쿱)', 'WeighHeld act — 해당 material_N.posx에서 들고 있는 스쿱을 계량 (SCOOP_TARE · WEIGH_SCOOP)\n계량 후 계량 자세에 머문다 · 빈 그리퍼면 success=false', "{'gross_g','net_g','std_g','valid','subject=scoop'}"),
  ('move', 'station · approach', 'move_to_station(station, ABOVE/AT)', "{'success','reached'} → state.station"),
  ('grip', 'close · target(scoop/cup)', 'set_gripper(close, width = scoop_width | cup_width, force)', "{'grip_inferred','final_width_mm'}"),
  ('scoop', 'material_id · attempt · fraction', '고정 full(fraction=1), 높이 보정 비활성. 접촉 미측정(false/TAUGHT_FIXED) → fixed_scoop 이면 FSM 이 접촉 대신 순중량으로 판정', "{'contact_detected'}"),
@@ -217,7 +217,7 @@ for k, f, s, r in kinds:
     p3.box(1220, y, 380, h, r, fill=fill, stroke=GRAY, shape='rounded=0;', align='left', size=11)
     y += h
 p3.note(40, y + 30, 760, 130, '_call_action(client, goal) 보조 함수 하나로 통일\n  1) client.wait_for_server(5 s)   2) send_goal_async → goal_handle   3) get_result_async → Future\n  4) Event 로 동기 대기 (run_loop 는 executor 스레드가 아니므로 spin 하지 말 것 — MultiThreadedExecutor 가 콜백을 돌린다)\n  5) 인터락 ENTER 가 오면 goal_handle.cancel_goal_async()  → 취소 결과 후 safe_pose\n\n실패(success=false)는 표에 없다 → FORCE_LIMIT 일탈로 _deviate(RETRY 1회 → FORCED) 권장')
-p3.note(820, y + 30, 780, 145, '발행 시점\n  weight            weigh 결과마다 (TARE 포함)\n  scoop_cycle       정상은 WEIGH_RESIDUAL 후, 실패는 실패 확정 시\n  dispense_result   원료가 끝날 때 — WEIGH_RESIDUAL 에서 DONE 또는 DEVIATION 으로 갈 때\n  deviation         _deviate() 마다 + QA 판정 후 decision·operator_id 채워 같은 deviation_id 로 재발행\n  event             BATCH_START(product) · STEP(전이) · INTERLOCK_ENTER/EXIT · PAUSE/RESUME(NUDGE|INTERLOCK) · SET_DONE/SET_NEXT(세트 끝) · ORDER_QUEUED/ORDER_DROPPED(세트 끝 예약, v1.9) · INTERVENTION_FORCED(ERROR) · BATCH_END\n  state             0.5 s 타이머 + 전이 직후 1회')
+p3.note(820, y + 30, 780, 145, '발행 시점\n  weight            weigh 결과마다 (TARE 포함)\n  scoop_cycle       정상은 POUR 성공 후 (post 미측정·valid=false), 실패는 실패 확정 시\n  dispense_result   원료가 끝날 때 — POUR 에서 DONE 또는 DEVIATION 으로 갈 때\n  deviation         _deviate() 마다 + QA 판정 후 decision·operator_id 채워 같은 deviation_id 로 재발행\n  event             BATCH_START(product) · STEP(전이) · INTERLOCK_ENTER/EXIT · PAUSE/RESUME(NUDGE|INTERLOCK) · SET_DONE/SET_NEXT(세트 끝) · ORDER_QUEUED/ORDER_DROPPED(세트 끝 예약, v1.9) · INTERVENTION_FORCED(ERROR) · BATCH_END\n  state             0.5 s 타이머 + 전이 직후 1회')
 
 
 # ───────────────────────── 페이지 4: 상태별 노드·토픽 흐름 (A·B·D) ─────────────────────────
@@ -250,8 +250,8 @@ ROWS = [
  ('WEIGH_SCOOP', 'n', None, 'WeighHeld act (material_N.posx, 붓기 전)\n→ gross, valid', 'scooped ≤ empty_scoop_g → SCOOP_EMPTY\nscooped > max(0, need)+target×tol%\n→ RETURN_MATERIAL, 아니면 fraction=1', 'weight(퍼낸 양) · state', False),
  ('RETURN_MATERIAL', 'p', None, 'ReturnMaterial act\nmaterial_id → 원료통 start→end\n미티칭이면 success=false', None, 'scoop_cycle RETURNED/RETURN_FAILED\ndelivered=0 · valid=false', False),
  ('POUR', 'n', None, 'Pour act (fraction=1)\nmiddle→붓기 경로→middle (상세 3쪽)', None, 'state', False),
- ('WEIGH_RESIDUAL', 'n', None, 'WeighHeld act (material_N.posx, 붓기 후)\n→ gross, valid', 'decide(target, actual, tol, attempts,\nvalid, invalid, cfg)\n→ DONE / SCOOP / DEVIATION(kind)',
-  'weight(잔량) · scoop_cycle(시도 1건) · state\ndispense_result (DONE·DEVIATION 시)\ndeviation(OVERFILL · TIMEOUT · WEIGH_INVALID)', False),
+ ('POUR 내부 판정', 'n', None, '추가 계량 없음 — 붓기 성공 후 붓기 전 순량 누적', 'decide(target, actual, tol, attempts,\nvalid, invalid, cfg)\n→ DONE / SCOOP / DEVIATION(kind)',
+  'scoop_cycle(post 미측정 · valid=false) · POUR_ESTIMATE · state\ndispense_result (DONE·DEVIATION 시)\ndeviation(OVERFILL · TIMEOUT)', False),
  ('RETURN_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT — 원료통 아래)\nSetGripper srv (open)', None, 'state', False),
  ('VERIFY', 'n', None, 'MoveToStation(workbench, ABOVE) → MeasureForce (영점 재확인 — TARE 와 같은 자세)\nWeighContainer act — tare_g → reading(net, subject=container)', '영점 이동 > scale.zero_drift_limit_n → 재계량 → WEIGH_INVALID\n① Σ(target×tol) — 레시피 총량 대조\n(② 회계 대조는 9/22 폐지 — 관측만)', 'weight(net) · state\nevent(VERIFY, ①② 수치)', False),
  ('FINISH', 'n', None, 'carry workbench → passbox_done(slot)', None, 'state', False),

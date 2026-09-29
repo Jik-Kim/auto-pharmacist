@@ -127,7 +127,7 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
                       └▶ DISCARDED ─▶ (스쿱 든 채면 move(scoop_N)·grip(open) 먼저) ─▶ carry(workbench→reject_bin) ──▶ DISCARDED(종료)
 ```
 
-**PAUSED 는 두 경로**: (a) MATERIAL_EMPTY → `safe` → `wait_interlock` → EXIT 파지·원료·인출 확인 → 해당 material AT → `_resume` 요청 재실행 (b) 사람 접촉 NUDGE → 노드 게이트가 다음 요청 전에 멈춤 → 두 번째 NUDGE 로 재개 (D-21, FSM 은 모름).
+**PAUSED 는 두 경로**: (a) MATERIAL_EMPTY → `safe` → `wait_interlock` → EXIT 로 `_resume` 요청 재실행 (b) 사람 접촉 NUDGE → 노드 게이트가 다음 요청 전에 멈춤 → 두 번째 NUDGE 로 재개 (D-21, FSM 은 모름).
 **ERROR** 진입 = `event(INTERVENTION_FORCED)` 발행 — MTBI 분모. 그 뒤 `safe(then=None)` 로 종료.
 
 ## 4. 상태별 상세 — 들어오는 결과 / 판단 / 나가는 요청 / 발행
@@ -150,7 +150,7 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 | `NUDGE_WAIT` | `move(nudge_wait)` → 도착 · `wait_nudge` → 사람이 건드림 | **세트 경계 (D-23)** — 반송 뒤 nudge_wait 로 물러나 서서 기다린다. 이동 중 RUNNING, 대기 중 **PAUSED**(HMI 는 note 로 사유). **이 대기와 그 앞 반송 중의 `RunBatch` 주문은 1건 예약된다**(v1.9, 9/28 A안) — 넛지로 끝나면 바로 시작, 취소·안전정지·오류로 끝나면 시작 안 함(`ORDER_DROPPED`). `submit_order` 는 거부. `safety.nudge_enabled=false` 면 대기 없이 통과. 이 대기의 NUDGE 는 정지 토글이 아니라 「다음 세트」 신호 | `wait_nudge` → None (끝: DONE 또는 DISCARDED) | `event SET_DONE`(대기 진입) · `ORDER_QUEUED`(예약) · `SET_NEXT`(건드림) · `BATCH_END`, `state DONE` |
 | `CLEANUP` | `return_material` → success · `move` · `grip` | **투입 전 계량 무효의 정리 경로** (#213). `TARE` → 정리 없음 · `SCOOP_TARE` → `move(material_N,AT)` → `move(scoop_N,AT)` → `grip(open)` · `WEIGH_SCOOP` → `return_material` 을 맨 앞에. 빈 스쿱을 원료통에 기울이지 않으므로 `SCOOP_TARE` 에는 반환이 없다. 재스쿱 없음(#64). 정리 중 반환 실패는 `FORCE_LIMIT`(FORCED, step `CLEANUP`) 별건 | 남은 요청이 없으면 `safe(then=None)` → `ERROR` | `deviation`(WEIGH_INVALID/FORCED, 정리 **시작 전** 기록) |
 | `DEVIATION` | `wait_qa` → decision | APPROVED → (원료 일탈) 결과에 남기고 RETURN_SCOOP / (VERIFY) FINISH. DISCARDED → 스쿱 든 채면 먼저 반납 → 용기째 폐기 | `move(scoop_N)` / `carry(workbench→passbox_done)` / `carry(workbench→reject_bin)` | `deviation` 재발행(decision·operator_id 채움) |
-| `PAUSED` | `wait_interlock` → {} | RestoreGrip(scoop, 원료)·인출 확인 후 원료 계량 자세로 복귀 | `move(material, AT)` → 성공 후 `_resume` | `event INTERLOCK_ENTER/EXIT`, `state PAUSED` |
+| `PAUSED` | `wait_interlock` → {} | `_resume` 요청을 그대로 다시 실행 | `_resume` | `event INTERLOCK_ENTER/EXIT`, `state PAUSED` |
 | `ERROR` | `safe(then=None)` | 종료 | None | `event INTERVENTION_FORCED`, `state ERROR` |
 | `DISCARDED` | `move` / `grip(open)` / `carry` | 스쿱 반납 후 용기 폐기 → 폐기도 세트의 끝이라 `NUDGE_WAIT` 로 | `grip(open)` → `carry(workbench→reject_bin)` → `move(nudge_wait)` | 종료 상태는 `DISCARDED` 로 남는다 (record_node 가 본다). **판정은 완료가 아니다** — 반송·넛지 대기 동안 step 은 `DISCARDED`, mode 는 `RUNNING`/`PAUSED` 이고 **`mode=DONE` 은 넛지 뒤 한 번만** 나간다(9/28, D #295 — 판정 즉시 DONE 을 내 record_node 가 반송 전에 배치를 닫고, 반송 중 ENTER 가 PAUSED 로 안 보이던 것) |
 
@@ -272,14 +272,3 @@ python3 -m pytest ros2_ws/src/gmp_process/test/test_process_node.py -q
 ## 주문 경계 안전 자세 연결 (2026-09-29 사용자 승인)
 
 시작은 SELF_CHECK의 SafePose 성공 → RestoreGrip(empty) 확인 → 외력 자가진단 → 빈 통 파지 순서입니다. 세트 끝은 넛지 대기 → 실제 넛지 → SafePose 성공 → DONE 및 다음 주문 대기입니다. 안전 자세/빈 그리퍼 확인 실패 시 다음 단계로 진행하지 않습니다. C 변경을 사용자가 승인했습니다. 실물 시험 결과는 별도 기록합니다.
-
-
-## 계획된 원료 보충 재개 (2026-09-29 사용자 승인)
-
-완료된 빈 스쿱 판정으로 MATERIAL_EMPTY에 진입하면 SafePose → 보충 대기 →
-EXIT에서 RestoreGrip(expected_payload=scoop, expected_material_id=현재 원료) 및
-scoop_extracted 확인 → 해당 material_N AT(계량 자세) 이동 성공 → 저장한 Scoop 재요청 순서다.
-스쿠핑·붓기·인출·파지 중 강제 중단은 A의 중단 이력 검사로 자동 재개하지 않는다.
-일반 carry 단계별 재개는 범위 밖이며 기존 차단을 유지한다. 계약 필드·좌표·속도는 변경하지 않았다.
-고정 taught_fixed 경로를 모의시험으로 검증하며 실물 보충·복귀 동선은 미검증이다.
-SafePose에서 지워진 힘 기준선은 복구하지 않으므로 깊이 보정 모드의 기준선 재획득은 별도 과제다.

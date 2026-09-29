@@ -62,7 +62,7 @@
       backend: dio                  # 9/23 DRL 실물 검증: DO 개폐 + DI 완료 (virtual은 런치가 자동)
       open_width_mm: 100.0           # 운용 열림 폭. 데이터시트의 전체 조절 범위는 0~110 mm
       scoop_search_width_mm: 0.0     # 스쿱 파지 탐색 목표 폭 — 기대 폭(WRONG_TOOL 판정)과 분리, 0 = 완전히 닫힐 때까지 접촉 탐색 (A 리뷰, PR #165)
-      scoop_expected_widths_mm: [15.5, 18.0, 28.0]  # A/B/C 스쿱 폭 지문 (9/19 확정)
+      scoop_expected_widths_mm: [16.5, 17.5, 18.5]  # A/B/C 스쿱 폭 지문 (9/29 확정)
       scoop_extract_y_mm: 150.0     # 스쿱 파지 후 첫 WeighHeld에서 BASE +Y로 빼는 거리
       scoop_extract_lift_z_mm: 100.0 # 인출 완료 후 BASE +Z 상승 거리, 이후 원료 계량 자세로 이동
       fingerprint_tolerance_mm: 0.0 # DIO 폭 미측정·지문 미검증: 기존 비활성 설정 사용

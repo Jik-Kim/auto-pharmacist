@@ -201,7 +201,7 @@ def test_joint_cancel_never_descends(motion):
 def test_scoop_return_uses_side_insertion_then_release_lift(motion):
     node, job, calls, state, module = motion
     node._held_payload, node._held_material_id = 'scoop', 'A'
-    state.update(grip_inferred=True, width_mm=15.5)
+    state.update(grip_inferred=True, width_mm=16.5)
     job.args.update(station_id='scoop_1')
     node._do_move(job)
     assert [c[1][:3] for c in calls] == [[298,-142,150], [298,-142,50], [298,-292,50]]
@@ -386,16 +386,3 @@ def test_failed_explicit_safe_does_not_start_container_approach(motion):
         node._do_safe(module.Job('safe', {'reason': 'ORDER_START'}))
     assert not calls
     assert node._motion_anchor is None
-
-
-@pytest.mark.parametrize('material', ['A', 'B', 'C'])
-def test_refill_safe_to_material_reaches_fixed_scoop_start(motion, material):
-    node, job, calls, sensor, _ = motion
-    station = node.stations.for_material(material)
-    node._held_payload, node._held_material_id = 'scoop', material
-    sensor['grip_inferred'] = True
-    job.args.update(station_id=station.station_id, approach=1)
-    assert node._do_move(job) == station.station_id
-    assert calls == [('L', station.posx)]
-    assert node.arm.current_posx() == station.posx
-    assert node._held_material_id == material

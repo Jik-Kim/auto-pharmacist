@@ -109,7 +109,7 @@ def _load_skill_node(monkeypatch, node_base=object):
 def test_scoop_grip_marks_extraction_pending(monkeypatch):
     skill_node = _load_skill_node(monkeypatch)
     node = SimpleNamespace(
-        gripper=SimpleNamespace(grip=lambda *_: (True, 15.5, True)),
+        gripper=SimpleNamespace(grip=lambda *_: (True, 16.5, True)),
         _station_id='scoop_1',
         _pending_scoop_extract=False,
         _scoop_extract_uncertain=False,
@@ -122,12 +122,12 @@ def test_scoop_grip_marks_extraction_pending(monkeypatch):
         joint_tolerance=1.0,
     )
     job = skill_node.Job('grip', {
-        'close': True, 'width_mm': 15.5, 'force_n': 20.0, 'timeout_s': 3.0,
+        'close': True, 'width_mm': 16.5, 'force_n': 20.0, 'timeout_s': 3.0,
     })
 
     result = skill_node.SkillNode._do_grip(node, job)
 
-    assert result == (True, 15.5, True)
+    assert result == (True, 16.5, True)
     assert node._pending_scoop_extract is True
     assert node._held_material_id == 'A'
 
@@ -135,7 +135,7 @@ def test_scoop_grip_marks_extraction_pending(monkeypatch):
 def test_scoop_grip_with_stale_anchor_does_not_assign_material(monkeypatch):
     skill_node = _load_skill_node(monkeypatch)
     node = SimpleNamespace(
-        gripper=SimpleNamespace(grip=lambda *_: (True, 15.5, True)),
+        gripper=SimpleNamespace(grip=lambda *_: (True, 16.5, True)),
         _station_id='scoop_1',
         _pending_scoop_extract=False,
         _scoop_extract_uncertain=False,
@@ -149,7 +149,7 @@ def test_scoop_grip_with_stale_anchor_does_not_assign_material(monkeypatch):
     )
 
     skill_node.SkillNode._do_grip(node, skill_node.Job('grip', {
-        'close': True, 'width_mm': 15.5, 'force_n': 20.0, 'timeout_s': 3.0,
+        'close': True, 'width_mm': 16.5, 'force_n': 20.0, 'timeout_s': 3.0,
     }))
 
     assert node._pending_scoop_extract is False
