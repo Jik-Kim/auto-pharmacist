@@ -274,7 +274,12 @@ def test_measure_weight_fits_raw_samples_and_applies_hf_gate(monkeypatch):
         _empty_scoop_baseline_pending=False,
     )
 
+    logs = []
+    node.get_logger = lambda: SimpleNamespace(info=logs.append)
     reading = skill_node.SkillNode._measure_weight_reading(node, 0.0, 'container')
+    diagnostic = __import__('json').loads(logs[0].split('] ', 1)[1])
+    assert diagnostic['raw_samples'] == [1.0, 1.4, 0.9, 1.5]
+    assert diagnostic['fit_applied'] and diagnostic['fitted_period_s'] == 4.1
 
     assert fitted == [([1.0, 1.4, 0.9, 1.5], 0.82)]
     assert model_calls[0]['max_hf_std_g'] == 9.5
@@ -577,6 +582,7 @@ def test_sampling_parameter_reaches_all_measurement_paths(monkeypatch, entry):
     if entry == 'service':
         module.SkillNode._do_measure(node, module.Job('measure', {'samples': 3, 'settle_s': 0.2}))
     else:
+        node.get_logger = lambda: SimpleNamespace(info=lambda _: None)
         module.SkillNode._measure_weight_reading(node, 0, 'scoop')
     if entry == 'simulated':
         assert calls == []
