@@ -23,7 +23,7 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from gmp_hmi.core.trial_inventory import TrialInventory
 
-# overfill 시나리오의 과다 투입 배율. 허용오차(±10 %, D-33·D-35)를 확실히 넘어야 OVER 가 말이 된다 —
+# overfill 시나리오의 과다 투입 배율. 허용오차(±10 %, D-33 이후 유지)를 확실히 넘어야 OVER 가 말이 된다 —
 # 옛 1.10 은 ±5 % 시절 값이라 ±10 % 에서는 경계값이 된다.
 OVERFILL_RATIO = 1.15
 
@@ -40,9 +40,14 @@ class HmiTestProcess(Node):
         self.declare_parameter('test_initial_g', [1000.0, 1000.0, 1000.0])
         self.declare_parameter('test_height_low_pct', 20.0)
         self.declare_parameter('test_scoop_nominal_g', 40.0)
+        # 원료별 1회량(#306, B DosingConfig.for_material 과 같은 뜻). 0 이면 공통 test_scoop_nominal_g 를 쓴다.
+        self.declare_parameter('test_scoop_nominal_by_material_g', [0.0, 0.0, 0.0])
         self.test_scoop_nominal_g = float(self.get_parameter('test_scoop_nominal_g').value)
         if not math.isfinite(self.test_scoop_nominal_g) or self.test_scoop_nominal_g <= 0:
             raise ValueError('test_scoop_nominal_g는 양수여야 합니다')
+        self.scoop_nominal_by_material = self.per_material_nominal(
+            self.get_parameter('test_material_ids').value,
+            self.get_parameter('test_scoop_nominal_by_material_g').value)
         self.inventory = TrialInventory(
             self.get_parameter('test_material_ids').value,
             self.get_parameter('test_capacity_g').value,
@@ -326,6 +331,19 @@ class HmiTestProcess(Node):
         return res
 
     @staticmethod
+    def per_material_nominal(material_ids, values):
+        """test_material_ids 와 같은 순서의 원료별 1회량. 0 은 「공통값 사용」, 음수·비유한 값은 거부."""
+        values = [float(v) for v in values]
+        if len(values) != len(material_ids):
+            raise ValueError('test_scoop_nominal_by_material_g 는 test_material_ids 와 길이가 같아야 합니다')
+        if any(not math.isfinite(v) or v < 0 for v in values):
+            raise ValueError('test_scoop_nominal_by_material_g 는 0 이상 유한한 값이어야 합니다')
+        return {mid: v for mid, v in zip(material_ids, values) if v > 0}
+
+    def _scoop_nominal(self, material_id):
+        return self.scoop_nominal_by_material.get(material_id, self.test_scoop_nominal_g)
+
+    @staticmethod
     def _material_station(material_id):
         # 최신 stations.yaml ID와 화면 표시만 맞춘다. 좌표나 로봇 명령은 만들지 않는다.
         return {'A': 'material_1', 'B': 'material_2', 'C': 'material_3'}.get(material_id, 'test_material_unknown')
@@ -480,12 +498,13 @@ class HmiTestProcess(Node):
         self.inventory.consume(item.material_id, actual)
         self._publish_inventory()
         self._weight(actual)
-        attempts = max(1, math.ceil(actual / self.test_scoop_nominal_g))
+        nominal = self._scoop_nominal(item.material_id)
+        attempts = max(1, math.ceil(actual / nominal))
         delivered_before = 0.0
-        # 원료 완료 시 test_scoop_nominal_g 기준 시험 사이클을 생성한다(통신 시험 launch 는 79 g, D-35).
+        # 원료 완료 시 원료별 1회량 기준 시험 사이클을 생성한다(통신 시험 launch 는 A·C 69 / B 57 g, #306).
         # 실제 로봇 계량/횟수 검증은 아니다.
         for attempt in range(1, attempts + 1):
-            portion = min(self.test_scoop_nominal_g, actual - delivered_before)
+            portion = min(nominal, actual - delivered_before)
             self._cycle(item, portion, attempt, delivered_before, self.item_duration / attempts)
             delivered_before += portion
         self.delivered_total += actual
