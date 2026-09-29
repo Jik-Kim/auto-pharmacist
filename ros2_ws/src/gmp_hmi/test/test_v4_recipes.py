@@ -6,9 +6,9 @@ from gmp_process.core.recipe import load
 
 def test_fixed_recipe_catalog_uses_shared_loader_and_material_ids():
     directory = Path(__file__).resolve().parents[1] / 'config' / 'test_recipes' / 'v4'
-    # #306 (9/29) — 원료별 스쿱 1회량 A·C 69 / B 57 g 에 맞춘 목표량(138 g 은 2스쿱), 허용오차 ±10 %.
+    # 9/29 추가 결정: 레시피 1만 전 원료 69 g·±15 %. 레시피 2·3은 #306 유지.
     expected = {
-        'recipe-01': [('A', 69.0), ('B', 57.0), ('C', 69.0)],
+        'recipe-01': [('A', 69.0), ('B', 69.0), ('C', 69.0)],
         'recipe-02': [('A', 138.0), ('B', 57.0)],
         'recipe-03': [('A', 69.0), ('B', 57.0), ('C', 138.0)],
     }
@@ -16,7 +16,7 @@ def test_fixed_recipe_catalog_uses_shared_loader_and_material_ids():
     for name, items in expected.items():
         recipe = load(str(directory / (name + '.yaml')))
         assert [(item.material_id, item.target_g) for item in recipe.items] == items
-        assert all(item.tol_pct == 10.0 for item in recipe.items)
+        assert all(item.tol_pct == (15.0 if name == 'recipe-01' else 10.0) for item in recipe.items)
         assert recipe.product == f'레시피 {int(name[-2:])}'
 
 
