@@ -125,6 +125,20 @@ transfers:
   exit_posj: [9.34, 20.54, 116.3, 12.88, -47.59, 81.16]
   waypoints_posj:
   - *id001
+- source: safe
+  destination: nudge_wait
+  payload: empty
+  enabled: true
+  start_from: at_or_above
+  arrival: at
+  # [9/30] 폐기 뒤 넛지 대기 — reject_bin → nudge_wait 이송이 없어 MoveToStation 이 매번 거부됐다.
+  # 폐기함에서 SafePose(movej) 로 물러난 뒤 이 경로로 넛지 대기에 들어간다. 새 티칭 없이 두 기존 자세를 잇는다:
+  # safe.posj → nudge_wait.taught_at_posj 관절 이동 1구간.
+  # exit_posx 는 safe.posj 의 **실측 TCP**(9/30 06:58, safe.posx [300,0,450] 과 다르다). 회전은 safe.posx 와 같은 표현.
+  start_at_posj: [0.0, 0.0, 90.0, 0.0, 90.0, 0.0]
+  exit_posx: [367.31, 7.33, 215.08, 0.0, 180.0, 0.0]
+  waypoints_posj:
+  - *id001
 scooping:
   A:
     calibrated: false

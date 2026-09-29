@@ -159,7 +159,9 @@ def test_repeated_oversize_returns_then_times_out_without_pour():
     assert [k for s, k in trace if s == 'RETURN_MATERIAL'] == ['return_material'] * 3
     # 스쿱을 든 채 일탈 → 스쿱 반납(move, grip open) 후 용기째 폐기함 → 폐기도 세트의 끝이라 nudge_wait 에서 대기
     assert [k for s, k in trace if s == 'DISCARDED'] == ['move', 'grip', 'carry']
-    assert trace[-3:] == [('NUDGE_WAIT', 'move'), ('NUDGE_WAIT', 'wait_nudge'), ('NUDGE_WAIT', 'safe')]
+    # 9/30: 폐기함 → nudge_wait 이송이 없어 안전 자세(DISCARD_PARK)를 거쳐 safe → nudge_wait 이송으로 들어간다
+    assert trace[-4:] == [('NUDGE_WAIT', 'safe'), ('NUDGE_WAIT', 'move'),
+                          ('NUDGE_WAIT', 'wait_nudge'), ('NUDGE_WAIT', 'safe')]
 
 
 def test_return_failure_goes_safe_without_retry_or_repour():

@@ -9,7 +9,7 @@ import math
 import time
 
 from .context import Job
-from gmp_skills.core.transfer import joints_match
+from gmp_skills.core.transfer import MotionAnchor, joints_match
 from gmp_skills.core.recovery import recovery_step, STANDBY
 
 
@@ -198,6 +198,13 @@ class SafetyController:
         # MOVEJ · 관절각 목표: posj
         self.ctx.arm.movej_cancellable(posj, 0.3, lambda: job.cancel, self.ctx.config.motion_timeout_s)
         self.ctx.state.station_id = 'safe'
+        # 관절각이 safe.posj 에 도착했으면 그 실제 TCP·관절각을 출발 이력으로 남긴다 — safe → nudge_wait
+        # 이송(폐기 뒤 넛지 대기, 9/30)이 이 이력으로 출발을 검증한다. safe 에는 approach_posj·solution_space
+        # 가 없어 다른 이동은 이 이력을 읽지 않는다. safe.posx 는 실제 TCP 와 달라(9/30 실측) 관절각으로 판정한다.
+        actual_joints = self.ctx.arm.current_posj()
+        if joints_match(actual_joints, posj, self.ctx.config.joint_tolerance):
+            self.ctx.state.motion_anchor = MotionAnchor('safe', 1, tuple(self.ctx.arm.current_posx()),
+                                                        tuple(actual_joints))
         self.ctx.state.pending_scoop_extract = False
         self.ctx.state.scoop_extract_uncertain = False
         self.ctx.state.held_material_id = ''

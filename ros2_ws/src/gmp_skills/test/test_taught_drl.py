@@ -411,7 +411,9 @@ def test_explicit_safe_then_empty_container_approach(motion):
     node.arm.compliance_off = lambda: None
     node._motion_anchor = object()
     assert node._do_safe(module.Job('safe', {'reason': 'ORDER_START'}))
-    assert node._motion_anchor is None
+    # 9/30: safe.posj 에 도착하면 safe 출발 이력을 남긴다(safe → nudge_wait 이송용). 옛 이력은 버린다
+    assert node._motion_anchor.station == 'safe'
+    assert node._motion_anchor.joints == tuple(node.stations.get('safe').extra['posj'])
     node._do_move(job)
     # 주문 준비 MOVEJ 한 번, 빈 통 접근 MOVEJ, 파지 높이 MOVEL.
     assert [c[0] for c in calls] == ['J', 'J', 'L']
