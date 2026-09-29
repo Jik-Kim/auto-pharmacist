@@ -494,6 +494,34 @@ def test_wrong_tool_container_width_mismatch_discarded():
     assert fsm.state == 'DISCARDED' and not fsm.results
 
 
+def _modes(fsm, cell):
+    """매 전이 뒤의 (state, mode) — CellState 로 나가는 값의 순서다."""
+    req, seen = fsm.start(), []
+    while req:
+        req = fsm.on_result(req, cell(req))
+        seen.append((fsm.state, fsm.mode))
+    return seen
+
+
+@pytest.mark.parametrize('case', ['원료 일탈 폐기(스쿱 반납부터)', '빈 통 WRONG_TOOL 폐기(반송만)'])
+def test_폐기_판정은_반송과_넛지가_끝날_때까지_DONE_을_내지_않는다(case):
+    """D #295 (9/28): 폐기 **판정** 즉시 mode=DONE 을 내면 record_node 가 반송 전에 배치를 닫는다.
+
+    DONE 은 넛지 뒤 **한 번만**, 그 전 반송 구간은 step=DISCARDED 그대로 mode=RUNNING 이어야 한다.
+    """
+    if case.startswith('원료'):
+        fsm, cell = _fsm(), Cell(yields=[130, 130, 130], qa='DISCARDED')
+    else:
+        fsm = _fsm(fingerprint=ToolFingerprint(cup_width_mm=60.0, tolerance_mm=1.0))
+        cell = Cell(yields=[], width_mm=45.0, qa='DISCARDED')
+    seen = _modes(fsm, cell)
+    assert [s for s in seen if s[1] == 'DONE'] == [('DISCARDED', 'DONE')], seen
+    assert seen[-1] == ('DISCARDED', 'DONE')
+    after_qa = seen[next(i for i, s in enumerate(seen) if s[0] == 'DISCARDED'):]
+    assert after_qa[0] == ('DISCARDED', 'RUNNING'), after_qa
+    assert ('NUDGE_WAIT', 'PAUSED') in after_qa, '폐기도 세트 끝에서 넛지를 기다린다'
+
+
 def test_material_empty_refill_resumes_scoop():
     """#111 A안 — 재시도 3회는 `SCOOP_EMPTY`, **보충으로 넘어가는 4회째는 `MATERIAL_EMPTY`**.
 
