@@ -49,7 +49,7 @@ p1 = Page('1 노드 입출력')
 p1.box(40, 20, 1860, 40, 'gmp_process — process_node 입출력 (계약 v1.3 · 반환 Action · ns /cell)', fill='#FFFFFF', stroke='none', bold=True, size=18, align='left')
 hmi = p1.box(40, 140, 200, 420, 'hmi_web_node (D)\n\n웹 HMI · Flask :5000\n\n주문 제출\nQA 승인 / 폐기\n인터락 ENTER / EXIT', fill=GRAYS, stroke=GRAY, bold=True)
 proc = p1.box(560, 100, 700, 560, 'process_node (C)', fill='#FFFFFF', stroke=ACC, bold=True, size=14)
-cb = p1.box(590, 150, 300, 200, 'rclpy 콜백 스레드\n\n_srv_submit → FSM 생성, run_loop 시작\n_srv_qa → _qa_decision 저장, _qa.set()\n_srv_interlock → ENTER: cancel→safe_pose→granted\n                        EXIT: _interlock_exit.set()\nevent(NUDGE) 구독 → 게이트 토글\n   (NUDGE_WAIT 중엔 토글이 아니라 다음 세트 신호)\n\n콜백은 값만 저장한다. 로봇을 부르지 않는다', fill=ACCS, align='left', size=11)
+cb = p1.box(590, 150, 300, 200, 'rclpy 콜백 스레드\n\n_srv_submit → FSM 생성, run_loop 시작\n_srv_qa → _qa_decision 저장, _qa.set()\n_srv_interlock → ENTER: cancel→safe_pose→granted\n                        EXIT: restore_grip 성공 → 재개 신호\nevent(NUDGE) 구독 → 게이트 토글\n   (NUDGE_WAIT 중엔 토글이 아니라 다음 세트 신호)\n\n콜백은 값만 저장한다. 로봇을 부르지 않는다', fill=ACCS, align='left', size=11)
 loop = p1.box(930, 150, 300, 200, 'run_loop 스레드 (배치마다 1개)\n\nreq = fsm.start()\nwhile req:\n    res = _execute(req)   ← 스킬 한 번에 하나\n    req = fsm.on_result(req, res)\n    발행(state·weight·scoop_cycle·result·deviation·event)\n\nwait_qa / wait_interlock 는 Event.wait()', fill=ACCS, align='left', size=11)
 fsm = p1.box(590, 390, 640, 240, 'core/process_fsm.py — ProcessFSM (ROS 비의존, pytest)\n\nstate · mode · idx(원료) · tare_g · verify_net_g · cur(ItemRun: attempts(붓기)·returns(반환)·invalid·scoop_tare·scooped·residual·actual·verdict) · results · deviations · _counts · _resume · _qa_step · slot\n\nstart() → 첫 요청     on_result(req, res) → 다음 요청 dict 또는 None(끝)\n_deviate(kind, step) → deviation.py policy(kind, count) → RETRY / REFILL / QA / FORCED\n_carry(src, dst) → {"kind":"carry", src, dst, slot}\n\n의존: gmp_dosing.core.dosing.decide(target, net, tol, attempts, valid, invalid, cfg) → DONE / SCOOP(fraction) / DEVIATION(kind)\n        core/recipe.py parse() → RecipeSpec(product, items[Item(material_id, target_g, tol_pct)])', fill=OKS, stroke=OK, align='left', size=11)
 p1.edge(cb, loop, 'Event / 플래그', color=GRAY, dashed=True)
@@ -59,7 +59,7 @@ rec = p1.box(560, 900, 700, 110, 'record_node (D) — SQLite 단일 기록자   
 # HMI → process (Service)
 p1.edge(hmi, proc, 'Service submit_order\nSubmitOrder: Recipe → accepted, batch_id\n실행 중이면 accepted=false', color=ACC, exit=(1, 0.2), entry=(0, 0.12), lpos=(0, -24))
 p1.edge(hmi, proc, 'Service qa_decision\ndeviation_id, decision, operator_id → accepted\n대기 중 ID 불일치·DEVIATION 아니면 거부', color=ACC, exit=(1, 0.45), entry=(0, 0.3), lpos=(0, -24))
-p1.edge(hmi, proc, 'Service interlock\nENTER=1 / EXIT=2, reason → granted\nENTER 는 safe_pose 성공 후 granted', color=ACC, exit=(1, 0.7), entry=(0, 0.48), lpos=(0, -24))
+p1.edge(hmi, proc, 'Service interlock\nENTER=1 / EXIT=2, reason → granted\nENTER: safe_pose / EXIT: restore_grip 성공 후 granted', color=ACC, exit=(1, 0.7), entry=(0, 0.48), lpos=(0, -24))
 p1.edge(hmi, proc, 'Action run_batch (RunBatch)\nCLI·시험용, 우선순위 낮음', color=GRAY, dashed=True, exit=(1, 0.92), entry=(0, 0.66), lpos=(0, -18))
 # process → skill
 p1.edge(proc, skill, 'Action move_to_station\nstation_id, approach ABOVE/AT, vel_scale\n→ success, reached', color=WARM, exit=(1, 0.1), entry=(0, 0.1), lpos=(0, -24))
@@ -166,7 +166,7 @@ p2.edge(wscoop, scoop, 'scooped ≤ empty_scoop_g → SCOOP_EMPTY (모드 무관
 # ── 보충 인터락 (PAUSED) — 2열 2행은 비어 있어 세로로 지난다
 p2.edge(scoop, paused, 'SCOOP_EMPTY 4회 = MATERIAL_EMPTY → REFILL\n_resume = 이 scoop 요청', color=WARM,
         exit=(0.15, 1), entry=(0.15, 0), points=((cx(2, 0.15), Y[3] - 20),), lpos=(0.65, 0))
-p2.edge(paused, scoop, 'interlock EXIT → _resume 재실행\n(REFILL 은 개입으로 세지 않는다)', color=OK,
+p2.edge(paused, scoop, 'EXIT: restore_grip 성공 → _resume 재실행\n(REFILL 은 개입으로 세지 않는다)', color=OK,
         exit=(0.85, 0), entry=(0.85, 1), points=((cx(2, 0.85), Y[3] - 20),), lpos=(0.65, 0))
 # ── QA 판정 (DEVIATION)
 p2.edge(dev, ret, 'APPROVED (원료 일탈) → 결과에 남기고 스쿱 반납', color=OK,

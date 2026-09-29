@@ -81,6 +81,7 @@ def _load_skill_node(monkeypatch, node_base=object):
         'gmp_interfaces.srv': _module(
             'gmp_interfaces.srv',
             RecoverSafety=Service,
+            RestoreGrip=Service,
             MeasureForce=Service,
             SafePose=Service,
             SetGripper=Service,

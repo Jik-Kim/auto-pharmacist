@@ -1,4 +1,4 @@
-# Interfaces — 계약 v1.9 (2026-09-28)
+# Interfaces — 계약 v1.10 (2026-09-29)
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
@@ -27,6 +27,8 @@
 
 ---
 
+> **v1.10 (9/29 C 승인 사용자 확인):** `RestoreGrip` 서비스를 추가합니다. 인터락 EXIT는 안전 자세에서 센서와 중단 전 이력으로 파지 상태를 복구한 뒤에만 재개를 승인합니다. 실패·응답 시간 초과·새 안전 정지는 대기를 유지합니다. 로봇 이동·그리퍼 개폐·안전 차단 해제는 수행하지 않습니다. v1.9의 D 승인 대기 항목은 별도로 유지합니다.
+
 ## 1. 메시지·서비스·액션 (gmp_interfaces)
 
 | 타입 | 용도 | 비고 |
@@ -45,6 +47,7 @@
 | `srv/InterlockRequest` | HMI → process → skill. `ENTER`(사람 투입) / `EXIT`(재개) | `ENTER` 는 로봇이 안전 자세에 **도달한 뒤** `granted=true` |
 | `srv/SetGripper` | process → skill. 열기/닫기와 폭·힘 설정 | `/cell/set_gripper`. 응답에 정지 폭과 파지 추론 |
 | `srv/MeasureForce` | process → skill. 정지 상태 외력 평균 | 로봇이 움직이는 중이면 `valid=false` |
+| `srv/RestoreGrip` | process → skill. `/cell/restore_grip` | 빈 요청 → `success`, `payload`, `material_id`, `message`. 센서 확인 후 상태만 복구 |
 | `srv/SafePose` | process → skill. 안전 자세로 후퇴 | 인터락·에러 공통 |
 | `srv/RecoverSafety` | HMI → process → skill. 안전 정지 복구 | A `/cell/recover_safety`. C 중계 서비스 `/cell/request_safety_recovery` 구현 완료(process_node, 9/20). D의 단일 복구 요청 버튼도 구현됐으며 실제 C/A·실물 연동 검증은 별도 |
 | `action/MoveToStation` | 스테이션 이동 (`ABOVE` 접근점 / `AT` 작업점) | 좌표는 `stations.yaml` 단일 출처 |
@@ -111,6 +114,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `InterlockRequest` | HMI → process | `request`(`ENTER/EXIT`), `reason` → `granted`, `message`. ENTER는 안전 자세 도달 뒤 승인한다 |
 | `SetGripper` | process → skill | `close`, `width_mm`, `force_n`, `timeout_s` → `success`, 실제 정지 폭 `final_width_mm`, `grip_inferred`(modbus는 grip 비트, virtual은 폭 추론, dio는 DI 완료 확인), `message` |
 | `MeasureForce` | process → skill | `samples`, `settle_s` → `force[6]`, `fz_mean_n`, `fz_std_n`, `valid`, `message`. `force`는 `get_tool_force(DR_BASE)`의 tool 외력 wrench `[Fx,Fy,Fz,Mx,My,Mz]`; 앞 3개는 N, 뒤 3개는 N·m이며 관절 토크가 아니다. 작용점은 컨트롤러의 설정 tool/TCP 기준으로 사용하고 실물 G1에서 확인한다 |
+| `RestoreGrip` | process → skill | 빈 요청 → `success`, `payload`(empty/cup/scoop, 실패 unknown), `material_id`(scoop만), `message` |
 | `SafePose` | process → skill | `reason` → `success`, `message`. 인터락·오류 시 공통 안전 자세로 후퇴한다 |
 
 액션은 긴 동작 중 Feedback을 여러 번 보내고 종료 시 Result를 한 번 보낸다.
@@ -298,3 +302,12 @@ A 워커는 작업 전·유휴·이동/계량 취소 확인 구간에서 상태�
   C FSM은 `dosing.fixed_scoop=true`에서 이 값을 진행 조건으로 쓰지 않고, 이어지는 WeighHeld 순중량이
   `dosing.empty_scoop_g` 이하일 때만 SCOOP_EMPTY로 본다 (D-34, #282).
   인계 대상과 지원 범위는 [실행 안내](setup.md)의 B/C 인계 절을 따른다.
+
+### 인터락 EXIT 파지 복구 (v1.10)
+
+- SafePose 요청 직전의 파지·원료 이력을 저장합니다. 안전 자세 완료 후 현재 센서를 확인하며, 열린 빈 그리퍼는 `empty`, 기존 cup/scoop 이력과 파지 센서가 일치하면 해당 상태를 복구합니다. 물체 종류를 센서만으로 새로 추정하지 않습니다.
+- 스쿠핑·붓기·파지·인출 중단 등 결과가 불확실하거나 센서가 busy/안전/슬립 상태이면 실패합니다. 계량 기준선은 복구하지 않습니다.
+- ENTER 처리 중 중복 ENTER/EXIT는 거부합니다. EXIT는 복구 응답 성공 후에만 재개 신호를 전달합니다. 배치 실행 루프가 없는 수동 시험은 대기를 즉시 해제합니다.
+- RestoreGrip 성공은 파지 상태의 확인이며 개별 경로·배치의 완주 보장은 아닙니다. 실물 복구 시험은 별도입니다.
+
+복합 `carry` 중단은 출발지부터 재실행할 경우 중복 파지가 가능하므로 EXIT 자동 재개를 거부합니다. 복합 동작의 단계별 복구는 별도 후속 범위입니다.

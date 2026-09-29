@@ -27,7 +27,7 @@ from onrobot_rg_msgs.srv import SetCommand
 from onrobot_rg_msgs.msg import OnRobotRGInput
 from gmp_interfaces.action import MoveToStation, ReturnMaterial, Scoop, Pour, WeighContainer, WeighHeld
 from gmp_interfaces.msg import CellEvent, GripperState, WeightReading
-from gmp_interfaces.srv import MeasureForce, SafePose, SetGripper, RecoverSafety
+from gmp_interfaces.srv import MeasureForce, SafePose, SetGripper, RecoverSafety, RestoreGrip
 from gmp_skills.adapters.dsr_arm import DsrArm
 from gmp_skills.adapters.rg2_gripper import Rg2Gripper
 from gmp_skills.core.nudge import NudgeDetector
@@ -177,6 +177,7 @@ class SkillNode(Node):
         self.create_subscription(RobotError, f"/{g('robot.id')}/dsr_controller2/error",
                                  self._on_robot_alarm, 100, callback_group=self.cb)
         self.create_service(SafePose, 'safe_pose', self._srv_safe, callback_group=self.cb)
+        self.create_service(RestoreGrip, 'restore_grip', self._srv_restore_grip, callback_group=self.cb)
 
 
     def _now_s(self):
@@ -454,12 +455,31 @@ class SkillNode(Node):
         # 안전 자세 요청은 기존 대기 Job을 취소하고 현재 Job에도 취소를 표시한다.
         # 이어서 safe Job을 큐에 넣으며 실제 관절 이동은 워커가 수행한다.
         with self.ctx.state.job_lock:
+            state = self.ctx.state
+            # 작업이 취소되어 이력이 지워지기 전에 복구 후보만 보관한다.
+            # 그리퍼 조작·계량 인출·스쿠핑·붓기 중단은 자동 재개 대상으로 추정하지 않는다.
+            kind = state.current.kind if state.current else None
+            state.resume_grip = dict(
+                payload=state.held_payload, material_id=state.held_material_id,
+                pending=state.pending_scoop_extract, uncertain=state.scoop_extract_uncertain,
+                resumable=kind in (None, 'move', 'measure'),
+            )
+            state.resume_grip_ready = False
             self.execution.runtime._drain_jobs_locked('cancelled by safe_pose')
             if self.ctx.state.current:
                 self.ctx.state.current.cancel = True
         job = self.execution.runtime._submit('safe', reason=req.reason)
         res.success, res.message = not job.error, job.error
         self.event('WARN', 'SAFE_POSE', req.reason)
+        return res
+
+
+    def _srv_restore_grip(self, req, res):
+        # 센서 조회와 이력 갱신은 DSR 단일 워커에서만 실행한다.
+        job = self.execution.runtime._submit('restore_grip')
+        res.success = not job.error and not job.cancel
+        res.payload, res.material_id = ('unknown', '') if not res.success else job.result
+        res.message = job.error or ('파지 상태 복구 완료' if res.success else '복구 취소')
         return res
 
 

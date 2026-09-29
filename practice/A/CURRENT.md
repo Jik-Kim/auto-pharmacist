@@ -77,3 +77,7 @@
 - 2026-09-29 11:11:34~11:13:22 KST, 커밋 `2836c62`에서 빈 그리퍼·MoveToStation 배율 0.2로 단독 실물 1회 성공했다. passbox_done 접근→열기→EXIT 후퇴→nudge_wait AT→실제 NUDGE(|F|=37.05 N)→SafePose 완료. 근거: PR #319 본문 및 로봇 PC `/tmp/nudge-ros-logs/python3_119211_1790647891077.log` (첫 이동 ROS 시각 1790647894.705, 완료 1790648002.387). 용기 운반·실제 용기 놓기, 반복 신뢰성·정지 응답은 미검증이다. 이번 anchor 관절각 검사 복원 후 실물 재시험은 미수행이다.
 - `reject_bin → nudge_wait` 미지원은 #99 후속. [SOT](../../docs/SOT.md), [시험 안내](../../tools/manual_place_nudge.md).
 - 리뷰 수정 최종 검증: 다른 세션 변경을 제외한 임시 사본에서 gmp_skills **512 passed**, Python 문법·diff 검사 통과, 공정 생성기 산출물 변경 없음. [검증 일지](2026-09-29_넛지_이송_활성화.md).
+
+## 인터락 재개 시 파지 상태 복구 (2026-09-29, C 승인)
+
+`ENTER → SafePose 완료 → EXIT → RestoreGrip 성공 → 재개 승인` 순서입니다. 새 `/cell/restore_grip` 서비스는 센서와 중단 전 이력으로 파지 상태만 복구하며 이동·개폐 명령을 보내지 않습니다. 복구 실패·시간 초과·새 안전 정지 시 재개하지 않습니다. 실행 중 배치는 루프가 EXIT를 소비하며, 실행 루프 없는 수동 시험은 EXIT 성공 시 대기를 해제합니다. 스쿠핑·붓기·파지 등 불확실한 중단은 자동 복구 대상에서 제외합니다. 계량 기준선은 복구하지 않습니다. 계약은 [interfaces.md](../../docs/interfaces.md) v1.10을 따릅니다. 새 서비스 사용 전 gmp_interfaces·gmp_skills·gmp_process 재빌드와 bringup 재시작이 필요합니다. 실물 검증은 아직 하지 않았습니다.

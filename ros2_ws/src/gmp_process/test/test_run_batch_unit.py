@@ -93,7 +93,7 @@ def module(monkeypatch):
 def node(module):
     n=module.ProcessNode()
     n.smap=module.StationMap(scoops={'A':'scoop_1','B':'scoop_2'},materials={'A':'material_1','B':'material_2'})
-    n._call_srv=lambda *a: Message(success=True)
+    n._call_srv=lambda *a: Message(success=True, payload='empty')
     return n
 
 

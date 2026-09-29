@@ -1,0 +1,7 @@
+# process → skill. 안전 자세 완료 후 센서·중단 전 이력으로 파지 상태만 복구한다.
+# 로봇 이동·그리퍼 개폐·안전 정지 해제는 하지 않는다.
+---
+bool success
+string payload          # empty | cup | scoop, 실패 시 unknown
+string material_id      # scoop일 때만 유효
+string message

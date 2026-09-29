@@ -58,6 +58,8 @@ class SkillState:
     motion_anchor: MotionAnchor | None = None
     held_payload: str = 'unknown'
     held_material_id: str = ''
+    resume_grip: dict | None = None  # SafePose 직전 이력. 센서 확인 없이 복원하지 않는다.
+    resume_grip_ready: bool = False
     empty_scoop_force_baseline: dict | None = None
     empty_scoop_baseline_pending: bool = False
     return_rescoop_blocked: bool = False

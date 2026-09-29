@@ -13,7 +13,7 @@
         <mxCell id="c4" value="process_node (C)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3451D1;fontColor=#161B2A;fontSize=14;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="560" y="100" width="700" height="560" as="geometry" />
         </mxCell>
-        <mxCell id="c5" value="rclpy 콜백 스레드&lt;br&gt;&lt;br&gt;_srv_submit → FSM 생성, run_loop 시작&lt;br&gt;_srv_qa → _qa_decision 저장, _qa.set()&lt;br&gt;_srv_interlock → ENTER: cancel→safe_pose→granted&lt;br&gt;                        EXIT: _interlock_exit.set()&lt;br&gt;event(NUDGE) 구독 → 게이트 토글&lt;br&gt;   (NUDGE_WAIT 중엔 토글이 아니라 다음 세트 신호)&lt;br&gt;&lt;br&gt;콜백은 값만 저장한다. 로봇을 부르지 않는다" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c5" value="rclpy 콜백 스레드&lt;br&gt;&lt;br&gt;_srv_submit → FSM 생성, run_loop 시작&lt;br&gt;_srv_qa → _qa_decision 저장, _qa.set()&lt;br&gt;_srv_interlock → ENTER: cancel→safe_pose→granted&lt;br&gt;                        EXIT: restore_grip 성공 → 재개 신호&lt;br&gt;event(NUDGE) 구독 → 게이트 토글&lt;br&gt;   (NUDGE_WAIT 중엔 토글이 아니라 다음 세트 신호)&lt;br&gt;&lt;br&gt;콜백은 값만 저장한다. 로봇을 부르지 않는다" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="590" y="150" width="300" height="200" as="geometry" />
         </mxCell>
         <mxCell id="c6" value="run_loop 스레드 (배치마다 1개)&lt;br&gt;&lt;br&gt;req = fsm.start()&lt;br&gt;while req:&lt;br&gt;    res = _execute(req)   ← 스킬 한 번에 하나&lt;br&gt;    req = fsm.on_result(req, res)&lt;br&gt;    발행(state·weight·scoop_cycle·result·deviation·event)&lt;br&gt;&lt;br&gt;wait_qa / wait_interlock 는 Event.wait()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
@@ -40,7 +40,7 @@
         <mxCell id="c13" value="Service qa_decision&lt;br&gt;deviation_id, decision, operator_id → accepted&lt;br&gt;대기 중 ID 불일치·DEVIATION 아니면 거부" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.45;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3" target="c4">
           <mxGeometry x="0" y="-24" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c14" value="Service interlock&lt;br&gt;ENTER=1 / EXIT=2, reason → granted&lt;br&gt;ENTER 는 safe_pose 성공 후 granted" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.48;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3" target="c4">
+        <mxCell id="c14" value="Service interlock&lt;br&gt;ENTER=1 / EXIT=2, reason → granted&lt;br&gt;ENTER: safe_pose / EXIT: restore_grip 성공 후 granted" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.48;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3" target="c4">
           <mxGeometry x="0" y="-24" relative="1" as="geometry" />
         </mxCell>
         <mxCell id="c15" value="Action run_batch (RunBatch)&lt;br&gt;CLI·시험용, 우선순위 낮음" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;dashed=1;exitX=1;exitY=0.92;exitDx=0;exitDy=0;entryX=0;entryY=0.66;entryDx=0;entryDy=0;" edge="1" parent="1" source="c3" target="c4">
@@ -355,7 +355,7 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c55" value="interlock EXIT → _resume 재실행&lt;br&gt;(REFILL 은 개입으로 세지 않는다)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.85;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c20" target="c9">
+        <mxCell id="c55" value="EXIT: restore_grip 성공 → _resume 재실행&lt;br&gt;(REFILL 은 개입으로 세지 않는다)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.85;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c20" target="c9">
           <mxGeometry x="0.65" y="0" relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="761.5" y="940" />

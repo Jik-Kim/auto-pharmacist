@@ -7,7 +7,7 @@
 ## 지금 유효한 값
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 계약 | **v1.9** (9/28, **팀 공지·D 승인 대기**) — `RunBatch` 세트 끝 주문 1건 예약, `CellEvent` `ORDER_QUEUED`·`ORDER_DROPPED`. 메시지 정의 무변경. v1.8 — `DispenseResult.verdict` OK/UNDER/OVER/**INVALID=3** | `feat/nudge-wait-order-queue` · PR #241(C 발행) · #240(D 소비), `docs/interfaces.md` |
+| 계약 | **v1.10** RestoreGrip 및 EXIT 복구 성공 후 재개(C 승인). 이전 **v1.9** (9/28, **팀 공지·D 승인 대기**) — `RunBatch` 세트 끝 주문 1건 예약, `CellEvent` `ORDER_QUEUED`·`ORDER_DROPPED`. 메시지 정의 무변경. v1.8 — `DispenseResult.verdict` OK/UNDER/OVER/**INVALID=3** | `feat/nudge-wait-order-queue` · PR #241(C 발행) · #240(D 소비), `docs/interfaces.md` |
 | 세트 끝 주문 | FINISH·폐기 반송·`NUDGE_WAIT` 의 `RunBatch` 주문은 **1건 예약**, 직전 배치가 **넛지(`SET_NEXT`)로 끝나야** 시작. 취소·안전정지·오류로 끝나면 시작 안 함(`ABORTED` + `ORDER_DROPPED`). 예약이 있으면 슬롯이 비어도 새 주문 거부(새치기 방지). `SubmitOrder` 는 종전대로 거부. `ORDER_QUEUED`·`ORDER_DROPPED` 는 **예약 주문 ID** 로 발행(`SET_NEXT` 는 지금 배치). HMI 경로는 D #305 머지·DDS 검증 뒤 — #303 단독은 CLI·별도 클라이언트 범위 | SOT D-23 9/28 · 조장 제기·사용자 결정 A안 |
 | 계량 무효(WEIGH_INVALID) 정책 | `max_invalid_retries` 2(총 3회) — **yaml 값이 아니라 `DosingConfig` 기본값**(`gmp_dosing/core/dosing.py`)이고 `process_node` 는 넘기지 않는다; 카운터는 단계별·유효 시 초기화; 투입 전(TARE·SCOOP_TARE·WEIGH_SCOOP) → **CLEANUP → ERROR**, 투입 후(WEIGH_RESIDUAL·VERIFY) → QA; QA 승인 시 미측정을 기록한다. **어디를 모르는지는 다른 사건이지만 배치 결과에서는 합쳐진다** — `WEIGH_RESIDUAL` 무효는 `ItemRun.unmeasured` → `DispenseResult.verdict=INVALID`(그 원료의 투입량을 모름), `VERIFY` 무효는 `fsm.verify_unmeasured`(배치 최종 순량을 모름). **`RunBatch.result` 는 둘 중 하나만 있어도 `DONE_UNMEASURED`** 이고(9/23 조장 결정), 그때 `CellEvent(WARN, BATCH_UNMEASURED)` 가 같이 나간다 — `DONE_UNMEASURED` 는 `RunBatch.result` 에만 실려 DB 에 닿지 않기 때문이다. ⚠️ **이 이벤트가 최종 `CellState(DONE)` 보다 먼저 간다고 전제하지 말 것** — `_pub_state` 가 0.5 s 타이머로도 돌아 역전될 수 있고, D 가 UPDATE 로 흡수한다 | #213 결정 1~5, PR #225·#227·#241 |
 | 폐기 판정 뒤 상태 | QA 폐기 판정 즉시가 아니라 **넛지 뒤 한 번만** `mode=DONE, step=DISCARDED`. 스쿱 반납·폐기함 반송·넛지 대기 동안은 step `DISCARDED` 그대로 mode `RUNNING`(대기 `PAUSED`) — record_node 가 이 DONE 으로 배치를 닫는다 | `fix/discard-done-at-end` (9/28, D #295), `docs/interfaces.md` CellState 명확화 |
@@ -64,3 +64,7 @@
 - 2026-09-23 ~~미측정 원료 verdict 되매김 UNDER(임시)~~ → INVALID=3 (v1.8). PR #241.
 - 2026-09-22 ~~미측정 원료 verdict 빈 값 → 'OK' 폴백~~ → verdict_of 되매김 UNDER + WARN DISPENSE_UNMEASURED. PR #225.
 - 2026-09-22 ~~RULES['WEIGH_INVALID'] (2,'RETRY','QA')~~ → (0,'QA','QA'), 재계량은 max_invalid_retries 전담. #213 결정 1.
+
+## 인터락 재개 시 파지 상태 복구 (2026-09-29, C 승인)
+
+`ENTER → SafePose 완료 → EXIT → RestoreGrip 성공 → 재개 승인` 순서입니다. 새 `/cell/restore_grip` 서비스는 센서와 중단 전 이력으로 파지 상태만 복구하며 이동·개폐 명령을 보내지 않습니다. 복구 실패·시간 초과·새 안전 정지 시 재개하지 않습니다. 실행 중 배치는 루프가 EXIT를 소비하며, 실행 루프 없는 수동 시험은 EXIT 성공 시 대기를 해제합니다. 스쿠핑·붓기·파지 등 불확실한 중단은 자동 복구 대상에서 제외합니다. 계량 기준선은 복구하지 않습니다. 계약은 [interfaces.md](../../docs/interfaces.md) v1.10을 따릅니다. 새 서비스 사용 전 gmp_interfaces·gmp_skills·gmp_process 재빌드와 bringup 재시작이 필요합니다. 실물 검증은 아직 하지 않았습니다.

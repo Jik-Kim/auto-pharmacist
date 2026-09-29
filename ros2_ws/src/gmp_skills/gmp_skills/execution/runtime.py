@@ -25,6 +25,7 @@ class SkillRuntime:
             'startup': self._do_startup,
             'recover': safety._do_recover,
             'safe': safety._do_safe,
+            'restore_grip': safety._do_restore_grip,
             'move': motion._do_move,
             'grip': motion._do_grip,
             'scoop': scooping._do_scoop,
@@ -113,6 +114,9 @@ class SkillRuntime:
                     self.safety._poll_nudge()
                     continue
                 with self.ctx.state.job_lock:
+                    if job.kind not in ('safe', 'restore_grip'):
+                        self.ctx.state.resume_grip = None
+                        self.ctx.state.resume_grip_ready = False
                     self.ctx.state.current = job
                     if self.ctx.state.stopping.is_set():
                         job.cancel = True
@@ -131,6 +135,9 @@ class SkillRuntime:
                     # configure()의 표에서 요청 종류에 해당하는 실행 메서드를 찾는다.
                     job.result = self.handlers[job.kind](job)
                 except Exception as e:  # noqa: BLE001
+                    if not job.cancel and job.kind != 'restore_grip':
+                        self.ctx.state.resume_grip = None
+                        self.ctx.state.resume_grip_ready = False
                     self.ctx.state.motion_anchor = None
                     self.ctx.state.held_payload = 'unknown'
                     self.ctx.state.held_material_id = ''
