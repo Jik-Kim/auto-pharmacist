@@ -330,13 +330,13 @@ def test_measure_weight_uses_the_calibration_of_its_own_path(monkeypatch, subjec
 
 
 def test_measure_weight_rejects_an_unknown_path(monkeypatch):
-    """경로 이름이 틀리면 공통값으로 떨어지지 않고 멈춘다."""
+    """경로 이름이 틀리면 공통값으로 떨어지지 않고 **계량 전에** 멈춘다.
+
+    파라미터도 로봇도 없는 노드를 준다 — 무엇이든 읽거나 재려 하면 KeyError·AttributeError 로
+    다른 실패가 나므로, ValueError 가 나온다는 것은 검사가 맨 앞에 있다는 뜻이다.
+    """
     skill_node = _load_skill_node(monkeypatch)
-    params = {'scale.samples': 4, 'scale.settle_s': 1.0, 'scale.method': 'tool_force',
-              'scale.simulated': True}
-    node = SimpleNamespace(
-        get_parameter=lambda name: SimpleNamespace(value=params[name]),
-        _scale_period_s=lambda: 0.82, _empty_scoop_baseline_pending=False)
+    node = SimpleNamespace(get_parameter=lambda name: {}[name])
     with pytest.raises(ValueError, match='계량 경로'):
         skill_node.SkillNode._measure_weight_reading(node, 0.0, 'cup')
 

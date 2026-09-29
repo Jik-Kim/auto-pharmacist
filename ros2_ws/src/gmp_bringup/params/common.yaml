@@ -77,12 +77,11 @@
       dio_settle_s: 0.8             # 스쿱 DI 완료 확인 후 대기 (DRL); 약통/열림은 DI만 확인
 
     # ── 로봇 센서 계량 ───────────────────────────────────────────────
-    # ⚠️ [조장·A 확인 필요] 2026-09-21 영점 재작업 완료 — 아래 scale.* 는 아직 **폐기된 9/18·9/19 값**이다 (B 도징).
-    #    갱신안(gain 1.03 · offset_g 195.0 · max_std_g 8.0)은 — min_resolvable_g 는 9/22 VERIFY ② 폐지로 제거됐다
-    #    gmp_dosing/calibration/README.md 의 "common.yaml 갱신안" 절에, 근거는 gmp_dosing/config/scale_reference.yaml 에.
-    #    ⚠️ **적용 전에 계량 자세를 먼저 정해야 한다.** skill_node._do_weigh_held 는 원료마다 material_N.posx 에서
-    #       재는데, material_1·2 에서는 max_std_g 가 8 이든 10(아래 현재값)이든 계량이 valid 0/15·2/15 로 거의 전부
-    #       무효다 (material_3 은 15/15). 그 자세에서 재는 한 값을 어떻게 두든 도징이 성립하지 않는다.
+    # 보정값은 9/29 측정 PC 실측(#307) — 경로별 container / scoop (아래). 근거·과정은 practice/B/2026-09-29_*.md.
+    # ~~「아래 scale.* 는 폐기된 9/18·9/19 값 · 갱신안 gain 1.03·offset 195.0」(9/21)~~ → 9/29 경로별 값으로 대체.
+    # ~~「material_1·2 계량은 valid 0/15·2/15 로 거의 전부 무효」(9/22)~~ → 사인 적합 배선(#293) 뒤 9/29 실측
+    #   유효 material_1 6/6 · material_2 15/16 · material_3 15/16. 다만 원료통 B(material_2)는 같은 하중 반복
+    #   σ 6.5 g 로 A·C(1.2 g)보다 크다 — 계량 자세 문제(#308, A).
     scale:
       method: tool_force            # tool_force | workpiece — 9/19 G1 로 tool_force 확정 (D-07). workpiece 는 리셋이 안 먹어 탈락
       period_s: 0.82                # 표본 시작 간격 시험값(9/19 독립 표본 실측). 호출 지연 시 늘어날 수 있음
@@ -103,7 +102,7 @@
         gain: 0.983                 #   원료통 A·C 합산 21회 ±1.0 %(세 스테이션 0.976 ±2.0 %) — 스테이션별 gain 불필요
         offset_g: 103.5             #   material_1 값. **절대값은 스테이션마다 다르다**(material_2 5.6 · material_3 243.5) —
                                     #   순량은 같은 스테이션의 차이값이라 상쇄되어 판정엔 무관. 스쿱 총무게 표시는 참고용
-        max_std_g: 10.0             #   g1_0929_scoop_gain3pt.csv · _m2.csv · _m3.csv
+        max_std_g: 10.0             #   g1_0929_scoop_gain3pt.csv · g1_0929_scoop_gain_m2.csv · g1_0929_scoop_gain_m3.csv
       max_hf_std_g: 9.5             # 인접 표본 차이 무결성 게이트. 0이면 끄기 (#208)
       zero_drift_limit_n: 0.1       # 빈 그리퍼 영점 이동 한계 [N]. 0 이면 검사 꺼짐.
                                     # **같은 자세 반복 산포 기준** — TARE 직전과 VERIFY 직전 모두 workbench
