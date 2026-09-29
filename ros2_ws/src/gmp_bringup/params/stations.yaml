@@ -106,7 +106,7 @@ transfers:
 - source: passbox_done
   destination: nudge_wait
   payload: empty
-  enabled: false
+  enabled: true
   start_from: above
   arrival: at
   start_above_posj: [9.34, 33.5, 119.09, 10.64, -63.01, 85.03]
