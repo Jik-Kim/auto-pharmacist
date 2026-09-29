@@ -650,8 +650,7 @@ class HmiTestProcess(Node):
         """QA 폐기 — 스쿱을 들고 있으면 먼저 반납하고 용기째 폐기함으로 옮긴 뒤 세트 끝으로 간다.
 
         시험은 record_node·HMI 가 전제하는 「물리 종료 뒤 DONE」을 지켜 반송 동안 RUNNING 으로 둔다.
-        실제 process_fsm 은 폐기 판정 즉시 DONE 을 내던 것을 C 가 같은 방식으로 고치는 중이다
-        (fix/discard-done-at-end, 9/28 — 머지 전).
+        실제 process_fsm 도 같다 — 폐기 반송 중 RUNNING, DONE/DISCARDED 는 넛지 뒤 한 번 (C #304).
         """
         self.plan = []
         if self.holding_scoop and self.items:
