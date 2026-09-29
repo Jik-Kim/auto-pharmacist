@@ -148,7 +148,7 @@ class PlaceNudge(Node):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--namespace', default='/cell')
-    parser.add_argument('--vel-scale', type=float, default=0.2,
+    parser.add_argument('--vel-scale', type=float, default=1.0,
                         help='MoveToStation 속도·가속도 배율, 기본 0.2')
     parser.add_argument('--timeout', type=float, default=60.0,
                         help='서비스·Action 응답 제한(초), 넛지 대기에는 적용하지 않음')

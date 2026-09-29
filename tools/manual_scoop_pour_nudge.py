@@ -129,7 +129,7 @@ class ScoopPourNudge(PlaceNudge):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--namespace', default='/cell')
-    parser.add_argument('--vel-scale', type=float, default=0.2,
+    parser.add_argument('--vel-scale', type=float, default=1.0,
                         help='MoveToStation 배율만 지정. Scoop·Pour·인출은 skill_node 설정 사용')
     parser.add_argument('--timeout', type=float, default=120.0,
                         help='스킬 응답 제한(초). 넛지 입력은 시간 제한 없음')
