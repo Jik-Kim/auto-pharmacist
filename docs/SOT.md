@@ -491,3 +491,20 @@ passbox_done 접근→열기→EXIT 후퇴→nudge_wait AT→실제 NUDGE(|F|=37
 ## 주문 경계 안전 자세 연결 (2026-09-29 사용자 승인)
 
 시작은 SELF_CHECK의 SafePose 성공 → RestoreGrip(empty) 확인 → 외력 자가진단 → 빈 통 파지 순서입니다. 세트 끝은 넛지 대기 → 실제 넛지 → SafePose 성공 → DONE 및 다음 주문 대기입니다. 안전 자세/빈 그리퍼 확인 실패 시 다음 단계로 진행하지 않습니다. C 변경을 사용자가 승인했습니다. 실물 시험 결과는 별도 기록합니다.
+
+
+## 원료 반환 후 스쿱 수납 (2026-09-29 사용자 승인)
+
+ReturnMaterial 성공 후 해당 스쿱 AT 요청은 반환 끝 관절각을 확인하고
+`material_N.posx → scoop_N ABOVE → return_entry_posx → 하강 → scoop_N.posx`로 이동한다.
+그리퍼 열기 성공과 빈 그리퍼 후퇴 완료까지 확인한 뒤 다음 Scoop 차단을 해제한다.
+반환 실패·취소, 중간 이동 실패, 열기 실패에서는 차단을 유지한다.
+ReturnMaterial 자체는 여전히 반환 끝에서 종료하며, 수납 없이 같은 스쿱으로 바로 재스쿠핑하는
+자동 공정 경로는 계속 차단된다. 실물 경로는 아직 시험하지 않았다.
+
+## 9/29 현장 계량 통합
+
+- 전량 Pour 성공 후 붓기 전 순량(`gross − scoop_tare`)을 추정 투입량으로 누적한다. 붓기 후 잔량 계량은 제거했다. 추가 스쿠핑 전 material AT 이동과 최종 용기 VERIFY는 유지한다. `POUR_ESTIMATE`로 추정임을 기록하고, ScoopCycle의 미측정 post를 만들지 않는다(`valid=false`, `delivered_g=0`). 근거: [process_fsm.py](../ros2_ws/src/gmp_process/gmp_process/core/process_fsm.py), [process_node.py](../ros2_ws/src/gmp_process/gmp_process/nodes/process_node.py).
+- 번들 a6fa4ad는 현장 코드와 7d8eb61에서 병합했다. 용기 gain=1.0975·offset=229.0, 스쿱 gain=0.983·offset=103.5. 안정화 1초·20표본·표본 간격 0.82초이며 적합 가드는 0.50을 유지한다. 근거: [common.yaml](../ros2_ws/src/gmp_bringup/params/common.yaml), [scale.py](../ros2_ws/src/gmp_dosing/gmp_dosing/core/scale.py).
+- 사용자 추정 순량 약 53 g과 이전 측정 약 32.23 g은 서로 달랐다. 새 보정 적용 후 동일 조건 비교는 아직 하지 않았다. 새 값의 정확도를 실측 완료로 기록하지 않는다.
+- 계량 무효 정리에서 원료 ID A/B/C를 실제 material_N·scoop_N 스테이션으로 해석하도록 수정했다. 단, 현재 자동 CLEANUP의 `return_material → move(material) → move(scoop)`는 새 반환 수납 진입 검사와 연결되지 않았다. 새 수납은 반환 끝에서 곧바로 `move(scoop_N, AT)`를 요청해야 내부적으로 material 경유를 수행한다. 자동 공정 연결은 후속 수정 대상이다.

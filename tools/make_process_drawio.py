@@ -100,7 +100,7 @@ stare = S(1, 1, 'SCOOP_TARE', 'req: weigh_scoop — 빈 스쿱\n든 채 (원료�
 scoop = S(2, 1, 'SCOOP', 'req: scoop(material, attempt, depth_fraction)\nA/B/C: 고정 full spline → 털기\n높이 보정 비활성 · fraction=1만 지원\n접촉 미측정 → fixed_scoop 이면 무게로 판정 (D-34)')
 wscoop = S(3, 1, 'WEIGH_SCOOP', 'req: weigh_scoop — 붓기 전\n퍼낸 양 → 빈 스쿱 / 반환 / 전량 붓기')
 pour = S(4, 1, 'POUR', 'req: pour(fraction=1)\nmiddle→ABOVE→start→end\n→ABOVE→Z+50→middle')
-wreturn = S(3, 3, 'RETURN_MATERIAL', 'req: return_material(material_id)\n좌표 미티칭이면 실패', 'p')
+wreturn = S(3, 3, 'RETURN_MATERIAL', 'req: return_material(material_id)\n끝 자세 유지 · 직접 재스쿱 차단\n별도 수납·열기·후퇴 성공 후 해제', 'p')
 wres = S(5, 1, 'POUR 내부 판정', '추가 계량 없음\n추정 투입량 += 붓기 전 순량 → decide()')
 ret = S(1, 2, 'RETURN_SCOOP', 'req: move(scoop_N) → grip(open)\n전용 스쿱 = 교차오염 방지')
 verify = S(3, 2, 'VERIFY', 'req: move(workbench ABOVE) → measure(영점 재확인) → weigh\n배치 끝 1회. 판정은 ① 레시피 총량 하나 (② 는 관측)')

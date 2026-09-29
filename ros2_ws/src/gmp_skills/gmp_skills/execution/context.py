@@ -63,6 +63,8 @@ class SkillState:
     empty_scoop_force_baseline: dict | None = None
     empty_scoop_baseline_pending: bool = False
     return_rescoop_blocked: bool = False
+    returned_material: str = ""  # 반환 전체 성공 후 수납할 원료
+    returned_scoop_stowed: str = ""  # 수납 AT 도착 후 열기 확인 대상
     pending_scoop_extract: bool = False
     scoop_extract_uncertain: bool = False
     nudge_enabled: bool = False

@@ -465,6 +465,8 @@ class ScoopingSkills:
     def _do_return_material(self, job: Job):
         # 초과한 원료를 원료통에 되돌린다. 반환 시작 TCP로 직선 이동한 뒤
         # 티칭된 관절각으로 스쿱을 기울인다. 그 자세에서의 재스쿱 경로는 미구현이다.
+        self.ctx.state.returned_material = ""
+        self.ctx.state.returned_scoop_stowed = ""
         self.ctx.state.empty_scoop_baseline_pending = False
         self.motion._require_scoop_extracted()
         material_id = job.args['material_id']
@@ -494,6 +496,6 @@ class ScoopingSkills:
         self.safety._wait_with_nudge(float(self.ctx.parameter('pour.hold_s').value), job)
         if job.cancel:
             raise RuntimeError('cancelled')
-        # TODO([A]): 반환 끝 → 재스쿱 연결은 스쿱 모션 구현 시 함께 티칭·검증한다.
-        # 시작 자세로 돌아가지 않고 반환 끝 자세에서 종료한다.
+        # 반환 자체는 끝 자세에서 종료한다. 다음 스쿱 AT 요청이 수납 경로를 연결한다.
+        self.ctx.state.returned_material = material_id
         return True

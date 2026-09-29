@@ -21,11 +21,11 @@
 | Scoop Action 종료 코드 | 내부 시간 초과는 ABORTED, 실제 클라이언트 취소만 CANCELED | [skill_node.py](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py), [PR #236](https://github.com/Jik-Kim/auto-pharmacist/pull/236) |
 | 계량 표본 품질 | `measure_force`/`measure_workpiece` 원시 표본열을 운영 계량 경로에서 받아 `fit_oscillation()` 잔차 σ와 고주파 σ를 각각 `max_std_g`/`max_hf_std_g` 게이트에 전달 | [skill_node.py](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py), [dsr_arm.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/dsr_arm.py), [#208](https://github.com/Jik-Kim/auto-pharmacist/issues/208) |
 
-## 주문 시작 준비 (C 연결 대기)
+## 주문 시작 준비 (9/29 통합 반영)
 - A의 숨은 안전 자세 MOVEJ와 `cartesian_ready` 제거. 이동 호출부에 명령을 직접 표시한다.
 - 첫 주문: SafePose 성공 → 빈 통 파지. 후속 주문: 기존 넛지 대기 완료 → 같은 준비 순서.
 - SafePose 요청을 시작하면 이전 스테이션의 `motion_anchor`를 즉시 무효화한다. 성공·실패 어느 경우에도 SafePose 전 출발 이력으로 티칭 이송하지 않는다.
-- C의 SELF_CHECK→PICK_CONTAINER에 safe 요청/성공 대기 추가 필요. A만 반영한 현재는 이 순서 미연결. [SOT](../../docs/SOT.md).
+- 철회(9/29): ~~C 연결 대기·미연결~~ → SafePose(BATCH_START) → RestoreGrip(empty) → 자가진단 → 빈 통 파지로 연결됐다. 주문 시작 SafePose는 정지 게이트를 거친다. [process_node.py](../../ros2_ws/src/gmp_process/gmp_process/nodes/process_node.py), [SOT](../../docs/SOT.md).
 
 ## 코드 탐색
 - ROS 입출력: [skill_node.py](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py).
@@ -87,3 +87,20 @@
 ## 빈 A 스쿱 정착 비교 (2026-09-29)
 
 속도1.0·동일 파지·safe→material_1 경로에서 정착1초는0/3,10초는1/3 유효. 사인 적합 가드 미채택을 확인했지만10초만으로 해결되지 않았습니다. 파라미터 원본·B 공식은 변경 없음. 정착1초 원복·스쿱 반납·안전 자세 복귀 완료. [측정 근거](2026-09-29_빈스쿱_정착시간_비교.md).
+
+
+## 원료 반환 후 스쿱 수납 (2026-09-29 사용자 승인)
+
+ReturnMaterial 성공 후 해당 스쿱 AT 요청은 반환 끝 관절각을 확인하고
+`material_N.posx → scoop_N ABOVE → return_entry_posx → 하강 → scoop_N.posx`로 이동한다.
+그리퍼 열기 성공과 빈 그리퍼 후퇴 완료까지 확인한 뒤 다음 Scoop 차단을 해제한다.
+반환 실패·취소, 중간 이동 실패, 열기 실패에서는 차단을 유지한다.
+ReturnMaterial 자체는 여전히 반환 끝에서 종료하며, 수납 없이 같은 스쿱으로 바로 재스쿠핑하는
+자동 공정 경로는 계속 차단된다. 실물 경로는 아직 시험하지 않았다.
+
+## 9/29 현장 통합 현행값
+
+- 계량 경로별 gain: 용기 1.0975, 스쿱 0.983. settle_s=1.0, samples=20, period_s=0.82. 10초 안정화가 아니다. [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml)
+- 사인 적합 가드는 apply_ratio=0.50 유지. 도징 알고리즘 원본은 [scale.py](../../ros2_ws/src/gmp_dosing/gmp_dosing/core/scale.py)를 따른다.
+- 붓기 후 잔량 계량 제거·추정 투입량 누적·최종 용기 검증 유지: [공정 문서](../../docs/process_flow.md).
+- 반환 후 수납은 구현·모의 검증 완료, 실물 미검증. 실행 중 노드에는 재시작 후 적용된다. 자동 CLEANUP 연결 제약과 검증 결과는 [일지](2026-09-29_현장통합_반환수납.md) 참조.

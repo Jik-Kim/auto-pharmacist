@@ -30,6 +30,7 @@ class MotionSkills:
         # 이동 실패 후에는 현재 위치와 파지물을 확신할 수 없다. 다음 작업이 이전
         # 성공 이력을 근거로 움직이지 않도록 위치·파지·빈 스쿱 영점 정보를 지운다.
         self._require_scoop_extracted()
+        self.ctx.state.returned_scoop_stowed = ''
         try:
             return self._move_checked(job, station_id=station_id, approach=approach)
         except Exception:
@@ -190,7 +191,22 @@ class MotionSkills:
                 entry = self._pose_from_extra(station, 'return_entry_posx')
                 lower = list(entry)
                 lower[2] -= finite(station.extra['return_lower_mm'], '반납 하강량')
-                for target in (entry, lower, station.posx):
+                targets = [entry, lower, station.posx]
+                returning = getattr(self.ctx.state, 'return_rescoop_blocked', False)
+                if returning:
+                    material_id = station.extra['material_id']
+                    if getattr(self.ctx.state, 'returned_material', '') != material_id:
+                        raise RuntimeError('원료 반환 성공이 확인되지 않아 수납 연결을 차단한다')
+                    material = self.ctx.stations.for_material(material_id)
+                    end = self._pose_from_extra(material, 'return_end_posj')
+                    if not joints_match(self.ctx.arm.current_posj(), end, self.ctx.config.joint_tolerance):
+                        raise RuntimeError('원료 반환 끝 관절 자세가 아니므로 수납 연결을 차단한다')
+                    # 반환 끝 → 원료 계량 자세 → 스쿱 ABOVE → 기존 수납 경로.
+                    targets = [list(material.posx), station.above(self.ctx.stations.approach_mm)] + targets
+                    # 중간 실패 이후에는 반환 성공 이력으로 경로를 다시 시작하지 않는다.
+                    self.ctx.state.returned_material = ''
+                    self.ctx.state.returned_scoop_stowed = ''
+                for target in targets:
                     # MOVEL · TCP 직선 이동: list(target)
                     self.ctx.arm.movel_cancellable(
                         list(target), self._motion_scale(job),
@@ -265,6 +281,11 @@ class MotionSkills:
         # 장치 어댑터가 목표 도달을 확인했다. 관절각에서 TCP를 계산해 가정하지 않고
         # 로봇이 보고한 현재 TCP·관절각을 다음 출발 기록으로 저장한다.
         self._record_arrival(station.station_id, approach, self.ctx.arm.current_posx())
+        if ('return_entry_posx' in station.extra and self.ctx.state.held_payload == 'scoop'
+                and getattr(self.ctx.state, 'return_rescoop_blocked', False)):
+            if not self._pose_matches(self.ctx.arm.current_posx(), station.posx):
+                raise RuntimeError('반환 스쿱 수납 위치 미도달')
+            self.ctx.state.returned_scoop_stowed = station.station_id
         return station.station_id
 
     def _require_solution(self, station):
@@ -403,6 +424,18 @@ class MotionSkills:
         # 현재 위치와 실제 그리퍼 입력으로 스쿱/용기 파지를 판정한다. 스쿱을
         # 잡은 직후에는 인출 대기만 표시한다. +Y 인출은 다음 WeighHeld가 수행한다.
         a = job.args
+        anchor = self.ctx.state.motion_anchor
+        stowed = getattr(self.ctx.state, 'returned_scoop_stowed', '')
+        clear_return = bool(
+            not a['close'] and stowed and anchor is not None
+            and anchor.station == stowed and anchor.approach == MoveToStation.Goal.AT
+            and self.ctx.state.held_payload == 'scoop'
+            and self.ctx.stations.get(stowed).extra['material_id'] == self.ctx.state.held_material_id
+            and self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)
+            and joints_match(self.ctx.arm.current_posj(), anchor.joints, self.ctx.config.joint_tolerance))
+        if not a['close'] and stowed and not clear_return:
+            raise RuntimeError('반환 스쿱 수납 자세가 변경되어 열기를 차단한다')
+        self.ctx.state.returned_scoop_stowed = ''
         self.ctx.state.held_payload = 'unknown'
         self.ctx.state.held_material_id = ''
         self.ctx.state.empty_scoop_force_baseline = None
@@ -457,6 +490,8 @@ class MotionSkills:
                     lambda: job.cancel or self.runtime._cancel_requested(),
                     self.ctx.config.motion_timeout_s)
                 self._record_arrival(station.station_id, MoveToStation.Goal.ABOVE, target)
+        if released and clear_return and not job.cancel and not self.runtime._cancel_requested():
+            self.ctx.state.return_rescoop_blocked = False
         return released, self.ctx.gripper.width_mm() or -1.0, False
 
     def _require_held_scoop(self, material_id=None):
