@@ -260,8 +260,9 @@ def test_measure_weight_fits_raw_samples_and_applies_hf_gate(monkeypatch):
         fitted.append((values, period)) or (1.2, 0.03, 0.04, 4.1)))
     params = {
         'scale.samples': 4, 'scale.settle_s': 1.0, 'scale.method': 'tool_force',
-        'scale.simulated': False, 'scale.gain': 1.0, 'scale.offset_g': 0.0,
-        'scale.max_std_g': 8.0, 'scale.max_hf_std_g': 9.5, 'scale.fz_sign': 1.0,
+        'scale.simulated': False, 'scale.max_hf_std_g': 9.5, 'scale.fz_sign': 1.0,
+        'scale.container.gain': 1.0, 'scale.container.offset_g': 0.0, 'scale.container.max_std_g': 8.0,
+        'scale.scoop.gain': 1.0, 'scale.scoop.offset_g': 0.0, 'scale.scoop.max_std_g': 8.0,
     }
     node = SimpleNamespace(
         get_parameter=lambda name: SimpleNamespace(value=params[name]),
@@ -279,6 +280,65 @@ def test_measure_weight_fits_raw_samples_and_applies_hf_gate(monkeypatch):
     assert model_calls[0]['max_hf_std_g'] == 9.5
     assert model_calls[1] == (1.2, 0.03, True, 0.04)
     assert reading.valid is True and reading.std_g == 0.4
+
+
+@pytest.mark.parametrize('subject,gain,offset,max_std', [
+    ('container', 1.0975, 229.0, 10.0),
+    ('scoop', 0.983, 103.5, 7.0),
+])
+def test_measure_weight_uses_the_calibration_of_its_own_path(monkeypatch, subject, gain, offset, max_std):
+    """용기·스쿱 계량은 서로 다른 보정 직선을 쓴다 (#307, 9/29 실측 gain 1.0975 vs 0.983).
+
+    같은 값 하나로 두면 어느 쪽이든 순량이 10 % 넘게 틀린다 — 경로를 잘못 고르면 여기서 잡힌다.
+    """
+    skill_node = _load_skill_node(monkeypatch)
+    configs = []
+
+    class Model:
+        def __init__(self, config):
+            configs.append(config)
+
+        def set_tare(self, _tare):
+            pass
+
+        def reading(self, mean, std, valid, raw_hf_std):
+            return 10.0, 0.0, 10.0, 0.4, True
+
+    weighing = sys.modules['gmp_skills.execution.weighing']
+    monkeypatch.setattr(weighing, 'ScaleConfig', lambda **values: values)
+    monkeypatch.setattr(weighing, 'WeightModel', Model)
+    monkeypatch.setattr(weighing, 'fit_oscillation', lambda values, period: (1.2, 0.03, 0.04, 4.1))
+    params = {
+        'scale.samples': 4, 'scale.settle_s': 1.0, 'scale.method': 'tool_force',
+        'scale.simulated': False, 'scale.max_hf_std_g': 9.5, 'scale.fz_sign': -1.0,
+        'scale.container.gain': 1.0975, 'scale.container.offset_g': 229.0, 'scale.container.max_std_g': 10.0,
+        'scale.scoop.gain': 0.983, 'scale.scoop.offset_g': 103.5, 'scale.scoop.max_std_g': 7.0,
+    }
+    node = SimpleNamespace(
+        get_parameter=lambda name: SimpleNamespace(value=params[name]),
+        _scale_period_s=lambda: 0.82,
+        arm=SimpleNamespace(measure_force=lambda *args, **kwargs: (
+            [0.0] * 6, 1.0, 0.2, True, [1.0, 1.4, 0.9, 1.5])),
+        _observe_force=lambda _: None,
+        get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(to_msg=lambda: 'stamp')),
+        _empty_scoop_baseline_pending=False,
+    )
+
+    skill_node.SkillNode._measure_weight_reading(node, 0.0, subject, 'material_1')
+
+    assert (configs[0]['gain'], configs[0]['offset_g'], configs[0]['max_std_g']) == (gain, offset, max_std)
+
+
+def test_measure_weight_rejects_an_unknown_path(monkeypatch):
+    """경로 이름이 틀리면 공통값으로 떨어지지 않고 **계량 전에** 멈춘다.
+
+    파라미터도 로봇도 없는 노드를 준다 — 무엇이든 읽거나 재려 하면 KeyError·AttributeError 로
+    다른 실패가 나므로, ValueError 가 나온다는 것은 검사가 맨 앞에 있다는 뜻이다.
+    """
+    skill_node = _load_skill_node(monkeypatch)
+    node = SimpleNamespace(get_parameter=lambda name: {}[name])
+    with pytest.raises(ValueError, match='계량 경로'):
+        skill_node.SkillNode._measure_weight_reading(node, 0.0, 'cup')
 
 
 def test_weigh_held_cancel_after_material_move_does_not_measure(monkeypatch):
@@ -553,9 +613,10 @@ def test_sampling_parameter_reaches_all_measurement_paths(monkeypatch, entry):
     calls = []
     params = {'scale.period_s': 0.82, 'scale.samples': 3, 'scale.settle_s': 0.2,
               'scale.method': 'workpiece' if entry == 'workpiece' else 'tool_force',
-              'scale.simulated': entry == 'simulated', 'scale.gain': 1,
-              'scale.offset_g': 0,
-              'scale.max_std_g': 10, 'scale.max_hf_std_g': 9.5, 'scale.fz_sign': -1}
+              'scale.simulated': entry == 'simulated',
+              'scale.max_hf_std_g': 9.5, 'scale.fz_sign': -1,
+              'scale.container.gain': 1, 'scale.container.offset_g': 0, 'scale.container.max_std_g': 10,
+              'scale.scoop.gain': 1, 'scale.scoop.offset_g': 0, 'scale.scoop.max_std_g': 10}
     node = SimpleNamespace(
         get_parameter=lambda name: SimpleNamespace(value=params[name]),
         _observe_force=lambda _: None,
