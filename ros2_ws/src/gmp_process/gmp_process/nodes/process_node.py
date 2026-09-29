@@ -95,7 +95,7 @@ class ProcessNode(Node):
             # 스쿱 1회량·깊이 하한은 SOT D-35(9/25)의 운영값이다 — #272 실측(원료 A)에 맞춘 값.
             # 종전 40·0.15 는 9/18 값이라 운영(common.yaml)과 달랐다. ROS 시험은 가짜 스킬 노드의
             # 공칭 40 g 과 짝을 맞추려고 옛 값을 parameter_overrides 로 **명시**한다 (test_process_node·test_run_batch_ros).
-            ('dosing.scoop_nominal_g', 79.0), ('dosing.min_fraction', 0.10),
+            ('dosing.scoop_nominal_g', 69.0), ('dosing.min_fraction', 0.10),   # 원료별 값이 없을 때의 공통값 (9/29)
             # 실물 시연은 끝까지 담그는 고정 스쿱(D-33). 런치 없이 단독 시험할 때만 깊이 제어 기본값을 둔다.
             ('dosing.fixed_scoop', False),
             # 빈 스쿱 문턱 [g] — 순중량이 이 이하면 「아무것도 안 퍼졌다」로 본다 (#282 ④).
@@ -114,12 +114,13 @@ class ProcessNode(Node):
         # 위치 인자로 두면 그 필드를 뺄 때 max_std_g 가 조용히 한 칸 밀린다 (AGENTS 규칙, #211).
         self.scale = WeightModel(ScaleConfig(method=p('scale.method'), gain=p('scale.gain'),
                                              offset_g=p('scale.offset_g'), max_std_g=p('scale.max_std_g')))
+        # 스테이션 이름표 — 없으면 원료 → scoop_N 을 못 찾는다. 경로가 비면 주문 때 거부한다
+        self.smap = StationMap.from_yaml(p('stations_file')) if p('stations_file') else StationMap()
         self.dosing_cfg = DosingConfig(max_attempts=p('dosing.max_attempts'),
                                        scoop_nominal_g=p('dosing.scoop_nominal_g'),
                                        min_fraction=p('dosing.min_fraction'),
-                                       fixed_scoop=p('dosing.fixed_scoop'))
-        # 스테이션 이름표 — 없으면 원료 → scoop_N 을 못 찾는다. 경로가 비면 주문 때 거부한다
-        self.smap = StationMap.from_yaml(p('stations_file')) if p('stations_file') else StationMap()
+                                       fixed_scoop=p('dosing.fixed_scoop'),
+                                       scoop_nominal_by_material=self._scoop_nominals())
 
         self.pub_state = self.create_publisher(CellState, 'state', LATCHED)
         self.pub_weight = self.create_publisher(WeightReading, 'weight', 20)
@@ -210,6 +211,20 @@ class ProcessNode(Node):
             self, RunBatch, 'run_batch', self._execute_batch,
             goal_callback=self._goal_batch, cancel_callback=self._cancel_batch,
             handle_accepted_callback=self._accept_batch, callback_group=self.cb)
+
+    def _scoop_nominals(self) -> dict:
+        """원료별 스쿱 1회량 [g] (#313, 9/29 조장 결정 A·C 69 / B 57) — `DosingConfig.scoop_nominal_by_material`.
+
+        ROS 파라미터는 사전을 못 받으므로 common.yaml 의 `dosing.scoop_nominal: {A: 69.0, …}` 는
+        `dosing.scoop_nominal.A` 같은 키로 풀린다. 스테이션 이름표에 있는 원료만 선언한다 — 값은
+        **소수점으로** 적는다(선언 기본값이 실수라 69 처럼 정수로 적으면 형식 오류로 기동이 멈춘다).
+        0 은 「원료별 값 없음」이다. 전부 0 이면 빈 사전이라 모든 원료가 `scoop_nominal_g` 하나를 쓴다(종전).
+        일부만 채우면 빠진 원료의 주문은 `_parse_order` 에서 거부된다 — 공통값으로 조용히 떨어지지 않는다.
+        """
+        mids = sorted(self.smap.materials)
+        keys = [f'dosing.scoop_nominal.{m}' for m in mids]
+        self.declare_parameters('', [(k, 0.0) for k in keys])
+        return {m: float(self.p(k)) for m, k in zip(mids, keys) if float(self.p(k)) > 0.0}
 
     # ── 공용 ─────────────────────────────────────────────────────────
     def _now(self) -> float:
@@ -388,6 +403,8 @@ class ProcessNode(Node):
                              'items': [{'material_id': i.material_id, 'target_g': i.target_g,
                                         'tol_pct': i.tol_pct} for i in recipe.items]})
         self.smap.check([i.material_id for i in spec.items])
+        for i in spec.items:                 # 원료별 1회량이 빠진 원료는 배치 중간이 아니라 접수 때 거부한다
+            self.dosing_cfg.for_material(i.material_id)
         if len(spec.items) > 255:
             raise ValueError('RunBatch 완료 원료 수(uint8)를 초과하는 레시피')
         batch_id = recipe.batch_id.strip()

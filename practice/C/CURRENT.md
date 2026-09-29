@@ -1,4 +1,4 @@
-# C 공정 현행 상태 (갱신: 2026-09-28)
+# C 공정 현행 상태 (갱신: 2026-09-29)
 
 **담당**: Jik-Kim
 
@@ -13,10 +13,11 @@
 | 폐기 판정 뒤 상태 | QA 폐기 판정 즉시가 아니라 **넛지 뒤 한 번만** `mode=DONE, step=DISCARDED`. 스쿱 반납·폐기함 반송·넛지 대기 동안은 step `DISCARDED` 그대로 mode `RUNNING`(대기 `PAUSED`) — record_node 가 이 DONE 으로 배치를 닫는다 | `fix/discard-done-at-end` (9/28, D #295), `docs/interfaces.md` CellState 명확화 |
 | VERIFY | ① `\|net − Σtarget\| > Σ(target×tol)` → BATCH_OUT_OF_SPEC 만. ② 는 기록만 | SOT D-26, PR #209 |
 | 원료 소진 | SCOOP_EMPTY 재시도 ×3, **4회째 MATERIAL_EMPTY** → REFILL 인터락. 보충 뒤 재소진도 MATERIAL_EMPTY. **증거가 둘이다** — 접촉(`contact_detected`, **고정 모드에서는 안 본다**)과 순중량(`scooped_g ≤ dosing.empty_scoop_g`, **모드와 무관하게 늘 본다**). 계량 무효는 빈 스쿱이 아니다 — `_invalid_or` 가 먼저 걸러 간다. 일탈 `detail` 에 **어느 증거였는지** 남는다(DB 문자열) | #111 A안 · #282, PR #233·#234·#287 |
-| 첫 SCOOP 깊이 | `max(min_fraction, min(1, 남은 목표 ÷ scoop_nominal_g))` — 둘째 사이클부터 `decide()` 와 같은 식. **고정 모드면 1.0** | #221 C 몫, PR #224 · #289(A) |
+| 첫 SCOOP 깊이 | `max(min_fraction, min(1, 남은 목표 ÷ 그 원료의 1회량))` — 둘째 사이클부터 `decide()` 와 같은 식. **고정 모드면 1.0** | #221 C 몫, PR #224 · #289(A) |
+| 원료별 1회량 | 노드가 스테이션 이름표의 원료마다 `dosing.scoop_nominal.<원료>` 를 선언(0 = 원료별 값 없음)해 `DosingConfig.scoop_nominal_by_material` 로 넘긴다. FSM 은 1회량을 쓰는 두 곳(첫 깊이, `decide()`)에서 `_cfg()` = `for_material(지금 원료)` 를 쓴다. **값이 빠진 원료의 주문은 `_parse_order` 에서 접수 거부** — 공통값으로 조용히 떨어지지 않는다. 값 자체는 `common.yaml` 참조(B 소관, 규칙 5). yaml 에는 소수점으로 적는다(선언 기본값이 실수) | #313(B) · `feat/per-material-nominal-wiring`(C, 9/29) |
 | 고정 스쿱 모드 | **`dosing.fixed_scoop` 하나**가 네 곳을 움직인다 — `decide()` 의 깊이·보충 판정(**#274**, e301cc9·e62b8da), `_first_fraction()`·`_rescoop_fraction()`·노드 배선(**A #289**), **FSM 의 접촉 우회**(C #287). 무게 그물(`empty_scoop_g`)은 플래그와 무관하게 늘 돈다(#287). 켜면 깊이는 언제나 1.0 | SOT **D-34**(#284) · #282 |
 | 무효 계량 통합 시험 | fake_skill_node 손잡이 없이 `_publish_result` 직접 호출 | PR #225 |
-| 통합 시험 기준선 | gmp_process **219 passed / 8 skipped** — **합산값, ROS 합본 실측 전**(9/29 #303 에 main 병합 때 문서 관리 정리): #287 단독 202/6 `5f47d15` + #311(#302) 1건 + #304 폐기 시험 3건 + 이 브랜치 예약 단위 시험 13건(실측 215/8, DDS 2건 추가로 skip 8 = DOMAIN 88 전용, 88 에서 **8/8**). ROS 없이 돌린 부분은 main(#304 뒤) 153 + 이 브랜치 증가 14 = **합본 167** 로 겹치지 않고 더해짐을 확인. C 가 9/28 로컬 합본에서 잰 220/8 과 1 차이가 있어 ROS 로 다시 재서 이 줄을 실측값으로 바꾼다. skip 6 은 전부 `test_run_batch_ros.py` 의 **DOMAIN 88 전용** — `ROS_DOMAIN_ID=88` 로 따로 돌려 **6 passed**(9/28, 88 에 다른 노드 없음을 `ros2 node list` 로 먼저 확인). **내 파트 것만 적는다** — 다른 파트 현황은 `practice/<파트>/CURRENT.md` (규칙 5) | ROS 소싱 필수. **숫자로 소싱 누락을 가리지 말 것** — ROS 없이 돌려도 150 passed / 2 skipped 가 나온다(9/25). `python3 -c "import rclpy"` 로 확인한다. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
+| 통합 시험 기준선 | gmp_process **230 passed / 8 skipped** (9/29 C 실측, ROS 소싱·도메인 격리 — main `4f22de5`(#313 까지) + `feat/per-material-nominal-wiring`). skip 8 은 전부 `test_run_batch_ros.py` 의 **DOMAIN 88 전용** — 88 이 빈 것을 `ros2 node list` 로 보고 따로 돌려 **8/8**. ~~219/8 (9/29 문서 관리가 합산한 추정값, ROS 합본 실측 전)~~ → 위 실측으로 대체. **내 파트 것만 적는다** — 다른 파트 현황은 `practice/<파트>/CURRENT.md` (규칙 5) | ROS 소싱 필수. **숫자로 소싱 누락을 가리지 말 것** — ROS 없이 돌려도 150 passed / 2 skipped 가 나온다(9/25). `python3 -c "import rclpy"` 로 확인한다. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
 
 ## 열린 과제 (이슈 번호)
 - #108 본래 주제: `ScoopCycle` 6축 wrench 채울 경로 — 전제(모멘트 = 파지 품질) 근거 부족(노션 9/22), 미정리.
@@ -28,6 +29,7 @@
   - ⚠️ **레시피(#291)와 공칭(`common.yaml`, #283)은 같이 들어가야 한다** — 레시피만 79 로 바뀌고 공칭이 85 로 남으면 `test_고정스쿱_보충요청이_최소채취보다_작아지는_구간은_없다[79g±10%]` 가 「최소채취 > 허용오차」로 깨진다(9/28 로컬 합본 확인). 반쯤 적용된 D-35 를 잡는 것이 의도다. 둘 다 적용된 조합은 57/57 통과.
   - **시연 가능 최소 조건 = #287 머지 + D-35 적용** (B, 9/25). #287 전에는 첫 스쿱에서 무한 보충 루프다.
   - ⛔ **`dosing.fixed_scoop` 를 끄지 말 것** (D-35 도 유지) — B 가 한 번 제안했다가 철회했다(9/24 팀장 지적). 세 원료가 모두 `taught_fixed` 이고 A 가 깊이 1.0 외를 거부하므로, 끄면 `decide()` 가 첫 보충에서 부분 깊이를 내 **배치가 ERROR 로 죽는다** — 지금보다 나쁘다.
+  - ~~#272 는 원료 A 만 쟀다~~ → **9/29 원료별 실측으로 A·C 묶음 / B 별도 1회량이 정해졌고(#306·#313) C 배선을 붙였다**(`feat/per-material-nominal-wiring`). 아래는 당시 기록 —
   - #272 는 원료 **A 만** 쟀다. B·C 는 스쿱 폭이 달라 1회량이 다를 수 있다(B 최우선 과제). 측정이 D-35 값 ±5 g 밖이면 원료별로 다시 결정한다 — 그러면 레시피(D)와 C 시험의 고정값도 원료별로 갈라야 한다.
 - **계약 v1.9 세트 끝 주문 예약 (9/28)** — C 구현 `feat/nudge-wait-order-queue`(#287 위). 남은 것: ① 팀 채널 공지·영향 담당(D) 승인 ② **D 소비** — `canStartOrder` 에 세트 끝 상태 허용, 「물리적 완료 확인 대기」 거부 완화, 진행 goal 과 예약 goal 을 따로 추적(취소 대상 분리), `ORDER_QUEUED`·`ORDER_DROPPED` 표시. ③ ~~D #295 가 짚은 「폐기 판정 즉시 DISCARDED/DONE 발행」은 별건으로 남았다~~ → `fix/discard-done-at-end` 로 처리(9/28). 이 브랜치의 `_at_set_end` 는 그에 맞춰 mode 대신 step 만 본다(`6305175`).
 - 붓기 뒤 잔량 계량(WEIGH_RESIDUAL) 제거 검토 — 9/29 잔량 실측 뒤 결정(조장 제기). 계량은 `actual_g` 누적·`decide()`·`ScoopCycle.post_pour` 자리라 빼면 계약 변경이다.
