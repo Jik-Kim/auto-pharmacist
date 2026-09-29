@@ -91,6 +91,7 @@
       gain: 0.8859                  # 9/19 두 점(32 g·132 g) 직선 — 3점째(≈86 g)로 9/21 확인 (gmp_dosing/config/scale_reference.yaml)
       offset_g: 247.091             # tool_force 전용 (같은 직선). 9/18·9/19 단일점 offset 이 2 g 안에서 같아 날짜에 안정
       max_std_g: 10.0               # 독립 표본의 회차 내부 σ p95 7.8 g 위 (9/19)
+      max_hf_std_g: 9.5             # 인접 표본 차이 무결성 게이트. 0이면 끄기 (#208)
       zero_drift_limit_n: 0.1       # 빈 그리퍼 영점 이동 한계 [N]. 0 이면 검사 꺼짐.
                                     # **같은 자세 반복 산포 기준** — TARE 직전과 VERIFY 직전 모두 workbench
                                     # ABOVE 에서 재므로 자세 차이는 들어가지 않는다. 0.1 N ≈ 10 g 은 σ_cup

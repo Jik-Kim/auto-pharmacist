@@ -443,8 +443,9 @@ class DsrArm:
                 if force is not None:
                     observer(force)
 
-    def measure_force(self, samples: int, settle_s: float, period_s: float = 0.05, observer=None):
-        """정지 외력 평균. period_s는 표본 시작 간격의 하한이다."""
+    def measure_force(self, samples: int, settle_s: float, period_s: float = 0.05,
+                      observer=None, *, include_samples: bool = False):
+        """정지 외력 평균. ``include_samples``면 Fz 원시 표본열을 마지막에 덧붙인다."""
         self._validate_period(period_s)
         self._settle(settle_s, 0.1, observer)
         rows = []
@@ -458,17 +459,20 @@ class DsrArm:
             if index + 1 < samples:
                 self._wait_sample(deadline, observer)
         if len(rows) < max(3, samples // 2):
-            return [0.0] * 6, 0.0, 0.0, False
+            result = ([0.0] * 6, 0.0, 0.0, False)
+            return (*result, []) if include_samples else result
         mean6 = [statistics.fmean(c) for c in zip(*rows)]
         fz = [r[2] for r in rows]
-        return mean6, mean6[2], statistics.pstdev(fz), True
+        result = (mean6, mean6[2], statistics.pstdev(fz), True)
+        return (*result, fz) if include_samples else result
 
     def reset_workpiece(self):
         """빈 그리퍼·계량 자세에서 잔류 오차 제거 (매뉴얼 5.1.2). 세션마다 한 번."""
         return self.R.reset_workpiece_weight()
 
-    def measure_workpiece(self, samples: int, settle_s: float, period_s: float = 0.1, observer=None):
-        """get_workpiece_weight 평균 [kgf]. 반환: (mean_kg, std_kg, valid). 음수는 오류."""
+    def measure_workpiece(self, samples: int, settle_s: float, period_s: float = 0.1,
+                          observer=None, *, include_samples: bool = False):
+        """get_workpiece_weight 평균 [kgf]. ``include_samples``면 원시 표본열을 덧붙인다."""
         self._validate_period(period_s)
         self._settle(settle_s, 0.1, observer)
         vals = []
@@ -484,8 +488,10 @@ class DsrArm:
             if index + 1 < samples:
                 self._wait_sample(deadline, observer)
         if len(vals) < max(3, samples // 2):
-            return 0.0, 0.0, False
-        return statistics.fmean(vals), statistics.pstdev(vals), True
+            result = (0.0, 0.0, False)
+            return (*result, []) if include_samples else result
+        result = (statistics.fmean(vals), statistics.pstdev(vals), True)
+        return (*result, vals) if include_samples else result
 
     # ── 힘/순응 제어 — 반드시 짝으로 ────────────────────────────────────
     def compliance_on(self, stx):

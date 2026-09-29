@@ -544,6 +544,18 @@ def test_force_sampling_accounts_for_device_call_latency(latency):
     assert clock[0] == pytest.approx(2*step + latency)
 
 
+def test_measurement_can_return_raw_samples_for_quality_fit():
+    arm = _arm()
+    arm.tool_force = lambda: [0, 0, 2.5, 0, 0, 0]
+    arm.R.get_workpiece_weight = lambda: 0.125
+
+    force = arm.measure_force(3, 0, include_samples=True)
+    workpiece = arm.measure_workpiece(3, 0, include_samples=True)
+
+    assert force[-2] is True and force[-1] == [2.5, 2.5, 2.5]
+    assert workpiece[-2] is True and workpiece[-1] == [0.125, 0.125, 0.125]
+
+
 def test_internal_linear_move_obeys_worker_cancel():
     arm = _arm()
     arm.cancel_requested = lambda: True
