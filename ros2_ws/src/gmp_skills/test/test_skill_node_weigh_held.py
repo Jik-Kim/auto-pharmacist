@@ -1,6 +1,7 @@
 import importlib
 import sys
 import types
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -484,6 +485,11 @@ def test_container_weigh_grips_at_and_measures_at_above(monkeypatch):
 def _held_scoop_node(skill_node, station):
     moves = []
     holds = []
+    pose = [0.0] * 6
+    joints = list(station.extra.get('return_end_posj', [0.0] * 6) or [0.0] * 6)
+    def move(target, scale):
+        moves.append((list(target), scale))
+        pose[:] = target
     node = SimpleNamespace(
         _require_scoop_extracted=lambda: None,
         _held_payload='scoop',
@@ -491,14 +497,33 @@ def _held_scoop_node(skill_node, station):
         _now_s=lambda: 0.0,
         gripper=SimpleNamespace(state=lambda _: {'busy': False, 'grip_inferred': True}),
         stations=SimpleNamespace(approach_mm=50.0, get=lambda _: station, for_material=lambda _: station),
-        arm=SimpleNamespace(movel=lambda target, scale: moves.append((list(target), scale))),
+        arm=SimpleNamespace(
+            movel=move,
+            movel_cancellable=lambda target, scale, cancel, timeout: move(target, scale),
+            amove_periodic=lambda *args, **kwargs: None,
+            wait_motion_cancellable=lambda *args, **kwargs: None,
+            current_posx=lambda: list(pose),
+            current_posj=lambda: list(joints),
+            stop_motion=lambda: None,
+        ),
         motion_timeout_s=30.0,
+        joint_tolerance=2.0,
         vel_scale=0.3,
+        _cancel_requested=lambda: False,
+        _pose_matches=lambda actual, target: list(actual) == list(target),
         get_parameter=lambda _: SimpleNamespace(value=0.5),
         _wait_with_nudge=lambda duration, job: holds.append((duration, job.kind)),
     )
     node.arm.movej_cancellable = lambda target, scale, cancel, timeout: moves.append((list(target), scale))
     return node, moves, holds
+
+
+RETURN_SHAKE = {
+    'return_shake_amp': [14.0, 15.0, 0.0, 0.0, 0.0, 0.0],
+    'return_shake_period': [0.3, 0.5, 0.0, 0.0, 0.0, 0.0],
+    'return_shake_atime': 0.5,
+    'return_shake_repeat': 3,
+}
 
 
 def test_pour_uses_taught_start_end_and_restores_start(monkeypatch):
@@ -537,7 +562,9 @@ def test_cancelled_pour_or_return_never_starts_motion(monkeypatch, kind):
         'pour_start_posx': [1.0] * 6,
         'pour_end_posx': [2.0] * 6,
         'return_start_posx': [3.0] * 6,
+        'return_end_posx': [4.0] * 6,
         'return_end_posj': [4.0] * 6,
+        **RETURN_SHAKE,
     })
     node, moves, _ = _held_scoop_node(skill_node, station)
     job = skill_node.Job(kind, {'fraction': 1.0} if kind == 'pour' else {'material_id': 'A'}, cancel=True)
@@ -556,7 +583,9 @@ def test_end_move_failure_does_not_issue_restore_motion(monkeypatch, kind):
         'pour_start_posx': [1.0] * 6,
         'pour_end_posx': [2.0] * 6,
         'return_start_posx': [3.0] * 6,
+        'return_end_posx': [4.0] * 6,
         'return_end_posj': [4.0] * 6,
+        **RETURN_SHAKE,
     })
     node, moves, _ = _held_scoop_node(skill_node, station)
 
@@ -566,6 +595,7 @@ def test_end_move_failure_does_not_issue_restore_motion(monkeypatch, kind):
             raise RuntimeError('end move failed')
 
     node.arm.movel = fail_at_end
+    node.arm.movel_cancellable = lambda target, scale, cancel, timeout: fail_at_end(target, scale)
     node.arm.movej_cancellable = lambda target, scale, cancel, timeout: fail_at_end(target, scale)
     job = skill_node.Job(kind, {'fraction': 1.0} if kind == 'pour' else {'material_id': 'A'})
 
@@ -587,23 +617,45 @@ def test_return_without_taught_poses_is_rejected_before_motion(monkeypatch):
     assert moves == []
 
 
-def test_return_uses_joint_end_without_restoring_start(monkeypatch):
+def test_return_moves_linearly_to_end_then_shakes_in_base(monkeypatch):
     skill_node = _load_skill_node(monkeypatch)
     start = [400.0, -298.0, 240.0, 90.0, -180.0, -90.0]
     end = [400.0, -298.0, 180.0, 90.0, -140.0, -90.0]
     station = SimpleNamespace(station_id='material_1', extra={
-        'return_start_posx': start, 'return_end_posj': end,
+        'return_start_posx': start, 'return_end_posx': end,
+        'return_end_posj': [4.0] * 6, **RETURN_SHAKE,
     })
     node, moves, holds = _held_scoop_node(skill_node, station)
-
-    joint_moves = []
-    node.arm.movej_cancellable = lambda target, scale, cancel, timeout: (joint_moves.append(list(target)), moves.append((list(target), scale)))
+    periodic = []
+    node.arm.amove_periodic = lambda *args, **kwargs: periodic.append((args, kwargs))
     assert skill_node.SkillNode._do_return_material(
         node, skill_node.Job('return_material', {'material_id': 'A'})) is True
     assert [pose for pose, _ in moves] == [start, end]
-    assert holds == [(0.5, 'return_material')]
+    assert holds == []
+    assert periodic == [((RETURN_SHAKE['return_shake_amp'], RETURN_SHAKE['return_shake_period'], 0.5, 3),
+                         {'ref_tool': False})]
+    assert node._returned_material == 'A'
 
-    assert joint_moves == [end]
+
+@pytest.mark.parametrize('material_id', ['A', 'B', 'C'])
+def test_each_material_uses_its_return_end_and_same_shake(monkeypatch, material_id):
+    from gmp_skills.core.stations import StationTable
+
+    module = _load_skill_node(monkeypatch)
+    stations = StationTable.from_yaml(
+        Path(__file__).parents[2] / 'gmp_bringup/params/stations.yaml')
+    station = stations.for_material(material_id)
+    node, moves, _ = _held_scoop_node(module, station)
+    node._held_material_id = material_id
+    periodic = []
+    node.arm.amove_periodic = lambda *args, **kwargs: periodic.append((args, kwargs))
+
+    assert module.SkillNode._do_return_material(
+        node, module.Job('return_material', {'material_id': material_id}))
+    assert [pose for pose, _ in moves] == [station.extra['return_start_posx'],
+                                          station.extra['return_end_posx']]
+    assert periodic == [((RETURN_SHAKE['return_shake_amp'], RETURN_SHAKE['return_shake_period'],
+                          0.5, 3), {'ref_tool': False})]
 
 
 @pytest.mark.parametrize('period', [0, -1, float('nan'), float('inf')])
@@ -659,7 +711,8 @@ def test_sampling_parameter_reaches_all_measurement_paths(monkeypatch, entry):
 def test_return_invalid_joint_end_rejected_before_approach(monkeypatch, end):
     skill_node = _load_skill_node(monkeypatch)
     station = SimpleNamespace(station_id='material_1', extra={
-        'return_start_posx': [1.0] * 6, 'return_end_posj': end})
+        'return_start_posx': [1.0] * 6, 'return_end_posx': [2.0] * 6,
+        'return_end_posj': end, **RETURN_SHAKE})
     node, moves, _ = _held_scoop_node(skill_node, station)
     with pytest.raises(ValueError, match='return_end_posj'):
         skill_node.SkillNode._do_return_material(
@@ -667,43 +720,78 @@ def test_return_invalid_joint_end_rejected_before_approach(monkeypatch, end):
     assert moves == []
 
 
-def test_return_cancel_during_joint_move_skips_hold_and_restore(monkeypatch):
+@pytest.mark.parametrize('bad', [None, [0.0] * 6, [14.0] * 5])
+def test_return_invalid_shake_rejected_before_motion(monkeypatch, bad):
     module = _load_skill_node(monkeypatch)
     station = SimpleNamespace(station_id='material_1', extra={
-        'return_start_posx': [1.0] * 6, 'return_end_posj': [2.0] * 6})
+        'return_start_posx': [1.0] * 6, 'return_end_posx': [2.0] * 6,
+        'return_end_posj': [2.0] * 6,
+        **{**RETURN_SHAKE, 'return_shake_amp': bad}})
+    node, moves, _ = _held_scoop_node(module, station)
+    with pytest.raises(ValueError):
+        module.SkillNode._do_return_material(
+            node, module.Job('return_material', {'material_id': 'A'}))
+    assert moves == []
+
+
+def test_return_shake_joint_drift_keeps_guard(monkeypatch):
+    module = _load_skill_node(monkeypatch)
+    station = SimpleNamespace(station_id='material_1', extra={
+        'return_start_posx': [1.0] * 6, 'return_end_posx': [2.0] * 6,
+        'return_end_posj': [2.0] * 6, **RETURN_SHAKE})
+    node, moves, _ = _held_scoop_node(module, station)
+    stops = []
+    node.arm.current_posj = lambda: [20.0] * 6
+    node.arm.stop_motion = lambda: stops.append(True)
+    with pytest.raises(RuntimeError, match='관절 자세 미확인'):
+        module.SkillNode._do_return_material(
+            node, module.Job('return_material', {'material_id': 'A'}))
+    assert len(moves) == 2 and stops == [True]
+    assert node._return_rescoop_blocked and node._returned_material == ''
+
+
+def test_return_cancel_during_end_move_skips_shake(monkeypatch):
+    module = _load_skill_node(monkeypatch)
+    station = SimpleNamespace(station_id='material_1', extra={
+        'return_start_posx': [1.0] * 6, 'return_end_posx': [2.0] * 6,
+        'return_end_posj': [2.0] * 6, **RETURN_SHAKE})
     node, moves, holds = _held_scoop_node(module, station)
     job = module.Job('return_material', {'material_id': 'A'})
     def cancel_move(target, scale, cancelled, timeout):
         job.cancel = True
         assert cancelled()
         raise RuntimeError('cancelled')
-    node.arm.movej_cancellable = cancel_move
+    node.arm.movel_cancellable = lambda target, scale, cancelled, timeout: (
+        moves.append((list(target), scale)) if list(target) == [1.0] * 6
+        else cancel_move(target, scale, cancelled, timeout))
     with pytest.raises(RuntimeError, match='cancelled'):
         module.SkillNode._do_return_material(node, job)
     assert len(moves) == 1
     assert holds == []
 
 
-@pytest.mark.parametrize('outcome', ['success', 'cancel', 'failure', 'hold_failure'])
-def test_return_joint_attempt_blocks_followup_scoop_before_any_motion(monkeypatch, outcome):
+@pytest.mark.parametrize('outcome', ['success', 'cancel', 'failure', 'shake_failure'])
+def test_return_end_attempt_blocks_followup_scoop_before_any_motion(monkeypatch, outcome):
     module = _load_skill_node(monkeypatch)
     station = SimpleNamespace(station_id='material_1', extra={
-        'return_start_posx': [1.0] * 6, 'return_end_posj': [2.0] * 6})
+        'return_start_posx': [1.0] * 6, 'return_end_posx': [2.0] * 6,
+        'return_end_posj': [2.0] * 6, **RETURN_SHAKE})
     node, moves, _ = _held_scoop_node(module, station)
     job = module.Job('return_material', {'material_id': 'A'})
-    def joint_move(target, scale, cancelled, timeout):
+    def end_move(target, scale, cancelled, timeout):
         assert node._return_rescoop_blocked
         moves.append((list(target), scale))
         if outcome == 'cancel':
             job.cancel = True
             raise RuntimeError('cancelled')
         if outcome == 'failure':
-            raise RuntimeError('joint failure')
-    node.arm.movej_cancellable = joint_move
-    if outcome == 'hold_failure':
-        def fail_hold(*args):
-            raise RuntimeError('hold failure')
-        node._wait_with_nudge = fail_hold
+            raise RuntimeError('end failure')
+    node.arm.movel_cancellable = lambda target, scale, cancelled, timeout: (
+        moves.append((list(target), scale)) if list(target) == [1.0] * 6
+        else end_move(target, scale, cancelled, timeout))
+    node.arm.current_posx = lambda: list(moves[-1][0])
+    if outcome == 'shake_failure':
+        node.arm.amove_periodic = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError('shake failure'))
     if outcome == 'success':
         assert module.SkillNode._do_return_material(node, job)
     else:
@@ -719,7 +807,8 @@ def test_return_joint_attempt_blocks_followup_scoop_before_any_motion(monkeypatc
 def test_return_rejected_before_motion_does_not_set_rescoop_guard(monkeypatch):
     module = _load_skill_node(monkeypatch)
     station = SimpleNamespace(station_id='material_1', extra={
-        'return_start_posx': [1.0] * 6, 'return_end_posj': None})
+        'return_start_posx': [1.0] * 6, 'return_end_posx': [2.0] * 6,
+        'return_end_posj': None, **RETURN_SHAKE})
     node, moves, _ = _held_scoop_node(module, station)
     node._return_rescoop_blocked = False
     with pytest.raises(ValueError):

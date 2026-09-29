@@ -53,7 +53,7 @@
 | `action/MoveToStation` | 스테이션 이동 (`ABOVE` 접근점 / `AT` 작업점) | 좌표는 `stations.yaml` 단일 출처 |
 | `action/Scoop` | 원료통에서 퍼올리기 | Goal `depth_fraction`(v1.5)이 담그기 깊이 비율. Feedback은 단계·접촉력·삽입 깊이, Result는 최종 접촉 여부·최대 힘·깊이. 수동 `height_measure_only` 모드는 높이만 `message`로 보고하고 `success=false`로 종료하므로 자동 공정과 병용하지 않는다 |
 | `action/Pour` | workbench의 용기에 전량 붓기 (`fraction=1.0`만 허용) | 목적지는 skill 설정의 `workbench`; `target_station`은 제거 |
-| `action/ReturnMaterial` | 전용 스쿱 원료를 동일 원료통에 반환 | `/cell/return_material`. 시작 posx·끝 posj 미티칭 또는 파지 원료 불일치 시 이동 전에 실패. 끝 자세 유지, 후속 Scoop은 연결 경로 구현 전까지 차단 |
+| `action/ReturnMaterial` | 전용 스쿱 원료를 동일 원료통에 반환 | `/cell/return_material`. 시작·끝 posx, 끝 posj 확인 기준 또는 반환 털기 설정이 없거나 파지 원료가 다르면 이동 전에 실패. 끝 자세 유지, 후속 Scoop은 연결 경로 구현 전까지 차단 |
 | `action/WeighContainer` | 고정 `workbench`의 용기를 들어 계량하고 내려놓기 (복합 스킬) | `container_station`은 제거. 결과는 `WeightReading`. **그리퍼가 비어 있어야 한다** — TARE 와 배치 끝 VERIFY 에서만 (D-22) |
 | **`action/WeighHeld`** (v1.2) | **들고 있는 전용 스쿱을 대응 `material_N.posx`로** 가져가 재기 — 파지·내려놓기 없음 | D-22 의 `SCOOP_TARE`·`WEIGH_SCOOP`·`WEIGH_RESIDUAL` 세 단계가 **이 요청 하나**를 쓴다 (차이는 process 가 결과를 어디에 담느냐뿐). **계량 후 계량 자세에 머문다**(복귀 없음) · **빈 그리퍼면 `success=false`**. phase 는 `LIFT`/`SETTLE`/`MEASURE` — `WeighContainer` 와 달리 `GRIP`·`PLACE` 가 없어 `mode` 필드로 합치지 않았다 (9/18 확정, I-007) |
 | `action/RunBatch` | HMI/CLI → process. 배치 실행 | 피드백 `CellState` + 마지막 `DispenseResult` |
@@ -124,7 +124,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `MoveToStation` | process → skill | Goal `station_id`, `approach`(`ABOVE/AT`), `vel_scale`; Result `success`, `message`, 실제 `reached`; Feedback `phase` |
 | `Scoop` | process → skill | Goal `material_id`, `attempt`, `depth_fraction`(담그기 깊이 비율); Result `success`, 최종 `contact_detected`, `max_contact_force_n`, `insertion_depth_mm`, `message`; Feedback `phase`, 현재 접촉 여부·힘·삽입 깊이. 수동 `height_measure_only`에서는 실제 스쿠핑 없이 `success=false`와 `message`의 `HEIGHT_MEASUREMENT_ONLY` 진단 문자열로 높이만 보고하며 자동 공정과 병용하지 않는다 |
 | `Pour` | process → skill | Goal `fraction=1.0`(그 외 이동 전 거부); Result `success`, `message`; Feedback `phase`. 목적지는 skill 설정의 고정 `workbench`이다 |
-| `ReturnMaterial` | process → skill | Goal `material_id`; Result `success`, `message`; Feedback `phase`(`APPROACH/TILT/HOLD`; `RETURN` 미발행). 동일 원료의 `return_start_posx` 직선 이동 → `return_end_posj` 관절 이동 후 끝 자세에서 종료. 반환 끝 관절 이동 시도부터 후속 Scoop은 연결 경로 구현 전까지 이동 없이 실패한다. 반환 동작 완료는 완전 배출량의 측정 보증이 아니다 |
+| `ReturnMaterial` | process → skill | Goal `material_id`; Result `success`, `message`; Feedback `phase`(`APPROACH/TILT/HOLD`; `RETURN` 미발행). 동일 원료의 `return_start_posx` → `return_end_posx`로 TCP 직선 이동한 뒤 BASE 좌표계에서 `move_periodic`으로 흔든다. 정지 후 끝 TCP·관절각(`return_end_posj`)을 확인하고 그 자리에서 종료한다. 반환 끝 이동 시도부터 후속 Scoop은 연결 경로 구현 전까지 이동 없이 실패한다. 반환 동작 완료는 완전 배출량의 측정 보증이 아니다 |
 | `WeighHeld` | process → skill | Goal `tare_g`; Result `reading`, `success`, `message`; Feedback `phase`. 파지 이력의 원료를 확인해 `material_N.posx`에서 측정. 원료를 알 수 없으면 실패 |
 | `WeighContainer` | process → skill | Goal `tare_g`; Result `reading`, `success`, `message`; Feedback `phase`. 고정 `workbench`의 용기를 들어 측정하고 내려놓는다 |
 | `RunBatch` | HMI/CLI → process | Goal `recipe`; Result `success`, 완료 원료 수, 일탈 수, 종료 `result`, `message`; Feedback `state`, `last_result`. 접수만 하는 `SubmitOrder`와 달리 진행·최종 결과가 필요한 클라이언트용이다. **v1.9:** 세트 끝 구간의 Goal 은 1건 예약 — 직전 배치가 넛지로 끝나면 시작, 그 외 끝이면 `ABORTED`. 예약 중에는 피드백이 없고 대기 사유는 `CellState.note` 에 실린다 |

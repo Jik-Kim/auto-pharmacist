@@ -67,7 +67,7 @@
 | Action | `pour` | `Pour` | `fraction`(0~1) | `success` — 목적지는 skill 설정의 고정 `workbench` |
 | Action | `weigh_container` | `WeighContainer` | `tare_g` | **`reading`**(WeightReading: gross/net/std/valid) — 고정 `workbench`의 **용기를 들어** 잰다 (파지 → 계량 자세 → 읽기 → 내려놓기), 그리퍼가 비어 있어야 한다 |
 | Action | **`weigh_held`** (v1.2) | `WeighHeld` | `tare_g`(빈 스쿱) | **`reading`** — **들고 있는 스쿱을 그대로** 계량 자세로 가져가 잰다. 파지·내려놓기 없음, 계량 후 그 자세에 머문다. 빈 그리퍼면 `success=false` (I-007 해소) |
-| Action | **`return_material`** (v1.3) | `ReturnMaterial` | `material_id` | 초과 원료를 원료통으로 반환한다. 원료별 `return_start_posx`·`return_end_posj` 가 없으면 이동하지 않고 실패한다. 끝 자세에서 종료, `RETURN` 피드백 없음 (v1.5.1). |
+| Action | **`return_material`** (v1.3) | `ReturnMaterial` | `material_id` | 초과 원료를 원료통으로 반환한다. 원료별 시작·끝 posx, 끝 posj 확인 기준, 털기 설정이 없으면 이동하지 않고 실패한다. 끝 TCP로 직선 이동해 주기 운동으로 턴 뒤 종료하며 `RETURN` 피드백은 없다. |
 | Service | `set_gripper` | `SetGripper` | `close`, `width_mm`, `force_n`, `timeout_s` | `success`, `final_width_mm`, **`grip_inferred`** |
 | Service | `measure_force` | `MeasureForce` | `samples`, `settle_s` | `force[6]`(힘+모멘트), `fz_mean_n`, `fz_std_n`, `valid` |
 | Service | `safe_pose` | `SafePose` | `reason` | `success` |
@@ -86,7 +86,7 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 | `grip` | `close`, `target`('scoop'/'cup') | `set_gripper(close, width=scoop_width 또는 cup_width, force)` | `{'grip_inferred', 'final_width_mm'}` |
 | `scoop` | `material_id`, `attempt`, `fraction` | `scoop(material_id, attempt, depth_fraction=fraction)` — 계약 v1.5: `fraction` 은 담그기 깊이 비율 [`min_fraction`, 1.0], `attempt` 는 기록용이다. A/B/C 고정 DRL full 경로는 `depth_fraction=1`에서 실행 가능하다. 높이 보정은 `calibrated=false`로 비활성이다. 고정 경로는 접촉 미측정(false, message=TAUGHT_FIXED)이다 — `dosing.fixed_scoop=true` 면 깊이는 첫·반환 뒤·보충 모두 1.0 이고(#289), FSM 은 `contact_detected` 를 진행 조건으로 쓰지 않고 WEIGH_SCOOP 순중량으로 빈 스쿱을 가른다(#282) | `{'contact_detected', 'max_contact_force_n', 'insertion_depth_mm'}` — 뒤 둘은 FSM 이 안 쓰고 `ScoopCycle` 에 실린다. WEIGH_SCOOP 은 퍼낸 양으로 **전량 붓기와 원료통 반환**을 가른다 — 부분 붓기는 v1.3 으로 폐기됐고, 양 조절은 이 `fraction`(담그기 깊이)이 한다 |
 | `pour` | `station`, `fraction=1` | `pour(1)` — middle → pour ABOVE → start → end → ABOVE → Z+50 → middle 순서로 전량 붓고 이탈한다. | `{'success'}` |
-| `return_material` | `material_id` | `return_material(material_id)` — `return_start_posx`·`return_end_posj` 가 없으면 실패 | `{'success', 'message'}` |
+| `return_material` | `material_id` | `return_material(material_id)` — 시작·끝 posx, 끝 posj 확인 기준 또는 털기 설정이 없으면 실패 | `{'success', 'message'}` |
 | `safe` | `reason`, `then` | `safe_pose(reason)` | `{'success'}` — 전이는 요청의 `then` 이 정한다 |
 | `wait_qa` | `deviation` | 아무 스킬도 안 부름. `_qa.wait()` | `{'decision': 'APPROVED'/'DISCARDED', 'operator_id'}` |
 | `wait_interlock` | — | `_interlock_exit.wait()` | `{}` |
@@ -281,3 +281,5 @@ ReturnMaterial 성공 후 해당 스쿱 AT 요청은 반환 끝 관절각을 확
 반환 실패·취소, 중간 이동 실패, 열기 실패에서는 차단을 유지한다.
 ReturnMaterial 자체는 여전히 반환 끝에서 종료하며, 수납 없이 같은 스쿱으로 바로 재스쿠핑하는
 자동 공정 경로는 계속 차단된다. 실물 경로는 아직 시험하지 않았다.
+
+현재 반환 구간은 세 원료 모두 시작→끝 TCP 직선 이동 후 BASE 주기 운동을 사용한다. 이전 A/B/C 실물 반환·수납 성공 기록은 끝 관절 이동 방식의 결과이며, 새 반환 궤적은 실물에서 아직 재검증하지 않았다.

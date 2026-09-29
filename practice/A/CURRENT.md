@@ -98,6 +98,12 @@ ReturnMaterial 성공 후 해당 스쿱 AT 요청은 반환 끝 관절각을 확
 ReturnMaterial 자체는 여전히 반환 끝에서 종료하며, 수납 없이 같은 스쿱으로 바로 재스쿠핑하는
 자동 공정 경로는 계속 차단된다. 실물 경로는 아직 시험하지 않았다.
 
+2026-09-29 변경: 사용자 제공 `m0609_tw_return_material.drl`의 원료 1 방식을
+원료 1·2·3에 적용했다. `return_start_posx → return_end_posx` 직선 이동 후
+BASE 기준 진폭 X=14/Y=15 mm, 주기 X=0.3/Y=0.5초, 가속 0.5초, 3회 턴다.
+기존 `return_end_posj`는 털기 종료와 수납 진입 시 관절각 확인에 사용한다.
+코드와 설정에 반영했으며 세 원료의 실물 반환·간섭은 아직 재검증하지 않았다.
+
 ## 9/29 현장 통합 현행값
 
 - 계량 경로별 gain: 용기 1.0975, 스쿱 0.983. settle_s=10.0, samples=20, period_s=0.82. 1초 설정 기록은 사용자 지시 누락으로 철회하며 실제 공정도 10초를 사용한다. [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml)

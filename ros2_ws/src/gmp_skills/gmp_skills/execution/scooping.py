@@ -14,7 +14,7 @@ from pathlib import Path
 from .context import Job
 from gmp_skills.core.scooping import finite, plan_scoop, tip_offset_local, tip_z
 from gmp_skills.core.surface_height import tip_position_base
-from gmp_skills.core.transfer import vector6
+from gmp_skills.core.transfer import joints_match, vector6
 
 
 class ScoopingSkills:
@@ -463,8 +463,8 @@ class ScoopingSkills:
         return True
 
     def _do_return_material(self, job: Job):
-        # 초과한 원료를 원료통에 되돌린다. 반환 시작 TCP로 직선 이동한 뒤
-        # 티칭된 관절각으로 스쿱을 기울인다. 그 자세에서의 재스쿱 경로는 미구현이다.
+        # 초과한 원료를 같은 원료통에 되돌린다. 반환 시작·끝 TCP로 직선 이동한 뒤
+        # BASE 좌표계에서 스쿱을 주기적으로 흔든다. 바로 재스쿱하는 경로는 미구현이다.
         self.ctx.state.returned_material = ""
         self.ctx.state.returned_scoop_stowed = ""
         self.ctx.state.empty_scoop_baseline_pending = False
@@ -472,30 +472,49 @@ class ScoopingSkills:
         material_id = job.args['material_id']
         self.motion._require_held_scoop(material_id)
         station = self.ctx.stations.for_material(material_id)
-        # 반환 시작 TCP와 기울인 관절 목표가 모두 설정돼 있는지 이동 전에 확인한다.
+        # 이동 전에 반환 좌표와 흔들기 설정을 모두 확인한다. 끝 관절각은
+        # 후속 스쿱 수납 경로에 진입할 때 현재 자세를 확인하는 기준이다.
         start = self.motion._pose_from_extra(station, 'return_start_posx')
-        end = self.motion._pose_from_extra(station, 'return_end_posj')
-        if job.cancel:
+        end = self.motion._pose_from_extra(station, 'return_end_posx')
+        end_joints = self.motion._pose_from_extra(station, 'return_end_posj')
+        amp = vector6(station.extra.get('return_shake_amp'), 'return_shake_amp')
+        period = vector6(station.extra.get('return_shake_period'), 'return_shake_period')
+        atime = finite(station.extra.get('return_shake_atime'), 'return_shake_atime')
+        repeat = station.extra.get('return_shake_repeat')
+        if (atime <= 0 or type(repeat) is not int or repeat <= 0
+                or any(t < 0 or (a != 0 and t <= 0) for a, t in zip(amp, period))
+                or not any(amp)):
+            raise ValueError('반환 털기 주기/반복 설정 오류')
+        cancel = lambda: job.cancel or self.runtime._cancel_requested()
+        if cancel():
             raise RuntimeError('cancelled')
         job.feedback and job.feedback('APPROACH')
         # MOVEL · TCP 직선 이동: start
-        self.ctx.arm.movel(start, self.ctx.config.vel_scale)
-        if job.cancel:
+        self.ctx.arm.movel_cancellable(start, self.ctx.config.vel_scale, cancel,
+                                      self.ctx.config.motion_timeout_s)
+        if cancel():
             raise RuntimeError('cancelled')
         job.feedback and job.feedback('TILT')
-        # 기울이는 도중 실패·취소돼도 실제 스쿱 각도를 알 수 없다. 재스쿱을
+        # 반환 끝으로 이동하거나 흔드는 도중 실패·취소돼도 실제 스쿱 각도를 알 수 없다. 재스쿱을
         # 계속 차단하며, SafePose나 파지 변경만으로 이 차단을 풀지 않는다.
         self.ctx.state.return_rescoop_blocked = True
-        # TCP 직선 이동은 손목 관절이 급격히 바뀌는 특이점을 지날 수 있다.
-        # 그래서 검증된 반환 끝 관절각으로 MOVEJ한다.
-        # MOVEJ · 관절각 목표: end
-        self.ctx.arm.movej_cancellable(end, self.ctx.config.vel_scale, lambda: job.cancel, self.ctx.config.motion_timeout_s)
-        if job.cancel:
+        # MOVEL · TCP 직선 이동: end
+        self.ctx.arm.movel_cancellable(end, self.ctx.config.vel_scale, cancel,
+                                      self.ctx.config.motion_timeout_s)
+        if cancel():
             raise RuntimeError('cancelled')
         job.feedback and job.feedback('HOLD')
-        self.safety._wait_with_nudge(float(self.ctx.parameter('pour.hold_s').value), job)
-        if job.cancel:
-            raise RuntimeError('cancelled')
+        try:
+            self.ctx.arm.amove_periodic(list(amp), list(period), atime, repeat, ref_tool=False)
+            self.ctx.arm.wait_motion_cancellable(cancel, self.ctx.config.motion_timeout_s)
+            if not self.motion._pose_matches(self.ctx.arm.current_posx(), end):
+                raise RuntimeError('반환 털기 종료 TCP 자세 미확인')
+            if not joints_match(self.ctx.arm.current_posj(), end_joints,
+                                self.ctx.config.joint_tolerance):
+                raise RuntimeError('반환 털기 종료 관절 자세 미확인')
+        except Exception:
+            self.ctx.arm.stop_motion()
+            raise
         # 반환 자체는 끝 자세에서 종료한다. 다음 스쿱 AT 요청이 수납 경로를 연결한다.
         self.ctx.state.returned_material = material_id
         return True

@@ -1,7 +1,7 @@
 # 9/23 사용자 실물 검증 DRL: m0609_tw_autopharm_moved.drl (BASE, mm/deg)
 # fixed_path.verified는 원본 고정 경로 검증, calibrated는 높이 보정 검증이다.
 # A 높이 보정 근사값은 보존하며 B/C 높이 보정 모델은 없다. 자동 보정은 모두 비활성.
-# 원료 반환·넛지는 DRL 주 루프에 없으므로 좌표 갱신만으로 검증 완료로 보지 않는다.
+# 원료 반환 털기는 별도 DRL을 참고했다. 실제 로봇에서의 동작은 아직 검증하지 않았다.
 # workbench empty 접근은 DRL 관절각 도착 후 실제 TCP에서 Z -200: posx와 합성하지 않는다.
 # safe.posx는 자리표시자이며 safe 이동은 posj를 사용한다.
 frame: base
@@ -31,6 +31,10 @@ stations:
     return_start_posx: [298.0, -340.0, 170.0, 90.0, -180.0, -90.0]
     return_end_posx: [298.0, -259.68, 204.37, 90.0, 154.29, -90.0]
     return_end_posj: [-54.33, 19.06, 74.19, 15.35, 107.47, -232.25]
+    return_shake_amp: [14.0, 15.0, 0.0, 0.0, 0.0, 0.0]
+    return_shake_period: [0.3, 0.5, 0.0, 0.0, 0.0, 0.0]
+    return_shake_atime: 0.5
+    return_shake_repeat: 3
     measure_posx: [298.0, -333.79, 120.0, 90.0, 160.06, -90.0]
     note: 원료통 A. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세
     material_id: A
@@ -40,6 +44,10 @@ stations:
     return_start_posx: [395.0, -340.0, 170.0, 90.0, -180.0, -90.0]
     return_end_posx: [395.0, -259.68, 204.37, 90.0, 154.29, -90.0]
     return_end_posj: [-46.29, 28.61, 60.34, 18.45, 109.23, -222.84]
+    return_shake_amp: [14.0, 15.0, 0.0, 0.0, 0.0, 0.0]
+    return_shake_period: [0.3, 0.5, 0.0, 0.0, 0.0, 0.0]
+    return_shake_atime: 0.5
+    return_shake_repeat: 3
     measure_posx: [395.0, -333.79, 120.0, 90.0, 160.06, -90.0]
     note: 원료통 B. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세
     material_id: B
@@ -49,6 +57,10 @@ stations:
     return_start_posx: [490.0, -340.0, 170.0, 90.0, -180.0, -90.0]
     return_end_posx: [490.0, -259.68, 204.37, 90.0, 154.29, -90.0]
     return_end_posj: [-40.05, 41.36, 39.41, 21.34, 114.80, -213.56]
+    return_shake_amp: [14.0, 15.0, 0.0, 0.0, 0.0, 0.0]
+    return_shake_period: [0.3, 0.5, 0.0, 0.0, 0.0, 0.0]
+    return_shake_atime: 0.5
+    return_shake_repeat: 3
     measure_posx: [490.0, -333.79, 120.0, 90.0, 160.06, -90.0]
     note: 원료통 C. measure_posx는 원료 양 측정 시 스쿱이 바닥에 닿는 자세
     material_id: C

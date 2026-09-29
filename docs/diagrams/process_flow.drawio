@@ -521,70 +521,70 @@
           <mxGeometry x="1220" y="480" width="380" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c39" value="return_material" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="524" width="160" height="44" as="geometry" />
+          <mxGeometry x="40" y="524" width="160" height="70" as="geometry" />
         </mxCell>
         <mxCell id="c40" value="material_id" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="200" y="524" width="260" height="44" as="geometry" />
+          <mxGeometry x="200" y="524" width="260" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="c41" value="return_material(material_id)   원료통 반환 start/end 미티칭이면 이동하지 않고 실패" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="460" y="524" width="760" height="44" as="geometry" />
+        <mxCell id="c41" value="return_material(material_id)   start→end TCP 직선 이동→BASE 주기 운동&lt;br&gt;좌표·털기 설정 미입력이면 이동 전에 실패" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="460" y="524" width="760" height="70" as="geometry" />
         </mxCell>
         <mxCell id="c42" value="{'success','message'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="1220" y="524" width="380" height="44" as="geometry" />
+          <mxGeometry x="1220" y="524" width="380" height="70" as="geometry" />
         </mxCell>
         <mxCell id="c43" value="safe" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="568" width="160" height="44" as="geometry" />
+          <mxGeometry x="40" y="594" width="160" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c44" value="reason · then" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="200" y="568" width="260" height="44" as="geometry" />
+          <mxGeometry x="200" y="594" width="260" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c45" value="safe_pose(reason)   전이는 then 이 정한다" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="460" y="568" width="760" height="44" as="geometry" />
+          <mxGeometry x="460" y="594" width="760" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c46" value="{}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="1220" y="568" width="380" height="44" as="geometry" />
+          <mxGeometry x="1220" y="594" width="380" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c47" value="wait_qa" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="612" width="160" height="44" as="geometry" />
+          <mxGeometry x="40" y="638" width="160" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c48" value="deviation" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="200" y="612" width="260" height="44" as="geometry" />
+          <mxGeometry x="200" y="638" width="260" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c49" value="스킬 없음 — _qa.clear(); _qa.wait()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="460" y="612" width="760" height="44" as="geometry" />
+          <mxGeometry x="460" y="638" width="760" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c50" value="{'decision': APPROVED|DISCARDED}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="1220" y="612" width="380" height="44" as="geometry" />
+          <mxGeometry x="1220" y="638" width="380" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c51" value="wait_interlock" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="656" width="160" height="44" as="geometry" />
+          <mxGeometry x="40" y="682" width="160" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c52" value="—" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="200" y="656" width="260" height="44" as="geometry" />
+          <mxGeometry x="200" y="682" width="260" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c53" value="스킬 없음 — _interlock_exit.clear(); wait()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="460" y="656" width="760" height="44" as="geometry" />
+          <mxGeometry x="460" y="682" width="760" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c54" value="{}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="1220" y="656" width="380" height="44" as="geometry" />
+          <mxGeometry x="1220" y="682" width="380" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c55" value="wait_nudge" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="700" width="160" height="70" as="geometry" />
+          <mxGeometry x="40" y="726" width="160" height="70" as="geometry" />
         </mxCell>
         <mxCell id="c56" value="—" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="200" y="700" width="260" height="70" as="geometry" />
+          <mxGeometry x="200" y="726" width="260" height="70" as="geometry" />
         </mxCell>
         <mxCell id="c57" value="스킬 없음 — 세트 끝, nudge_wait 에 선 채 _nudge_go.wait()&lt;br&gt;그동안의 NUDGE 는 정지 토글이 아니라 다음 세트 신호 · nudge_enabled=false 면 대기 없이 통과" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="460" y="700" width="760" height="70" as="geometry" />
+          <mxGeometry x="460" y="726" width="760" height="70" as="geometry" />
         </mxCell>
         <mxCell id="c58" value="{}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="1220" y="700" width="380" height="70" as="geometry" />
+          <mxGeometry x="1220" y="726" width="380" height="70" as="geometry" />
         </mxCell>
         <mxCell id="c59" value="_call_action(client, goal) 보조 함수 하나로 통일&lt;br&gt;  1) client.wait_for_server(5 s)   2) send_goal_async → goal_handle   3) get_result_async → Future&lt;br&gt;  4) Event 로 동기 대기 (run_loop 는 executor 스레드가 아니므로 spin 하지 말 것 — MultiThreadedExecutor 가 콜백을 돌린다)&lt;br&gt;  5) 인터락 ENTER 가 오면 goal_handle.cancel_goal_async()  → 취소 결과 후 safe_pose&lt;br&gt;&lt;br&gt;실패(success=false)는 표에 없다 → FORCE_LIMIT 일탈로 _deviate(RETRY 1회 → FORCED) 권장" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="40" y="800" width="760" height="130" as="geometry" />
+          <mxGeometry x="40" y="826" width="760" height="130" as="geometry" />
         </mxCell>
         <mxCell id="c60" value="발행 시점&lt;br&gt;  weight            weigh 결과마다 (TARE 포함)&lt;br&gt;  scoop_cycle       정상은 POUR 성공 후 (post 미측정·valid=false), 실패는 실패 확정 시&lt;br&gt;  dispense_result   원료가 끝날 때 — POUR 에서 DONE 또는 DEVIATION 으로 갈 때&lt;br&gt;  deviation         _deviate() 마다 + QA 판정 후 decision·operator_id 채워 같은 deviation_id 로 재발행&lt;br&gt;  event             BATCH_START(product) · STEP(전이) · INTERLOCK_ENTER/EXIT · PAUSE/RESUME(NUDGE|INTERLOCK) · SET_DONE/SET_NEXT(세트 끝) · ORDER_QUEUED/ORDER_DROPPED(세트 끝 예약, v1.9) · INTERVENTION_FORCED(ERROR) · BATCH_END&lt;br&gt;  state             0.5 s 타이머 + 전이 직후 1회" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="820" y="800" width="780" height="145" as="geometry" />
+          <mxGeometry x="820" y="826" width="780" height="145" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
@@ -772,7 +772,7 @@
         <mxCell id="c57" value="RETURN_MATERIAL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="810" y="1350" width="200" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="c58" value="ReturnMaterial act&lt;br&gt;material_id → 원료통 start→end&lt;br&gt;미티칭이면 success=false" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c58" value="ReturnMaterial act&lt;br&gt;material_id → 원료통 start→end 직선→주기 운동&lt;br&gt;좌표·털기 설정 미입력이면 success=false" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1090" y="1350" width="360" height="61" as="geometry" />
         </mxCell>
         <mxCell id="c59" value="호출 → 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c57" target="c58">
