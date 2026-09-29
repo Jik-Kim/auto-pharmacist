@@ -5,7 +5,7 @@
 
 단계 이름·순서·정지 사유 문구는 실제 공정(gmp_process process_fsm·process_node, 9/26 main + #287)을 따른다.
   SELF_CHECK → PICK_CONTAINER → TARE
-  → 원료마다 PICK_SCOOP → SCOOP_TARE → (SCOOP → WEIGH_SCOOP → POUR → WEIGH_RESIDUAL) × 스쿱 수 → RETURN_SCOOP
+  → 원료마다 PICK_SCOOP → SCOOP_TARE → (SCOOP → WEIGH_SCOOP → POUR) × 스쿱 수 → RETURN_SCOOP
   → VERIFY → FINISH → NUDGE_WAIT(사람이 건드릴 때까지 대기) → DONE
 사람 접촉은 실제처럼 `event` 토픽의 code='NUDGE' 로 받는다 (skill_node 대역). 시험에서는 사람이
 `ros2 topic pub --once -w 3 /hmi_test/event gmp_interfaces/msg/CellEvent "{code: NUDGE}"` 로 낸다.
@@ -37,9 +37,8 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from gmp_hmi.core.trial_inventory import TrialInventory
 
-# overfill 시나리오의 과다 투입 배율. 허용오차(±10 %, D-33 이후 유지)를 확실히 넘어야 OVER 가 말이 된다 —
-# 옛 1.10 은 ±5 % 시절 값이라 ±10 % 에서는 경계값이 된다.
-OVERFILL_RATIO = 1.15
+# overfill 시나리오의 과다 투입 배율. 모든 레시피의 ±15 % 상한을 넘긴다.
+OVERFILL_RATIO = 1.20
 # 계약 v1.9 — 이 구간의 RunBatch 주문은 거부하지 않고 1건 예약한다 (process_node._at_set_end 와 같은 단계).
 SET_END_STEPS = ('FINISH', 'DISCARDED', 'NUDGE_WAIT')
 # 원료 밖 단계 하나(SELF_CHECK·PICK_CONTAINER·TARE·VERIFY·FINISH·이동)의 시험 시간 [s].
@@ -48,10 +47,10 @@ BATCH_STEP_S = 0.4
 SCOOP_EMPTY_RETRIES = 3
 EMPTY_SCOOP_G = 2.0      # common.yaml dosing.empty_scoop_g (#287) — 빈 스쿱 판정 문턱
 EMPTY_SCOOP_NET_G = 0.4  # 시험에서 「빈 스쿱」으로 생성하는 순중량
-RESIDUAL_G = 3.0         # 붓고 난 스쿱 잔량
 CUP_G = 35.0             # 빈 약통 무게
 # 원료 한 종에 속한 단계 — note 에 원료·목표량을 싣는다.
-ITEM_STEPS = ('PICK_SCOOP', 'SCOOP_TARE', 'SCOOP', 'WEIGH_SCOOP', 'POUR', 'WEIGH_RESIDUAL', 'RETURN_SCOOP')
+# 붓기 후 계량(WEIGH_RESIDUAL)은 없다 — 실제 공정이 붓기 전 순량을 투입량으로 누적한다(새 저장소 ebce13d).
+ITEM_STEPS = ('PICK_SCOOP', 'SCOOP_TARE', 'SCOOP', 'WEIGH_SCOOP', 'POUR', 'RETURN_SCOOP')
 
 
 class HmiTestProcess(Node):
@@ -501,9 +500,8 @@ class HmiTestProcess(Node):
             self._add('SCOOP', material_st, per_step, index=i)
             self._add('WEIGH_SCOOP', material_st, per_step,
                       done=lambda p=portion: self._weigh_scoop_done(i, p, per_step), index=i)
-            self._add('POUR', 'workbench', per_step, index=i)
-            self._add('WEIGH_RESIDUAL', material_st, per_step,
-                      done=lambda a=attempt, p=portion, b=before, e=last: self._weigh_residual_done(
+            self._add('POUR', 'workbench', per_step,
+                      done=lambda a=attempt, p=portion, b=before, e=last: self._pour_done(
                           i, a, p, b, e, actual, len(portions), overfill), index=i)
             before += portion
         self._add('RETURN_SCOOP', scoop_st, per_step, done=lambda: self._return_scoop_done(i), index=i)
@@ -525,7 +523,7 @@ class HmiTestProcess(Node):
         if self.active_scenario == 'material_empty' and i == 0:
             self._scoop_empty(i, portion, per_step)
             return
-        self._publish_weight(self._scoop_reading(portion + RESIDUAL_G, item.material_id))
+        self._publish_weight(self._scoop_reading(portion, item.material_id))
 
     def _scoop_empty(self, i, portion, per_step):
         """빈 스쿱 — 순중량이 문턱 이하. 3회까지는 같은 스쿱을 자동 재시도, 그다음은 보충 대기 (#287·#111 A안)."""
@@ -554,7 +552,8 @@ class HmiTestProcess(Node):
         self.note = 'REFILL 정지 — 보충 후 EXIT 로 재개'
         self._state()
 
-    def _weigh_residual_done(self, i, attempt, portion, before, last, actual, attempts, overfill):
+    def _pour_done(self, i, attempt, portion, before, last, actual, attempts, overfill):
+        """전량 붓기 끝 — 붓기 전 순량을 투입량으로 누적한다. 잔량은 재지 않는다(실제 process_fsm POUR)."""
         item = self.items[i]
         mid = item.material_id
         if self.active_scenario == 'weigh_invalid' and i == 0 and attempt == 1:
@@ -562,13 +561,11 @@ class HmiTestProcess(Node):
             # 실패한 시도도 ScoopCycle 로 남긴다 — 투입량 0, valid=false (계약 outcome 2).
             self._publish_weight(self._scoop_reading(12.0, mid, valid=False))
             self._cycle(item, 0.0, self._next_cycle_attempt(mid), before, outcome=ScoopCycle.WEIGH_INVALID,
-                        valid=False, net_pre=portion + RESIDUAL_G, net_post=12.0)
-            self._deviation(Deviation.WEIGH_INVALID, 'WEIGH_RESIDUAL · QA · 1회 · 스쿱 계량 무효 반복 시험',
+                        valid=False, net_pre=portion, net_post=12.0)
+            self._deviation(Deviation.WEIGH_INVALID, 'POUR · QA · 1회 · 스쿱 계량 무효 반복 시험',
                             approve=lambda: self._approve_unmeasured(i))
             return
-        self._publish_weight(self._scoop_reading(RESIDUAL_G, mid))
-        self._cycle(item, portion, self._next_cycle_attempt(mid), before,
-                    net_pre=portion + RESIDUAL_G, net_post=RESIDUAL_G)
+        self._cycle(item, portion, self._next_cycle_attempt(mid), before, net_pre=portion, net_post=0.0)
         if not last:
             return
         self.inventory.consume(mid, actual)
@@ -583,7 +580,7 @@ class HmiTestProcess(Node):
         self.pub_result.publish(self.last_result)
         self.items_done += 1
         if overfill:
-            self._deviation(Deviation.OVERFILL, 'WEIGH_RESIDUAL · QA · 1회 · 원료 10% 초과 투입 시험',
+            self._deviation(Deviation.OVERFILL, 'POUR · QA · 1회 · 원료 10% 초과 투입 시험',
                             approve=self._resume_running)
 
     def _approve_unmeasured(self, i):

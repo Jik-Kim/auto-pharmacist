@@ -54,6 +54,7 @@ class WeighingSkills:
         period_s = self._scale_period_s()
         samples = int(p('scale.samples').value)
         settle_s = float(p('scale.settle_s').value)
+        raw_samples, fitted_period_s = [], 0.0
         method = p('scale.method').value
         if method not in ('workpiece', 'tool_force'):
             raise ValueError(f'scale.method는 workpiece 또는 tool_force여야 한다: {method}')
@@ -66,7 +67,7 @@ class WeighingSkills:
                 include_samples=True)
             baseline_mean, baseline_std = raw_mean, raw_std
             if valid_src:
-                raw_mean, raw_std, raw_hf_std, _ = fit_oscillation(raw_samples, period_s)
+                raw_mean, raw_std, raw_hf_std, fitted_period_s = fit_oscillation(raw_samples, period_s)
             else:
                 raw_hf_std = 0.0
         else:
@@ -75,7 +76,7 @@ class WeighingSkills:
                 include_samples=True)
             baseline_mean, baseline_std = raw_mean, raw_std
             if valid_src:
-                raw_mean, raw_std, raw_hf_std, _ = fit_oscillation(raw_samples, period_s)
+                raw_mean, raw_std, raw_hf_std, fitted_period_s = fit_oscillation(raw_samples, period_s)
             else:
                 raw_hf_std = 0.0
         model = WeightModel(ScaleConfig(
@@ -89,6 +90,17 @@ class WeighingSkills:
         model.set_tare(tare_g)
         gross_g, _, net_g, std_g, valid = model.reading(
             raw_mean, raw_std, valid_src, raw_hf_std=raw_hf_std)
+        # 진단만 기록한다. 미채택 후보 잔차는 원시 표본으로 오프라인 재계산하며
+        # 운영 적합 가드·판정·보정값은 바꾸지 않는다.
+        self.ctx.logger().info('[WEIGH_DIAGNOSTIC] ' + json.dumps({
+            'station': station_id, 'subject': subject, 'method': method,
+            'settle_s': settle_s, 'period_s': period_s,
+            'raw_samples': list(raw_samples), 'valid_src': bool(valid_src),
+            'raw_std': baseline_std,
+            'result_std_g': std_g, 'raw_hf_std': raw_hf_std,
+            'fit_applied': fitted_period_s > 0, 'fitted_period_s': fitted_period_s,
+            'valid': bool(valid), 'gain': float(p(f'scale.{subject}.gain').value),
+        }, ensure_ascii=False))
         reading = WeightReading(
             gross_g=gross_g,
             tare_g=tare_g,

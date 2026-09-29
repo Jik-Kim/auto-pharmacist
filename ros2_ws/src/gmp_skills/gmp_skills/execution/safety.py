@@ -9,6 +9,7 @@ import math
 import time
 
 from .context import Job
+from gmp_skills.core.transfer import joints_match
 from gmp_skills.core.recovery import recovery_step, STANDBY
 
 
@@ -69,6 +70,8 @@ class SafetyController:
             self.ctx.state.motion_anchor = None
             self.ctx.state.held_payload = 'unknown'
             self.ctx.state.held_material_id = ''
+            self.ctx.state.resume_grip = None
+            self.ctx.state.resume_grip_ready = False
             self.ctx.state.empty_scoop_force_baseline = None
             self.ctx.state.empty_scoop_baseline_pending = False
             self.ctx.state.scoop_extract_uncertain = True
@@ -200,4 +203,59 @@ class SafetyController:
         self.ctx.state.held_material_id = ''
         self.ctx.state.empty_scoop_force_baseline = None
         self.ctx.state.empty_scoop_baseline_pending = False
+        self.ctx.state.resume_grip_ready = True
         return True
+
+    def _do_restore_grip(self, job: Job):
+        """안전 자세에서 개폐 없이 파지 이력을 복구한다. 불명확한 물체는 거부한다."""
+        state = self.ctx.state
+        saved = state.resume_grip
+        requested = job.args.get('expected_payload', '')
+        material = job.args.get('expected_material_id', '')
+        if requested not in ('', 'empty', 'cup', 'scoop'):
+            raise RuntimeError('잘못된 기대 파지 상태')
+        if (requested == 'scoop' and not material) or (requested != 'scoop' and material):
+            raise RuntimeError('기대 원료는 scoop 기대 시에만 필수다')
+        if not state.resume_grip_ready or saved is None:
+            raise RuntimeError('안전 자세 완료 및 중단 전 파지 이력이 필요하다')
+        if not saved['resumable'] or saved['pending'] or saved['uncertain']:
+            raise RuntimeError('중단 작업/스쿱 인출 결과가 불확실하여 자동 재개할 수 없다')
+        safe = self.ctx.stations.get('safe').extra['posj']
+        if state.station_id != 'safe' or not joints_match(
+                self.ctx.arm.current_posj(), safe, self.ctx.config.joint_tolerance):
+            raise RuntimeError('안전 자세 이탈 — 파지 복구 후 재개 불가')
+        revision = state.safety_revision
+        gripper = self.ctx.gripper
+        if gripper.backend == 'dio':
+            opened = gripper.confirm_open_dio()
+        else:
+            opened = False
+        sensor = gripper.state(self.ctx.now())
+        width = sensor.get('width_mm')
+        if gripper.backend != 'dio':
+            opened = (width is not None and math.isfinite(width)
+                      and abs(width - gripper.open_width_mm) <= gripper.grip_margin_mm
+                      and not sensor.get('grip_inferred', False))
+        if sensor.get('busy', True) or sensor.get('safety_triggered') or sensor.get('slip'):
+            raise RuntimeError('그리퍼 센서 상태가 불확실하여 재개할 수 없다')
+        expected = saved['payload']
+        material_id = ''
+        if opened and expected in ('empty', 'unknown'):
+            payload = 'empty'
+        elif not opened and sensor.get('grip_inferred') and expected in ('cup', 'scoop'):
+            payload = expected
+            if payload == 'scoop':
+                material_id = saved['material_id']
+                if not material_id:
+                    raise RuntimeError('스쿱 원료 이력 없음 — 자동 재개 불가')
+        else:
+            raise RuntimeError('센서와 중단 전 파지 이력이 불일치한다. 물체 확인이 필요하다')
+        if requested and (payload != requested or material_id != material):
+            raise RuntimeError('C의 기대 파지/원료와 복구 상태가 불일치한다')
+        with state.job_lock:
+            if job.cancel or state.stopping.is_set() or state.safety_latched or revision != state.safety_revision:
+                raise RuntimeError('파지 복구 중 취소/안전 상태 변경 — 재개 불가')
+            state.held_payload, state.held_material_id = payload, material_id
+            state.pending_scoop_extract = False
+            state.scoop_extract_uncertain = False
+        return payload, material_id

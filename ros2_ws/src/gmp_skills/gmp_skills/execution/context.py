@@ -58,9 +58,13 @@ class SkillState:
     motion_anchor: MotionAnchor | None = None
     held_payload: str = 'unknown'
     held_material_id: str = ''
+    resume_grip: dict | None = None  # SafePose 직전 이력. 센서 확인 없이 복원하지 않는다.
+    resume_grip_ready: bool = False
     empty_scoop_force_baseline: dict | None = None
     empty_scoop_baseline_pending: bool = False
     return_rescoop_blocked: bool = False
+    returned_material: str = ""  # 반환 전체 성공 후 수납할 원료
+    returned_scoop_stowed: str = ""  # 수납 AT 도착 후 열기 확인 대상
     pending_scoop_extract: bool = False
     scoop_extract_uncertain: bool = False
     nudge_enabled: bool = False

@@ -13,7 +13,7 @@ def test_real_stations_yaml_resolves_every_scoop():
     assert m.scoop_of('A') == 'scoop_1'
     assert m.scoop_of('C') == 'scoop_3'
     assert m.material_of('B') == 'material_2'
-    assert m.widths['A'] == 15.5
+    assert m.widths == {'A': 16.5, 'B': 17.5, 'C': 18.5}
 
 
 def test_unknown_material_says_what_exists():

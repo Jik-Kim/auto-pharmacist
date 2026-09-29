@@ -19,7 +19,7 @@ from rclpy.node import Node
 
 from gmp_interfaces.action import MoveToStation, Pour, ReturnMaterial, Scoop, WeighContainer, WeighHeld
 from gmp_interfaces.msg import CellEvent, WeightReading
-from gmp_interfaces.srv import MeasureForce, RecoverSafety, SafePose, SetGripper
+from gmp_interfaces.srv import MeasureForce, RecoverSafety, RestoreGrip, SafePose, SetGripper
 
 SCOOP_MASS_G = 45.0        # 빈 스쿱
 CUP_MASS_G = 120.0         # 빈 약통
@@ -85,6 +85,7 @@ class FakeSkillNode(Node):
         self.create_service(MeasureForce, 'measure_force', self._measure, callback_group=self.cb)
         self.create_service(SafePose, 'safe_pose', self._safe, callback_group=self.cb)
         self.create_service(RecoverSafety, 'recover_safety', self._recover, callback_group=self.cb)
+        self.create_service(RestoreGrip, 'restore_grip', self._restore_grip, callback_group=self.cb)
 
     def attend(self, proc):
         """반자동 운전의 사람 — process 가 nudge_wait 에서 기다리면 잠시 뒤 건드린다."""
@@ -333,12 +334,18 @@ class FakeSkillNode(Node):
         with self.lock:
             self.calls.append(f'safe:{req.reason}')
             # 진행 중 스킬 1건을 실패로 끝낸다 (skill_node 와 같은 규칙). **도는 스킬이 없으면 남기지 않는다** —
-            # 주문 시작 안전 자세(ORDER_START)처럼 스킬 사이에 부르면 다음 이송이 엉뚱하게 취소된다(9/29)
+            # 주문 시작 안전 자세(BATCH_START)처럼 스킬 사이에 부르면 다음 이송이 엉뚱하게 취소된다(9/29)
             self.cancelled = self.busy > 0
             if self._fails('safe'):          # 안전 자세 이동 실패 (주문 시작 안전 자세 차단 시험용)
                 res.success, res.message = False, '안전 자세 이동 실패'
                 return res
         res.success = True
+        return res
+
+    def _restore_grip(self, req, res):
+        with self.lock:
+            self.calls.append('restore_grip')
+        res.success, res.payload, res.message = True, 'empty', '파지 상태 복구 완료'
         return res
 
     def _recover(self, req, res):

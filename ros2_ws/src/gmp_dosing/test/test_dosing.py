@@ -167,7 +167,7 @@ def test_fit_oscillation_guard_falls_back_on_plain_noise():
     """⚠️ 진동이 없으면 적합하지 않는다 — 안 그러면 잡음을 진동으로 오인해 값이 나빠진다.
 
     9/22 전체 회귀에서 무조건 적용하면 측정 17건 중 10건이 악화하고 전체 25 % 나빠졌다.
-    가드(residual ≤ apply_ratio × 표본 σ) 로 적용률을 11 % 로 낮추니 전체 -15.1 % 가 됐다.
+    상대 가드는 유지하며, 9/29 결정으로 기본 비율을 0.50 으로 완화했다.
     """
     import random
     from gmp_dosing.core.scale import fit_oscillation
@@ -176,7 +176,23 @@ def test_fit_oscillation_guard_falls_back_on_plain_noise():
     value, resid, hf, period = fit_oscillation(s, 0.82)
     assert period == 0.0                     # 적합을 안 썼다는 표시
     assert value == sum(s) / len(s)          # 단순 평균 그대로
+    assert fit_oscillation(s, 0.82, apply_ratio=0.50)[3] == 0.0
     assert fit_oscillation(s, 0.82, apply_ratio=0)[3] == 0.0   # 가드를 꺼도 단순 평균
+
+
+def test_fit_oscillation_default_admits_moderate_swing():
+    """기본 상대 가드 0.50 은 중간 정도 진동을 적합하되, 0.20 은 평균으로 물러난다."""
+    import math
+    import random
+    from gmp_dosing.core.scale import fit_oscillation
+    random.seed(1)
+    s = [100.0 + 12.0 * math.sin(2 * math.pi * 0.82 * i / 15.0)
+         + random.gauss(0, 6) for i in range(32)]
+    conservative = fit_oscillation(s, 0.82, apply_ratio=0.20)
+    default = fit_oscillation(s, 0.82)
+    assert conservative[3] == 0.0
+    assert 14.0 <= default[3] <= 16.0
+    assert default[1] < conservative[1]
 
 
 def test_reading_hf_gate_catches_load_change_but_passes_oscillation():
@@ -358,15 +374,13 @@ def test_fixed_scoop_is_keyword_only():
         DosingConfig(8, 79.0, 0.10, 2, True)
 
 
-# ── 원료별 스쿱 1회량 (9/29 조장 결정: A·C 묶음 / B 별도) ─────────────────────
-# 9/29 현 구성 실측 A 69.3 · B 57.4 · C 67.4 g → 반올림 A·C 69 · B 57 (사용자 결정).
+# ── 원료별 스쿱 1회량: B 원료 높이 조정 뒤 사용자 현행값은 A/B/C 69 g ──
 PER = DosingConfig(max_attempts=8, min_fraction=0.10, fixed_scoop=True,
-                   scoop_nominal_by_material={'A': 69.0, 'B': 57.0, 'C': 69.0})
+                   scoop_nominal_by_material={'A': 69.0, 'B': 69.0, 'C': 69.0})
 
 
 def test_for_material_swaps_in_that_materials_nominal():
-    assert PER.for_material('B').scoop_nominal_g == 57.0
-    assert PER.for_material('A').scoop_nominal_g == PER.for_material('C').scoop_nominal_g == 69.0
+    assert all(PER.for_material(mid).scoop_nominal_g == 69.0 for mid in ('A', 'B', 'C'))
     # 나머지 설정은 그대로 따라간다
     b = PER.for_material('B')
     assert (b.max_attempts, b.min_fraction, b.fixed_scoop) == (8, 0.10, True)
@@ -385,19 +399,13 @@ def test_missing_material_is_an_error_not_a_silent_fallback():
 
 
 def test_per_material_nominal_changes_the_decision():
-    """같은 상태라도 원료의 1회량에 따라 판정이 갈린다 — 이게 원료별 값을 두는 이유다.
-
-    빈 상태(0 g)에서 첫 스쿱:
-      A 목표 69 g ±10 % = 62.1~75.9, A 1회량 69 → 0 + 69 ≤ 75.9 → SCOOP
-      B 목표 57 g ±10 % = 51.3~62.7, B 1회량 57 → 0 + 57 ≤ 62.7 → SCOOP
-      B 목표에 A 값(69)을 잘못 쓰면 0 + 69 > 62.7 → 보충 불가(TIMEOUT)
-    """
-    a = decide(69.0, 0.0, 10.0, 1, True, 0, PER.for_material('A'))
-    b = decide(57.0, 0.0, 10.0, 1, True, 0, PER.for_material('B'))
-    assert (a.action, b.action) == ('SCOOP', 'SCOOP')
-    # B 목표에 A 의 1회량(69)을 잘못 쓰면 0 g 에서도 한 스쿱이 상한 62.7 을 넘어 보충 불가가 된다
-    wrong = decide(57.0, 0.0, 10.0, 1, True, 0, PER.for_material('A'))
-    assert (wrong.action, wrong.kind) == ('DEVIATION', 'TIMEOUT')
+    """운영값이 모두 69 g이어도 원료별 설정 선택 기능은 다른 값으로 검증한다."""
+    example = DosingConfig(max_attempts=8, min_fraction=0.10, fixed_scoop=True,
+                           scoop_nominal_by_material={'A': 69.0, 'B': 80.0})
+    a = decide(69.0, 0.0, 10.0, 1, True, 0, example.for_material('A'))
+    b = decide(69.0, 0.0, 10.0, 1, True, 0, example.for_material('B'))
+    assert a.action == 'SCOOP'
+    assert (b.action, b.kind) == ('DEVIATION', 'TIMEOUT')
 
 
 def test_per_material_values_are_validated():

@@ -7,18 +7,17 @@
 ## 지금 유효한 값
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 계약 | **v1.9** (9/28, **팀 공지·D 승인 대기**) — `RunBatch` 세트 끝 주문 1건 예약, `CellEvent` `ORDER_QUEUED`·`ORDER_DROPPED`. 메시지 정의 무변경. v1.8 — `DispenseResult.verdict` OK/UNDER/OVER/**INVALID=3** | `feat/nudge-wait-order-queue` · PR #241(C 발행) · #240(D 소비), `docs/interfaces.md` |
+| 계약 | **v1.10** RestoreGrip 및 EXIT 복구 성공 후 재개(C 승인). 이전 **v1.9** (9/28, **팀 공지·D 승인 대기**) — `RunBatch` 세트 끝 주문 1건 예약, `CellEvent` `ORDER_QUEUED`·`ORDER_DROPPED`. 메시지 정의 무변경. v1.8 — `DispenseResult.verdict` OK/UNDER/OVER/**INVALID=3** | `feat/nudge-wait-order-queue` · PR #241(C 발행) · #240(D 소비), `docs/interfaces.md` |
 | 세트 끝 주문 | FINISH·폐기 반송·`NUDGE_WAIT` 의 `RunBatch` 주문은 **1건 예약**, 직전 배치가 **넛지(`SET_NEXT`)로 끝나야** 시작. 취소·안전정지·오류로 끝나면 시작 안 함(`ABORTED` + `ORDER_DROPPED`). 예약이 있으면 슬롯이 비어도 새 주문 거부(새치기 방지). `SubmitOrder` 는 종전대로 거부. `ORDER_QUEUED`·`ORDER_DROPPED` 는 **예약 주문 ID** 로 발행(`SET_NEXT` 는 지금 배치). HMI 경로는 D #305 머지·DDS 검증 뒤 — #303 단독은 CLI·별도 클라이언트 범위 | SOT D-23 9/28 · 조장 제기·사용자 결정 A안 |
 | 계량 무효(WEIGH_INVALID) 정책 | `max_invalid_retries` 2(총 3회) — **yaml 값이 아니라 `DosingConfig` 기본값**(`gmp_dosing/core/dosing.py`)이고 `process_node` 는 넘기지 않는다; 카운터는 단계별·유효 시 초기화; 투입 전(TARE·SCOOP_TARE·WEIGH_SCOOP) → **CLEANUP → ERROR**, 투입 후(WEIGH_RESIDUAL·VERIFY) → QA; QA 승인 시 미측정을 기록한다. **어디를 모르는지는 다른 사건이지만 배치 결과에서는 합쳐진다** — `WEIGH_RESIDUAL` 무효는 `ItemRun.unmeasured` → `DispenseResult.verdict=INVALID`(그 원료의 투입량을 모름), `VERIFY` 무효는 `fsm.verify_unmeasured`(배치 최종 순량을 모름). **`RunBatch.result` 는 둘 중 하나만 있어도 `DONE_UNMEASURED`** 이고(9/23 조장 결정), 그때 `CellEvent(WARN, BATCH_UNMEASURED)` 가 같이 나간다 — `DONE_UNMEASURED` 는 `RunBatch.result` 에만 실려 DB 에 닿지 않기 때문이다. ⚠️ **이 이벤트가 최종 `CellState(DONE)` 보다 먼저 간다고 전제하지 말 것** — `_pub_state` 가 0.5 s 타이머로도 돌아 역전될 수 있고, D 가 UPDATE 로 흡수한다 | #213 결정 1~5, PR #225·#227·#241 |
 | 폐기 판정 뒤 상태 | QA 폐기 판정 즉시가 아니라 **넛지 뒤 한 번만** `mode=DONE, step=DISCARDED`. 스쿱 반납·폐기함 반송·넛지 대기 동안은 step `DISCARDED` 그대로 mode `RUNNING`(대기 `PAUSED`) — record_node 가 이 DONE 으로 배치를 닫는다 | `fix/discard-done-at-end` (9/28, D #295), `docs/interfaces.md` CellState 명확화 |
 | VERIFY | ① `\|net − Σtarget\| > Σ(target×tol)` → BATCH_OUT_OF_SPEC 만. ② 는 기록만 | SOT D-26, PR #209 |
 | 원료 소진 | SCOOP_EMPTY 재시도 ×3, **4회째 MATERIAL_EMPTY** → REFILL 인터락. 보충 뒤 재소진도 MATERIAL_EMPTY. **증거가 둘이다** — 접촉(`contact_detected`, **고정 모드에서는 안 본다**)과 순중량(`scooped_g ≤ dosing.empty_scoop_g`, **모드와 무관하게 늘 본다**). 계량 무효는 빈 스쿱이 아니다 — `_invalid_or` 가 먼저 걸러 간다. 일탈 `detail` 에 **어느 증거였는지** 남는다(DB 문자열) | #111 A안 · #282, PR #233·#234·#287 |
 | 첫 SCOOP 깊이 | `max(min_fraction, min(1, 남은 목표 ÷ 그 원료의 1회량))` — 둘째 사이클부터 `decide()` 와 같은 식. **고정 모드면 1.0** | #221 C 몫, PR #224 · #289(A) |
-| 주문 시작 안전 자세 | SELF_CHECK 의 `measure` 뒤 `safe(reason=ORDER_START)` → 성공이면 PICK_CONTAINER. 첫 주문·후속 주문 같은 순서, 후속은 앞 세트 넛지 뒤라 **넛지 대기를 더하지 않는다**. step 은 SELF_CHECK 유지. 다른 `safe` 와 달리 **정지 게이트를 거친다**(`GATED_SAFE_REASONS`). 실패는 SkillError → 인터락 취소면 EXIT 뒤 재시도, 그 외 ERROR — 성공 전 빈 통 이송 없음 | SOT 「주문 시작 준비와 명시적 이동」(9/28) · #298 조장 요청 · A `e103617`(SafePose 가 이동 이력을 비움) |
 | 원료별 1회량 | 노드가 스테이션 이름표의 원료마다 `dosing.scoop_nominal.<원료>` 를 선언(0 = 원료별 값 없음)해 `DosingConfig.scoop_nominal_by_material` 로 넘긴다. FSM 은 1회량을 쓰는 두 곳(첫 깊이, `decide()`)에서 `_cfg()` = `for_material(지금 원료)` 를 쓴다. **값이 빠진 원료의 주문은 `_parse_order` 에서 접수 거부** — 공통값으로 조용히 떨어지지 않는다. 값 자체는 `common.yaml` 참조(B 소관, 규칙 5). yaml 에는 소수점으로 적는다(선언 기본값이 실수) | #313(B) · `feat/per-material-nominal-wiring`(C, 9/29) |
 | 고정 스쿱 모드 | **`dosing.fixed_scoop` 하나**가 네 곳을 움직인다 — `decide()` 의 깊이·보충 판정(**#274**, e301cc9·e62b8da), `_first_fraction()`·`_rescoop_fraction()`·노드 배선(**A #289**), **FSM 의 접촉 우회**(C #287). 무게 그물(`empty_scoop_g`)은 플래그와 무관하게 늘 돈다(#287). 켜면 깊이는 언제나 1.0 | SOT **D-34**(#284) · #282 |
 | 무효 계량 통합 시험 | fake_skill_node 손잡이 없이 `_publish_result` 직접 호출 | PR #225 |
-| 통합 시험 기준선 | gmp_process **234 passed / 8 skipped** (9/29 C 실측, ROS 소싱·도메인 격리 — main `1ade008` + `feat/order-start-safe-pose`, 주문 시작 시험 4건 추가. #314 단독은 230/8). skip 8 은 전부 `test_run_batch_ros.py` 의 **DOMAIN 88 전용** — 88 이 빈 것을 `ros2 node list` 로 보고 따로 돌려 **8/8**. ~~219/8 (9/29 문서 관리가 합산한 추정값, ROS 합본 실측 전)~~ → 위 실측으로 대체. **내 파트 것만 적는다** — 다른 파트 현황은 `practice/<파트>/CURRENT.md` (규칙 5) | ROS 소싱 필수. **숫자로 소싱 누락을 가리지 말 것** — ROS 없이 돌려도 150 passed / 2 skipped 가 나온다(9/25). `python3 -c "import rclpy"` 로 확인한다. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
+| 통합 시험 기준선 | gmp_process **230 passed / 8 skipped** (9/29 C 실측, ROS 소싱·도메인 격리 — main `4f22de5`(#313 까지) + `feat/per-material-nominal-wiring`). skip 8 은 전부 `test_run_batch_ros.py` 의 **DOMAIN 88 전용** — 88 이 빈 것을 `ros2 node list` 로 보고 따로 돌려 **8/8**. ~~219/8 (9/29 문서 관리가 합산한 추정값, ROS 합본 실측 전)~~ → 위 실측으로 대체. **내 파트 것만 적는다** — 다른 파트 현황은 `practice/<파트>/CURRENT.md` (규칙 5) | ROS 소싱 필수. **숫자로 소싱 누락을 가리지 말 것** — ROS 없이 돌려도 150 passed / 2 skipped 가 나온다(9/25). `python3 -c "import rclpy"` 로 확인한다. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
 
 ## 열린 과제 (이슈 번호)
 - #108 본래 주제: `ScoopCycle` 6축 wrench 채울 경로 — 전제(모멘트 = 파지 품질) 근거 부족(노션 9/22), 미정리.
@@ -38,7 +37,6 @@
 - 계량 경로 전체를 태우는 무효 계량 통합 시험(후속). **막힘 해소** — `fake_skill_node` 에 무효 손잡이가 필요해 `test/t6-fault-injection` 과 같은 파일에서 충돌하던 것이, 양쪽 다 머지돼 지금은 가능하다.
 
 ## 알려진 함정
-- **안전 자세 호출 수를 셀 때는 `ORDER_START` 를 뺀다(9/29)** — 주문마다 한 번씩 나가므로 「오류·인터락으로 물러났는가」 단언이 사유 없이 세면 늘 참이 되거나 깨진다(`test_process_node.ORDER_START_SAFE`). fake 의 SafePose 는 **도는 스킬이 있을 때만** 취소를 남긴다 — 스킬 사이에 부르면 다음 이송이 엉뚱하게 취소되던 모사 오류를 고쳤다.
 - **세트 끝 예약은 HMI 가 막고 있다(9/28)** — C 는 받지만 `hmi.js canStartOrder` 가 `NUDGE_WAIT` 에서 버튼을 끄고, `hmi_web_node` 가 「물리적 완료 확인 대기」로 거부하며, 진행 중 goal 을 **하나만** 추적한다(예약 goal 이 덮으면 취소가 엉뚱한 배치로 간다). D 가 고치기 전에는 현장 동작이 그대로다 — C 쪽 머지는 그래서 안전하다. 예약 goal 은 **시작 전 피드백이 없다**(사유는 `CellState.note`).
 - **깊이를 내는 곳이 셋이다** — 첫 스쿱(`_first_fraction`) · 보충(`decide()`) · **반환 뒤 재스쿱(`_rescoop_fraction`)**. 깊이 규칙을 바꿀 때는 셋 다 본다. 내가 앞 둘만 고쳤다가 셋째에서 0.1 대 값이 그대로 나가는 것을 시험이 잡았다. 셋의 출처가 다르다 — 보충(`decide()`)은 #274, 첫·재스쿱은 A #289.
 - **FSM 을 바꾸면 「C FSM 이 이렇게 한다」고 적은 문서가 다섯 곳이다** — `docs/process_flow.md`(번역·상태 표), `docs/architecture.md`(6단계 표), `docs/interfaces.md`(9/23 고정 경로 운용 주석), `docs/setup.md`·`docs/SOT.md`(「B/C 인계」 2번, 같은 문단 두 벌), 그리고 `tools/make_process_drawio.py` 라벨 → `docs/diagrams/process_flow.drawio` 재생성. #287 첫 판이 코드와 CURRENT 만 고치고 이걸 다 놓쳐 정합성 점검에 걸렸다(9/25 보완). `grep -rn "contact_detected\|TAUGHT_FIXED" docs tools` 로 훑는다.
@@ -66,3 +64,11 @@
 - 2026-09-23 ~~미측정 원료 verdict 되매김 UNDER(임시)~~ → INVALID=3 (v1.8). PR #241.
 - 2026-09-22 ~~미측정 원료 verdict 빈 값 → 'OK' 폴백~~ → verdict_of 되매김 UNDER + WARN DISPENSE_UNMEASURED. PR #225.
 - 2026-09-22 ~~RULES['WEIGH_INVALID'] (2,'RETRY','QA')~~ → (0,'QA','QA'), 재계량은 max_invalid_retries 전담. #213 결정 1.
+
+## 인터락 재개 시 파지 상태 복구 (2026-09-29, C 승인)
+
+`ENTER → SafePose 완료 → EXIT → RestoreGrip 성공 → 재개 승인` 순서입니다. 새 `/cell/restore_grip` 서비스는 센서와 중단 전 이력으로 파지 상태만 복구하며 이동·개폐 명령을 보내지 않습니다. 복구 실패·시간 초과·새 안전 정지 시 재개하지 않습니다. 실행 중 배치는 루프가 EXIT를 소비하며, 실행 루프 없는 수동 시험은 EXIT 성공 시 대기를 해제합니다. 스쿠핑·붓기·파지 등 불확실한 중단은 자동 복구 대상에서 제외합니다. 계량 기준선은 복구하지 않습니다. 계약은 [interfaces.md](../../docs/interfaces.md) v1.10을 따릅니다. 새 서비스 사용 전 gmp_interfaces·gmp_skills·gmp_process 재빌드와 bringup 재시작이 필요합니다. 실물 검증은 아직 하지 않았습니다.
+
+## 주문 경계 안전 자세 연결 (2026-09-29 사용자 승인)
+
+시작은 SELF_CHECK의 SafePose 성공 → RestoreGrip(empty) 확인 → 외력 자가진단 → 빈 통 파지 순서입니다. 세트 끝은 넛지 대기 → 실제 넛지 → SafePose 성공 → DONE 및 다음 주문 대기입니다. 안전 자세/빈 그리퍼 확인 실패 시 다음 단계로 진행하지 않습니다. C 변경을 사용자가 승인했습니다. 실물 시험 결과는 별도 기록합니다.

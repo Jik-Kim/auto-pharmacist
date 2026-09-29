@@ -35,8 +35,8 @@ class DosingConfig:
     scoop_nominal_by_material: dict = field(default_factory=dict, kw_only=True)
     """원료별 스쿱 1회 투입량 [g] — 비어 있으면 모든 원료가 `scoop_nominal_g` 하나를 쓴다(종전 동작).
 
-    9/29 실측(현 구성: 마찰테이프·손잡이 16.5/17.5/18.5 mm)에서 원료통 B 만 경사·높이가 달라
-    A 69 · B 57 · C 67 g 이 나왔고 조장이 **A·C 묶음 / B 별도**로 정했다. 값을 채우면
+    9/29 높이 조정 전 실측에서 B는 약 57 g이었으나, 사용자 현행값은 A/B/C 모두 69 g이다.
+    원료별 값을 채우면
     `for_material()` 이 그 원료 값으로 바꾼 설정을 낸다 — `decide()` 는 설정만 받으므로 손대지 않는다.
     """
 

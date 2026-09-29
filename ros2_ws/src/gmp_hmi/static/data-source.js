@@ -36,13 +36,13 @@ class HttpSource {
  batchUrl(id){return '/batch/'+encodeURIComponent(id)+'/download'}
 }
 const RECIPES=[
- {name:'recipe-01',product:'레시피 1',items:[['A',69],['B',57],['C',69]]},
- {name:'recipe-02',product:'레시피 2',items:[['A',138],['B',57]]},
- {name:'recipe-03',product:'레시피 3',items:[['A',69],['B',57],['C',138]]},
-].map(r=>({...r,total_g:r.items.reduce((sum,item)=>sum+item[1],0),items:r.items.map(([material_id,target_g])=>({material_id,target_g,tol_pct:10}))}));
+ {name:'recipe-01',product:'레시피 1',items:[['A',69],['B',69],['C',69]]},
+ {name:'recipe-02',product:'레시피 2',items:[['A',138],['B',69]]},
+ {name:'recipe-03',product:'레시피 3',items:[['A',69],['B',69],['C',138]]},
+].map(r=>({...r,total_g:r.items.reduce((sum,item)=>sum+item[1],0),items:r.items.map(([material_id,target_g])=>({material_id,target_g,tol_pct:15}))}));
 const RECIPE=RECIPES[0];
 // 원료별 스쿱 1회량(#306) — 데모 시도 횟수만 만든다. 운영값은 common.yaml dosing.scoop_nominal.
-const SCOOP_NOMINAL={A:69,B:57,C:69};
+const SCOOP_NOMINAL={A:69,B:69,C:69};
 class DemoSource {
  constructor(){this.demo=true;this.recipes=RECIPES.map(r=>r.name);this.recipeCache=copy(RECIPES);this.user={username:'DEMO-ADMIN',role:'admin',active:true};this.demoUsers=[this.user];this.reset('qa');}
  async catalog(){return this.recipes;}
@@ -54,9 +54,9 @@ class DemoSource {
   if(!['idle','empty','low_grams','height_low'].includes(scenario)){
    this.startBatch('B-001','OP-01');
    if(scenario==='qa'){
-    this.elapsed=18;this.addResult(0,69);this.addResult(1,66);this.state={...this.state,mode:'DEVIATION',step:'WEIGH_RESIDUAL',item_index:1,note:'원료 B 과다 투입 · QA 판정을 기다립니다.'};
-    this.weights=[{t:now(),net_g:66,gross_g:81,tare_g:15,std_g:.4,valid:true,station:'workbench',subject:'scoop',samples:30}];
-    this.pending=[{deviation_id:'DEV-001',batch_id:'B-001',material_id:'B',kind:'OVERFILL',detail:'목표 57g / 실측 66g. 과다 투입분을 포함해 원료 B 66g이 차감되었습니다.',requires_decision:true,decision:'PENDING',t:now()}];
+    this.elapsed=18;this.addResult(0,69);this.addResult(1,90);this.state={...this.state,mode:'DEVIATION',step:'POUR',item_index:1,note:'원료 B 과다 투입 · QA 판정을 기다립니다.'};
+    this.weights=[{t:now(),net_g:90,gross_g:105,tare_g:15,std_g:.4,valid:true,station:'workbench',subject:'scoop',samples:30}];
+    this.pending=[{deviation_id:'DEV-001',batch_id:'B-001',material_id:'B',kind:'OVERFILL',detail:'목표 69g / 실측 90g. 과다 투입분을 포함해 원료 B 90g이 차감되었습니다.',requires_decision:true,decision:'PENDING',t:now()}];
    }else{
     this.elapsed=10;this.updateProcess();
     if(scenario==='error')this.finish('ERROR','파지 재시도 한도 초과 · 담당자 확인 필요');
@@ -91,7 +91,7 @@ class DemoSource {
   for(let i=0;i<items.length;i++)if(this.elapsed>=i*9+7)this.addResult(i,items[i].target_g);
   if(this.elapsed>=endAt){this.finish('DONE',items.map(it=>it.material_id).join(' · ')+' 분주 및 최종 검증 완료. 다음 주문을 제출할 수 있습니다.');return;}
   if(this.elapsed>=finishStart){this.state.step=this.elapsed<finishStart+5?'VERIFY':'FINISH';this.state.station=this.elapsed<finishStart+5?'workbench':'passbox_done';this.state.item_index=items.length-1;this.state.note=this.elapsed<finishStart+5?'최종 계량 확인 중':'완성 용기를 배출 트레이로 이동 중';}
-  else{const i=Math.floor(this.elapsed/9),phase=this.elapsed%9,id=items[i].material_id,n=id.charCodeAt(0)-64;this.state.item_index=i;this.state.step=phase<2?'PICK_SCOOP':phase<3?'SCOOP_TARE':phase<4?'SCOOP':phase<5?'WEIGH_SCOOP':phase<6?'POUR':phase<7?'WEIGH_RESIDUAL':'RETURN_SCOOP';this.state.station=phase<2||phase>=7?'scoop_'+n:phase<4?'material_'+n:'workbench';this.state.note=`원료 ${id} 처리 중 · 데모는 약 ${endAt}초에 완료됩니다.`;}
+  else{const i=Math.floor(this.elapsed/9),phase=this.elapsed%9,id=items[i].material_id,n=id.charCodeAt(0)-64;this.state.item_index=i;this.state.step=phase<2?'PICK_SCOOP':phase<3?'SCOOP_TARE':phase<4?'SCOOP':phase<5?'WEIGH_SCOOP':phase<7?'POUR':'RETURN_SCOOP';this.state.station=phase<2||phase>=7?'scoop_'+n:phase<4?'material_'+n:'workbench';this.state.note=`원료 ${id} 처리 중 · 데모는 약 ${endAt}초에 완료됩니다.`;}
   const slot=Math.floor(this.elapsed*2);if(slot!==this.lastSample){this.lastSample=slot;const target=this.elapsed>=finishStart?this.results.reduce((sum,r)=>sum+r.actual_g,0):items[this.state.item_index].target_g,net=Math.round((target+Math.sin(this.elapsed*2)*.3)*10)/10;this.weights.push({t:now(),net_g:net,gross_g:net+15,tare_g:15,std_g:.4,valid:true,station:this.state.station,subject:this.elapsed>=finishStart?'container':'scoop',samples:30});this.weights=this.weights.slice(-100);}
  }
  advance(){const t=now(),dt=Math.max(0,t-this.lastTick);this.lastTick=t;if(this.discardAt!==null){if(this.state.mode==='PAUSED'||this.scenario==='offline'||this.heightBlocked().length)this.discardAt+=dt;else if(t>=this.discardAt)this.finish('DISCARDED','QA 폐기 작업 완료 · 사용한 원료는 재고로 복원하지 않습니다.');}else if(this.state.mode==='RUNNING'&&this.scenario!=='offline'){if(this.heightBlocked().length)this.holdHeight();else{this.elapsed+=dt;this.updateProcess();}}this.sync();}

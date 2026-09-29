@@ -35,7 +35,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile
 from gmp_interfaces.action import MoveToStation, Pour, ReturnMaterial, RunBatch, Scoop, WeighContainer, WeighHeld
 from gmp_interfaces.msg import (CellEvent, CellState, Deviation, DispenseResult, ScoopCycle,
                                 WeightReading)
-from gmp_interfaces.srv import (InterlockRequest, MeasureForce, QaDecision, RecoverSafety, SafePose,
+from gmp_interfaces.srv import (InterlockRequest, MeasureForce, QaDecision, RecoverSafety, RestoreGrip, SafePose,
                                 SetGripper, SubmitOrder)
 
 from gmp_dosing.core.dosing import DosingConfig, verdict_of
@@ -55,7 +55,7 @@ HUMAN_WAITS = ('wait_qa', 'wait_interlock', 'wait_nudge')
 GATE_BYPASS = HUMAN_WAITS + ('safe',)
 # 단, **주문 시작 안전 자세**는 물러나는 이동이 아니라 배치의 첫 이동이다 — NUDGE·인터락 정지 중에는
 # 움직이지 않고 게이트에서 기다린다 (9/28 #298 조장 요청, SOT 「주문 시작 준비와 명시적 이동」)
-GATED_SAFE_REASONS = ('ORDER_START',)
+GATED_SAFE_REASONS = ('BATCH_START',)
 
 # 일탈 → ScoopCycle.outcome. 시도가 실패로 끝난 것만 여기 있다 (OVERFILL·TIMEOUT 은 시도 자체는 끝났다)
 DEV_TO_OUTCOME = {'SCOOP_EMPTY': 'SCOOP_EMPTY', 'MATERIAL_EMPTY': 'SCOOP_EMPTY',
@@ -91,7 +91,7 @@ class ProcessNode(Node):
             # 선언 기본값은 운영값(common.yaml)과 같게 둔다 — 종전 0.5 는 운영 0.1 과 달라, 런치 없이 띄운
             # 노드가 운영보다 5배 느슨한 검사로 돌았다 (D-35 대조, 9/25 팀장 지적).
             ('scale.zero_drift_limit_n', 0.1),
-            ('scale.samples', 20), ('scale.settle_s', 1.0),
+            ('scale.samples', 20), ('scale.settle_s', 10.0),
             # max_attempts 는 **붓기 시도** 상한이다. 목표량÷스쿱 1회량에 비례해야 한다
             # (옛 데모 A 200 g ÷ 40 g = 5회가 하한이었다). max_returns 는 **초과 반환** 상한으로 성격이 다르다 (#189).
             ('dosing.max_attempts', 8), ('dosing.max_returns', 3),
@@ -158,6 +158,7 @@ class ProcessNode(Node):
             'measure': self.create_client(MeasureForce, 'measure_force', callback_group=self.cb),
             'safe': self.create_client(SafePose, 'safe_pose', callback_group=self.cb),
             'recover': self.create_client(RecoverSafety, 'recover_safety', callback_group=self.cb),
+            'restore_grip': self.create_client(RestoreGrip, 'restore_grip', callback_group=self.cb),
         }
 
         self.fsm: ProcessFSM | None = None
@@ -166,6 +167,9 @@ class ProcessNode(Node):
         self.note = ''
         self._qa = threading.Event(); self._qa_decision = None; self._qa_operator = ''
         self._interlock_exit = threading.Event()
+        self._interlock_request_lock = threading.Lock()
+        self._interlock_ready = False
+        self._interlock_revision = 0
         self._pause = False          # 인터락 ENTER 가 세운다. **루프만 내린다** — EXIT 핸들러가 내리면
                                      # 취소된 스킬이 돌아오기 전에 풀려 그 실패가 진짜 실패로 읽힌다
         self._nudge_paused = False   # 사람 접촉으로 멈춤 (D-21). 다음 NUDGE 가 내린다
@@ -281,6 +285,8 @@ class ProcessNode(Node):
         with self._order_lock, self._safety_event_lock:
             self._safety_events.stop(data)
             self._safety_stop = True
+            self._interlock_revision += 1
+            self._interlock_ready = False
             if getattr(self, '_reserved', False):
                 self._batch_safety_stop.set()
             self._safety_stop_reason = reason
@@ -670,8 +676,21 @@ class ProcessNode(Node):
         return res
 
     def _srv_interlock(self, req, res):
+        # ENTER가 안전 자세를 기다리는 중에는 EXIT/중복 ENTER를 성공 처리하지 않는다.
+        if not self._interlock_request_lock.acquire(blocking=False):
+            res.granted, res.message = False, '인터락 요청 처리 중 — 완료 후 다시 요청하세요'
+            return res
+        try:
+            return self._handle_interlock(req, res)
+        finally:
+            self._interlock_request_lock.release()
+
+    def _handle_interlock(self, req, res):
+        if req.request not in (InterlockRequest.Request.ENTER, InterlockRequest.Request.EXIT):
+            res.granted, res.message = False, '잘못된 인터락 요청'
+            return res
         if req.request == InterlockRequest.Request.ENTER:
-            if self._pause or (self.fsm and self.fsm.mode == 'PAUSED' and not self._nudge_paused
+            if (self._pause and self._interlock_ready) or (not self._pause and self.fsm and self.fsm.mode == 'PAUSED' and not self._nudge_paused
                                and not self._nudge_waiting):
                 # 이미 **안전 자세로 가서** 기다리는 중 (REFILL 대기 또는 앞선 ENTER). safe_pose 를 다시 부르거나
                 # _interlock_exit 를 다시 지우면 EXIT 를 두 번 눌러야 풀린다 — 멱등하게 받는다.
@@ -695,18 +714,24 @@ class ProcessNode(Node):
             # 진행 중인 스킬을 취소하는 것은 skill_node 다 (SafePose 계약: 대기 Job 은 버리고 진행 Job 에 cancel).
             # 그래서 그 스킬은 success=false 로 돌아오고, 루프가 _pause 를 보고 실패가 아니라 취소로 읽는다.
             self._pause = True
+            self._interlock_ready = False
+            self._interlock_revision += 1
+            revision = self._interlock_revision
             self._interlock_exit.clear()
             try:
                 out = self._call_srv('safe', SafePose.Request(reason=req.reason or 'INTERLOCK'))
                 res.granted = bool(out.success)
                 res.message = out.message or 'safe pose'
             except SkillError as e:
-                self._pause = False
                 res.granted, res.message = False, str(e)
                 return res
             if not res.granted:
-                self._pause = False
                 return res
+            with self._safety_event_lock:
+                if self._safety_stop or revision != self._interlock_revision:
+                    res.granted, res.message = False, '안전 자세 이동 중 안전 상태 변경 — 진입 불가'
+                    return res
+                self._interlock_ready = True
             # 여기서 바로 PAUSED 로 올린다 — 루프가 취소된 스킬을 받아 PAUSED 를 세우기까지의 틈에
             # EXIT 가 들어오면 아래 게이트에 걸려 무시되고, 그러면 영영 안 깨어난다.
             # 단, QA 대기(DEVIATION) 중이면 덮지 않는다 — _srv_qa 가 mode==DEVIATION 만 받으므로 덮으면
@@ -723,9 +748,39 @@ class ProcessNode(Node):
             # mode==PAUSED 로 가르면 안 된다 — NUDGE 정지도 PAUSED 라서 그때 눌린 EXIT 가 신호로 남는다
             res.granted, res.message = True, '대기 중이 아니다 (무시)'
             return res
-        self._interlock_exit.set()
+        if (not (self._interlock_ready or self._refill_waiting)
+                or self._safety_stop or self._execution_uncertain or self._stop.is_set()):
+            res.granted, res.message = False, '안전 자세/실행 상태 미확인 — 재개 불가'
+            return res
+        if getattr(self, '_active_request_kind', None) == 'carry':
+            res.granted, res.message = False, '복합 용기 반송 중단 — 중복 파지 방지를 위해 자동 재개 불가'
+            return res
+        revision = self._interlock_revision
+        try:
+            restored = self._call_srv('restore_grip', RestoreGrip.Request())
+        except SkillError as e:
+            res.granted, res.message = False, f'파지 복구 응답 미확인 — 재개 불가: {e}'
+            return res
+        if not restored.success:
+            res.granted, res.message = False, f'파지 복구 실패 — 재개 불가: {restored.message}'
+            return res
+        with self._safety_event_lock:
+            if (self._safety_stop or revision != self._interlock_revision
+                    or self._stop.is_set() or self._batch_cancel.is_set()):
+                res.granted, res.message = False, '파지 복구 중 취소/안전 상태 변경 — 재개 불가'
+                return res
+            # 실행 루프가 없으면 이후 주문에 EXIT 신호가 남지 않게 즉시 해제한다.
+            if ((self._thread is None or not self._thread.is_alive())
+                    and (self.fsm is None or self.fsm.mode in ('IDLE', 'DONE', 'ERROR'))):
+                self._pause = False
+                self._interlock_exit.clear()
+                self.note = ''
+            else:
+                self._interlock_exit.set()
+            self._interlock_ready = False
         self.event('INFO', 'INTERLOCK_EXIT', req.reason)
-        res.granted, res.message = True, 'resume'
+        self._pub_state()
+        res.granted, res.message = True, f'파지 상태 복구 완료 — 재개 가능 ({restored.payload})'
         return res
 
     def _srv_recover_safety(self, req, res):
@@ -752,12 +807,12 @@ class ProcessNode(Node):
 
     # ── 스킬 호출 ─────────────────────────────────────────────────────
     def _call_srv(self, key: str, request):
-        if key not in ('safe', 'recover'):
+        if key not in ('safe', 'recover', 'restore_grip'):
             self._check_batch_interrupt()
         cli = self.srv[key]
         if not cli.wait_for_service(timeout_sec=float(self.p('server_wait_s'))):
             raise SkillError(f'{key} 서비스 없음')
-        if key not in ('safe', 'recover'):
+        if key not in ('safe', 'recover', 'restore_grip'):
             self._check_batch_interrupt()
         try:
             return self._wait(cli.call_async(request), float(self.p('skill_timeout_s')), key)
@@ -847,28 +902,36 @@ class ProcessNode(Node):
 
     def _station_of(self, req: dict) -> str:
         s = req.get('station', '')
-        return self.smap.scoop_of(req['material_id']) if s == 'scoop' else s
+        if s == 'scoop':
+            return self.smap.scoop_of(req['material_id'])
+        if s == 'material':
+            return self.smap.material_of(req['material_id'])
+        return s
 
     # ── 요청 실행 ─────────────────────────────────────────────────────
     def _execute(self, req: dict) -> dict:
         """정지가 걸려 있으면 풀릴 때까지 멈춘다 (게이트 하나로 NUDGE·인터락을 같이 본다).
 
         인터락이 스킬을 끊어 실패했으면 **같은 요청을 처음부터 다시** 부른다 — 부분 실행은 버린다
-        (`carry` 중간이었다면 접근점부터). 취소가 안 걸리고 그냥 끝났으면 **결과를 FSM 에 넘긴 뒤** 다음
+        (복합 `carry`는 EXIT 재개를 차단한다). 취소가 안 걸리고 그냥 끝났으면 **결과를 FSM 에 넘긴 뒤** 다음
         로봇 동작 요청 앞(_run_loop 의 게이트)에서 멈춘다 — 여기서 먼저 멈추면 FSM 이 `safe` 를 내야 하는
         상황(원료 소진·강제 개입)에서도 결정을 못 하고 서 버린다.
         """
-        while True:
-            self._check_batch_interrupt()
-            try:
-                res = self._dispatch(req)
-            except SkillError as e:
+        self._active_request_kind = req['kind']
+        try:
+            while True:
                 self._check_batch_interrupt()
-                if self._execution_uncertain or not self._pause:
-                    raise                          # 진짜 실패 — 루프가 FORCE_LIMIT 으로 보낸다
-                self._gate(f'스킬 중단: {e}')
-                continue                           # 같은 요청을 다시
-            return res                             # 정지는 다음 요청 앞의 게이트가 잡는다
+                try:
+                    res = self._dispatch(req)
+                except SkillError as e:
+                    self._check_batch_interrupt()
+                    if self._execution_uncertain or not self._pause:
+                        raise                          # 진짜 실패 — 루프가 FORCE_LIMIT 으로 보낸다
+                    self._gate(f'스킬 중단: {e}')
+                    continue                           # 같은 요청을 다시
+                return res                             # 정지는 다음 요청 앞의 게이트가 잡는다
+        finally:
+            self._active_request_kind = None
 
     def _dispatch(self, req: dict) -> dict:
         k = req['kind']
@@ -927,11 +990,12 @@ class ProcessNode(Node):
         if k == 'safe':
             reason = req.get('reason', '')
             r = self._call_srv('safe', SafePose.Request(reason=reason))
-            if reason in GATED_SAFE_REASONS:
-                # 주문 시작 안전 자세가 실패하면 빈 통을 잡으러 가면 안 된다. 예외로 올려야 `_execute` 가
-                # 인터락 ENTER 가 끊은 경우(EXIT 뒤 같은 요청 재시도)와 진짜 실패(루프가 ERROR)를 가른다 —
-                # 성공 여부를 결과로만 돌려주면 둘 다 FSM 에서 ERROR 가 된다.
-                self._check('safe', r.success, r.message or '주문 시작 안전 자세 실패')
+            self._check('safe_pose', r.success, r.message)
+            self.station = 'safe'
+            if reason == 'BATCH_START':
+                restored = self._call_srv('restore_grip', RestoreGrip.Request(
+                    expected_payload='empty', expected_material_id=''))
+                self._check('restore_grip', restored.success, restored.message)
             if r.success and req.get('then') == 'wait_interlock':
                 # 성공 후 즉시 EXIT를 받을 준비를 한다. 다음 dispatch까지의 틈에도 유지한다.
                 self._refill_waiting = True
@@ -1161,8 +1225,12 @@ class ProcessNode(Node):
             a.insertion_depth_mm = float(res.get('insertion_depth_mm', 0.0))
         elif step == 'WEIGH_SCOOP' and a is not None and res.get('valid'):
             a.pre_pour = Reading(**res)
-        elif step == 'WEIGH_RESIDUAL' and a is not None and res.get('valid'):
-            a.post_pour = Reading(**res)
+        elif step == 'POUR' and req['kind'] == 'pour' and a is not None and res.get('success'):
+            # 잔량 실측은 없다. 기존 학습 계약의 post_pour/valid를 위조하지 않는다.
+            a._extra['pour_completed'] = True
+            self.event('INFO', 'POUR_ESTIMATE',
+                       f'{a.material_id} attempt={a.attempt}: 전량 붓기 가정 추정 투입량 '
+                       f'{self.fsm.cur.scooped_g:.3f} g (붓기 후 잔량 미측정)')
         elif step == 'RETURN_MATERIAL' and req['kind'] == 'return_material' and a is not None:
             # 반환 성공 뒤에만 닫는다. 실패는 _drain에서 RETURN_FAILED로 기록한다.
             self._close_attempt('RETURNED')
@@ -1186,7 +1254,7 @@ class ProcessNode(Node):
             self._close_attempt('RETURN_FAILED')
         elif outcome:
             self._close_attempt(outcome)
-        elif self._attempt is not None and self._attempt.post_pour is not None:
+        elif self._attempt is not None and self._attempt._extra.get('pour_completed'):
             self._close_attempt('COMPLETE')
 
         for r in fsm.results[self._published_results:]:

@@ -201,7 +201,7 @@ def test_joint_cancel_never_descends(motion):
 def test_scoop_return_uses_side_insertion_then_release_lift(motion):
     node, job, calls, state, module = motion
     node._held_payload, node._held_material_id = 'scoop', 'A'
-    state.update(grip_inferred=True, width_mm=15.5)
+    state.update(grip_inferred=True, width_mm=16.5)
     job.args.update(station_id='scoop_1')
     node._do_move(job)
     assert [c[1][:3] for c in calls] == [[298,-142,150], [298,-142,50], [298,-292,50]]
@@ -386,3 +386,92 @@ def test_failed_explicit_safe_does_not_start_container_approach(motion):
         node._do_safe(module.Job('safe', {'reason': 'ORDER_START'}))
     assert not calls
     assert node._motion_anchor is None
+
+
+@pytest.mark.parametrize('material,index', [('A', 1), ('B', 2), ('C', 3)])
+@pytest.mark.parametrize('released', [True, False])
+def test_returned_material_stows_via_drl_return_entry(motion, material, index, released):
+    node, job, calls, state, module = motion
+    node._held_payload, node._held_material_id = 'scoop', material
+    state.update(grip_inferred=True)
+    node._return_rescoop_blocked = True
+    node._returned_material = material
+    source = node.stations.for_material(material)
+    scoop = node.stations.get(f'scoop_{index}')
+    node.arm.joints[:] = source.extra['return_end_posj']
+    job.args.update(station_id=scoop.station_id)
+    node._do_move(job)
+    assert [c[1] for c in calls] == [source.posx, scoop.extra['return_entry_posx'],
+        [*scoop.extra['return_entry_posx'][:2], scoop.extra['return_entry_posx'][2] - 100,
+         *scoop.extra['return_entry_posx'][3:]], scoop.posx]
+    assert calls[-1][1] == scoop.posx
+    assert node._return_rescoop_blocked
+    node.gripper.release = lambda _: released
+    node.gripper.width_mm = lambda: None
+    node._do_grip(module.Job('grip', dict(close=False, timeout_s=3)))
+    assert node._return_rescoop_blocked is (not released)
+
+
+@pytest.mark.parametrize('failure_step', range(1, 5))
+def test_return_stow_failure_keeps_guard(motion, failure_step):
+    node, job, calls, state, _ = motion
+    node._held_payload, node._held_material_id = 'scoop', 'A'
+    state.update(grip_inferred=True)
+    node._return_rescoop_blocked = True
+    node._returned_material = 'A'
+    node.arm.joints[:] = node.stations.for_material('A').extra['return_end_posj']
+    job.args.update(station_id='scoop_1')
+    def fail():
+        if len(calls) == failure_step:
+            raise RuntimeError('motion failed')
+    node.after_move = fail
+    with pytest.raises(RuntimeError):
+        node._do_move(job)
+    assert len(calls) == failure_step
+    assert node._return_rescoop_blocked
+    assert not node._returned_material
+    assert not node._returned_scoop_stowed
+
+
+@pytest.mark.parametrize('bad', ['failed_return', 'different_material', 'wrong_pose'])
+def test_return_stow_rejects_unconfirmed_start(motion, bad):
+    node, job, calls, state, _ = motion
+    node._held_payload, node._held_material_id = 'scoop', 'A'
+    state.update(grip_inferred=True)
+    node._return_rescoop_blocked = True
+    node._returned_material = {'failed_return': '', 'different_material': 'B', 'wrong_pose': 'A'}[bad]
+    job.args.update(station_id='scoop_1')
+    with pytest.raises(RuntimeError):
+        node._do_move(job)
+    assert not calls
+    assert node._return_rescoop_blocked
+
+
+@pytest.mark.parametrize('failure', ['release', 'retreat', 'cancel', 'pose_changed'])
+def test_stow_does_not_clear_guard_on_incomplete_release(motion, failure):
+    node, job, calls, state, module = motion
+    node._held_payload, node._held_material_id = 'scoop', 'A'
+    state.update(grip_inferred=True)
+    node._return_rescoop_blocked = True
+    node._returned_material = 'A'
+    node.arm.joints[:] = node.stations.for_material('A').extra['return_end_posj']
+    job.args.update(station_id='scoop_1')
+    node._do_move(job)
+    release = module.Job('grip', dict(close=False, timeout_s=3))
+    node.gripper.width_mm = lambda: None
+    def open_grip(_):
+        if failure == 'release':
+            raise RuntimeError('release failed')
+        if failure == 'cancel':
+            release.cancel = True
+        return True
+    node.gripper.release = open_grip
+    if failure == 'retreat':
+        def fail(*args, **kwargs):
+            raise RuntimeError('retreat failed')
+        node.arm.movel_cancellable = fail
+    if failure == 'pose_changed':
+        node.arm.pose[0] += 20
+    with pytest.raises(RuntimeError):
+        node._do_grip(release)
+    assert node._return_rescoop_blocked

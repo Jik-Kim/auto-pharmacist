@@ -1,3 +1,4 @@
+# EXIT 는 RestoreGrip 성공 후에만 재개 승인. 실패 시 대기를 유지한다.
 # HMI → process_node. ENTER 는 로봇이 안전 자세에 도달한 뒤에야 granted=true
 uint8 request           # 아래 상수
 string reason           # "REFILL"(보충, 개입 아님) | "RECOVERY"(수습, 강제 개입) | 자유 문장
