@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import yaml
 
 from gmp_dosing.core.dosing import DosingConfig, decide, verdict_of
@@ -419,3 +420,14 @@ def test_per_material_values_are_keyword_only():
     import pytest
     with pytest.raises(TypeError):
         DosingConfig(8, 69.0, 0.10, 2, {'A': 69.0})
+
+
+def test_scoop_tare_bias_by_material_defaults_to_zero_and_rejects_bad_values():
+    """9/29 빈 스쿱 계량 편향 — 원료별 경험 보정. 없으면 0, 비유한·비숫자는 거부."""
+    cfg = DosingConfig(scoop_tare_bias_by_material={'A': 12.5, 'B': 18.0})
+    assert cfg.scoop_tare_bias('A') == 12.5 and cfg.scoop_tare_bias('C') == 0.0
+    assert DosingConfig().scoop_tare_bias('A') == 0.0
+    assert cfg.for_material('A').scoop_tare_bias('B') == 18.0          # 원료별 1회량 치환 뒤에도 유지
+    for bad in ({'A': float('nan')}, {'A': float('inf')}, {'A': True}, {'': 1.0}):
+        with pytest.raises(ValueError):
+            DosingConfig(scoop_tare_bias_by_material=bad)

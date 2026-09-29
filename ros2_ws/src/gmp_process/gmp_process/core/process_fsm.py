@@ -315,7 +315,8 @@ class ProcessFSM:
             r = self._invalid_or(res, 'SCOOP_TARE', req)
             if r is not None:
                 return r
-            self.cur.scoop_tare_g = res.get('gross_g', 0.0)
+            # 빈 스쿱은 퍼낸 뒤보다 무겁게 읽힌다(9/29 실측) — 원료별 경험 편향을 빼서 tare 로 쓴다
+            self.cur.scoop_tare_g = res.get('gross_g', 0.0) - self.dosing_cfg.scoop_tare_bias(self.cur.material_id)
             self.state = 'SCOOP'
             return self._scoop(self._first_fraction())
         if k == 'scoop' and st == 'SCOOP':

@@ -124,7 +124,8 @@ class ProcessNode(Node):
                                        scoop_nominal_g=p('dosing.scoop_nominal_g'),
                                        min_fraction=p('dosing.min_fraction'),
                                        fixed_scoop=p('dosing.fixed_scoop'),
-                                       scoop_nominal_by_material=self._scoop_nominals())
+                                       scoop_nominal_by_material=self._scoop_nominals(),
+                                       scoop_tare_bias_by_material=self._scoop_tare_biases())
 
         self.pub_state = self.create_publisher(CellState, 'state', LATCHED)
         self.pub_weight = self.create_publisher(WeightReading, 'weight', 20)
@@ -233,6 +234,16 @@ class ProcessNode(Node):
         keys = [f'dosing.scoop_nominal.{m}' for m in mids]
         self.declare_parameters('', [(k, 0.0) for k in keys])
         return {m: float(self.p(k)) for m, k in zip(mids, keys) if float(self.p(k)) > 0.0}
+
+    def _scoop_tare_biases(self) -> dict:
+        """원료별 빈 스쿱 계량 편향 [g] (9/29) — `DosingConfig.scoop_tare_bias_by_material`.
+
+        `dosing.scoop_tare_bias.A` 같은 키로 풀린다. 값은 소수점으로 적는다. 0 은 보정 없음이다.
+        """
+        mids = sorted(self.smap.materials)
+        keys = [f'dosing.scoop_tare_bias.{m}' for m in mids]
+        self.declare_parameters('', [(k, 0.0) for k in keys])
+        return {m: float(self.p(k)) for m, k in zip(mids, keys) if float(self.p(k)) != 0.0}
 
     # ── 공용 ─────────────────────────────────────────────────────────
     def _now(self) -> float:

@@ -134,6 +134,10 @@
         C: 69.0                     #   높이 조정 전 실측은 gmp_dosing/calibration/scoop_sigma_0929_mat{A,B,C}.csv
                                     #   process_node 가 이 값을 DosingConfig.scoop_nominal_by_material 로 넘긴다(C).
                                     #   원료가 빠지면 for_material() 이 KeyError — 공통값으로 조용히 떨어지지 않는다
+      scoop_tare_bias:              # [9/29] 원료별 빈 스쿱(SCOOP_TARE) 계량 편향 [g] — 공정이 빈 스쿱 총량에서 빼서 tare 로 쓴다.
+        A: 0.0                      #   퍼내기 전 빈 스쿱이 무겁게 읽혀 순량이 낮았다(외부 저울 대조). 경험 보정, 0 = 보정 없음.
+        B: 0.0                      #   값은 9/29 저녁 대조 측정 뒤 채운다 (practice/B 일지)
+        C: 0.0
       min_fraction: 0.10            # [9/23 조장 결정] 담그기 깊이 비율 하한. 종전 0.15
                                     # ⚠️ **교착 조건**: min_fraction × scoop_nominal_g ≤ 2 × target × tol
                                     #    이어야 한다. 넘으면 UNDER 뒤 최소 채취가 허용 상한을 넘겨

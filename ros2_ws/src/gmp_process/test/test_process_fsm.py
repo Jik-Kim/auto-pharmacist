@@ -3,6 +3,7 @@
 Cell 오라클: 스쿱 풍량 20 g, 용기 풍량 30 g. scoop 마다 yields 에서 퍼올림량을 꺼내고, pour 는 fraction 만큼 옮기되
 residual 만큼 스쿱에 남긴다. weigh_scoop 은 스쿱 총량, weigh 는 용기 총량·순량을 돌려준다.
 """
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -117,6 +118,17 @@ def test_happy_path_six_steps():
     assert trace[2] == ('PICK_CONTAINER', 'carry') and ('VERIFY', 'weigh') in trace
     # 세트 끝: passbox_done 반송 → nudge_wait 이동 → NUDGE 대기 → DONE (D-23·D-24)
     assert trace[-4:] == [('FINISH', 'carry'), ('NUDGE_WAIT', 'move'), ('NUDGE_WAIT', 'wait_nudge'), ('NUDGE_WAIT', 'safe')]
+
+
+def test_scoop_tare_bias_is_subtracted_from_empty_scoop_per_material():
+    """9/29 경험 보정 — 빈 스쿱 총량에서 원료별 편향을 빼 tare 로 쓰고, 붓기 전 순량이 그만큼 커진다."""
+    cell = Cell(yields=[100, 50])
+    fsm = _fsm()
+    fsm.dosing_cfg = replace(fsm.dosing_cfg, scoop_tare_bias_by_material={'A': 5.0})
+    run(fsm, cell)
+    a, b = fsm.results
+    assert a.scoop_tare_g == SCOOP_TARE - 5.0 and a.scooped_g == 105.0
+    assert b.scoop_tare_g == SCOOP_TARE and b.scooped_g == 50.0          # B 는 보정 없음
 
 
 def test_oversize_scoop_returns_to_material_before_rescoop():
