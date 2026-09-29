@@ -17,7 +17,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.parameter import Parameter
 from gmp_interfaces.action import RunBatch
 from gmp_interfaces.msg import CellState, Deviation, Recipe, RecipeItem
-from gmp_interfaces.srv import QaDecision, SubmitOrder
+from gmp_interfaces.srv import InterlockRequest, QaDecision, SubmitOrder
 from gmp_process.nodes.process_node import ProcessNode
 from fake_skill_node import NOMINAL_SCOOP_G, FakeSkillNode
 from test_process_node import Collector
@@ -195,3 +195,46 @@ def test_safety_stop_errors_without_resume(rig):
     wait_until(lambda: not proc._safety_stop)
     time.sleep(.2)
     assert proc.fsm.mode=='ERROR' and fake.calls==calls
+
+
+@pytest.mark.parametrize('where', ['pick', 'discard'])
+def test_enter_during_carry_cancel_then_exit_accepts_next_order(rig, where):
+    """이송(carry) 중 ENTER → EXIT 거부(#322) → 배치 중단 → EXIT → 다음 주문 (9/29 셀 잠김).
+
+    종전에는 중단된 배치의 `_batch_cancel` 이 남아 EXIT 가 계속 거부되고, 새 주문은 `_pause` 에
+    막혔다 — `_batch_cancel` 은 새 주문(`_claim_slot`)에서만 지워져 서로 물려 노드 재기동 말고는
+    풀 길이 없었다. `pick` = 주문 첫 빈 통 이송(PICK_CONTAINER), `discard` = 폐기 반송(DISCARDED).
+    """
+    proc,fake,probe,send,feedback=rig
+    lock=probe.create_client(InterlockRequest,'interlock');assert lock.wait_for_service(timeout_sec=5)
+    def call(request):
+        return result(lock.call_async(InterlockRequest.Request(request=request,reason='TEST')))
+    step={'pick':'PICK_CONTAINER','discard':'DISCARDED'}[where]
+    if where=='discard':fake.scoop_gain=10.0          # 과투입 → QA → 폐기
+    else:fake.delay['move']=.3                        # 이송 도중에 끼어들 틈
+    goal=send('ROS-E1');assert goal.accepted
+    if where=='discard':
+        dev=wait_until(proc._pending_dev,60)
+        fake.delay['move']=.3
+        qa=probe.create_client(QaDecision,'qa_decision');assert qa.wait_for_service(timeout_sec=5)
+        assert result(qa.call_async(QaDecision.Request(deviation_id=dev.deviation_id,
+                                                       decision=Deviation.DISCARDED,operator_id='ros-test'))).accepted
+    wait_until(lambda: proc._active_request_kind=='carry' and proc.fsm.state==step,60)
+    assert call(InterlockRequest.Request.ENTER).granted
+    wait_until(lambda: any(s.batch_id=='ROS-E1' and s.step==step and s.mode==CellState.PAUSED
+                           for s in probe.states),5)
+    fake.delay.clear()
+    r=call(InterlockRequest.Request.EXIT)
+    assert not r.granted and '자동 재개 불가' in r.message,r.message
+
+    assert result(goal.cancel_goal_async()).goals_canceling
+    assert result(goal.get_result_async()).result.result=='ABORTED'
+    r=call(InterlockRequest.Request.EXIT)
+    assert r.granted,f'중단된 배치의 취소가 EXIT 를 막는다: {r.message}'
+    assert not proc._pause and not proc._interlock_exit.is_set()
+
+    _fresh_cell(fake)
+    fake.scoop_gain=1.0
+    nxt=send('ROS-E2');assert nxt.accepted,'EXIT 뒤 다음 주문을 받아야 한다'
+    reply=result(nxt.get_result_async(),60)
+    assert reply.status==GoalStatus.STATUS_SUCCEEDED and reply.result.result=='DONE'

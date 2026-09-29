@@ -17,7 +17,7 @@
 | 원료별 1회량 | 노드가 스테이션 이름표의 원료마다 `dosing.scoop_nominal.<원료>` 를 선언(0 = 원료별 값 없음)해 `DosingConfig.scoop_nominal_by_material` 로 넘긴다. FSM 은 1회량을 쓰는 두 곳(첫 깊이, `decide()`)에서 `_cfg()` = `for_material(지금 원료)` 를 쓴다. **값이 빠진 원료의 주문은 `_parse_order` 에서 접수 거부** — 공통값으로 조용히 떨어지지 않는다. 값 자체는 `common.yaml` 참조(B 소관, 규칙 5). yaml 에는 소수점으로 적는다(선언 기본값이 실수) | #313(B) · `feat/per-material-nominal-wiring`(C, 9/29) |
 | 고정 스쿱 모드 | **`dosing.fixed_scoop` 하나**가 네 곳을 움직인다 — `decide()` 의 깊이·보충 판정(**#274**, e301cc9·e62b8da), `_first_fraction()`·`_rescoop_fraction()`·노드 배선(**A #289**), **FSM 의 접촉 우회**(C #287). 무게 그물(`empty_scoop_g`)은 플래그와 무관하게 늘 돈다(#287). 켜면 깊이는 언제나 1.0 | SOT **D-34**(#284) · #282 |
 | 무효 계량 통합 시험 | fake_skill_node 손잡이 없이 `_publish_result` 직접 호출 | PR #225 |
-| 통합 시험 기준선 | gmp_process **230 passed / 8 skipped** (9/29 C 실측, ROS 소싱·도메인 격리 — main `4f22de5`(#313 까지) + `feat/per-material-nominal-wiring`). skip 8 은 전부 `test_run_batch_ros.py` 의 **DOMAIN 88 전용** — 88 이 빈 것을 `ros2 node list` 로 보고 따로 돌려 **8/8**. ~~219/8 (9/29 문서 관리가 합산한 추정값, ROS 합본 실측 전)~~ → 위 실측으로 대체. **내 파트 것만 적는다** — 다른 파트 현황은 `practice/<파트>/CURRENT.md` (규칙 5) | ROS 소싱 필수. **숫자로 소싱 누락을 가리지 말 것** — ROS 없이 돌려도 150 passed / 2 skipped 가 나온다(9/25). `python3 -c "import rclpy"` 로 확인한다. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
+| 통합 시험 기준선 | gmp_process **261 passed** (9/29 저녁 C 실측, `ROS_DOMAIN_ID=88` 한 번에 전부 — `test_run_batch_ros.py` 포함. 조장 번들 main `bf4bdb2` + `fix/carry-enter-lock`). 번들 원본은 253 통과 / 5 실패(문구 3·carry 재개 거부 2, 문서 관리 실측). ~~230/8 (9/29 오후, main `4f22de5` + 원료별 배선)~~ → 위로 대체. **내 파트 것만 적는다** — 다른 파트 현황은 `practice/<파트>/CURRENT.md` (규칙 5) | ROS 소싱 필수. **숫자로 소싱 누락을 가리지 말 것** — ROS 없이 돌려도 150 passed / 2 skipped 가 나온다(9/25). `python3 -c "import rclpy"` 로 확인한다. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
 
 ## 열린 과제 (이슈 번호)
 - #108 본래 주제: `ScoopCycle` 6축 wrench 채울 경로 — 전제(모멘트 = 파지 품질) 근거 부족(노션 9/22), 미정리.
@@ -67,7 +67,7 @@
 
 ## 인터락 재개 시 파지 상태 복구 (2026-09-29, C 승인)
 
-`ENTER → SafePose 완료 → EXIT → RestoreGrip 성공 → 재개 승인` 순서입니다. 새 `/cell/restore_grip` 서비스는 센서와 중단 전 이력으로 파지 상태만 복구하며 이동·개폐 명령을 보내지 않습니다. 복구 실패·시간 초과·새 안전 정지 시 재개하지 않습니다. 실행 중 배치는 루프가 EXIT를 소비하며, 실행 루프 없는 수동 시험은 EXIT 성공 시 대기를 해제합니다. 스쿠핑·붓기·파지 등 불확실한 중단은 자동 복구 대상에서 제외합니다. 계량 기준선은 복구하지 않습니다. 계약은 [interfaces.md](../../docs/interfaces.md) v1.10을 따릅니다. 새 서비스 사용 전 gmp_interfaces·gmp_skills·gmp_process 재빌드와 bringup 재시작이 필요합니다. 실물 검증은 아직 하지 않았습니다.
+`ENTER → SafePose 완료 → EXIT → RestoreGrip 성공 → 재개 승인` 순서입니다. 새 `/cell/restore_grip` 서비스는 센서와 중단 전 이력으로 파지 상태만 복구하며 이동·개폐 명령을 보내지 않습니다. 복구 실패·시간 초과·새 안전 정지 시 재개하지 않습니다. 실행 중 배치는 루프가 EXIT를 소비하며, 실행 루프 없는 수동 시험은 EXIT 성공 시 대기를 해제합니다. 스쿠핑·붓기·파지 등 불확실한 중단은 자동 복구 대상에서 제외합니다. 계량 기준선은 복구하지 않습니다. 계약은 [interfaces.md](../../docs/interfaces.md) v1.10을 따릅니다. **복합 `carry`(빈 통 이송·완성품/폐기 반송) 도중 ENTER 는 EXIT 로 재개하지 않는다** — 배치를 중단한 뒤 EXIT 로 대기를 풀고 다음 주문을 받는다. 9/29 조장 번들 `bf4bdb2` 에서는 끝난 배치의 `_batch_cancel` 이 EXIT 를 막고 새 주문은 `_pause` 에 막혀 셀이 잠겼다 → `fix/carry-enter-lock` 에서 **EXIT 전에 이미 끝난 배치의 취소만** 무시하도록 고침(복구 도중 들어온 취소는 계속 거부). 시험 `test_enter_during_carry_cancel_then_exit_accepts_next_order[pick·discard]`·`test_exit_after_cancelled_batch_ended_unpauses`. 새 서비스 사용 전 gmp_interfaces·gmp_skills·gmp_process 재빌드와 bringup 재시작이 필요합니다. 실물 검증은 아직 하지 않았습니다.
 
 ## 주문 경계 안전 자세 연결 (2026-09-29 사용자 승인)
 

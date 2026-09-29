@@ -313,7 +313,11 @@ def test_qa_discard_sends_the_cup_to_reject_bin(cell):
 
 
 def test_interlock_enter_pauses_and_exit_resumes(cell):
-    """ENTER → safe_pose 로 스킬이 끊긴다 → PAUSED. EXIT 로 같은 요청을 다시 부르고 완주한다."""
+    """ENTER → safe_pose 로 스킬이 끊긴다 → PAUSED. EXIT 로 같은 요청을 다시 부르고 완주한다.
+
+    끊는 자리는 **단독 이동**이다. 복합 `carry` 도중의 ENTER 는 EXIT 로 재개하지 않는다(#322 — 중복
+    파지 방지) — 그 경로는 test_run_batch_ros 의 `test_enter_during_carry_*` 가 본다.
+    """
     proc, fake, col = cell
     fake.delay['move'] = 0.25                    # 이동 중에 끼어들 틈을 만든다
     _submit(col, [('A', 100.0, 5.0)])
@@ -330,7 +334,7 @@ def test_interlock_enter_pauses_and_exit_resumes(cell):
         assert fut.done()
         return fut.result()
 
-    time.sleep(0.3)
+    assert _wait_until(lambda: proc._active_request_kind == 'move', 20.0), _why(proc)
     assert call(InterlockRequest.Request.ENTER, 'REFILL').granted
     assert _wait_mode(proc, 'PAUSED'), proc.fsm.mode
     assert any(c.startswith('safe:') and c != ORDER_START_SAFE for c in fake.calls)
@@ -830,7 +834,7 @@ def test_exit_during_nudge_pause_is_ignored_and_does_not_leak(cell):
     assert _wait_until(lambda: proc.fsm and any(d['action'] == 'REFILL' for d in proc.fsm.deviations))
     time.sleep(0.8)
     assert proc.fsm.mode == 'PAUSED' and proc._refill_waiting, _why(proc)
-    assert _lock(col, InterlockRequest.Request.EXIT, 'REFILL').message == 'resume'
+    assert _lock(col, InterlockRequest.Request.EXIT, 'REFILL').message.startswith('파지 상태 복구 완료')
     assert _wait_done(proc) == 'DONE', _why(proc)
 
 
@@ -852,7 +856,7 @@ def test_safe_pose_bypasses_the_nudge_gate(cell):
     assert proc._nudge_paused, 'NUDGE 정지는 그대로 살아 있다'
     assert _wait_until(lambda: proc._refill_waiting, 5.0), _why(proc)
 
-    assert _lock(col, InterlockRequest.Request.EXIT, 'REFILL').message == 'resume'   # 보충 완료
+    assert _lock(col, InterlockRequest.Request.EXIT, 'REFILL').message.startswith('파지 상태 복구 완료')   # 보충 완료
     time.sleep(0.5)
     assert proc.fsm.mode == 'PAUSED' and proc._nudge_paused, '보충 뒤에도 NUDGE 정지는 남아 있어야 한다'
     fake.delay.clear()
@@ -873,7 +877,7 @@ def test_refill_wait_with_nudge_and_enter_needs_one_exit(cell):
     assert _wait_until(lambda: proc._nudge_paused, 5.0), _why(proc)
     r = _lock(col, InterlockRequest.Request.ENTER, 'REFILL')
     assert r.granted and not r.message.startswith('이미'), r.message   # NUDGE 정지는 안전 자세가 아니므로 safe_pose
-    assert _lock(col, InterlockRequest.Request.EXIT, 'REFILL').message == 'resume'
+    assert _lock(col, InterlockRequest.Request.EXIT, 'REFILL').message.startswith('파지 상태 복구 완료')
     time.sleep(0.5)
     assert not proc._pause and not proc._refill_waiting, _why(proc)      # EXIT 한 번으로 둘 다 풀렸다
     assert proc._nudge_paused and proc.fsm.mode == 'PAUSED'              # NUDGE 만 남았다
@@ -940,23 +944,22 @@ def test_discarded_batch_also_parks_at_nudge_wait(cell):
 
 def test_discard_carry_stays_running_and_done_is_published_once_at_the_end(cell):
     """D #295 (9/28): 폐기 판정 뒤 반송 중에는 mode=RUNNING 이다 — 넛지 전에 DONE 이 나가면
-    record_node 가 반송 전에 배치를 닫아 반송 실패가 기록에 안 남는다. 반송 중 ENTER 도 PAUSED 로 보여야 한다."""
-    from gmp_interfaces.srv import InterlockRequest
+    record_node 가 반송 전에 배치를 닫아 반송 실패가 기록에 안 남는다.
+
+    반송 중 ENTER 는 여기서 보지 않는다 — 폐기 반송은 복합 `carry` 라 EXIT 로 재개하지 않고(#322)
+    배치 중단으로 끝난다. test_run_batch_ros 의 `test_enter_during_carry_*[discard]` 가 본다.
+    """
     proc, fake, col = cell
     fake.attendant = False
     fake.cup_bias = 10.0                           # 용기에만 +10 g → VERIFY ① BATCH_OUT_OF_SPEC → QA
     _submit(col, [('A', 10.0, 5.0)])
     assert _wait_mode(proc, 'DEVIATION'), _why(proc)
     bid = proc.batch_id
-    fake.delay['move'] = 0.3                       # 반송 도중에 끼어들 틈
+    fake.delay['move'] = 0.3                       # 반송 중 mode 를 볼 틈
     assert _qa(col, proc._pending_dev().deviation_id, Deviation.DISCARDED).accepted
     assert _wait_until(lambda: proc.fsm.state == 'DISCARDED', 5.0), _why(proc)
     assert proc.fsm.mode == 'RUNNING', '폐기 판정은 완료가 아니다'
-    assert _lock(col, InterlockRequest.Request.ENTER).granted
-    assert _wait_until(lambda: any(s.batch_id == bid and s.step == 'DISCARDED' and s.mode == CellState.PAUSED
-                                   for s in col.states), 5.0), '반송 중 ENTER 가 PAUSED 로 안 보인다'
     fake.delay.clear()
-    assert _lock(col, InterlockRequest.Request.EXIT).granted
     assert _wait_until(lambda: proc._nudge_waiting, 30.0), _why(proc)
     assert not any(s.batch_id == bid and s.mode == CellState.DONE for s in col.states), \
         '넛지 전에 DONE 이 나가면 record_node 가 배치를 닫는다'
