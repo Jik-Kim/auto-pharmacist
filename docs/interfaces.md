@@ -1,4 +1,4 @@
-# Interfaces — 계약 v1.10 (2026-09-29)
+# Interfaces — 계약 v1.10.1 (2026-09-30)
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
@@ -10,7 +10,7 @@
 
 > **v1.5 (9/20 팀 합의·A 승인):** `Scoop` Goal 에 `float32 depth_fraction`(담그기 깊이 비율)을 추가한다. 유효 범위는 `dosing.min_fraction` 이상 `1.0` 이하이고 범위 밖이면 이동 전에 거부한다. `attempt` 는 재시도 번호(기록용)로만 쓴다. v1.3 에서 `Pour.fraction` 을 1.0 으로 고정하면서 한 스쿱보다 작은 양을 넣을 수단이 사라졌고, 그 결과 남은 목표량이 스쿱 한 번보다 작아지면 반환만 반복하다 `TIMEOUT` 으로 끝났다. **`depth_fraction` → 실제 Z 좌표 변환식·보정값은 실물 scoop 시험 뒤 확정한다 (`TODO([A])`)** — 이번 판은 계약과 전달 경로까지다. 필드 추가라 메시지 해시가 바뀌므로 `gmp_interfaces` 재빌드가 필요하다.
 
-> **v1.5.1 (9/21 반환 동작 설명 정정·사용자 승인):** ReturnMaterial은 끝 관절 자세에서 종료하며 RETURN 피드백을 내지 않는다. 검증된 재스쿱 연결 전까지 후속 Scoop을 차단한다. 메시지 필드·전송 형식은 변경하지 않는다.
+> **v1.5.1 (9/21 반환 동작 설명 정정·사용자 승인):** ReturnMaterial은 끝 관절 자세에서 종료하며 RETURN 피드백을 내지 않는다. 검증된 재스쿱 연결 전까지 후속 Scoop을 차단한다. 메시지 필드·전송 형식은 변경하지 않는다. **→ v1.10.1(9/30): 고정 경로에서 재스쿱 연결 구현.**
 
 정의 원본은 `ros2_ws/src/gmp_interfaces`. 이 문서는 의도·규칙·확정 값을 설명한다.
 
@@ -28,6 +28,8 @@
 ---
 
 > **v1.10 (9/29 C 승인 사용자 확인):** `RestoreGrip` 서비스를 추가합니다. 인터락 EXIT는 안전 자세에서 센서와 중단 전 이력으로 파지 상태를 복구한 뒤에만 재개를 승인합니다. 실패·응답 시간 초과·새 안전 정지는 대기를 유지합니다. 로봇 이동·그리퍼 개폐·안전 차단 해제는 수행하지 않습니다. v1.9의 D 승인 대기 항목은 별도로 유지합니다.
+
+> **v1.10.1 (9/30 동작 설명 정정 — 메시지 필드·전송 형식 변경 없음):** ① **반환 뒤 재스쿱 연결** — v1.5.1 의 「검증된 재스쿱 연결 전까지 후속 Scoop 차단」을 고정 경로(`taught_fixed`)에서 푼다. 그 원료의 `ReturnMaterial` 이 성공했고 로봇이 반환 끝에 있으면 skill 이 원료 계량 자세로 movel 한 뒤 `Scoop` 을 잇는다(#325·#327, SOT D-39). 실패·취소·다른 원료·수동 이동·깊이 보정 모드는 여전히 이동 전에 거부한다. ② **붓기 후 계량 삭제**(9/29, SOT D-38) — `WEIGH_RESIDUAL` 단계가 없다. `ScoopCycle` 정상 시도는 `post_pour` 가 비고 `delivered_g`=0 · `valid=false` 이며, 추정 투입량은 `DispenseResult.actual_g` 와 `CellEvent` `POUR_ESTIMATE` 에 있다. 기록·화면(D)에서 `scoop_cycles.delivered_g` 를 투입량으로 읽지 않는다. 실물: 반환 성공은 확인, 재스쿱 연결은 미관측(9/30).
 
 ## 1. 메시지·서비스·액션 (gmp_interfaces)
 
@@ -55,7 +57,7 @@
 | `action/Pour` | workbench의 용기에 전량 붓기 (`fraction=1.0`만 허용) | 목적지는 skill 설정의 `workbench`; `target_station`은 제거 |
 | `action/ReturnMaterial` | 전용 스쿱 원료를 동일 원료통에 반환 | `/cell/return_material`. 시작·끝 posx, 끝 posj 확인 기준 또는 반환 털기 설정이 없거나 파지 원료가 다르면 이동 전에 실패. 끝 자세 유지, 후속 Scoop은 연결 경로 구현 전까지 차단 |
 | `action/WeighContainer` | 고정 `workbench`의 용기를 들어 계량하고 내려놓기 (복합 스킬) | `container_station`은 제거. 결과는 `WeightReading`. **그리퍼가 비어 있어야 한다** — TARE 와 배치 끝 VERIFY 에서만 (D-22) |
-| **`action/WeighHeld`** (v1.2) | **들고 있는 전용 스쿱을 대응 `material_N.posx`로** 가져가 재기 — 파지·내려놓기 없음 | D-22 의 `SCOOP_TARE`·`WEIGH_SCOOP`·`WEIGH_RESIDUAL` 세 단계가 **이 요청 하나**를 쓴다 (차이는 process 가 결과를 어디에 담느냐뿐). **계량 후 계량 자세에 머문다**(복귀 없음) · **빈 그리퍼면 `success=false`**. phase 는 `LIFT`/`SETTLE`/`MEASURE` — `WeighContainer` 와 달리 `GRIP`·`PLACE` 가 없어 `mode` 필드로 합치지 않았다 (9/18 확정, I-007) |
+| **`action/WeighHeld`** (v1.2) | **들고 있는 전용 스쿱을 대응 `material_N.posx`로** 가져가 재기 — 파지·내려놓기 없음 | D-22 의 `SCOOP_TARE`·`WEIGH_SCOOP` 두 단계가 **이 요청 하나**를 쓴다(`WEIGH_RESIDUAL` 은 9/29 삭제, SOT D-38) (차이는 process 가 결과를 어디에 담느냐뿐). **계량 후 계량 자세에 머문다**(복귀 없음) · **빈 그리퍼면 `success=false`**. phase 는 `LIFT`/`SETTLE`/`MEASURE` — `WeighContainer` 와 달리 `GRIP`·`PLACE` 가 없어 `mode` 필드로 합치지 않았다 (9/18 확정, I-007) |
 | `action/RunBatch` | HMI/CLI → process. 배치 실행 | 피드백 `CellState` + 마지막 `DispenseResult` |
 
 ### 1.1 `Scoop`과 `ScoopCycle`의 책임 경계
@@ -71,9 +73,9 @@
 | `header` | 시도가 성공·실패로 종료된 시각 |
 | `batch_id`, `material_id`, `attempt` | 배치·원료·1부터 시작하는 시도 번호 |
 | `target_g`, `actual_before_g` | 원료 전체 목표량과 이번 시도 전 누적 투입량 [g] |
-| `scoop_tare`, `pre_pour`, `post_pour` | 빈 스쿱, 붓기 전, 붓기 후의 `WeightReading`. 세 측정은 같은 계량 자세·파지 조건을 쓰며 pre/post의 `tare_g`는 빈 스쿱 기준값으로 동일해야 한다. 각 헤더·표준편차·표본 수·유효성을 보존한다 |
+| `scoop_tare`, `pre_pour`, `post_pour` | 빈 스쿱, 붓기 전, 붓기 후의 `WeightReading`. 세 측정은 같은 계량 자세·파지 조건을 쓰며 pre/post의 `tare_g`는 빈 스쿱 기준값으로 동일해야 한다. 각 헤더·표준편차·표본 수·유효성을 보존한다 **9/29 이후 `post_pour` 는 채우지 않는다(붓기 후 계량 삭제, v1.10.1).** |
 | `commanded_pour_fraction` | `Pour`에 전달한 명령 비율 [0~1] |
-| `delivered_g` | `RETURNED`/`RETURN_FAILED`는 0. 정상은 FSM과 같이 `max(0, pre_pour.net_g - post_pour.net_g)`로 계산한 투입량 [g]. 음수 원시차는 두 reading으로 복원한다 |
+| `delivered_g` | `RETURNED`/`RETURN_FAILED`는 0. 정상은 FSM과 같이 `max(0, pre_pour.net_g - post_pour.net_g)`로 계산한 투입량 [g]. 음수 원시차는 두 reading으로 복원한다 **9/29 이후 정상 시도도 `post_pour` 가 없어 0 이다 — 추정 투입량은 `DispenseResult.actual_g`(v1.10.1).** |
 | `weigh_method` | `UNKNOWN`, `WORKPIECE`, `TOOL_FORCE` 중 스쿱 계량에 사용한 방식 |
 | `weigh_pose_id`, `tool_name`, `tcp_name` | `stations.yaml`의 전체 위치·자세 ID와 컨트롤러 툴·TCP 등록명. 보정 조건이 다른 샘플을 구분한다 |
 | `contact_detected`, `max_contact_force_n`, `insertion_depth_mm` | `Scoop.Result`에서 받은 접촉 및 삽입 결과 |
