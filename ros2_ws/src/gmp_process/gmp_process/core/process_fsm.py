@@ -273,6 +273,19 @@ class ProcessFSM:
         if k == 'measure' and st == 'SELF_CHECK':
             # 자가진단 전용이다. 이 값을 영점 기준으로 쓰지 않는다 — 여기 자세는 배치 시작 자세고
             # VERIFY 는 workbench 라, 자세 차이가 영점 이동으로 둔갑한다. 기준은 TARE 직전에 잡는다.
+            #
+            # 주문 시작 준비 — 빈 통을 잡기 전에 **안전 자세**로 간다 (SOT 「주문 시작 준비와 명시적 이동」,
+            # 9/28 사용자 승인). A 가 이동 안의 숨은 안전 자세 MOVEJ 를 없앴으므로(#298) 여기서 명시하지
+            # 않으면 로봇은 직전 위치(nudge_wait·기동 자세)에서 곧장 빈 통으로 간다. 첫 주문·후속 주문이
+            # 같은 순서다 — 후속 주문은 앞 주문의 넛지(세트 끝)가 끝난 뒤라 **넛지 대기를 더하지 않는다.**
+            # step 은 SELF_CHECK 그대로 둔다 — 새 상태를 만들면 HMI 단계표·계약이 따라 바뀐다.
+            return {'kind': 'safe', 'reason': 'ORDER_START'}
+        if k == 'safe' and st == 'SELF_CHECK':
+            if not res.get('success', False):
+                # 노드는 실패를 SkillError 로 올려(인터락 취소면 EXIT 뒤 재시도, 그 외 ERROR) 여기까지 오지
+                # 않는다. FSM 만 쓰는 호출자도 **안전 자세 성공 전에는 빈 통을 잡지 않게** 막는다.
+                self.state, self.mode = 'ERROR', 'ERROR'
+                return None
             self.state = 'PICK_CONTAINER'
             return self._carry('passbox_empty', 'workbench')
         if k == 'carry' and st == 'PICK_CONTAINER':

@@ -83,6 +83,8 @@ class Cell:
             return {'gross_g': gross, 'net_g': gross - req['tare_g'], 'valid': True}
         if k == 'wait_qa':
             return {'decision': self.qa}
+        if k == 'safe':
+            return {'success': True}            # 주문 시작 안전 자세(ORDER_START)는 성공을 확인하고 넘어간다
         return {}
 
 
@@ -111,7 +113,9 @@ def test_happy_path_six_steps():
     seq = [s for s, k in trace]
     i = seq.index('PICK_SCOOP')
     assert seq[i + 2:i + 8] == ['SCOOP_TARE', 'SCOOP', 'WEIGH_SCOOP', 'POUR', 'WEIGH_RESIDUAL', 'RETURN_SCOOP']
-    assert trace[1] == ('PICK_CONTAINER', 'carry') and ('VERIFY', 'weigh') in trace
+    # 주문 시작: 자가진단 → 안전 자세(ORDER_START) → 빈 통 이송 (SOT 「주문 시작 준비」, 9/28)
+    assert trace[:3] == [('SELF_CHECK', 'measure'), ('SELF_CHECK', 'safe'), ('PICK_CONTAINER', 'carry')]
+    assert ('VERIFY', 'weigh') in trace
     # 세트 끝: passbox_done 반송 → nudge_wait 이동 → NUDGE 대기 → DONE (D-23·D-24)
     assert trace[-3:] == [('FINISH', 'carry'), ('NUDGE_WAIT', 'move'), ('NUDGE_WAIT', 'wait_nudge')]
 
@@ -420,7 +424,8 @@ def test_container_grip_fail_retries_at_pick_container():
     trace = run(fsm, cell)
     assert fsm.deviations == [{'kind': 'GRIP_FAIL', 'step': 'PICK_CONTAINER', 'count': 1, 'action': 'RETRY',
                                'detail': '', 'material_id': None}]
-    assert trace[:3] == [('SELF_CHECK', 'measure'), ('PICK_CONTAINER', 'carry'), ('PICK_CONTAINER', 'carry')]
+    assert trace[:4] == [('SELF_CHECK', 'measure'), ('SELF_CHECK', 'safe'),
+                         ('PICK_CONTAINER', 'carry'), ('PICK_CONTAINER', 'carry')]
     assert fsm.tare_g == CUP_TARE and fsm.state == 'DONE' and len(fsm.results) == 2
 
 
@@ -444,7 +449,7 @@ def test_wrong_tool_container_width_mismatch_approved_resumes_dosing():
     trace = run(fsm, cell)
     assert fsm.deviations[0] == {'kind': 'WRONG_TOOL', 'step': 'PICK_CONTAINER', 'count': 1, 'action': 'QA',
                                  'detail': '폭 45.0mm (기대 60.0±1.0mm)', 'material_id': None}
-    assert trace[3] == ('TARE', 'weigh') and fsm.tare_g == CUP_TARE   # SELF_CHECK·PICK_CONTAINER·DEVIATION 다음
+    assert trace[4] == ('TARE', 'weigh') and fsm.tare_g == CUP_TARE   # SELF_CHECK(measure·safe)·PICK_CONTAINER·DEVIATION 다음
     assert fsm.state == 'DONE' and len(fsm.results) == 2  # 승인 후 평소대로 두 원료 다 담아 완료
 
 

@@ -92,7 +92,7 @@ def S(c, r, name, sub='', kind='n'):
     return p2.box(X[c], Y[r], W, H, name + ('\n' + sub if sub else ''), fill=fill, stroke=stroke, bold=True, size=12)
 cx = lambda c, f=0.5: X[c] + W * f          # 상자 안 x 좌표
 idle = S(0, 0, 'IDLE', 'submit_order 대기', 'i')
-selfc = S(1, 0, 'SELF_CHECK', 'req: measure — 빈 그리퍼 외력\n(영점·센서 확인, 용기 아님)')
+selfc = S(1, 0, 'SELF_CHECK', 'req: measure — 빈 그리퍼 외력\n(영점·센서 확인, 용기 아님)\n→ safe(ORDER_START) 주문 시작 안전 자세')
 pickc = S(2, 0, 'PICK_CONTAINER', 'req: carry passbox_empty→workbench')
 tare = S(3, 0, 'TARE', 'req: measure(영점 기준) → weigh\n빈 용기 풍량 (배치 1회)')
 picks = S(0, 1, 'PICK_SCOOP', 'req: move(scoop_N) → grip\n스쿱은 원료통 아래 (D-24)')
@@ -113,7 +113,7 @@ dev = S(4, 3, 'DEVIATION', 'req: wait_qa (QA 원격 판정)', 'p')
 disc = S(5, 3, 'DISCARDED', 'req: (스쿱 반납 →) carry workbench→reject_bin', 'e')
 # ── 정상 경로 (파랑) — 가로선 라벨은 선 위(-), 세로·꺾인 선은 lpos 로 위치 지정
 p2.edge(idle, selfc, 'submit_order 수락\nbatch_id 발급 · event BATCH_START', color=ACC, lpos=(0, -22))
-p2.edge(selfc, pickc, 'measure valid', color=ACC, lpos=(0, -14))
+p2.edge(selfc, pickc, 'measure valid ·\nsafe(ORDER_START) 성공', color=ACC, lpos=(0, -14))
 p2.edge(pickc, tare, 'carry grip_inferred=true', color=ACC, lpos=(0, -14))
 p2.edge(tare, picks, 'tare_g 저장 · cur = 원료 0 · weight 발행', color=ACC,
         exit=(0.5, 1), entry=(0.5, 0), points=((cx(3), 300), (cx(0), 300)), lpos=(0, -14))
@@ -178,7 +178,7 @@ p2.edge(pickc, err, 'GRIP_FAIL 4회 (FORCED)', color=RED,
         exit=(0.15, 1), entry=(0.3, 0), points=((cx(2, 0.15), 230), (X[0] - 25, 230), (X[0] - 25, Y[3] - 30), (cx(0, 0.3), Y[3] - 30)), lpos=(-0.6, -14))
 p2.edge(picks, err, 'GRIP_FAIL 4회 (FORCED)', color=RED,
         exit=(0.15, 1), entry=(0.15, 0), points=((cx(0, 0.15), Y[3] - 60),), lpos=(0.3, -40))
-p2.edge(selfc, err, 'measure invalid (TODO)', color=RED,
+p2.edge(selfc, err, 'measure invalid (TODO) ·\n주문 시작 안전 자세 실패', color=RED,
         exit=(0, 0.7), entry=(0.7, 0), points=((cx(0, 0.7), Y[0] + 45),), lpos=(0.5, -14))
 p2.note(1440, 120, 380, 150, '루프 게이트 (FSM 밖, D-21 추가 7)\n\nskill_node 가 event NUDGE 를 쏘면 run_loop 가 다음 요청 전에 멈추고\nstate.mode = PAUSED(note="NUDGE") 발행, 두 번째 NUDGE 로 재개.\n인터락 중·계량 대기 중에만 감지된다 (블로킹 movel 중은 두산 충돌 감지 담당)\n\n세트 끝 NUDGE_WAIT (D-23, 9/19): 그때의 NUDGE 는 정지가 아니라\n「다음 세트」 신호 — _nudge_go 를 세워 wait_nudge 를 푼다. 이벤트 SET_DONE / SET_NEXT')
 p2.note(1660, 880, 240, 270, '일탈 정책 (deviation.py)\n\nGRIP_FAIL  3회 RETRY → FORCED\nSCOOP_EMPTY  3회 RETRY → REFILL\nMATERIAL_EMPTY  즉시 REFILL\nOVERFILL / TIMEOUT  즉시 QA\nWEIGH_INVALID  2회 RETRY → QA\nVERIFY_MISMATCH  9/22 폐지 — 발생 안 함\nBATCH_OUT_OF_SPEC [v1.2]  즉시 QA (규격)\nSLIP 2 · SAFETY_SWITCH 1 · FORCE_LIMIT 1 → FORCED\nWRONG_TOOL [v1.2]  즉시 QA\n\ncount = 같은 배치·같은 스텝·같은 kind')
@@ -241,7 +241,7 @@ KIND = {'n': (ACCS, ACC), 'p': (WARMS, WARM), 'e': (REDS, RED), 'd': (OKS, OK), 
 ROWS = [
  ('IDLE', 'i', 'SubmitOrder srv\nrecipe → accepted, batch_id\nevent HMI_ORDER(actor) → audit', None,
   'recipe.parse() / from_msg() 검증', 'state IDLE→ACCEPTED\nevent BATCH_START(product)', False),
- ('SELF_CHECK', 'n', None, 'MeasureForce srv (빈 그리퍼)\nsamples, settle_s → fz_mean, fz_std, valid', None, 'state · event STEP', False),
+ ('SELF_CHECK', 'n', None, 'MeasureForce srv (빈 그리퍼)\nsamples, settle_s → fz_mean, fz_std, valid\nSafePose srv (reason ORDER_START) → success\n성공 전 빈 통 이송 금지 · 정지 게이트를 거침', None, 'state · event STEP', False),
  ('PICK_CONTAINER', 'n', None, 'carry = MoveToStation act ×4 + SetGripper srv ×2\npassbox_empty(slot) → workbench, cup_width\n→ grip_inferred', None, 'state\ndeviation(GRIP_FAIL 시)', False),
  ('TARE', 'n', None, 'MeasureForce (빈 그리퍼 영점 기준, workbench ABOVE)\nWeighContainer act — tare 0 → reading(gross, std, valid)', None, 'weight(gross, valid=…) · state', False),
  ('PICK_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT)\nSetGripper srv (close, scoop_width, force)\n→ grip_inferred, final_width_mm', None, 'state\ndeviation(GRIP_FAIL · WRONG_TOOL[v1.2])', False),

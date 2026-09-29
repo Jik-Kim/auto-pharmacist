@@ -100,7 +100,7 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 원료 1종은 빈 스쿱 계량 → 퍼올림 → 붓기 전 계량(원료별 `material_N.posx`) → 초과면 원료통 반환 후 재시도 → 전량 붓기 → 붓기 후 계량(잔량 → 투입량) → 판정이다. 용기 계량은 배치 끝 VERIFY 한 번이다.
 
 ```
- IDLE ──submit_order──▶ SELF_CHECK ──measure ok──▶ PICK_CONTAINER ──carry ok──▶ TARE ──measure·weigh──▶ ┐
+ IDLE ──submit_order──▶ SELF_CHECK ──measure · safe(ORDER_START) ok──▶ PICK_CONTAINER ──carry ok──▶ TARE ──measure·weigh──▶ ┐
                             │ measure invalid                │ grip_inferred=false                      │
                             ▼                                ▼ GRIP_FAIL ×3 → 재시도                   │
                           ERROR                              ×4 → ERROR                                 │
@@ -134,7 +134,7 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 
 | 상태 | 받는 결과 (이전 요청) | 판단 | 다음 요청 | 이 시점 발행 |
 |---|---|---|---|---|
-| `SELF_CHECK` | `measure` → valid, fz_std | valid 아니면 ERROR (TODO). 툴·TCP·감도 확인은 skill_node 가 기동 시 함 | `carry(passbox_empty→workbench, slot)` | `event BATCH_START`, `state` |
+| `SELF_CHECK` | `measure` → valid, fz_std · `safe(ORDER_START)` → success | valid 아니면 ERROR (TODO). 툴·TCP·감도 확인은 skill_node 가 기동 시 함. **주문 시작 안전 자세 (9/29, SOT 「주문 시작 준비와 명시적 이동」)**: 측정 뒤 `safe(reason=ORDER_START)` 로 안전 자세를 거친 다음 빈 통을 잡는다 — 첫 주문·후속 주문 같은 순서, 후속 주문은 앞 세트의 넛지 뒤라 넛지 대기를 더하지 않는다. step 은 SELF_CHECK 그대로. 다른 `safe`(물러나는 이동)와 달리 **정지 게이트를 거친다**(NUDGE·인터락 정지 중엔 기다림). 실패는 `SkillError` 로 올려 인터락 취소면 EXIT 뒤 재시도, 그 외 ERROR — **안전 자세 성공 전에는 빈 통 이송을 요청하지 않는다** | `safe(ORDER_START)` → `carry(passbox_empty→workbench, slot)` | `event BATCH_START`, `state` |
 | `PICK_CONTAINER` | `carry` → grip_inferred | false → `_deviate(GRIP_FAIL)` (같은 carry 재시도). **[추가 1]** `final_width_mm` 가 기대 약통 폭(`gripper.cup_width_mm`) ±margin 밖이면 `WRONG_TOOL` → QA (승인 시 TARE 로 이어감, 거부 시 DISCARDED) | `weigh(workbench, tare 0)` | `deviation` (실패 시) |
 | `TARE` | `measure` → fz_mean_n(영점 기준), 그다음 `weigh` → gross, valid | `carry` 가 workbench ABOVE·그리퍼 열림으로 끝나므로 그 자리에서 **빈 그리퍼 영점**을 잡는다(`zero_fz_n`) — VERIFY 직전과 같은 자세여야 비교가 성립한다. `tare_g = gross` (빈 용기, 배치마다 1회). cur = 원료 0. 무효 ≤2 재계량 → 3회 WEIGH_INVALID | `move(scoop_N, AT)` | `weight` |
 | `PICK_SCOOP` | `move` → 도착 / `grip` → inferred | 파지 실패 → GRIP_FAIL 재시도(≤3) → 4회 FORCED → ERROR. **[추가 1]** `final_width_mm` 가 원료 기대 폭 ±margin 밖이면 `WRONG_TOOL` → QA (승인 시 그 스쿱으로 SCOOP_TARE 이어감 — 원료를 건너뛰지 않는다, 거부 시 스쿱 반납 후 DISCARDED. A 리뷰 정정, PR #165) | `grip(close, scoop)` → `weigh_scoop(tare 0)` | `deviation` |
