@@ -17,8 +17,8 @@
 | VERIFY ① 허용폭 Σ(target×tol) | 레시피(D) 값에서 나온다 — **가장 엄격한 운영 레시피 값**을 쓴다. D-33 값·D-35 적용 뒤 값은 SOT 에 있다 | `params/recipes/recipe-0*.yaml`, `process_fsm.py:449` `batch_tol_g()`, SOT D-31 9/25 추기 · D-35 |
 | VERIFY ① 성립 여부 | **9/25 결정: 현 재파지 반복성(σ_순량 ≈ 9.9 g)으로 시연한다 — 합격 시험 #249 닫음.** 재파지 3σ 29.7 g 은 recipe-01·02 허용폭을 넘지만(`\|편향\|+3σ ≤ 예산` 미달), 규격 안 배치를 `BATCH_OUT_OF_SPEC` 로 잘못 거는 비율은 ≈ 2 % 추정이고 걸려도 QA 판정으로 가며 안전 문제가 아니다(SOT). 반복성 개선은 **시연 뒤 과제** | SOT D-31 9/25 결정(PR #284 `c2fd498`) |
 | 계량 무효 재시도 | `max_invalid_retries` **2** (총 3회 측정). 출처는 `DosingConfig` 기본값 **하나뿐**이다 — `common.yaml` 에도 `process_node` 선언에도 없다 | `gmp_dosing/core/dosing.py:32`, #213 결정 1, PR #225 |
-| 스쿱 1회량 | **원료별 `dosing.scoop_nominal` A·C 69 · B 57 g**(9/29 조장 결정 A·C 묶음 / B 별도, 반올림은 사용자). 공통 `scoop_nominal_g` **69**(원료별 값 없을 때). `DosingConfig.for_material()` — PR #310. **C 호출부(#306) 전까지 공정은 공통 69 로 판정.** ~~79.0 (D-35)~~ 근거 무효 · 85.0(D-33) · 40.0(9/18) | common.yaml `dosing.scoop_nominal_g`, `DosingConfig` 기본값, SOT D-35 |
-| 스쿱 1회 **투입량 실측** (#272, **9/29 현 구성** — 세 스쿱 마찰테이프, 손잡이 폭 16.5/17.5/18.5 mm, `vel_scale` 1.0, 원료면 가득+평평) | **A 69.3 g (σ 6.2, n 10) · B 57.4 g (σ 3.2, n 5) · C 67.4 g (σ 3.9, n 5) · A·C 묶음 68.7 g (n 15)**. ~~A 78.9 g · σ 3.90 (9/23)~~ → 마찰테이프 없이 잰 값, 현 구성 대표값 아님 | `calibration/scoop_sigma_0929_mat{A,B,C}.csv`, 일지 2026-09-29 |
+| 스쿱 1회량 | **원료별 `dosing.scoop_nominal` A/B/C 모두 69 g**(9/29 사용자: B 원료 높이 조정 후 현재 69 g). 공통 `scoop_nominal_g`도 **69 g**. 종전 B 57 g 설정은 대체했다. `DosingConfig.for_material()`은 유지한다 | `common.yaml` `dosing.scoop_nominal`, [SOT](../../docs/SOT.md#레시피-23-b-목표-변경-2026-09-29-사용자-요청) |
+| 스쿱 1회 **과거 실측** (#272, **B 높이 조정 전** — 세 스쿱 마찰테이프, 손잡이 폭 16.5/17.5/18.5 mm, `vel_scale` 1.0) | **A 69.3 g (σ 6.2, n 10) · B 57.4 g (σ 3.2, n 5) · C 67.4 g (σ 3.9, n 5) · A·C 묶음 68.7 g (n 15)**. B 57.4 g은 현행 69 g 설정의 근거가 아니다. ~~A 78.9 g · σ 3.90 (9/23)~~ → 마찰테이프 없이 잰 값 | `calibration/scoop_sigma_0929_mat{A,B,C}.csv`, 일지 2026-09-29 |
 | 깊이 비율 하한 `min_fraction` | **0.10** (종전 0.15). `stations.yaml scooping.A` 와 같아야 함 | common.yaml `dosing`, `stations.yaml:126` |
 | 교착 여유 | 최소 채취 **7.9 g** (= 0.10 × 79). 한계 2×target×tol 은 레시피 값이라 여기 안 적는다 — 성립 여부는 시험이 레시피 파일을 읽어 단언한다 | `test_dosing.py::test_min_scoop_cannot_overshoot_tolerance` |
 | 영점 이동 한계 `zero_drift_limit_n` | 0.1 N | `common.yaml:94` |
@@ -101,7 +101,7 @@
     **9/23 실측(붓기 방식)으로 대체**됐다. #269 는 Closed. 원문은 `git log -p practice/B/CURRENT.md`
     (이 절 교체 전 커밋 `4ff3fac`). `ScoopCycle` 로봇 계량 교차검증(`reference_delivered_g`)은 보조로 남는다
     — 다만 로봇 스쿱 계량이 PLA 공구에서 미검증이라 그 전에는 의미가 없다.
-- ⛔ **[9/30 시연 필수 — 9/29 안에] 구조 변경 두 건**
+- **[9/29 당시 시연 준비 목록 — 현재 구현값은 위 표 참조] 구조 변경 두 건**
   1. **#306 원료별 1회량 A·C 69 / B 57** — B **PR #310**(구조 + `common.yaml` 값) → C `process_fsm` 의 `decide()`·`_first_fraction()` 에 `for_material(cur.material_id)`, `process_node` 선언 → D 레시피(#291 을 69/138/57 로)
   2. **#307 계량 gain·offset·max_std_g 경로별** — container 1.0975/229.0 · scoop 0.983/103.5 · 둘 다 max_std_g 10. **조장 yaml + A `skill_node` 한 PR**(따로면 없는 키를 읽어 계량 실패). #186 흡수
   - 선행: #283(B) · #287(C) · #293(A). 머지 뒤 가상 1배치 → **실물 1배치**(TARE→VERIFY 순량이 저울 ±3 g)
@@ -251,7 +251,7 @@
 - gmp_hmi 와 gmp_process 시험을 같은 실행에 넣으면 노드 경합으로 `test_scoop_cycle_attempt_numbers_are_unique_per_material` 이 깨진다. 패키지별로 나눠 돌린다.
 
 ## 철회 이력 (최근 것 위)
-- 2026-09-29 ~~스쿱 1회량 78.9 g(9/23 A) · D-35 79 g 의 근거~~ → 9/23 A 는 마찰테이프 없이 잰 값(측정자 확인). 현 구성 A 69.3 · B 57.4 · C 67.4 g. 결정: A·C 묶음 / B 별도
+- 2026-09-29 ~~스쿱 1회량 78.9 g(9/23 A) · D-35 79 g 의 근거~~ → 9/23 A 는 마찰테이프 없이 잰 값(측정자 확인). 높이 조정 전 구성 A 69.3 · B 57.4 · C 67.4 g. 당시 결정 A·C 묶음 / B 별도는 이후 사용자 B 69 g 현행값으로 대체
 - 2026-09-29 ~~용기 경로 gain ≈ 1.076 (9/23 2점)~~ → 1.0975 (4하중점 8회). ~~스쿱 경로 1.0013 과 2 % 이내면 단일 gain~~ → 스쿱 0.980, 용기와 −11 % → 경로별 분리 결정
 - 2026-09-29 ~~원료 B 1차 8회(71~96 g)~~ → B 손잡이 마찰테이프 없음으로 무효
 - 2026-09-28 ~~B·C 는 스쿱 폭(15.5/18.0/28.0 mm)이 달라 1회량이 다르다~~ → 그 값은 손잡이 폭(SOT Q-04). 세 원료는 같은 자갈·같은 스쿱 뜨는 부분(사용자 확인). B·C 는 스테이션 차이만 보는 5회 확인 측정으로 줄였다.

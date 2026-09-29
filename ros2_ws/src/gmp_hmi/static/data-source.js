@@ -36,13 +36,13 @@ class HttpSource {
  batchUrl(id){return '/batch/'+encodeURIComponent(id)+'/download'}
 }
 const RECIPES=[
- {name:'recipe-01',product:'레시피 1',items:[['A',69],['B',57],['C',69]]},
- {name:'recipe-02',product:'레시피 2',items:[['A',138],['B',57]]},
- {name:'recipe-03',product:'레시피 3',items:[['A',69],['B',57],['C',138]]},
-].map(r=>({...r,total_g:r.items.reduce((sum,item)=>sum+item[1],0),items:r.items.map(([material_id,target_g])=>({material_id,target_g,tol_pct:10}))}));
+ {name:'recipe-01',product:'레시피 1',items:[['A',69],['B',69],['C',69]]},
+ {name:'recipe-02',product:'레시피 2',items:[['A',138],['B',69]]},
+ {name:'recipe-03',product:'레시피 3',items:[['A',69],['B',69],['C',138]]},
+].map(r=>({...r,total_g:r.items.reduce((sum,item)=>sum+item[1],0),items:r.items.map(([material_id,target_g])=>({material_id,target_g,tol_pct:r.name==='recipe-01'?15:10}))}));
 const RECIPE=RECIPES[0];
 // 원료별 스쿱 1회량(#306) — 데모 시도 횟수만 만든다. 운영값은 common.yaml dosing.scoop_nominal.
-const SCOOP_NOMINAL={A:69,B:57,C:69};
+const SCOOP_NOMINAL={A:69,B:69,C:69};
 class DemoSource {
  constructor(){this.demo=true;this.recipes=RECIPES.map(r=>r.name);this.recipeCache=copy(RECIPES);this.user={username:'DEMO-ADMIN',role:'admin',active:true};this.demoUsers=[this.user];this.reset('qa');}
  async catalog(){return this.recipes;}
@@ -54,9 +54,9 @@ class DemoSource {
   if(!['idle','empty','low_grams','height_low'].includes(scenario)){
    this.startBatch('B-001','OP-01');
    if(scenario==='qa'){
-    this.elapsed=18;this.addResult(0,69);this.addResult(1,66);this.state={...this.state,mode:'DEVIATION',step:'WEIGH_RESIDUAL',item_index:1,note:'원료 B 과다 투입 · QA 판정을 기다립니다.'};
-    this.weights=[{t:now(),net_g:66,gross_g:81,tare_g:15,std_g:.4,valid:true,station:'workbench',subject:'scoop',samples:30}];
-    this.pending=[{deviation_id:'DEV-001',batch_id:'B-001',material_id:'B',kind:'OVERFILL',detail:'목표 57g / 실측 66g. 과다 투입분을 포함해 원료 B 66g이 차감되었습니다.',requires_decision:true,decision:'PENDING',t:now()}];
+    this.elapsed=18;this.addResult(0,69);this.addResult(1,90);this.state={...this.state,mode:'DEVIATION',step:'WEIGH_RESIDUAL',item_index:1,note:'원료 B 과다 투입 · QA 판정을 기다립니다.'};
+    this.weights=[{t:now(),net_g:90,gross_g:105,tare_g:15,std_g:.4,valid:true,station:'workbench',subject:'scoop',samples:30}];
+    this.pending=[{deviation_id:'DEV-001',batch_id:'B-001',material_id:'B',kind:'OVERFILL',detail:'목표 69g / 실측 90g. 과다 투입분을 포함해 원료 B 90g이 차감되었습니다.',requires_decision:true,decision:'PENDING',t:now()}];
    }else{
     this.elapsed=10;this.updateProcess();
     if(scenario==='error')this.finish('ERROR','파지 재시도 한도 초과 · 담당자 확인 필요');

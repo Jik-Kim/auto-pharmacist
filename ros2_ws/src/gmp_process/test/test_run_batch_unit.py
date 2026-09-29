@@ -569,8 +569,8 @@ def _node_with_nominals(module, **by_material):
 def test_원료별_1회량_파라미터가_도징_설정까지_간다(module):
     """common.yaml `dosing.scoop_nominal: {A: …}` 는 `dosing.scoop_nominal.A` 로 풀린다. 그 값이
     `DosingConfig.scoop_nominal_by_material` 에 들어가야 FSM 이 원료별로 판정한다."""
-    n = _node_with_nominals(module, A=69.0, B=57.0, C=69.0)
-    assert n.dosing_cfg.scoop_nominal_by_material == {'A': 69.0, 'B': 57.0, 'C': 69.0}
+    n = _node_with_nominals(module, A=69.0, B=69.0, C=69.0)
+    assert n.dosing_cfg.scoop_nominal_by_material == {'A': 69.0, 'B': 69.0, 'C': 69.0}
 
 
 def test_원료별_1회량이_없으면_종전처럼_공통값_하나다(module):
@@ -581,11 +581,11 @@ def test_원료별_1회량이_없으면_종전처럼_공통값_하나다(module)
 
 def test_원료별_1회량이_빠진_원료의_주문은_접수_때_거부한다(module):
     """배치 중간 KeyError 로 서는 것보다 주문 거부가 낫다 — 원료 스테이션 검사와 같은 자리다."""
-    n = _node_with_nominals(module, A=69.0, B=57.0)
+    n = _node_with_nominals(module, A=69.0, B=69.0)
     bad = Message(batch_id='NOC', product='t', items=[Message(material_id='C', target_g=69.0, tol_pct=10.0)])
     assert n._goal_batch(Message(recipe=bad)) == 0
     assert not n._reserved
-    ok = Message(batch_id='OKB', product='t', items=[Message(material_id='B', target_g=57.0, tol_pct=10.0)])
+    ok = Message(batch_id='OKB', product='t', items=[Message(material_id='B', target_g=69.0, tol_pct=10.0)])
     assert n._goal_batch(Message(recipe=ok)) == 1
 
 

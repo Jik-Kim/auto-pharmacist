@@ -6,11 +6,11 @@ from gmp_process.core.recipe import load
 
 def test_fixed_recipe_catalog_uses_shared_loader_and_material_ids():
     directory = Path(__file__).resolve().parents[1] / 'config' / 'test_recipes' / 'v4'
-    # 9/29 추가 결정: 레시피 1만 전 원료 69 g·±15 %. 레시피 2·3은 #306 유지.
+    # 레시피 1은 전 원료 69 g·±15 %, 레시피 2·3의 B도 사용자 요청으로 69 g이다.
     expected = {
         'recipe-01': [('A', 69.0), ('B', 69.0), ('C', 69.0)],
-        'recipe-02': [('A', 138.0), ('B', 57.0)],
-        'recipe-03': [('A', 69.0), ('B', 57.0), ('C', 138.0)],
+        'recipe-02': [('A', 138.0), ('B', 69.0)],
+        'recipe-03': [('A', 69.0), ('B', 69.0), ('C', 138.0)],
     }
     assert {p.stem for p in directory.glob('*.yaml')} == set(expected)
     for name, items in expected.items():

@@ -1,4 +1,4 @@
-# D HMI·기록 현행 상태 (갱신: 2026-09-29, D 본인 — 분주 결과 표 지금 배치 위로, #306 원료별 1회량 레시피 A·C 69/138 · B 57 g, 계약 v1.9 세트 끝 주문 예약 소비. 9/28 조장 대조 반영, 9/26 시험 공정을 실제 흐름에 맞춤)
+# D HMI·기록 현행 상태 (갱신: 2026-09-29, 레시피 2·3 B 목표와 원료별 1회량 69 g 반영)
 
 **담당**: aszx4880-star
 
@@ -31,7 +31,7 @@
 | 세트 끝 주문 예약 (계약 v1.9) | 세트 끝(step FINISH·DISCARDED·NUDGE_WAIT, mode RUNNING·PAUSED)의 주문은 예약으로 보낸다. HMI 는 예약 goal 을 진행 배치와 따로 추적(`batch_control.queued`)하고, 상태 batch_id 가 예약 주문으로 바뀌면 진행 칸으로 옮긴다. 예약 취소는 「예약 주문 취소」 버튼(진행 배치 중단과 별개). 예약이 있으면 세트 완료 팝업 제목이 「로봇을 건드리면 예약 주문 시작」. 끝난 배치의 DONE/DISCARDED 는 보통 주문. 세트 끝이어도 인터락 ENTER·접촉 정지(`pause_reason` INTERLOCK·NUDGE)면 막는다(C 가 거부). 시작 못 한 예약은 사유(RunBatch `message`)를 60 s 보여 준다 | C #303(v1.9, main `a62d821`)·#304(폐기 반송 중 RUNNING, main `4e2c963`), #305 |
 | 시험 공정 흐름 | 실제 `process_fsm` 단계 순서(SELF_CHECK … RETURN_SCOOP → VERIFY → FINISH → **NUDGE_WAIT** → DONE). NUDGE 는 `/hmi_test/event` `code='NUDGE'`(skill_node 대역): 운전 중 정지/재개 · 세트 끝 다음 세트 · 유휴 주문 차단. 세트 끝 주문은 1건 예약(`ORDER_QUEUED`) → 넛지 뒤 시작, 넛지 없이 끝나면 `ORDER_DROPPED`(v1.9). 두 이벤트의 `batch_id` 는 **예약 주문 ID**, `SET_NEXT` 는 끝난 세트 ID(C #303 `f654f12` 과 같음) — 시작 못 한 예약은 `batches` 행이 없어 `/batch/<id>` 가 아니라 `/events?query=<id>` 로 찾는다. RunBatch Goal 은 세트가 끝날 때까지 유지(옛 판은 시작 1 초 뒤 Result 가 와서 취소 버튼이 안 켜졌다). 스쿱 기록은 고정 스쿱(접촉 미측정·전량 붓기)·`material_N` 계량 | #295 |
 | 시험 레시피 사본 | `config/test_recipes/v4` = 운영 `gmp_bringup/params/recipes` 와 **같다**(값은 운영 파일 참조). `test_v4_recipes.py` 가 운영과 대조해 어긋나면 실패한다. 통신 시험 launch 가 시험 노드에 `test_scoop_nominal_g`(공통)와 원료별 `test_scoop_nominal_by_material_g`(원료 순서, 0 이면 공통값)를 넘긴다(값은 `launch/hmi_comm_test.launch.py` — 스쿱 기준값은 B 몫이라 여기 숫자를 적지 않는다, 규칙 5) | #306, PR #276·#291 |
-| 운영 레시피 | **D 담당(9/25 팀 공지)** — `gmp_bringup/params/recipes/recipe-01~03.yaml` 파일·값. A69/B57/C69 · A138/B57 · A69/B57/C138, ±10 % (#306 9/29 — 원료별 스쿱 1회량 A·C 69 / B 57 g). 철회(9/29, #306): D-35 79/158 g — 근거 측정(9/23)이 마찰테이프 없이 한 것이라 무효. 스키마·검증은 C(`gmp_process/core/recipe.py`). 사본과 한 PR 로 바꾼다 | #306, SOT D-35(담당), `docs/interfaces.md` §4 |
+| 운영 레시피 | **D 담당(9/25 팀 공지)** — `gmp_bringup/params/recipes/recipe-01~03.yaml` 파일·값. A69/B69/C69(±15 %) · A138/B69(±10 %) · A69/B69/C138(±10 %). 사용자 현행값으로 원료별 스쿱 1회량은 A/B/C 모두 69 g이다. 이전 B 57 g 목표와 설정은 높이 조정 전 값이다. 스키마·검증은 C(`gmp_process/core/recipe.py`), 시험 사본은 운영값과 일치한다 | [SOT](../../docs/SOT.md#레시피-23-b-목표-변경-2026-09-29-사용자-요청), `docs/interfaces.md` §4 |
 
 ## 열린 과제 (이슈 번호)
 - **G6 휴대폰 리허설** — 9/23 390px 에서 고정 영역이 화면 절반(데모)~30 %(운영)를 먹던 것을 페이지 스크롤로 바꿨다(#280). QA 승인·폐기·진입·안전 복구·주문 버튼 도달·클릭은 playwright 로 확인. **실제 로봇 PC + 휴대폰 실물 리허설은 미검증**.

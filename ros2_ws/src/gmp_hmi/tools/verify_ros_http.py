@@ -128,7 +128,7 @@ class RosHttpCheck:
 
     def direct_order_rejected(self, requirements=None):
         # HMI를 우회해도 같은 공정 재고/높이 차단이 적용되어야 한다.
-        requirements = requirements or {'A':138.0,'B':57.0}
+        requirements = requirements or {'A':138.0,'B':69.0}
         data={'recipe':{'product':'BYPASS_TEST','items':[
             {'material_id':mid,'target_g':float(amount),'tol_pct':10.0}
             for mid,amount in requirements.items()]}}
@@ -244,12 +244,13 @@ class RosHttpCheck:
             raise CheckFailed("검증용 초기 재고가 필요합니다. 새 launch에 test_initial_g:='[138.0,1000.0,1000.0]' 를 지정하세요. 만충은 1,000g 그대로입니다.")
         self.report('시험 네임스페이스·노드3·RunBatch 액션1·서비스5·토픽9 및 인증 전 접근 차단')
         catalog={r['name']:r for r in self.get('/recipes')}
-        expected={'recipe-01':{'A':69,'B':57,'C':69},'recipe-02':{'A':138,'B':57},'recipe-03':{'A':69,'B':57,'C':138}}
+        expected={'recipe-01':{'A':69,'B':69,'C':69},'recipe-02':{'A':138,'B':69},'recipe-03':{'A':69,'B':69,'C':138}}
         for name,items in expected.items():
             if name not in catalog or {it['material_id']:it['target_g'] for it in catalog[name]['items']}!=items:
                 raise CheckFailed('레시피 원료/목표량 불일치: '+name)
-            if any(it['tol_pct']!=10.0 for it in catalog[name]['items']): raise CheckFailed('허용 오차 불일치: '+name)
-        self.report('레시피3종 목표량(#306 A·C 69/138 · B 57g)·원료 A/B/C·허용오차10% 및 recipe-02 C 생략')
+            tolerance=15.0 if name=='recipe-01' else 10.0
+            if any(it['tol_pct']!=tolerance for it in catalog[name]['items']): raise CheckFailed('허용 오차 불일치: '+name)
+        self.report('레시피 1 A/B/C 69g·±15%, 레시피 2·3 B 69g·±10%, recipe-02 C 생략')
         for role,name in [('operator',self.operator),('qa',self.qa),('viewer',self.viewer)]:
             self.http('POST','/users',{'username':name,'password':self.test_password,'role':role,'active':True},expected=201)
         self.http('POST','/settings',{},expected=403,csrf=False)

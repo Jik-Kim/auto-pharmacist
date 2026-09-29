@@ -942,8 +942,8 @@ def _nominal_of(material_id):
 def _recipe_targets():
     """운영 레시피의 `(목표 g, 허용 %, 그 원료의 1회량 g)` — 세 값이 같으면 FSM 에는 같은 경우라 중복을 뺀다.
 
-    처음엔 `(목표, 허용)` 만 보고 공통 1회량 하나로 계산했는데, 9/29 원료별 1회량(B 57 g)이 들어오자
-    B 레시피를 A 값(69 g)으로 판정해 틀린 채로 깨졌다. **원료가 1회량을 정한다.**
+    원료별 1회량을 도입할 때는 B가 57 g이었다. 현행값이 모두 69 g이어도
+    원료가 각자의 설정을 읽는 규칙을 유지한다.
     """
     found = set()
     for path in sorted((_PARAMS / 'recipes').glob('recipe-*.yaml')):
@@ -1133,9 +1133,9 @@ def test_고정스쿱_보충요청이_최소채취보다_작아지는_구간은_
         assert decide(target, actual, tol, 1, True, 0, cfg).action == 'DONE', actual
 
 
-# ── 원료별 1회량 배선 (#313, 9/29 A·C 69 / B 57) ────────────────────────
+# ── 원료별 1회량 배선 (#313): 아래 B 57 g은 차이를 검증하는 시험 전용 값 ──
 # `DosingConfig.scoop_nominal_by_material` 을 채워도 FSM 이 공통 설정을 그대로 `decide()` 에 넘기면
-# B 를 A 값으로 판정한다. 1회량을 쓰는 두 곳(첫 깊이, `decide()`)이 그 원료 값을 쓰는지 본다.
+# 원료별 값이 서로 다를 때 B 를 A 값으로 판정할 수 있다. 첫 깊이와 `decide()`의 설정 선택을 검사한다.
 
 PER_AB = {'A': 69.0, 'B': 57.0}
 
