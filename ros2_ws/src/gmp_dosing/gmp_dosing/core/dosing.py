@@ -40,11 +40,27 @@ class DosingConfig:
     `for_material()` 이 그 원료 값으로 바꾼 설정을 낸다 — `decide()` 는 설정만 받으므로 손대지 않는다.
     """
 
+    scoop_tare_bias_by_material: dict = field(default_factory=dict, kw_only=True)
+    """원료별 빈 스쿱(SCOOP_TARE) 계량 편향 [g] — 공정은 빈 스쿱 총량에서 이 값을 빼서 tare 로 쓴다.
+
+    9/29 외부 저울 대조: 퍼내기 전 빈 스쿱이 퍼낸 뒤보다 무겁게 읽혀(스쿱이 퍼내는 동안 그리퍼 안에서
+    자리를 잡는 것으로 추정) 순량이 일관되게 낮았다 (A 약 −13 g, B 약 −19 g, C 약 −2 g).
+    **경험 보정**이다 — 원인을 없애는 게 아니라 평균 편향만 뺀다. 비어 있거나 원료가 없으면 0.
+    """
+
     def __post_init__(self):
+        for mid, g in self.scoop_tare_bias_by_material.items():
+            if not isinstance(mid, str) or not mid or isinstance(g, bool) or not isinstance(g, (int, float)) \
+                    or g != g or abs(g) == float('inf'):
+                raise ValueError(f'scoop_tare_bias_by_material 은 원료 ID → 유한한 값 [g] 이어야 한다: {mid!r}: {g!r}')
         for mid, g in self.scoop_nominal_by_material.items():
             if not isinstance(mid, str) or not mid or isinstance(g, bool) or not isinstance(g, (int, float)) \
                     or not g > 0 or g == float('inf'):
                 raise ValueError(f'scoop_nominal_by_material 은 원료 ID → 유한한 양수 [g] 이어야 한다: {mid!r}: {g!r}')
+
+    def scoop_tare_bias(self, material_id: str) -> float:
+        """그 원료 자리의 빈 스쿱 계량 편향 [g]. 없으면 0 (보정 안 함)."""
+        return float(self.scoop_tare_bias_by_material.get(material_id, 0.0))
 
     def for_material(self, material_id: str) -> 'DosingConfig':
         """그 원료의 1회량을 `scoop_nominal_g` 에 넣은 설정. 원료별 값이 없으면 자기 자신.
