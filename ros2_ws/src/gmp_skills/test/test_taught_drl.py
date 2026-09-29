@@ -129,6 +129,58 @@ def test_fixed_spline_failure_never_shakes(monkeypatch):
     assert not calls
 
 
+def _at_return_end(node, calls, material='A', flipped=False):
+    station = node.stations.for_material(material)
+    node.joint_tolerance = 1.0                    # common.yaml robot.joint_tolerance_deg
+    node.arm.movel_cancellable(list(station.extra['return_end_posx']))
+    calls.clear()
+    j = station.extra['return_end_posj']
+    joints = [j[0], j[1], j[2], j[3] + 180.0, -j[4], j[5] + 180.0] if flipped else list(j)
+    node.arm.current_posj = lambda: list(joints)
+    return station
+
+
+@pytest.mark.parametrize('flipped', [False, True])
+def test_fixed_rescoop_connects_from_return_end(monkeypatch, flipped):
+    """#64: 그 원료의 반환이 성공해 반환 끝에 있으면 계량 자세로 이어 재스쿱한다.
+    9/29 배치에서 반환 뒤 재스쿱이 전부 거부돼 ERROR 로 끝났다."""
+    node, job, calls = fixed_node(monkeypatch)
+    station = _at_return_end(node, calls, flipped=flipped)
+    node._return_rescoop_blocked, node._returned_material = True, 'A'
+    node._do_scoop(job)
+    assert [c[0] for c in calls] == ['L', 'S', 'L', 'P', 'L']
+    assert calls[0][1] == list(station.posx)
+    assert not node._return_rescoop_blocked and not node._returned_material
+
+
+@pytest.mark.parametrize('bad', ['moved', 'other_material', 'failed_return'])
+def test_fixed_rescoop_refuses_unconfirmed_return_before_motion(monkeypatch, bad):
+    node, job, calls = fixed_node(monkeypatch)
+    station = node.stations.for_material('A')
+    if bad != 'moved':
+        _at_return_end(node, calls)
+    else:
+        node.joint_tolerance = 1.0
+        node.arm.current_posj = lambda: list(station.extra['return_end_posj'])
+    node._return_rescoop_blocked = True
+    node._returned_material = {'moved': 'A', 'other_material': 'B', 'failed_return': ''}[bad]
+    with pytest.raises(RuntimeError):
+        node._do_scoop(job)
+    assert not calls and node._return_rescoop_blocked
+
+
+def test_fixed_rescoop_connect_failure_keeps_guard(monkeypatch):
+    node, job, calls = fixed_node(monkeypatch)
+    _at_return_end(node, calls)
+    node._return_rescoop_blocked, node._returned_material = True, 'A'
+    def fail(*args, **kwargs):
+        raise RuntimeError('motion failed')
+    node.arm.movel_cancellable = fail
+    with pytest.raises(RuntimeError, match='motion failed'):
+        node._do_scoop(job)
+    assert node._return_rescoop_blocked and not node._returned_material
+
+
 @pytest.fixture
 def motion(monkeypatch):
     module = _load_skill_node(monkeypatch)
@@ -410,6 +462,22 @@ def test_returned_material_stows_via_drl_return_entry(motion, material, index, r
     node.gripper.width_mm = lambda: None
     node._do_grip(module.Job('grip', dict(close=False, timeout_s=3)))
     assert node._return_rescoop_blocked is (not released)
+
+
+def test_returned_material_stows_from_wrist_flipped_return_end(motion):
+    """반환 끝 확인과 같은 기준 — 손목만 뒤집힌 해로 끝난 반환도 수납을 잇는다 (9/29)."""
+    node, job, calls, state, _ = motion
+    node._held_payload, node._held_material_id = 'scoop', 'A'
+    state.update(grip_inferred=True)
+    node._return_rescoop_blocked = True
+    node._returned_material = 'A'
+    source = node.stations.for_material('A')
+    j = source.extra['return_end_posj']
+    node.arm.joints[:] = [j[0], j[1], j[2], j[3] + 180.0, -j[4], j[5] + 180.0]
+    job.args.update(station_id='scoop_1')
+    node._do_move(job)
+    assert calls[0][1] == source.posx
+    assert calls[-1][1] == node.stations.get('scoop_1').posx
 
 
 @pytest.mark.parametrize('failure_step', range(1, 5))

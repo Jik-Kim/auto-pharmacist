@@ -135,7 +135,7 @@
         <mxCell id="c11" value="POUR&lt;br&gt;req: pour(fraction=1)&lt;br&gt;middle→ABOVE→start→end&lt;br&gt;→ABOVE→Z+50→middle" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="1160" y="400" width="190" height="72" as="geometry" />
         </mxCell>
-        <mxCell id="c12" value="RETURN_MATERIAL&lt;br&gt;req: return_material(material_id)&lt;br&gt;끝 자세 유지 · 직접 재스쿱 차단&lt;br&gt;별도 수납·열기·후퇴 성공 후 해제" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="c12" value="RETURN_MATERIAL&lt;br&gt;req: return_material(material_id)&lt;br&gt;끝 자세 유지 · 고정 경로는 반환 끝→계량 자세로 이어 재스쿱(#64)&lt;br&gt;그 밖은 수납·열기·후퇴 성공 후 해제" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="880" y="960" width="190" height="72" as="geometry" />
         </mxCell>
         <mxCell id="c13" value="POUR 내부 판정&lt;br&gt;추가 계량 없음&lt;br&gt;추정 투입량 += 붓기 전 순량 → decide()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -975,13 +975,13 @@
         <mxCell id="c118" value="CLEANUP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="810" y="3000" width="200" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="c119" value="ReturnMaterial act (WEIGH_SCOOP 만)&lt;br&gt;MoveToStation act (material_N, AT → scoop_N, AT) · SetGripper srv (open)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c119" value="ReturnMaterial act (WEIGH_SCOOP 만)&lt;br&gt;MoveToStation act (SCOOP_TARE 는 material_N, AT → scoop_N, AT · 반환 뒤는 scoop_N, AT 만) · SetGripper srv (open)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1090" y="3000" width="360" height="46" as="geometry" />
         </mxCell>
         <mxCell id="c120" value="호출 → 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c118" target="c119">
           <mxGeometry x="0" y="-10" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c121" value="투입 전 계량 무효 — 손에 든 것을 정리한 뒤 멈춘다 (#213)&lt;br&gt;TARE 정리 없음 · SCOOP_TARE 반환 없이 · WEIGH_SCOOP 반환부터. 재스쿱 없음(#64)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c121" value="투입 전 계량 무효 — 손에 든 것을 정리한 뒤 멈춘다 (#213)&lt;br&gt;TARE 정리 없음 · SCOOP_TARE 반환 없이 · WEIGH_SCOOP 반환부터. 정리 중 재스쿱 없음" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1510" y="3000" width="340" height="46" as="geometry" />
         </mxCell>
         <mxCell id="c122" value="import 호출" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.9;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c118" target="c121">

@@ -750,6 +750,33 @@ def test_return_shake_joint_drift_keeps_guard(monkeypatch):
     assert node._return_rescoop_blocked and node._returned_material == ''
 
 
+def test_return_end_accepts_wrist_flipped_solution(monkeypatch):
+    """9/29: 붓기 뒤 movel 연쇄는 같은 반환 끝 TCP 에 손목만 뒤집힌 해로 온다 — 배치 안 반환이 2/2 실패했다."""
+    module = _load_skill_node(monkeypatch)
+    station = SimpleNamespace(station_id='material_1', extra={
+        'return_start_posx': [1.0] * 6, 'return_end_posx': [2.0] * 6,
+        'return_end_posj': [2.0] * 6, **RETURN_SHAKE})
+    node, moves, _ = _held_scoop_node(module, station)
+    node.arm.current_posj = lambda: [2.0, 2.0, 2.0, 182.0, -2.0, 182.0]
+    assert module.SkillNode._do_return_material(
+        node, module.Job('return_material', {'material_id': 'A'}))
+    assert len(moves) == 2
+    assert node._return_rescoop_blocked and node._returned_material == 'A'
+
+
+def test_return_joint_failure_reports_current_joints(monkeypatch):
+    module = _load_skill_node(monkeypatch)
+    station = SimpleNamespace(station_id='material_1', extra={
+        'return_start_posx': [1.0] * 6, 'return_end_posx': [2.0] * 6,
+        'return_end_posj': [2.0] * 6, **RETURN_SHAKE})
+    node, _, _ = _held_scoop_node(module, station)
+    node.arm.current_posj = lambda: [20.0] * 6
+    node.arm.stop_motion = lambda: None
+    with pytest.raises(RuntimeError, match=r'현재 \[20\.00, .*기준 \[2\.00'):
+        module.SkillNode._do_return_material(
+            node, module.Job('return_material', {'material_id': 'A'}))
+
+
 def test_return_cancel_during_end_move_skips_shake(monkeypatch):
     module = _load_skill_node(monkeypatch)
     station = SimpleNamespace(station_id='material_1', extra={
@@ -798,6 +825,7 @@ def test_return_end_attempt_blocks_followup_scoop_before_any_motion(monkeypatch,
         with pytest.raises(RuntimeError):
             module.SkillNode._do_return_material(node, job)
     before = list(moves)
+    node.stations.scooping = {}    # 깊이 보정 모드 — 반환 끝 → 재스쿱 연결은 고정 경로에서만 잇는다 (#64)
     for material_id in ('A', 'B'):
         with pytest.raises(RuntimeError, match='재스쿱 연결 경로 미구현'):
             module.SkillNode._do_scoop(node, module.Job('scoop', {'material_id': material_id}))

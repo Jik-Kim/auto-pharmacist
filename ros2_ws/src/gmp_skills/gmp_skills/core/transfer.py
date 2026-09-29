@@ -46,6 +46,23 @@ def joints_match(actual, target, tolerance_deg):
                                       vector6(target, '목표 posj'))) <= tolerance_deg
 
 
+def wrist_flipped(joints):
+    """같은 TCP 를 손목만 뒤집어 만드는 관절 자세 — J4·J6 을 같은 방향으로 180° 돌리고 J5 부호를 바꾼다.
+
+    J4 와 J6 을 반대 방향으로 돌린 해는 J6 이 360° 다르게 감긴 것이라 포함하지 않는다.
+    """
+    j = vector6(joints, '목표 posj')
+    return [(j[0], j[1], j[2], j[3] + turn, -j[4], j[5] + turn) for turn in (180.0, -180.0)]
+
+
+def joints_match_or_wrist_flipped(actual, target, tolerance_deg):
+    # 9/29: 작업대는 J5 < 0, 원료통 쪽은 J5 > 0 으로 티칭돼 있어 붓기를 다녀온 뒤의 movel 연쇄는
+    # 같은 TCP 에 손목만 뒤집힌 해로 도착한다(A 계량 자세 [-46.0, 7.6, 84.2, -0.05, 88.2, -225.8] →
+    # [-46.0, 7.6, 84.6, 179.95, -87.8, -45.8]). 반환 끝 확인이 이 해를 거부해 배치 안 반환이 2/2 실패했다.
+    return joints_match(actual, target, tolerance_deg) or any(
+        joints_match(actual, flipped, tolerance_deg) for flipped in wrist_flipped(target))
+
+
 @dataclass(frozen=True)
 class MotionAnchor:
     """마지막으로 확인한 스테이션·AT/ABOVE·TCP·관절각의 출발 기록."""
@@ -141,3 +158,8 @@ def validate_start(route, anchor, actual_pose, actual_joints, payload,
     if (not pose_matches(actual_pose, anchor.pose, xyz_mm, rotation_deg)
             or not joints_match(actual_joints, anchor.joints, joint_deg)):
         raise ValueError('출발 TCP/관절각이 마지막 도착 상태와 다르다. 수동 이동 여부를 확인해야 한다')
+
+
+def format_joints(joints):
+    """오류·로그에 남길 관절각 문자열 — 실패한 순간의 자세를 나중에 대조할 수 있게 한다."""
+    return '[' + ', '.join(f'{float(v):.2f}' for v in joints) + ']'
