@@ -446,7 +446,7 @@ class ProcessFSM:
         # NUDGE_WAIT — 세트가 끝나면 nudge_wait 로 물러나 사람이 건드리기를 기다린다 (D-23 반자동, D-24 스테이션).
         # 다음 세트(주문)는 그 NUDGE 뒤에만 받는다. 이 대기는 예외가 아니라 설계다.
         if k == 'move' and st == 'NUDGE_WAIT':
-            self.mode = 'PAUSED'                       # 로봇은 섰다 — 주문은 거부, HMI 는 사유를 본다
+            self.mode = 'PAUSED'                       # 로봇은 섰다 — 다음 주문은 예약만(RunBatch), HMI 는 사유를 본다
             return {'kind': 'wait_nudge'}
         if k == 'wait_nudge' and st == 'NUDGE_WAIT':
             self.state, self.mode = self._final, 'DONE'

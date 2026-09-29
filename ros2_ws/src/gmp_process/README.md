@@ -78,7 +78,7 @@ HMI 5000의 기존 RunBatch 클라이언트가 연결된다. A 스킬 서버가 
 
 ### PR #163 리뷰 확인 사항
 
-- NUDGE_WAIT 주문 거부는 세트 완료 및 다음 넛지 안내를 유지한다. 유휴 NUDGE/ENTER 잠금 사유도 CellState.note에 표시한다.
+- ~~NUDGE_WAIT 주문 거부는 세트 완료 및 다음 넛지 안내를 유지한다.~~ → **9/28 v1.9:** 세트 끝 구간(FINISH·폐기 반송·NUDGE_WAIT)의 RunBatch 주문은 1건 예약하고, 직전 배치가 넛지로 끝나면 시작한다(넛지 없이 끝나면 ABORTED). SubmitOrder 는 종전대로 거부하고 안내 문구를 유지한다. 유휴 NUDGE/ENTER 잠금 사유도 CellState.note에 표시한다.
 - 스킬 시간 초과 후 `_execution_uncertain`은 유지한다. `cancel_late`는 취소를 요청할 뿐 물리 정지나 최종 결과를 확인하지 않으므로 차단 해제 근거로 쓰지 않는다.
 - `skill_timeout_s`는 A와 실물 계량·이동 최장 시간을 확인한 뒤 정한다. 이 PR은 기존 90초를 임의로 늘리지 않는다.
 - 자동 배치 ID는 날짜형으로 복원한다. 날짜는 기록과 동일한 ROS clock을 UTC로 변환하며, 재시작 간 중복 방지는 보장하지 않는다. HMI가 전달하는 배치 ID는 유지한다.
