@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from dataclasses import replace
 import queue
 import threading
 
@@ -86,7 +87,7 @@ def test_already_at_exit_skips_duplicate_retreat(setup):
     assert [c[0] for c in node.calls] == ['J', 'J', 'L']
 
 
-@pytest.mark.parametrize('fault', ['disabled', 'speed', 'payload', 'stale', 'manual', 'branch', 'unknown'])
+@pytest.mark.parametrize('fault', ['disabled', 'speed', 'payload', 'stale', 'manual', 'unknown'])
 def test_bad_departure_never_sends_motion_or_falls_back(setup, fault):
     node, job, _ = setup
     if fault == 'disabled':
@@ -101,8 +102,6 @@ def test_bad_departure_never_sends_motion_or_falls_back(setup, fault):
         node.feedback_state['busy'] = True
     elif fault == 'manual':
         node.arm.pose[0] += 10
-    elif fault == 'branch':
-        node.arm.joints[5] += 360
     else:
         node._motion_anchor = None
     with pytest.raises((RuntimeError, ValueError)):
@@ -139,15 +138,15 @@ def test_failure_invalidates_state_and_retry_cannot_resume(setup):
     assert len(node.calls) == 1
 
 
-@pytest.mark.parametrize('fault', ['orientation', 'exit_branch', 'grip_lost'])
+@pytest.mark.parametrize('fault', ['orientation', 'exit_pose', 'grip_lost'])
 def test_intermediate_checks_prevent_following_segment(setup, fault):
     node, job, _ = setup
 
     def corrupt():
         if fault == 'orientation' and len(node.calls) == 3:
             node.arm.pose[4] += 20
-        elif fault == 'exit_branch' and len(node.calls) == 1:
-            node.arm.joints[0] += 20
+        elif fault == 'exit_pose' and len(node.calls) == 1:
+            node.arm.pose[0] += 20
         elif fault == 'grip_lost' and len(node.calls) == 1:
             node.feedback_state['grip_inferred'] = False
 
@@ -199,6 +198,44 @@ def test_above_departure_direct_at_arrival_has_no_final_linear_move(direct_setup
     assert [c[0] for c in node.calls] == ['L', 'J', 'J']
     assert node._motion_anchor.approach == 1
     assert node._motion_anchor.pose == tuple(node.stations.get('passbox_done').posx)
+
+
+@pytest.fixture
+def exit_setup(direct_setup):
+    node, job, module = direct_setup
+    key = ('workbench', 'passbox_done')
+    route = replace(node.stations.transfers[key], start_from='exit',
+                    start_at_posj=(), start_above_posj=())
+    node.stations.transfers[key] = route
+    node.arm.pose = list(route.exit_posx)
+    node.arm.joints = list(route.exit_posj)
+    node._motion_anchor = MotionAnchor(
+        station='workbench', approach=0, pose=route.exit_posx, joints=route.exit_posj)
+    return node, job, module
+
+
+def test_exit_departure_connects_directly_without_linear_motion(exit_setup):
+    node, job, _ = exit_setup
+    node._do_move(job)
+    assert [call[0] for call in node.calls] == ['J', 'J']
+    assert node._motion_anchor.station == 'passbox_done'
+    assert node._motion_anchor.pose == tuple(node.stations.get('passbox_done').posx)
+
+
+@pytest.mark.parametrize('fault', ['manual', 'payload', 'sensor', 'unknown'])
+def test_exit_departure_rejects_invalid_state_before_motion(exit_setup, fault):
+    node, job, _ = exit_setup
+    if fault == 'manual':
+        node.arm.pose[0] += 10
+    elif fault == 'payload':
+        node._held_payload = 'cup'
+    elif fault == 'sensor':
+        node.feedback_state['grip_inferred'] = True
+    else:
+        node._motion_anchor = None
+    with pytest.raises((ValueError, RuntimeError)):
+        node._do_move(job)
+    assert node.calls == []
 
 
 def test_direct_route_rejects_source_at_before_any_motion(direct_setup):
@@ -388,3 +425,21 @@ def test_virtual_direct_arrival_above_uses_requested_linear_target(direct_setup)
     job.args['approach'] = 0
     node._do_move(job)
     assert node.calls == [('L', node.stations.get('passbox_done').above(node.stations.approach_mm))]
+
+
+def test_exit_old_joint_values_do_not_block_motion(exit_setup):
+    node, job, _ = exit_setup
+    node.arm.joints = [20]*6
+    node._motion_anchor = replace(node._motion_anchor, joints=(99,)*6)
+    node._do_move(job)
+    assert [call[0] for call in node.calls] == ['J', 'J']
+
+
+def test_intermediate_old_exit_joints_do_not_block_motion(setup):
+    node, job, _ = setup
+    def change_joints():
+        if len(node.calls) == 1:
+            node.arm.joints = [20]*6
+    node.after_move = change_joints
+    node._do_move(job)
+    assert [call[0] for call in node.calls] == ['L', 'J', 'J', 'L']

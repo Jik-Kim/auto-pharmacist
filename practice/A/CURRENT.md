@@ -65,3 +65,8 @@
 ## 넛지 이송 기본값 (2026-09-29)
 
 - 사용자 경로 검증 완료 확인에 따라 `enabled: true`. 좌표와 출발·파지·도착 검사는 유지한다. [설정 원본](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [일지](2026-09-29_넛지_이송_활성화.md).
+
+- 넛지 경로 `start_from: exit`: 놓기 후 후퇴 위치(Z=330)를 출발 기준으로 사용한다. 기존 ABOVE(Z=180) 비교를 제거하고 EXIT 자세·관절각·파지·이력 검사는 유지한다. 좌표 변경 없음, 변경 후 실물 시험 미수행. [원본](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [일지](2026-09-29_넛지_이송_활성화.md).
+
+- 9/29 후속 승인: 위 EXIT 관절각 대조 유지 결정은 철회한다. MoveToStation의 고정 출발 TCP·과거 관절각 대조를 제거하고 마지막 TCP 이력·파지·EXIT 및 목표 도달 검사를 유지한다. [결정](../../docs/SOT.md), [코드](../../ros2_ws/src/gmp_skills/gmp_skills/execution/motion.py). 변경 후 실물 미검증.
+- 해당 변경 후 gmp_skills 모의 테스트 501건 통과. [검증 일지](2026-09-29_넛지_이송_활성화.md).

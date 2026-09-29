@@ -125,7 +125,7 @@ def test_manual_movement_invalidates_departure(setup):
     node, job, _, _ = setup
     node._do_move(job)
     node.calls.clear()
-    node.arm.joints[0] += 10
+    node.arm.pose[0] += 10
     job.args['station_id'] = 'reject_bin'
     with pytest.raises(RuntimeError, match='출발 이력'):
         node._do_move(job)
