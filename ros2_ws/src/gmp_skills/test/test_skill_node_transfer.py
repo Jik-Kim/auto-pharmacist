@@ -87,7 +87,7 @@ def test_already_at_exit_skips_duplicate_retreat(setup):
     assert [c[0] for c in node.calls] == ['J', 'J', 'L']
 
 
-@pytest.mark.parametrize('fault', ['disabled', 'speed', 'payload', 'stale', 'manual', 'unknown'])
+@pytest.mark.parametrize('fault', ['disabled', 'speed', 'payload', 'stale', 'manual', 'branch', 'unknown'])
 def test_bad_departure_never_sends_motion_or_falls_back(setup, fault):
     node, job, _ = setup
     if fault == 'disabled':
@@ -102,6 +102,8 @@ def test_bad_departure_never_sends_motion_or_falls_back(setup, fault):
         node.feedback_state['busy'] = True
     elif fault == 'manual':
         node.arm.pose[0] += 10
+    elif fault == 'branch':
+        node.arm.joints[5] += 360
     else:
         node._motion_anchor = None
     with pytest.raises((RuntimeError, ValueError)):
@@ -205,12 +207,12 @@ def exit_setup(direct_setup):
     node, job, module = direct_setup
     key = ('workbench', 'passbox_done')
     route = replace(node.stations.transfers[key], start_from='exit',
-                    start_at_posj=(), start_above_posj=())
+                    start_at_posj=(), start_above_posj=(), exit_posj=(99,)*6)
     node.stations.transfers[key] = route
     node.arm.pose = list(route.exit_posx)
-    node.arm.joints = list(route.exit_posj)
+    node.arm.joints = [20]*6
     node._motion_anchor = MotionAnchor(
-        station='workbench', approach=0, pose=route.exit_posx, joints=route.exit_posj)
+        station='workbench', approach=0, pose=route.exit_posx, joints=(20,)*6)
     return node, job, module
 
 
@@ -307,6 +309,24 @@ def test_empty_route_can_be_anchored_without_moving_after_manual_teaching(setup)
     assert node.calls == []
     assert node._motion_anchor.station == 'passbox_done'
     assert node._held_payload == 'unknown'
+
+
+def test_existing_anchor_joint_mismatch_cannot_be_replaced_by_local_restore(setup):
+    node, job, _ = setup
+    data = teaching_data()
+    data['transfers'].append(dict(data['transfers'][0], source='passbox_done',
+                                  destination='nudge_wait', start_at_posj=[1]*6,
+                                  start_above_posj=[2]*6, exit_posx=[300, 0, 200, 90, 90, 0]))
+    node.stations = StationTable(data)
+    pose = tuple(node.stations.get('passbox_done').posx)
+    node._station_id = 'passbox_done'
+    node.arm.pose = list(pose)
+    node.arm.joints = [1]*6
+    node._motion_anchor = MotionAnchor('passbox_done', 1, pose, (99,)*6)
+    job.args.update(station_id='passbox_done', approach=1)
+    with pytest.raises(ValueError, match='저장된 출발 이력'):
+        node._do_move(job)
+    assert node.calls == []
 
 
 def test_payload_requires_successful_grip_at_taught_station(setup):
@@ -427,12 +447,19 @@ def test_virtual_direct_arrival_above_uses_requested_linear_target(direct_setup)
     assert node.calls == [('L', node.stations.get('passbox_done').above(node.stations.approach_mm))]
 
 
-def test_exit_old_joint_values_do_not_block_motion(exit_setup):
+def test_exit_old_taught_joints_do_not_block_motion(exit_setup):
     node, job, _ = exit_setup
-    node.arm.joints = [20]*6
-    node._motion_anchor = replace(node._motion_anchor, joints=(99,)*6)
     node._do_move(job)
     assert [call[0] for call in node.calls] == ['J', 'J']
+
+
+@pytest.mark.parametrize('delta', [-360, 360])
+def test_exit_departure_rejects_joint_branch_mismatch_with_anchor(exit_setup, delta):
+    node, job, _ = exit_setup
+    node.arm.joints[5] += delta
+    with pytest.raises(ValueError, match='관절각'):
+        node._do_move(job)
+    assert node.calls == []
 
 
 def test_intermediate_old_exit_joints_do_not_block_motion(setup):

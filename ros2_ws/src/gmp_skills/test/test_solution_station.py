@@ -102,6 +102,17 @@ def test_source_exit_before_destination_joint_move(setup):
     assert node.calls[0][1] == node.stations.get('workbench').exit()
 
 
+def test_solution_station_departure_rejects_joint_branch_change(setup):
+    node, job, _, _ = setup
+    node._do_move(job)
+    node.calls.clear()
+    node.arm.joints[5] += 360
+    job.args['station_id'] = 'reject_bin'
+    with pytest.raises(RuntimeError, match='출발 이력'):
+        node._do_move(job)
+    assert node.calls == []
+
+
 @pytest.mark.parametrize('fault', ['cancel', 'wrong_sol', 'lost_grip'])
 def test_failed_joint_approach_never_descends(setup, fault):
     node, job, _, state = setup

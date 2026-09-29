@@ -85,10 +85,16 @@ class MotionSkills:
             # 이 목적지는 등록된 이송 경로로만 진입한다. 같은 스테이션에서
             # 작업점(AT)과 상부점(ABOVE)을 오가는 경우에만 직선 이동을 허용한다.
             anchor = self.ctx.state.motion_anchor
-            if (anchor is None or anchor.station != st.station_id
-                    or not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)):
-                # 재기동했거나 작업자가 펜던트로 로봇을 움직이면 저장한 출발 이력이 없다.
-                # 이때 실제 TCP 위치·회전이 목표점에 이미 맞으면
+            anchor_matches = (anchor is not None and anchor.station == st.station_id
+                              and self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)
+                              and joints_match(self.ctx.arm.current_posj(), anchor.joints,
+                                               self.ctx.config.joint_tolerance))
+            if not anchor_matches:
+                # 기존 기록이 있는데 센서와 다르면 재기록으로 덮지 않는다.
+                if anchor is not None:
+                    raise ValueError('저장된 출발 이력과 현재 TCP/관절각이 다르다')
+                # 재기동으로 저장한 출발 이력이 없을 때만 복원을 시도한다.
+                # 이때 실제 TCP 위치·회전이 요청 목표점에 이미 맞으면
                 # 이동 없이 기록만 복원한다. 맞지 않으면 이동 경로를 추측하지 않는다.
                 for outgoing in self.ctx.stations.transfers.values():
                     if outgoing.source != st.station_id or not outgoing.enabled:
@@ -141,7 +147,9 @@ class MotionSkills:
             return
         anchor = self.ctx.state.motion_anchor
         if (anchor is None or anchor.station != source.station_id
-                or not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)):
+                or not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)
+                or not joints_match(self.ctx.arm.current_posj(), anchor.joints,
+                                    self.ctx.config.joint_tolerance)):
             raise RuntimeError('티칭 경로 출발 이력이 불확실하다')
         if self.ctx.state.held_payload not in ('cup', 'empty'):
             raise RuntimeError('티칭 경로 출발 전 인출·파지 확인이 필요하다')
@@ -170,8 +178,10 @@ class MotionSkills:
             raise ValueError('티칭 관절 속도·가속도는 유한한 양수여야 한다')
         anchor = self.ctx.state.motion_anchor
         local = (anchor is not None and anchor.station == station.station_id)
-        if local and not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose):
-            raise RuntimeError('티칭 스테이션 도착 후 TCP 위치/자세가 변경되었다')
+        if (local and (not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)
+                       or not joints_match(self.ctx.arm.current_posj(), anchor.joints,
+                                           self.ctx.config.joint_tolerance))):
+            raise RuntimeError('티칭 스테이션 도착 후 TCP 위치/자세 또는 관절각이 변경되었다')
         if 'return_entry_posx' in station.extra:
             if self.ctx.state.held_payload == 'scoop':
                 self._require_held_scoop(station.extra['material_id'])
@@ -277,7 +287,9 @@ class MotionSkills:
             return
         anchor = self.ctx.state.motion_anchor
         if (anchor is None or anchor.station != source.station_id
-                or not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)):
+                or not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)
+                or not joints_match(self.ctx.arm.current_posj(), anchor.joints,
+                                    self.ctx.config.joint_tolerance)):
             raise RuntimeError('용기 스테이션 출발 이력이 불확실하다')
         if self.ctx.state.held_payload not in ('cup', 'empty'):
             raise RuntimeError('용기 이송 전 파지 상태 확인이 필요하다')
@@ -338,14 +350,16 @@ class MotionSkills:
             raise RuntimeError('빈 그리퍼의 열림 폭을 확인할 수 없다')
 
     def _run_transfer(self, route, job, target, vel_scale):
-        # route에는 출발 TCP·관절각, 이탈점, 중간 관절점, 도착 방식이 저장돼 있다.
-        # 과거 출발 티칭값은 대조하지 않는다. 실제 EXIT 도달 후 관절 경로로 연결한다.
+        # route에는 출발 이탈점, 중간 관절점, 도착 방식이 저장돼 있다.
+        # 실제 출발 TCP/관절각은 마지막 도착 기록과 비교하고 EXIT 도달 후 관절 경로로 연결한다.
         # 실제 출발 자세·파지물을 검증한 뒤 각 구간을 실행하고 도착을 확인한다.
         if route.arrival == 'at' and job.args['approach'] != MoveToStation.Goal.AT:
             raise ValueError('관절 직접 도착 경로는 AT 요청만 허용한다')
         validate_start(route, self.ctx.state.motion_anchor, self.ctx.arm.current_posx(),
+                       self.ctx.arm.current_posj(),
                        self.ctx.state.held_payload,
-                       self.ctx.config.pose_xyz_tolerance, self.ctx.config.pose_rotation_tolerance)
+                       self.ctx.config.pose_xyz_tolerance, self.ctx.config.pose_rotation_tolerance,
+                       self.ctx.config.joint_tolerance)
         if any(not math.isfinite(v) or v <= 0
                for v in (self.ctx.config.transfer_joint_vel, self.ctx.config.transfer_joint_acc)):
             raise ValueError('이송 관절 속도·가속도를 먼저 설정해야 한다')

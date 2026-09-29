@@ -29,6 +29,11 @@ def test_pose_comparison_uses_rotation_not_euler_subtraction():
     assert not joints_match([360]*6, [0]*6, 1)
 
 
+@pytest.mark.parametrize('delta', [-360, 360])
+def test_j6_branch_change_is_not_wrapped(delta):
+    assert not joints_match([0, 0, 0, 0, 0, delta], [0]*6, 1)
+
+
 @pytest.mark.parametrize('field,value', [
     ('start_above_posj', [0]*5),
     ('exit_posj', [float('nan')]*6), ('waypoints_posj', []),
@@ -48,7 +53,7 @@ def test_disabled_route_allows_empty_teaching_but_rejects_execution():
                               enabled=False, payload='cup')]
     route = StationTable(data).transfers[('workbench', 'passbox_done')]
     with pytest.raises(ValueError, match='비활성'):
-        validate_start(route, None, [0]*6, 'cup', 2, 2)
+        validate_start(route, None, [0]*6, [0]*6, 'cup', 2, 2, 1)
 
 
 def test_duplicate_route_rejected():
@@ -124,7 +129,7 @@ def test_legacy_pick_route_requires_migration():
         StationTable(data)
 
 
-@pytest.mark.parametrize('change', ['pose', 'payload', 'unknown'])
+@pytest.mark.parametrize('change', ['pose', 'joint', 'payload', 'unknown'])
 def test_departure_checks_tcp_history_and_payload(change):
     table = StationTable(teaching_data())
     route = table.transfers[('workbench', 'passbox_done')]
@@ -133,16 +138,28 @@ def test_departure_checks_tcp_history_and_payload(change):
     payload = 'cup'
     if change == 'pose':
         pose[0] += 10
+    elif change == 'joint':
+        joints[0] += 10
     elif change == 'payload':
         payload = 'scoop'
     else:
         anchor = None
     with pytest.raises(ValueError):
-        validate_start(route, anchor, pose, payload, 2, 2)
+        validate_start(route, anchor, pose, joints, payload, 2, 2, 1)
 
 
 def test_departure_uses_recorded_tcp_instead_of_old_taught_pose():
     route = StationTable(teaching_data()).transfers[('workbench', 'passbox_done')]
     pose = (100, 0, 330, 0, 180, 0)
     anchor = MotionAnchor(station='workbench', approach=0, pose=pose, joints=(99,)*6)
-    validate_start(route, anchor, pose, 'cup', 2, 2)
+    validate_start(route, anchor, pose, [99]*6, 'cup', 2, 2, 1)
+
+
+@pytest.mark.parametrize('delta', [-360, 360])
+def test_departure_rejects_j6_branch_change_from_recorded_anchor(delta):
+    route = StationTable(teaching_data()).transfers[('workbench', 'passbox_done')]
+    pose = (100, 0, 100, 0, 180, 0)
+    anchor = MotionAnchor('workbench', 1, pose, (0,)*6)
+    with pytest.raises(ValueError, match='관절각'):
+        validate_start(route, anchor, pose, (0, 0, 0, 0, 0, delta),
+                       'cup', 2, 2, 1)

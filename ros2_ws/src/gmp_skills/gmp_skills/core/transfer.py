@@ -127,8 +127,9 @@ def parse_routes(rows, stations, approach_mm=60.0):
     return routes
 
 
-def validate_start(route, anchor, actual_pose, payload, xyz_mm, rotation_deg):
-    """출발 이력·현재 TCP·파지만 확인한다. 과거 티칭 관절각은 대조하지 않는다."""
+def validate_start(route, anchor, actual_pose, actual_joints, payload,
+                   xyz_mm, rotation_deg, joint_deg):
+    """출발 이력의 TCP·관절각과 현재 센서값, 파지를 확인한다."""
     if not route.enabled:
         raise ValueError(f'{route.source} → {route.destination}: 미티칭/비활성 이송 경로')
     if anchor is None or anchor.station != route.source or anchor.approach not in (0, 1):
@@ -137,5 +138,6 @@ def validate_start(route, anchor, actual_pose, payload, xyz_mm, rotation_deg):
         raise ValueError('이 경로는 출발 ABOVE에서만 시작한다. 놓기 후 직선 후퇴가 필요하다')
     if payload != route.payload:
         raise ValueError(f'이송 파지 조건 불일치: 필요={route.payload}, 현재={payload}')
-    if not pose_matches(actual_pose, anchor.pose, xyz_mm, rotation_deg):
-        raise ValueError('출발 TCP가 마지막 도착 상태와 다르다. 수동 이동 여부를 확인해야 한다')
+    if (not pose_matches(actual_pose, anchor.pose, xyz_mm, rotation_deg)
+            or not joints_match(actual_joints, anchor.joints, joint_deg)):
+        raise ValueError('출발 TCP/관절각이 마지막 도착 상태와 다르다. 수동 이동 여부를 확인해야 한다')
