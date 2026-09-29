@@ -11,13 +11,13 @@
 | 공구 설정 `tool_weight` (펜던트, **동결**) | A 소관 동결값 — 숫자는 원본에서 본다 | [`practice/A/CURRENT.md`](../A/CURRENT.md) · `gmp_dosing/config/scale_reference.yaml` retracted_0923 · PR #235 |
 | 런타임 계량 `scale.gain / offset_g / max_std_g` | 0.8859 / 247.091 / 10.0 — **우드락 공구(9/19~21) 조건 값. 9/29 실측으로 틀린 값 확인** — 용기 순량 237 g 을 193 g(−19 %)으로 읽는다. **9/29 결정: gain·offset 을 경로별(용기·스쿱)로 나눈다** — 구조 변경 미착수 | `ros2_ws/src/gmp_bringup/params/common.yaml:91-93` |
 | **용기 경로** gain / offset_g (9/29, #187) | **1.0975 ± 0.6 % / 229.0** — 79·154·229·316 g 한 파지, 최대 잔차 1.95 g. ~~≈ 1.076 (9/23 2점)~~ | `calibration/g1_0929_gain3pt.csv`, 일지 2026-09-29 |
-| **스쿱 경로** gain / offset_g (9/29, material_1 만) | **0.980 ± 4.2 % / 103.5 — 미확정**(±2 % 기준 불통과). 용기와 −11 % 로 다른 것은 확실 | `calibration/g1_0929_scoop_gain3pt.csv` |
+| **스쿱 경로** gain / offset_g (9/29) | **0.983 ± 1.0 %(A·C 합산) / 103.5(material_1)** — 스테이션별 gain 불필요(A 0.980 · B 0.968 · C 0.983). offset 은 스테이션마다 다름(순량엔 무관). ~~0.980 ± 4.2 % 미확정~~ | `calibration/g1_0929_scoop_gain3pt.csv` |
 | 계량 전제 — 공구 등록 | 등록 1.36 kg 동결, 실물은 부착물(≈ 60 g) 제거로 ≈ 1.30 kg. **위 offset 은 이 상태 전제 — 공구를 재등록하면 offset 재측정** | 일지 2026-09-29 |
 | 로봇 재파지 σ (용기 229 g, 8파지 12분, 추세 제거) | **6.99 g** — 한 파지 유지는 0.85 g. TARE·VERIFY 두 파지라 σ_순량 **9.9 g** → 3σ **29.7 g** | #187 9/23 정정 코멘트 |
 | VERIFY ① 허용폭 Σ(target×tol) | 레시피(D) 값에서 나온다 — **가장 엄격한 운영 레시피 값**을 쓴다. D-33 값·D-35 적용 뒤 값은 SOT 에 있다 | `params/recipes/recipe-0*.yaml`, `process_fsm.py:449` `batch_tol_g()`, SOT D-31 9/25 추기 · D-35 |
 | VERIFY ① 성립 여부 | **9/25 결정: 현 재파지 반복성(σ_순량 ≈ 9.9 g)으로 시연한다 — 합격 시험 #249 닫음.** 재파지 3σ 29.7 g 은 recipe-01·02 허용폭을 넘지만(`\|편향\|+3σ ≤ 예산` 미달), 규격 안 배치를 `BATCH_OUT_OF_SPEC` 로 잘못 거는 비율은 ≈ 2 % 추정이고 걸려도 QA 판정으로 가며 안전 문제가 아니다(SOT). 반복성 개선은 **시연 뒤 과제** | SOT D-31 9/25 결정(PR #284 `c2fd498`) |
 | 계량 무효 재시도 | `max_invalid_retries` **2** (총 3회 측정). 출처는 `DosingConfig` 기본값 **하나뿐**이다 — `common.yaml` 에도 `process_node` 선언에도 없다 | `gmp_dosing/core/dosing.py:32`, #213 결정 1, PR #225 |
-| 스쿱 1회량 `scoop_nominal_g` | 파일값 **79.0**(D-35) — **근거 무효(9/29).** **9/29 조장 결정: A·C 묶음 / B 별도**(원료통 B 경사·높이가 다르다). 원료별 값 구조는 미착수. 종전 85.0(D-33) · 40.0(9/18) | common.yaml `dosing.scoop_nominal_g`, `DosingConfig` 기본값, SOT D-35 |
+| 스쿱 1회량 | **원료별 `dosing.scoop_nominal` A·C 69 · B 57 g**(9/29 조장 결정 A·C 묶음 / B 별도, 반올림은 사용자). 공통 `scoop_nominal_g` **69**(원료별 값 없을 때). `DosingConfig.for_material()` — PR #310. **C 호출부(#306) 전까지 공정은 공통 69 로 판정.** ~~79.0 (D-35)~~ 근거 무효 · 85.0(D-33) · 40.0(9/18) | common.yaml `dosing.scoop_nominal_g`, `DosingConfig` 기본값, SOT D-35 |
 | 스쿱 1회 **투입량 실측** (#272, **9/29 현 구성** — 세 스쿱 마찰테이프, 손잡이 폭 16.5/17.5/18.5 mm, `vel_scale` 1.0, 원료면 가득+평평) | **A 69.3 g (σ 6.2, n 10) · B 57.4 g (σ 3.2, n 5) · C 67.4 g (σ 3.9, n 5) · A·C 묶음 68.7 g (n 15)**. ~~A 78.9 g · σ 3.90 (9/23)~~ → 마찰테이프 없이 잰 값, 현 구성 대표값 아님 | `calibration/scoop_sigma_0929_mat{A,B,C}.csv`, 일지 2026-09-29 |
 | 깊이 비율 하한 `min_fraction` | **0.10** (종전 0.15). `stations.yaml scooping.A` 와 같아야 함 | common.yaml `dosing`, `stations.yaml:126` |
 | 교착 여유 | 최소 채취 **7.9 g** (= 0.10 × 79). 한계 2×target×tol 은 레시피 값이라 여기 안 적는다 — 성립 여부는 시험이 레시피 파일을 읽어 단언한다 | `test_dosing.py::test_min_scoop_cannot_overshoot_tolerance` |
@@ -100,11 +100,13 @@
     **9/23 실측(붓기 방식)으로 대체**됐다. #269 는 Closed. 원문은 `git log -p practice/B/CURRENT.md`
     (이 절 교체 전 커밋 `4ff3fac`). `ScoopCycle` 로봇 계량 교차검증(`reference_delivered_g`)은 보조로 남는다
     — 다만 로봇 스쿱 계량이 PLA 공구에서 미검증이라 그 전에는 의미가 없다.
-- ⛔ **[최우선] 구조 변경 두 건 — 9/29 결정 구현** (설계는 한 번에)
-  1. **원료별 스쿱 1회량** — A·C 그룹 / B. `scoop_nominal_g` 가 하나뿐이라 원료별 값을 받게 바꾼다: B `DosingConfig`·`decide()`, C `process_node` 전달, D 레시피 목표. 값은 위 표(A·C 68.7 · B 57.4 g) — 확정은 조장
-  2. **경로별 계량 gain·offset** — 용기(TARE·VERIFY)·스쿱(SCOOP_TARE·WEIGH_SCOOP·WEIGH_RESIDUAL). B `ScaleConfig`, A `skill_node` 가 subject 로 골라 전달, `common.yaml`(조장). #186(σ 분리)과 같은 방향이라 함께 본다
-  - 이 두 건 전에는 시연이 돌지 않는다 — 1회량 79 g 창(71.1~86.9 g)에 세 원료 모두 못 들어가고, VERIFY 순량이 −19 % 로 읽힌다
-- **스쿱 경로 gain 확정** — 지금은 material_1 6회뿐(±4.2 %). 스테이션 3곳(원료통 B 는 높이·경사가 다르다) × 회차를 늘려 ±2 % 이내로. 운영 분기는 safe 관절 [0,0,90,0,90,0] → 직선 이동(`--goto-posj` → `--goto-station`)
+- ⛔ **[9/30 시연 필수 — 9/29 안에] 구조 변경 두 건**
+  1. **#306 원료별 1회량 A·C 69 / B 57** — B **PR #310**(구조 + `common.yaml` 값) → C `process_fsm` 의 `decide()`·`_first_fraction()` 에 `for_material(cur.material_id)`, `process_node` 선언 → D 레시피(#291 을 69/138/57 로)
+  2. **#307 계량 gain·offset·max_std_g 경로별** — container 1.0975/229.0 · scoop 0.983/103.5 · 둘 다 max_std_g 10. **조장 yaml + A `skill_node` 한 PR**(따로면 없는 키를 읽어 계량 실패). #186 흡수
+  - 선행: #283(B) · #287(C) · #293(A). 머지 뒤 가상 1배치 → **실물 1배치**(TARE→VERIFY 순량이 저울 ±3 g)
+  - 이 두 건 전에는 시연이 안 돈다 — 79 g 창에 세 원료 못 들고, VERIFY 순량 −19 %
+- **#308 원료통 B 스쿱 계량 반복 σ 6.5 g**(A·C 1.2 g) — B 순량 오차 ≈ 9 g > 허용 ±5.7 g. 계량 자세 재티칭(A). 못 하면 발표에 「알려진 한계」
+- **#309 거부된 이동이 파지 이력을 지움 · `dio` 복원 불가**(A)
 - **A 1회량 산포 σ 6.2 g** (B·C 3~4 g) — 원료통 A 형상·티칭 쪽 원인 후보(A)
 - ~~[최우선] 원료 B·C 의 1회량 확인 측정~~ → **9/29 완료**. A 자체가 테이프 없이 잰 값이라 기준이 없어져 세 원료 모두 새로 쟀다(위 표). 절차 원문은 `git log -p practice/B/CURRENT.md`(이 절 교체 전 `03f828a`)
 - **#156 가상 계량 흔들림 재생 자료 — PR #301** (리뷰어 A, 9/28). A 가 「가상 장부 질량 + 실측 흔들림」 재생을 구현하고 B 가 자료를 낸다.

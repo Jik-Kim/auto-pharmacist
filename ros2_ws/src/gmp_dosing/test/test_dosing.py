@@ -212,6 +212,11 @@ def _recipes():
         yield path.name, yaml.safe_load(path.read_text(encoding='utf-8'))['items']
 
 
+def _nominal_for(d, material_id):
+    per = d.get('scoop_nominal') or {}
+    return per[material_id] if per else d['scoop_nominal_g']
+
+
 def test_min_scoop_cannot_overshoot_tolerance():
     """UNDER 뒤 **최소 채취**가 허용 상한을 넘으면 스쿱↔반환이 끝없이 반복된다.
 
@@ -220,9 +225,10 @@ def test_min_scoop_cannot_overshoot_tolerance():
      건너뛸 수밖에 없는 구간이 생긴다.)
     """
     d = _dosing_params()
-    min_scoop = d['min_fraction'] * d['scoop_nominal_g']
     for name, items in _recipes():
         for it in items:
+            # 원료별 1회량(9/29 결정, `dosing.scoop_nominal.<원료>`)이 생기면 그 값으로, 없으면 공통값으로 본다
+            min_scoop = d['min_fraction'] * _nominal_for(d, it['material_id'])
             limit = 2.0 * it['target_g'] * it['tol_pct'] / 100.0
             assert min_scoop <= limit, (
                 f"{name} {it['material_id']}: 최소 채취 {min_scoop:.1f} g 이 한계 {limit:.1f} g 을 넘어 "
@@ -331,3 +337,58 @@ def test_fixed_scoop_is_keyword_only():
     import pytest
     with pytest.raises(TypeError):
         DosingConfig(8, 79.0, 0.10, 2, True)
+
+
+# ── 원료별 스쿱 1회량 (9/29 조장 결정: A·C 묶음 / B 별도) ─────────────────────
+# 9/29 현 구성 실측 A 69.3 · B 57.4 · C 67.4 g → 반올림 A·C 69 · B 57 (사용자 결정).
+PER = DosingConfig(max_attempts=8, min_fraction=0.10, fixed_scoop=True,
+                   scoop_nominal_by_material={'A': 69.0, 'B': 57.0, 'C': 69.0})
+
+
+def test_for_material_swaps_in_that_materials_nominal():
+    assert PER.for_material('B').scoop_nominal_g == 57.0
+    assert PER.for_material('A').scoop_nominal_g == PER.for_material('C').scoop_nominal_g == 69.0
+    # 나머지 설정은 그대로 따라간다
+    b = PER.for_material('B')
+    assert (b.max_attempts, b.min_fraction, b.fixed_scoop) == (8, 0.10, True)
+
+
+def test_without_per_material_values_everyone_shares_the_single_nominal():
+    """원료별 값을 안 채우면 종전과 같다 — C 가 호출부를 바꾸기 전에 머지돼도 동작이 안 바뀐다."""
+    assert CFG.for_material('B') is CFG
+
+
+def test_missing_material_is_an_error_not_a_silent_fallback():
+    """원료별 값을 채웠는데 빠진 원료가 있으면 멈춘다 — B 를 A 값으로 판정하면 틀린 채로 돈다."""
+    import pytest
+    with pytest.raises(KeyError):
+        PER.for_material('D')
+
+
+def test_per_material_nominal_changes_the_decision():
+    """같은 상태라도 원료의 1회량에 따라 판정이 갈린다 — 이게 원료별 값을 두는 이유다.
+
+    빈 상태(0 g)에서 첫 스쿱:
+      A 목표 69 g ±10 % = 62.1~75.9, A 1회량 69 → 0 + 69 ≤ 75.9 → SCOOP
+      B 목표 57 g ±10 % = 51.3~62.7, B 1회량 57 → 0 + 57 ≤ 62.7 → SCOOP
+      B 목표에 A 값(69)을 잘못 쓰면 0 + 69 > 62.7 → 보충 불가(TIMEOUT)
+    """
+    a = decide(69.0, 0.0, 10.0, 1, True, 0, PER.for_material('A'))
+    b = decide(57.0, 0.0, 10.0, 1, True, 0, PER.for_material('B'))
+    assert (a.action, b.action) == ('SCOOP', 'SCOOP')
+    # B 목표에 A 의 1회량(69)을 잘못 쓰면 0 g 에서도 한 스쿱이 상한 62.7 을 넘어 보충 불가가 된다
+    wrong = decide(57.0, 0.0, 10.0, 1, True, 0, PER.for_material('A'))
+    assert (wrong.action, wrong.kind) == ('DEVIATION', 'TIMEOUT')
+
+
+def test_per_material_values_are_validated():
+    import pytest
+    for bad in ({'A': 0.0}, {'A': float('nan')}, {'A': float('inf')}, {'A': True}, {'': 57.0}):
+        with pytest.raises(ValueError):
+            DosingConfig(scoop_nominal_by_material=bad)
+
+
+def test_per_material_values_are_keyword_only():
+    import pytest
+    with pytest.raises(TypeError):
+        DosingConfig(8, 69.0, 0.10, 2, {'A': 69.0})
