@@ -22,6 +22,7 @@
 | 깊이 비율 하한 `min_fraction` | **0.10** (종전 0.15). `stations.yaml scooping.A` 와 같아야 함 | common.yaml `dosing`, `stations.yaml:126` |
 | 교착 여유 | 최소 채취 **7.9 g** (= 0.10 × 79). 한계 2×target×tol 은 레시피 값이라 여기 안 적는다 — 성립 여부는 시험이 레시피 파일을 읽어 단언한다 | `test_dosing.py::test_min_scoop_cannot_overshoot_tolerance` |
 | 영점 이동 한계 `zero_drift_limit_n` | 0.1 N | `common.yaml:94` |
+| 진동 적합 상대 가드 `fit_oscillation.apply_ratio` 기본값 | **0.50** (기존 0.20). 상대 잔차 가드는 유지. | `gmp_dosing/core/scale.py`, 2026-09-29 일지 |
 
 ## 열린 과제 (이슈 번호)
 - ✅ **[완료 — 9/23 측정, 9/25 D-35 결정] 스쿱 1회 채취량 측정 — #272. 결과: 고정 스쿱 85 g 은 성립하지 않았다 → 79 g**

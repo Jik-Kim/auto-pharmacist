@@ -164,7 +164,7 @@ def test_fit_oscillation_guard_falls_back_on_plain_noise():
     """⚠️ 진동이 없으면 적합하지 않는다 — 안 그러면 잡음을 진동으로 오인해 값이 나빠진다.
 
     9/22 전체 회귀에서 무조건 적용하면 측정 17건 중 10건이 악화하고 전체 25 % 나빠졌다.
-    가드(residual ≤ apply_ratio × 표본 σ) 로 적용률을 11 % 로 낮추니 전체 -15.1 % 가 됐다.
+    상대 가드는 유지하며, 9/29 결정으로 기본 비율을 0.50 으로 완화했다.
     """
     import random
     from gmp_dosing.core.scale import fit_oscillation
@@ -173,7 +173,23 @@ def test_fit_oscillation_guard_falls_back_on_plain_noise():
     value, resid, hf, period = fit_oscillation(s, 0.82)
     assert period == 0.0                     # 적합을 안 썼다는 표시
     assert value == sum(s) / len(s)          # 단순 평균 그대로
+    assert fit_oscillation(s, 0.82, apply_ratio=0.50)[3] == 0.0
     assert fit_oscillation(s, 0.82, apply_ratio=0)[3] == 0.0   # 가드를 꺼도 단순 평균
+
+
+def test_fit_oscillation_default_admits_moderate_swing():
+    """기본 상대 가드 0.50 은 중간 정도 진동을 적합하되, 0.20 은 평균으로 물러난다."""
+    import math
+    import random
+    from gmp_dosing.core.scale import fit_oscillation
+    random.seed(1)
+    s = [100.0 + 12.0 * math.sin(2 * math.pi * 0.82 * i / 15.0)
+         + random.gauss(0, 6) for i in range(32)]
+    conservative = fit_oscillation(s, 0.82, apply_ratio=0.20)
+    default = fit_oscillation(s, 0.82)
+    assert conservative[3] == 0.0
+    assert 14.0 <= default[3] <= 16.0
+    assert default[1] < conservative[1]
 
 
 def test_reading_hf_gate_catches_load_change_but_passes_oscillation():
