@@ -23,7 +23,7 @@ execution/context.py    공통 설정·공유 상태·장치 및 ROS 콜백 의�
 adapters/dsr_arm.py       DR_init 노드(ns dsr01) 소유. DSR_ROBOT2 블로킹 함수 래핑. 워커 스레드에서만 부른다
 adapters/rg2_gripper.py   /onrobot/sendCommand + 폭 피드백. 백엔드 modbus | dio | virtual
 core/stations.py          stations.yaml 파싱, 접근점 계산 (ROS 비의존)
-core/transfer.py          관절 이송 티칭값·출발 관절 구성·파지 조건·ZYZ 자세 검증 (ROS 비의존)
+core/transfer.py          관절 이송 목표·실제 마지막 도착 관절각 이력·파지 조건·ZYZ 자세 검증 (ROS 비의존)
 ```
 
 > **9/23 현행:** 실물 DIO 개폐·DI 완료, A/B/C 고정 full 경로를 사용합니다.

@@ -88,8 +88,8 @@ AT까지는 직선으로 접근한다. 같은 스테이션 AT↔ABOVE에서는 �
 `robot.startup_timeout_s`를 사용하며, 조회 실패·취소·시간초과 시 성공 처리하지 않는다.
 
 기존 `workbench → passbox_done` 관절 티칭 경로는 새 접근 방식으로 대체했다.
-`passbox_done → nudge_wait`는 `enabled: false`를 유지하며 변경된 높이·관절 구성에 맞춰
-재티칭·검증해야 한다. 실물에서 이 경로는 자동 우회하지 않는다. 가상에서는 기존 직선 폴백을 유지한다.
+`passbox_done → nudge_wait`는 9/29 `enabled: true`, `start_from: exit`로 운영한다.
+빈 그리퍼 단독 시험과 용기 운반 시험의 범위는 아래 수동 시험 안내를 따른다. 실물에서 이 경로는 자동 우회하지 않는다. 가상에서는 기존 직선 폴백을 유지한다.
 ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거나 노드를 재시작하지 않는다.
 **다음 기동에서 설정을 읽으며, 새 경로의 간섭·용기 기울기·취소 정지는 실물 검증이 필요하다.**
 
@@ -102,14 +102,14 @@ ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거�
 |---|---|---|
 | 원료 반환 | A/B/C 시작 `return_start_posx`·끝 `return_end_posj` 입력 완료(9/21). 끝 posx는 참고 | 시작 직선→끝 관절 이동 후 유지. 동일 원료통 낙하·관절 경로 간섭 확인 필요. 재스쿱 연결 미구현 |
 | 네 용기 스테이션 접근 | 목표 자세에서 조회한 sol=3을 설정에 반영 | EXIT 직선 이탈→목적지 ABOVE 관절 이동→AT 직선 하강의 간섭·기울기·흘림 검증 |
-| `passbox_done → nudge_wait` | 기존 값은 보존했지만 passbox_done ABOVE·EXIT 관절각은 새 Z/sol=3에 맞춰 재티칭 필요 | 놓기 후 ABOVE 후퇴 완료 상태에서 EXIT로 직선 이탈하고 nudge_wait AT로 관절 직접 도착. 간섭 검증은 사용자 담당 |
+| `passbox_done → nudge_wait` | `start_from: exit`, `enabled: true` — 현재 목표 관절점 유지 | 놓기 후 ABOVE 요청으로 EXIT(Z=330) 도착 → 중복 후퇴 없이 nudge_wait AT로 관절 이동. 마지막 실제 TCP·관절각 이력·빈 그리퍼 확인 |
 
 - ABOVE·EXIT는 기준점에 **BASE Z 상대 높이**를 더해 계산한다. XYZ/자세 절대값은 중복 저장하지 않는다.
   - workbench 파지: AT Z=130, 로컬 `approach_mm: 50` → ABOVE Z=180, `exit_mm: 200` → EXIT Z=330. 빈 그리퍼가 workbench에서 용기를 집을 때는 `middle_posx → empty_approach_posj` 뒤 EXIT Z≈330에서 `empty_descent_mm: 200`만큼 AT까지 직선 하강한다.
   - passbox_empty·passbox_done·reject_bin: AT Z=130, `approach_mm: 50` → ABOVE Z=180, `exit_mm: 200` → EXIT Z=330.
   - 스쿱·원료·계량의 높이는 바꾸지 않는다. **nudge_wait ABOVE는 사용하지 않는다.**
   workbench는 AT/ABOVE→EXIT를 확인한다. passbox_done은 놓기 후 AT→ABOVE 후퇴를 먼저 완료하고,
-  넛지 이송에서는 ABOVE→EXIT만 수행한다. AT에서 넛지로 바로 요청하면 이동 없이 거부한다.
+  이 ABOVE 요청의 실제 도착점은 EXIT(Z=330)다. 넛지 이송은 EXIT에서 바로 관절 이동한다. AT에서 넛지로 바로 요청하면 이동 없이 거부한다.
   기존 절대 `exit_posx` 경로도 읽지만, 현재 경로는 스테이션의 상대 높이로 계산한다.
 - `waypoints_posj` 마지막 점은 `arrival: above`이면 목적지 ABOVE, `arrival: at`이면 목적지 AT다.
   관절 이동 후 실제 TCP의 위치·자세를 해당 도착점과 대조한다. nudge_wait는 제공된 AT 관절각을
@@ -121,12 +121,12 @@ ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거�
 - `robot.transfer_joint_vel_deg_s=60`·`robot.transfer_joint_acc_deg_s2=100`이다(PR #290).
   Action `vel_scale`을 곱해 적용하며,
   직선 이동의 `robot.task_vel`·`robot.task_acc`와는 별개다.
-- 출발 AT/ABOVE에서 확인된 관절 구성과 마지막 도착 상태가 맞아야 한다.
+- 과거 티칭 관절각이 아니라 마지막 도착 때 측정한 실제 TCP·관절각과 현재 상태가 맞아야 한다.
   티칭 도중 수동 이동하거나 노드를 재시작한 뒤에는 이전 위치·파지 이력을 재사용하지 않는다.
   정상적인 MoveToStation 도착과 SetGripper 성공 이력을 다시 쌓아야 한다.
-  nudge 경로는 먼저 새 sol=3의 passbox_done ABOVE·EXIT를 재티칭하고 속도를 설정한다.
+  nudge 경로는 passbox_done의 실제 EXIT(Z=330)에서 출발한다. 과거 exit_posj 대조는 하지 않는다.
   MoveToStation으로 passbox_done ABOVE 도착 이력을 쌓고 SetGripper 열기 성공과
-  실제 열림 폭을 확인한 뒤, 검증한 경로를 활성화한다.
+  백엔드별 열림 피드백(DIO는 DI)을 확인한다. 해당 경로는 현재 활성화돼 있다.
   빈 그리퍼는 성공한 열기 이력, 약통은 약통 스테이션 AT에서 성공한 파지 이력이 필요하다.
   파지 피드백은 각 이동 구간 전후에 확인한다. 이는 이동 중 연속 파지 감시를 대체하지 않는다.
 - 취소·실패 뒤에는 이송을 바로 재시도하지 않는다. 상태를 확인하고 출발 위치·파지 이력을
@@ -343,40 +343,17 @@ A 단독으로 가능한 범위는 보정 완료된 원료의 명시적 depth_fr
    FSM 은 contact_detected 를 진행 조건으로 쓰지 않는다(#287). 고정 경로의 미측정과 접촉 실패는
    **이어지는 WeighHeld 순중량**으로 가른다 — `dosing.empty_scoop_g` 이하면 SCOOP_EMPTY(재시도 ×3, 4회째
    MATERIAL_EMPTY). true 접촉값은 만들지 않았다. ⚠️ `empty_scoop_g` 는 잠정값 — 빈 스쿱 계량 산포는 미측정.
-3. 원료 반환 끝→재스쿠핑 연결, 비활성 passbox_done→nudge_wait 이송은 유지한다.
+3. 원료 반환 끝→재스쿠핑 연결은 미검증이다. passbox_done→nudge_wait는 활성화됐으며 아래 단독 시험 범위를 따른다.
    DRL 주 루프에 없는 반환·넛지를 좌표 존재만으로 검증 완료로 표시하지 않는다.
    깊이 조절·계량 보정·지문 검증도 별도다. 다른 담당 코드와 계량 보정값은 수정하지 않는다.
 4. DI 폴링 시간 제한은 완료 신호 대기에 적용된다. 기존 DSR 동기 IO 함수 자체가
    응답하지 않는 경우까지 선점하는 기능은 없다. ROS 이식 후 실물 완료·취소 확인이 필요하다.
 
 
-## 넛지 이송 활성화 (2026-09-29 사용자 승인)
+## 넛지 단독 시험과 공정 재개
 
-사용자가 경로 검증 완료를 확인하여 `stations.yaml`의 `passbox_done → nudge_wait`를
-`enabled: true`로 변경했다. 기존 좌표와 출발 자세·빈 그리퍼·도착 자세 검사는 유지한다.
-앞선 비활성 유지·재티칭 대기 기록은 이 결정으로 대체한다. 변경한 설정은 skill_node를
-재시작해야 반영된다. 이번 변경 후 ROS 자동 이동과 실물 넛지 시험은 아직 수행하지 않았다.
-
-
-## 넛지 EXIT 출발 기준 (2026-09-29 사용자 승인)
-
-실물 시험에서 passbox_done 놓기·후퇴는 성공했지만, Z=330 mm의 실제 후퇴 위치를
-기존 ABOVE Z=180 mm와 비교하여 넛지 이동 전에 거부됐다.
-`transfers.start_from: exit`로 변경하여 놓기 후 ABOVE 요청이 도착하는 EXIT에서
-넛지로 연결한다. 이전 ABOVE 좌표·start_above_posj 비교는 이 경로에서 사용하지 않는다.
-EXIT TCP·exit_posj, 마지막 도착 이력, 빈 그리퍼 센서와 넛지 도착 검사는 유지한다.
-EXIT에 이미 도착했으므로 중복 직선 이동 없이 관절 경로로 진행한다.
-기존 ABOVE 출발 설명은 이 경로에 대해 이 결정으로 대체한다.
-좌표·관절각은 변경하지 않았고, 변경 후 실물 넛지·안전 자세 시험은 아직 수행하지 않았다.
-
-
-## 이동 경로 검사 최소화 (2026-09-29 사용자 승인)
-
-넛지 재시험은 EXIT 위치를 통과했으나 과거 exit_posj 대조에서 중단됐다.
-MoveToStation 출발 때 고정 출발 TCP 및 과거 티칭/저장 관절각 비교를 제거한다.
-출발 스테이션·마지막 TCP 이력·파지 상태, EXIT TCP 도달, 목표 도달,
-실패·취소·안전 정지 및 스쿱 인출 차단은 유지한다.
-start_at_posj/start_above_posj/exit_posj는 선택적인 과거 기록이며 이동 목표가 아니다.
-실제 관절 이동 목표는 approach_posj·waypoints_posj 등 기존 값을 사용한다.
-이 결정은 앞선 EXIT 관절각 유지 설명을 대체한다. 그리퍼 파지 이력 생성 검사와
-DSR 어댑터의 명령 목표 관절각 도달 검사는 변경하지 않는다. 실물 재시험은 아직 하지 않았다.
+실행 조건·명령·시험 결과는 [수동 시험 안내](../tools/manual_place_nudge.md)를 따른다.
+현재 결정은 [SOT의 9/29 리뷰 반영 절](SOT.md#넛지-경로-리뷰-반영--실제-도착-관절각-유지-2026-09-29)을 참조한다.
+설정/코드 갱신 뒤 skill_node를 재기동해야 한다. 수동 시험 종료 뒤에는 process_node 상태를
+확인하고 정상 주문 실행 전에 공정 launch를 복구한다. 자동 공정과 수동 시험을 동시 실행하지 않는다.
+`reject_bin → nudge_wait`는 미등록(#99)으로 폐기 후 넛지 종료는 아직 지원하지 않는다.
