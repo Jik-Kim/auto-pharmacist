@@ -47,7 +47,7 @@
 - [#208](https://github.com/Jik-Kim/auto-pharmacist/issues/208) 계량 고주파 게이트 배선 — 원시 표본과 `raw_hf_std`를 `skill_node`에서 전달하는 A 작업은 9/26 완료(배선·설정·회귀시험, PR #293). 남은 일은 B [PR #219](https://github.com/Jik-Kim/auto-pharmacist/pull/219) 병합과 실물 표본 재검증.
 - workbench 자세 모멘트와 material_1/2 계량 산포·무효율의 원인은 B 측정 분석을 참조한다. A는 실물 동선·파지 조건만 인계받는다. [B CURRENT](../B/CURRENT.md), [#187](https://github.com/Jik-Kim/auto-pharmacist/issues/187)
 - `common.yaml`의 `robot.tool_name` 옆 공구 질량·CoG 주석은 두 세대 전 값이다. 변경 근거와 동결값은 B CURRENT·PR #235를 따른다.
-- C 인계: 고정 Scoop의 접촉 미측정(`false/TAUGHT_FIXED`) 처리만 남았다([#287](https://github.com/Jik-Kim/auto-pharmacist/pull/287)). 첫 fraction 요청은 PR #289로 해소됐다. 반환 후 재스쿱 및 `passbox_done → nudge_wait` 경로는 미검증. [setup](../../docs/setup.md)
+- C 인계: 고정 Scoop의 접촉 미측정(`false/TAUGHT_FIXED`) 처리만 남았다([#287](https://github.com/Jik-Kim/auto-pharmacist/pull/287)). 첫 fraction 요청은 PR #289로 해소됐다. 반환 후 재스쿱은 미검증. `passbox_done → nudge_wait`는 아래 9/29 빈 그리퍼 시험 범위만 확인. [setup](../../docs/setup.md)
 
 ## 알려진 함정
 - 공구 자동측정 결과를 임의로 펜던트에 다시 넣지 않는다(동결). `cz 89` 해석은 철회됐으며 근거는 [PR #235](https://github.com/Jik-Kim/auto-pharmacist/pull/235)다.
@@ -61,3 +61,19 @@
 - 2026-09-23 ~~용기 스테이션은 `solution_space=3`으로 ABOVE까지 `amovejx`~~ → DRL 티칭 `approach_posj` 진입과 직선 AT 접근·Z=330 이탈로 교체. [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [PR #277](https://github.com/Jik-Kim/auto-pharmacist/pull/277).
 - 2026-09-23 ~~calibrated=false이면 모든 Scoop 실행 불가~~ → 고정 티칭 경로는 별도 verified로 실행한다. [SOT](../../docs/SOT.md) 9/23 사용자 승인.
 - 2026-09-23 ~~G5 스쿠핑 보정 게이트: calibrated true 전환 후 데모~~ → PR #236 당시 높이 보정을 보류하고 빈 스쿱 Pour까지만 검증했으며, 이후 PR #277에서 높이 보정과 분리된 고정 티칭 경로를 도입했다. [PR #236](https://github.com/Jik-Kim/auto-pharmacist/pull/236), [PR #277](https://github.com/Jik-Kim/auto-pharmacist/pull/277).
+
+## 넛지 이송 기본값 (2026-09-29)
+
+- 사용자 경로 검증 완료 확인에 따라 `enabled: true`. 좌표와 출발·파지·도착 검사는 유지한다. [설정 원본](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [일지](2026-09-29_넛지_이송_활성화.md).
+
+- 당시 기록(아래 리뷰 반영으로 대체): 넛지 경로 `start_from: exit`: 놓기 후 후퇴 위치(Z=330)를 출발 기준으로 사용한다. 기존 ABOVE(Z=180) 비교를 제거하고 EXIT 자세·관절각·파지·이력 검사는 유지한다. 좌표 변경 없음, 변경 후 실물 시험 미수행. [원본](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [일지](2026-09-29_넛지_이송_활성화.md).
+
+- 철회(아래 #319 리뷰 반영): 9/29 후속 승인 당시 위 EXIT 관절각 대조 유지 결정은 철회한다. MoveToStation의 고정 출발 TCP·과거 관절각 대조를 제거하고 마지막 TCP 이력·파지·EXIT 및 목표 도달 검사를 유지한다. [결정](../../docs/SOT.md), [코드](../../ros2_ws/src/gmp_skills/gmp_skills/execution/motion.py). 변경 후 실물 미검증.
+- 해당 변경 후 gmp_skills 모의 테스트 501건 통과. [검증 일지](2026-09-29_넛지_이송_활성화.md).
+
+## #319 리뷰 반영 (2026-09-29)
+
+- 위 「티칭/저장 관절각 대조 모두 제거」 결론은 철회한다. 티칭값 제거는 유지하되 실제 마지막 도착 관절각 비교를 복원한다.
+- 2026-09-29 11:11:34~11:13:22 KST, 커밋 `2836c62`에서 빈 그리퍼·MoveToStation 배율 0.2로 단독 실물 1회 성공했다. passbox_done 접근→열기→EXIT 후퇴→nudge_wait AT→실제 NUDGE(|F|=37.05 N)→SafePose 완료. 근거: PR #319 본문 및 로봇 PC `/tmp/nudge-ros-logs/python3_119211_1790647891077.log` (첫 이동 ROS 시각 1790647894.705, 완료 1790648002.387). 용기 운반·실제 용기 놓기, 반복 신뢰성·정지 응답은 미검증이다. 이번 anchor 관절각 검사 복원 후 실물 재시험은 미수행이다.
+- `reject_bin → nudge_wait` 미지원은 #99 후속. [SOT](../../docs/SOT.md), [시험 안내](../../tools/manual_place_nudge.md).
+- 리뷰 수정 최종 검증: 다른 세션 변경을 제외한 임시 사본에서 gmp_skills **512 passed**, Python 문법·diff 검사 통과, 공정 생성기 산출물 변경 없음. [검증 일지](2026-09-29_넛지_이송_활성화.md).

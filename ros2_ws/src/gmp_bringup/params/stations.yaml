@@ -106,8 +106,8 @@ transfers:
 - source: passbox_done
   destination: nudge_wait
   payload: empty
-  enabled: false
-  start_from: above
+  enabled: true
+  start_from: exit  # 놓기 후 ABOVE 요청이 도착하는 EXIT에서 넛지로 연결
   arrival: at
   start_above_posj: [9.34, 33.5, 119.09, 10.64, -63.01, 85.03]
   exit_posj: [9.34, 20.54, 116.3, 12.88, -47.59, 81.16]

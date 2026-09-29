@@ -29,8 +29,13 @@ def test_pose_comparison_uses_rotation_not_euler_subtraction():
     assert not joints_match([360]*6, [0]*6, 1)
 
 
+@pytest.mark.parametrize('delta', [-360, 360])
+def test_j6_branch_change_is_not_wrapped(delta):
+    assert not joints_match([0, 0, 0, 0, 0, delta], [0]*6, 1)
+
+
 @pytest.mark.parametrize('field,value', [
-    ('start_at_posj', None), ('start_above_posj', [0]*5),
+    ('start_above_posj', [0]*5),
     ('exit_posj', [float('nan')]*6), ('waypoints_posj', []),
     ('waypoints_posj', [[True]*6]), ('enabled', 'false'), ('payload', 'scoop'),
     ('exit_posx', [80, 0, 200, 0, 160, 0]),
@@ -58,15 +63,15 @@ def test_duplicate_route_rejected():
         StationTable(data)
 
 
-def test_shipped_routes_preserve_teaching_but_remain_disabled():
+def test_shipped_nudge_route_is_enabled_and_preserves_teaching():
     params = Path(__file__).resolve().parents[2] / 'gmp_bringup' / 'params'
     table = StationTable.from_yaml(params / 'stations.yaml')
     assert set(table.transfers) == {('passbox_done', 'nudge_wait')}
-    assert all(not r.enabled for r in table.transfers.values())
+    assert all(r.enabled for r in table.transfers.values())
     empty = table.transfers[('passbox_done', 'nudge_wait')]
     assert empty.exit_posx == (705.0, 77.0, 330, 180, -90, -90)
     assert not empty.start_at_posj
-    assert empty.start_from == 'above' and empty.arrival == 'at'
+    assert empty.start_from == 'exit' and empty.arrival == 'at'
     assert empty.waypoints_posj == ((14.57, 35.24, 63.40, -0.12, 81.36, 104.70),)
 
 
@@ -77,6 +82,18 @@ def test_above_only_route_can_enable_without_source_at_teaching():
     del row['start_at_posj']
     route = StationTable(data).transfers[('workbench', 'passbox_done')]
     assert route.enabled and not route.start_at_posj
+
+
+def test_exit_route_does_not_require_legacy_joint_checks():
+    data = teaching_data()
+    row = data['transfers'][0]
+    row.update(start_from='exit', arrival='at')
+    del row['start_at_posj']
+    del row['start_above_posj']
+    route = StationTable(data).transfers[('workbench', 'passbox_done')]
+    assert route.start_from == 'exit' and not route.start_above_posj
+    del row['exit_posj']
+    assert not StationTable(data).transfers[('workbench', 'passbox_done')].exit_posj
 
 
 @pytest.mark.parametrize('field,value', [('start_from', 'at'), ('arrival', 'direct'),
@@ -112,8 +129,8 @@ def test_legacy_pick_route_requires_migration():
         StationTable(data)
 
 
-@pytest.mark.parametrize('change', ['pose', 'joint', 'taught', 'payload', 'unknown'])
-def test_departure_checks_manual_move_branch_and_payload(change):
+@pytest.mark.parametrize('change', ['pose', 'joint', 'payload', 'unknown'])
+def test_departure_checks_tcp_history_and_payload(change):
     table = StationTable(teaching_data())
     route = table.transfers[('workbench', 'passbox_done')]
     pose, joints = list(table.get('workbench').posx), [1.0]*6
@@ -123,12 +140,26 @@ def test_departure_checks_manual_move_branch_and_payload(change):
         pose[0] += 10
     elif change == 'joint':
         joints[0] += 10
-    elif change == 'taught':
-        joints = [20]*6
-        anchor = MotionAnchor('workbench', 1, tuple(pose), tuple(joints))
     elif change == 'payload':
         payload = 'scoop'
     else:
         anchor = None
     with pytest.raises(ValueError):
         validate_start(route, anchor, pose, joints, payload, 2, 2, 1)
+
+
+def test_departure_uses_recorded_tcp_instead_of_old_taught_pose():
+    route = StationTable(teaching_data()).transfers[('workbench', 'passbox_done')]
+    pose = (100, 0, 330, 0, 180, 0)
+    anchor = MotionAnchor(station='workbench', approach=0, pose=pose, joints=(99,)*6)
+    validate_start(route, anchor, pose, [99]*6, 'cup', 2, 2, 1)
+
+
+@pytest.mark.parametrize('delta', [-360, 360])
+def test_departure_rejects_j6_branch_change_from_recorded_anchor(delta):
+    route = StationTable(teaching_data()).transfers[('workbench', 'passbox_done')]
+    pose = (100, 0, 100, 0, 180, 0)
+    anchor = MotionAnchor('workbench', 1, pose, (0,)*6)
+    with pytest.raises(ValueError, match='관절각'):
+        validate_start(route, anchor, pose, (0, 0, 0, 0, 0, delta),
+                       'cup', 2, 2, 1)

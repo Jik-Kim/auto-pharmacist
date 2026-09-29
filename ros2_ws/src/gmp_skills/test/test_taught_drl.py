@@ -250,11 +250,33 @@ def test_taught_lost_grip_after_joint_never_descends(motion):
     assert [c[0] for c in calls] == ['J']
 
 
+def test_taught_departure_rejects_joint_branch_change(motion):
+    node, job, calls, _, _ = motion
+    node._do_move(job)
+    calls.clear()
+    node.arm.joints[5] += 360
+    job.args['station_id'] = 'workbench'
+    with pytest.raises(RuntimeError, match='출발 이력'):
+        node._do_move(job)
+    assert not calls
+
+
+def test_taught_local_move_rejects_joint_branch_change(motion):
+    node, job, calls, _, _ = motion
+    node._do_move(job)
+    calls.clear()
+    node.arm.joints[5] += 360
+    job.args.update(station_id='passbox_empty', approach=0)
+    with pytest.raises(RuntimeError, match='관절각'):
+        node._do_move(job)
+    assert not calls
+
+
 def test_taught_manual_shift_refuses_departure(motion):
     node, job, calls, _, _ = motion
     node._do_move(job)
     calls.clear()
-    node.arm.joints[0] += 10
+    node.arm.pose[0] += 10
     job.args['station_id'] = 'workbench'
     with pytest.raises(RuntimeError, match='출발 이력'): node._do_move(job)
     assert not calls

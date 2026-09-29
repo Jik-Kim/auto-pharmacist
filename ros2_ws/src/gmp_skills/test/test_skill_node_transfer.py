@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from dataclasses import replace
 import queue
 import threading
 
@@ -139,15 +140,15 @@ def test_failure_invalidates_state_and_retry_cannot_resume(setup):
     assert len(node.calls) == 1
 
 
-@pytest.mark.parametrize('fault', ['orientation', 'exit_branch', 'grip_lost'])
+@pytest.mark.parametrize('fault', ['orientation', 'exit_pose', 'grip_lost'])
 def test_intermediate_checks_prevent_following_segment(setup, fault):
     node, job, _ = setup
 
     def corrupt():
         if fault == 'orientation' and len(node.calls) == 3:
             node.arm.pose[4] += 20
-        elif fault == 'exit_branch' and len(node.calls) == 1:
-            node.arm.joints[0] += 20
+        elif fault == 'exit_pose' and len(node.calls) == 1:
+            node.arm.pose[0] += 20
         elif fault == 'grip_lost' and len(node.calls) == 1:
             node.feedback_state['grip_inferred'] = False
 
@@ -199,6 +200,44 @@ def test_above_departure_direct_at_arrival_has_no_final_linear_move(direct_setup
     assert [c[0] for c in node.calls] == ['L', 'J', 'J']
     assert node._motion_anchor.approach == 1
     assert node._motion_anchor.pose == tuple(node.stations.get('passbox_done').posx)
+
+
+@pytest.fixture
+def exit_setup(direct_setup):
+    node, job, module = direct_setup
+    key = ('workbench', 'passbox_done')
+    route = replace(node.stations.transfers[key], start_from='exit',
+                    start_at_posj=(), start_above_posj=(), exit_posj=(99,)*6)
+    node.stations.transfers[key] = route
+    node.arm.pose = list(route.exit_posx)
+    node.arm.joints = [20]*6
+    node._motion_anchor = MotionAnchor(
+        station='workbench', approach=0, pose=route.exit_posx, joints=(20,)*6)
+    return node, job, module
+
+
+def test_exit_departure_connects_directly_without_linear_motion(exit_setup):
+    node, job, _ = exit_setup
+    node._do_move(job)
+    assert [call[0] for call in node.calls] == ['J', 'J']
+    assert node._motion_anchor.station == 'passbox_done'
+    assert node._motion_anchor.pose == tuple(node.stations.get('passbox_done').posx)
+
+
+@pytest.mark.parametrize('fault', ['manual', 'payload', 'sensor', 'unknown'])
+def test_exit_departure_rejects_invalid_state_before_motion(exit_setup, fault):
+    node, job, _ = exit_setup
+    if fault == 'manual':
+        node.arm.pose[0] += 10
+    elif fault == 'payload':
+        node._held_payload = 'cup'
+    elif fault == 'sensor':
+        node.feedback_state['grip_inferred'] = True
+    else:
+        node._motion_anchor = None
+    with pytest.raises((ValueError, RuntimeError)):
+        node._do_move(job)
+    assert node.calls == []
 
 
 def test_direct_route_rejects_source_at_before_any_motion(direct_setup):
@@ -270,6 +309,24 @@ def test_empty_route_can_be_anchored_without_moving_after_manual_teaching(setup)
     assert node.calls == []
     assert node._motion_anchor.station == 'passbox_done'
     assert node._held_payload == 'unknown'
+
+
+def test_existing_anchor_joint_mismatch_cannot_be_replaced_by_local_restore(setup):
+    node, job, _ = setup
+    data = teaching_data()
+    data['transfers'].append(dict(data['transfers'][0], source='passbox_done',
+                                  destination='nudge_wait', start_at_posj=[1]*6,
+                                  start_above_posj=[2]*6, exit_posx=[300, 0, 200, 90, 90, 0]))
+    node.stations = StationTable(data)
+    pose = tuple(node.stations.get('passbox_done').posx)
+    node._station_id = 'passbox_done'
+    node.arm.pose = list(pose)
+    node.arm.joints = [1]*6
+    node._motion_anchor = MotionAnchor('passbox_done', 1, pose, (99,)*6)
+    job.args.update(station_id='passbox_done', approach=1)
+    with pytest.raises(ValueError, match='저장된 출발 이력'):
+        node._do_move(job)
+    assert node.calls == []
 
 
 def test_payload_requires_successful_grip_at_taught_station(setup):
@@ -388,3 +445,28 @@ def test_virtual_direct_arrival_above_uses_requested_linear_target(direct_setup)
     job.args['approach'] = 0
     node._do_move(job)
     assert node.calls == [('L', node.stations.get('passbox_done').above(node.stations.approach_mm))]
+
+
+def test_exit_old_taught_joints_do_not_block_motion(exit_setup):
+    node, job, _ = exit_setup
+    node._do_move(job)
+    assert [call[0] for call in node.calls] == ['J', 'J']
+
+
+@pytest.mark.parametrize('delta', [-360, 360])
+def test_exit_departure_rejects_joint_branch_mismatch_with_anchor(exit_setup, delta):
+    node, job, _ = exit_setup
+    node.arm.joints[5] += delta
+    with pytest.raises(ValueError, match='관절각'):
+        node._do_move(job)
+    assert node.calls == []
+
+
+def test_intermediate_old_exit_joints_do_not_block_motion(setup):
+    node, job, _ = setup
+    def change_joints():
+        if len(node.calls) == 1:
+            node.arm.joints = [20]*6
+    node.after_move = change_joints
+    node._do_move(job)
+    assert [call[0] for call in node.calls] == ['L', 'J', 'J', 'L']

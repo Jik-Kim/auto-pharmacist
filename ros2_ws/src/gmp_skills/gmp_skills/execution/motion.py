@@ -85,21 +85,23 @@ class MotionSkills:
             # 이 목적지는 등록된 이송 경로로만 진입한다. 같은 스테이션에서
             # 작업점(AT)과 상부점(ABOVE)을 오가는 경우에만 직선 이동을 허용한다.
             anchor = self.ctx.state.motion_anchor
-            if (anchor is None or anchor.station != st.station_id
-                    or not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)
-                    or not joints_match(self.ctx.arm.current_posj(), anchor.joints, self.ctx.config.joint_tolerance)):
-                # 재기동했거나 작업자가 펜던트로 로봇을 움직이면 저장한 출발 이력이 없다.
-                # 이때 실제 TCP 위치·회전과 관절각이 티칭된 출발점에 이미 맞으면
+            anchor_matches = (anchor is not None and anchor.station == st.station_id
+                              and self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)
+                              and joints_match(self.ctx.arm.current_posj(), anchor.joints,
+                                               self.ctx.config.joint_tolerance))
+            if not anchor_matches:
+                # 기존 기록이 있는데 센서와 다르면 재기록으로 덮지 않는다.
+                if anchor is not None:
+                    raise ValueError('저장된 출발 이력과 현재 TCP/관절각이 다르다')
+                # 재기동으로 저장한 출발 이력이 없을 때만 복원을 시도한다.
+                # 이때 실제 TCP 위치·회전이 요청 목표점에 이미 맞으면
                 # 이동 없이 기록만 복원한다. 맞지 않으면 이동 경로를 추측하지 않는다.
                 for outgoing in self.ctx.stations.transfers.values():
                     if outgoing.source != st.station_id or not outgoing.enabled:
                         continue
-                    if outgoing.start_from == 'above' and approach != MoveToStation.Goal.ABOVE:
+                    if outgoing.start_from in ('above', 'exit') and approach != MoveToStation.Goal.ABOVE:
                         continue
-                    taught = (outgoing.start_above_posj if approach == MoveToStation.Goal.ABOVE
-                              else outgoing.start_at_posj)
-                    if (self._pose_matches(self.ctx.arm.current_posx(), target)
-                            and joints_match(self.ctx.arm.current_posj(), taught, self.ctx.config.joint_tolerance)):
+                    if self._pose_matches(self.ctx.arm.current_posx(), target):
                         self.ctx.state.held_payload = 'unknown'
                         self._record_arrival(st.station_id, approach, target)
                         return st.station_id
@@ -136,7 +138,7 @@ class MotionSkills:
         return scale
 
     def _leave_taught_station(self, job, destination):
-        # 현재 위치를 떠날 때 저장된 TCP·관절각이 실제 위치와 같은지 확인한다.
+        # 현재 위치를 떠날 때 저장된 TCP가 실제 위치와 같은지 확인한다.
         # 확인되면 그 스테이션의 exit_mm 높이까지 TCP를 수직으로 올린다.
         source = self.ctx.stations.stations.get(self.ctx.state.station_id)
         if source is None or source.station_id == destination:
@@ -146,7 +148,8 @@ class MotionSkills:
         anchor = self.ctx.state.motion_anchor
         if (anchor is None or anchor.station != source.station_id
                 or not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)
-                or not joints_match(self.ctx.arm.current_posj(), anchor.joints, self.ctx.config.joint_tolerance)):
+                or not joints_match(self.ctx.arm.current_posj(), anchor.joints,
+                                    self.ctx.config.joint_tolerance)):
             raise RuntimeError('티칭 경로 출발 이력이 불확실하다')
         if self.ctx.state.held_payload not in ('cup', 'empty'):
             raise RuntimeError('티칭 경로 출발 전 인출·파지 확인이 필요하다')
@@ -175,9 +178,10 @@ class MotionSkills:
             raise ValueError('티칭 관절 속도·가속도는 유한한 양수여야 한다')
         anchor = self.ctx.state.motion_anchor
         local = (anchor is not None and anchor.station == station.station_id)
-        if local and (not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)
-                      or not joints_match(self.ctx.arm.current_posj(), anchor.joints, self.ctx.config.joint_tolerance)):
-            raise RuntimeError('티칭 스테이션 도착 후 위치/관절이 변경되었다')
+        if (local and (not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)
+                       or not joints_match(self.ctx.arm.current_posj(), anchor.joints,
+                                           self.ctx.config.joint_tolerance))):
+            raise RuntimeError('티칭 스테이션 도착 후 TCP 위치/자세 또는 관절각이 변경되었다')
         if 'return_entry_posx' in station.extra:
             if self.ctx.state.held_payload == 'scoop':
                 self._require_held_scoop(station.extra['material_id'])
@@ -273,7 +277,7 @@ class MotionSkills:
     def _leave_solution_station(self, job, destination, vel_scale):
         """지정 관절 분기의 용기 스테이션에서 다음 위치로 가기 전 수직 이탈한다.
 
-        저장된 도착 자세와 실제 TCP·관절각, 그리퍼 파지, 관절 분기 번호를
+        저장된 도착 자세와 실제 TCP, 그리퍼 파지, 관절 분기 번호를
         확인한 뒤 station.exit()까지 TCP 직선 이동한다.
         """
         if self.ctx.state.station_id == destination or self.ctx.state.station_id not in self.ctx.stations.stations:
@@ -284,7 +288,8 @@ class MotionSkills:
         anchor = self.ctx.state.motion_anchor
         if (anchor is None or anchor.station != source.station_id
                 or not self._pose_matches(self.ctx.arm.current_posx(), anchor.pose)
-                or not joints_match(self.ctx.arm.current_posj(), anchor.joints, self.ctx.config.joint_tolerance)):
+                or not joints_match(self.ctx.arm.current_posj(), anchor.joints,
+                                    self.ctx.config.joint_tolerance)):
             raise RuntimeError('용기 스테이션 출발 이력이 불확실하다')
         if self.ctx.state.held_payload not in ('cup', 'empty'):
             raise RuntimeError('용기 이송 전 파지 상태 확인이 필요하다')
@@ -345,13 +350,16 @@ class MotionSkills:
             raise RuntimeError('빈 그리퍼의 열림 폭을 확인할 수 없다')
 
     def _run_transfer(self, route, job, target, vel_scale):
-        # route에는 출발 TCP·관절각, 이탈점, 중간 관절점, 도착 방식이 저장돼 있다.
+        # route에는 출발 이탈점, 중간 관절점, 도착 방식이 저장돼 있다.
+        # 실제 출발 TCP/관절각은 마지막 도착 기록과 비교하고 EXIT 도달 후 관절 경로로 연결한다.
         # 실제 출발 자세·파지물을 검증한 뒤 각 구간을 실행하고 도착을 확인한다.
         if route.arrival == 'at' and job.args['approach'] != MoveToStation.Goal.AT:
             raise ValueError('관절 직접 도착 경로는 AT 요청만 허용한다')
         validate_start(route, self.ctx.state.motion_anchor, self.ctx.arm.current_posx(),
-                       self.ctx.arm.current_posj(), self.ctx.state.held_payload,
-                       self.ctx.config.pose_xyz_tolerance, self.ctx.config.pose_rotation_tolerance, self.ctx.config.joint_tolerance)
+                       self.ctx.arm.current_posj(),
+                       self.ctx.state.held_payload,
+                       self.ctx.config.pose_xyz_tolerance, self.ctx.config.pose_rotation_tolerance,
+                       self.ctx.config.joint_tolerance)
         if any(not math.isfinite(v) or v <= 0
                for v in (self.ctx.config.transfer_joint_vel, self.ctx.config.transfer_joint_acc)):
             raise ValueError('이송 관절 속도·가속도를 먼저 설정해야 한다')
@@ -372,9 +380,8 @@ class MotionSkills:
             # MOVEL · TCP 직선 이동: route.exit_posx
             self.ctx.arm.movel_cancellable(route.exit_posx, vel_scale, lambda: job.cancel,
                                        self.ctx.config.motion_timeout_s)
-        if (not self._pose_matches(self.ctx.arm.current_posx(), route.exit_posx)
-                or not joints_match(self.ctx.arm.current_posj(), route.exit_posj, self.ctx.config.joint_tolerance)):
-            raise RuntimeError('직선 이탈 후 관절 구성/자세가 티칭값과 다르다')
+        if not self._pose_matches(self.ctx.arm.current_posx(), route.exit_posx):
+            raise RuntimeError('직선 이탈 목표 위치/자세에 도달하지 못했다')
         for point in route.waypoints_posj:
             checkpoint()
             # MOVEJ · 관절각 목표: point
