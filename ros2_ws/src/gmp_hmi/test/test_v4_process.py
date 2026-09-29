@@ -111,7 +111,7 @@ def finish_set(process):
 
 
 def test_defaults_and_direct_process_order_shortage(process):
-    assert process.test_scoop_nominal_g == 79.0   # SOT D-35
+    assert process.test_scoop_nominal_g == 69.0   # #306 공통값(A·C 69 g)
     assert all(item['capacity_g'] == 1000 and item['remaining_g'] == 1000 for item in process.inventory.items.values())
     assert not order(process, A=1001).accepted
     assert process.inventory.batch_id == ''
@@ -124,7 +124,7 @@ def test_defaults_and_direct_process_order_shortage(process):
 
 
 def test_steps_follow_real_process_order_and_set_end_waits_for_nudge(process):
-    assert order(process, A=158, B=79).accepted
+    assert order(process, A=138, B=57).accepted
     run_until(process, lambda: process.nudge_waiting)
     per_scoop = ['SCOOP', 'WEIGH_SCOOP', 'POUR', 'WEIGH_RESIDUAL']
     assert steps_seen(process) == (
@@ -142,21 +142,21 @@ def test_steps_follow_real_process_order_and_set_end_waits_for_nudge(process):
     assert (process.mode, process.step, process.finish_result) == (DONE, 'DONE', 'DONE')
     assert process.batch_done.is_set()
     assert events(process, 'SET_NEXT') and events(process, 'BATCH_END')[-1].text == 'DONE / DONE / DONE'
-    assert process.inventory.items['A']['remaining_g'] == 842
-    assert process.inventory.items['B']['remaining_g'] == 921
+    assert process.inventory.items['A']['remaining_g'] == 862
+    assert process.inventory.items['B']['remaining_g'] == 943
     cycles = published(process, 'ScoopCycle')
     assert [(c.material_id, c.attempt, c.actual_before_g, c.delivered_g) for c in cycles] == [
-        ('A', 1, 0.0, 79.0), ('A', 2, 79.0, 79.0), ('B', 1, 0.0, 79.0)]
+        ('A', 1, 0.0, 69.0), ('A', 2, 69.0, 69.0), ('B', 1, 0.0, 57.0)]
     # 고정 스쿱(D-34) — 접촉은 「안 재봤다」, 스쿱 계량은 원료통 위 material_N, 전량 붓기
     assert all(not c.contact_detected and c.commanded_pour_fraction == 1.0 for c in cycles)
     assert [c.weigh_pose_id for c in cycles] == ['material_1', 'material_1', 'material_2']
     containers = [w for w in published(process, 'WeightReading') if w.subject == 'container']
-    assert [w.net_g for w in containers] == [35.0, 237.0]   # TARE(빈 약통) · VERIFY(내용물)
+    assert [w.net_g for w in containers] == [35.0, 195.0]   # TARE(빈 약통) · VERIFY(내용물)
     assert order(process, C=10).accepted                     # NUDGE 뒤에는 다음 주문을 받는다
 
 
 def test_nudge_while_running_pauses_and_second_nudge_resumes(process):
-    assert order(process, A=79).accepted
+    assert order(process, A=69).accepted
     run_until(process, lambda: process.step == 'SCOOP')
     nudge(process)
     held = (process.plan[0]['step'], process.elapsed, len(published(process, 'ScoopCycle')))
@@ -180,7 +180,7 @@ def test_nudge_while_idle_blocks_orders_until_touched_again(process):
 
 def test_material_empty_retries_then_waits_for_refill_not_qa(process):
     process.params['scenario'] = 'material_empty'
-    assert order(process, A=79).accepted
+    assert order(process, A=69).accepted
     run_until(process, lambda: process.refill_waiting)
     deviations = published(process, 'Deviation')
     dev = contract_constants('Deviation')
@@ -220,7 +220,7 @@ def test_qa_discard_returns_scoop_parks_and_is_done_only_after_nudge(process):
 
 def test_weigh_invalid_approval_ends_unmeasured(process):
     process.params['scenario'] = 'weigh_invalid'
-    assert order(process, A=158, B=79).accepted
+    assert order(process, A=138, B=57).accepted
     run_until(process, lambda: process.mode == DEVIATION)
     assert qa(process, 1).accepted
     finish_set(process)
@@ -289,9 +289,23 @@ def test_height_holds_running_without_claiming_entry_and_requires_all_refills_ex
     assert process.inventory.items['C']['remaining_g'] == 1000
     cycles = published(process, 'ScoopCycle')
     assert [(cycle.material_id, cycle.attempt, cycle.delivered_g) for cycle in cycles] == [
-        ('A', 1, 79.0), ('A', 2, 1.0), ('B', 1, 40.0)]
-    assert cycles[1].actual_before_g == 79.0
+        ('A', 1, 69.0), ('A', 2, 11.0), ('B', 1, 40.0)]
+    assert cycles[1].actual_before_g == 69.0
 
+
+
+def test_scoop_cycles_follow_per_material_nominal(process):
+    """#306 — 원료별 1회량(A·C 69 / B 57 g). B 를 공통값으로 나누면 시도 수가 틀어진다."""
+    process.scoop_nominal_by_material = process.per_material_nominal(['A', 'B', 'C'], [69.0, 57.0, 0.0])
+    assert process.scoop_nominal_by_material == {'A': 69.0, 'B': 57.0}      # 0 은 공통값(C → 공통 69 g)
+    assert order(process, A=138, B=57, C=40).accepted
+    advance(process, 30)
+    cycles = [m for m in process.published if type(m).__name__ == 'ScoopCycle']
+    assert [(c.material_id, c.attempt, c.delivered_g) for c in cycles] == [
+        ('A', 1, 69.0), ('A', 2, 69.0), ('B', 1, 57.0), ('C', 1, 40.0)]
+    for bad in ([69.0, 57.0], [69.0, -1.0, 0.0], [69.0, float('nan'), 0.0]):
+        with pytest.raises(ValueError):
+            process.per_material_nominal(['A', 'B', 'C'], bad)
 
 def test_height_hold_does_not_skip_qa_or_transfer(process):
     process.params['scenario'] = 'overfill'
@@ -356,15 +370,15 @@ class FakeGoal:
 
 def test_set_end_order_is_queued_and_starts_after_nudge(process):
     """계약 v1.9 — 세트 끝(FINISH·폐기 반송·NUDGE_WAIT)의 RunBatch 주문은 1건 예약된다."""
-    assert order(process, A=79).accepted
+    assert order(process, A=69).accepted
     first = process.batch_id
     run_until(process, lambda: process.step == 'FINISH')
-    request, accepted = queue_request(process, B=79)      # 반송 중(RUNNING)에도 예약
+    request, accepted = queue_request(process, B=57)      # 반송 중(RUNNING)에도 예약
     assert accepted and process.queued['batch_id'] == request.recipe.batch_id
     queued_event = events(process, 'ORDER_QUEUED')[-1]
     # 예약 이벤트는 예약 주문 ID 로, SET_NEXT 는 끝난 세트(앞 배치) ID 로 남는다 (C #303 f654f12)
     assert queued_event.text.startswith(request.recipe.batch_id) and queued_event.batch_id == request.recipe.batch_id
-    assert not queue_request(process, C=79)[1]            # 1건만
+    assert not queue_request(process, C=69)[1]            # 1건만
     assert '이미 예약' in events(process, 'TEST_ORDER_REJECTED')[-1].text
     run_until(process, lambda: process.nudge_waiting)
     assert process.note == f'NUDGE_WAIT — 세트 완료, 다음 주문 {request.recipe.batch_id} 예약 — 건드리면 시작'
@@ -372,7 +386,7 @@ def test_set_end_order_is_queued_and_starts_after_nudge(process):
     set_next = events(process, 'SET_NEXT')[-1]
     assert f'예약 주문 {request.recipe.batch_id} 시작' in set_next.text and set_next.batch_id == first
     # 앞 배치가 끝나고 예약이 시작되기 전 — 슬롯이 비어도 새치기 주문은 받지 않는다 (process_node)
-    assert process.mode == DONE and not order(process, C=79).accepted
+    assert process.mode == DONE and not order(process, C=69).accepted
     assert '이미 예약' in events(process, 'TEST_ORDER_REJECTED')[-1].text
     with process.lock:
         assert process._take_queued(False) == ''
@@ -381,9 +395,9 @@ def test_set_end_order_is_queued_and_starts_after_nudge(process):
 
 
 def test_queued_order_dropped_when_set_ends_without_nudge_or_cancelled(process):
-    assert order(process, A=79).accepted
+    assert order(process, A=69).accepted
     run_until(process, lambda: process.nudge_waiting)
-    request, accepted = queue_request(process, B=79)
+    request, accepted = queue_request(process, B=57)
     assert accepted
     with process.lock:
         process._abort('RunBatch 취소 — 배치 자동 재개 없음')   # 넛지 없이 끝남
@@ -394,9 +408,9 @@ def test_queued_order_dropped_when_set_ends_without_nudge_or_cancelled(process):
     assert dropped.level == CellEvent_WARN(process) and dropped.batch_id == request.recipe.batch_id
     assert process.queued is None and process.batch_id != request.recipe.batch_id
     # 예약 주문 자체의 취소는 CANCELED 로 끝난다.
-    assert order(process, A=79).accepted
+    assert order(process, A=69).accepted
     run_until(process, lambda: process.nudge_waiting)
-    request, _ = queue_request(process, B=79)
+    request, _ = queue_request(process, B=57)
     goal = FakeGoal(request, cancel=True)
     assert process._execute_batch(goal).message == '예약 주문 취소 요청' and goal.ended == 'canceled'
     assert events(process, 'ORDER_DROPPED')[-1].batch_id == request.recipe.batch_id
