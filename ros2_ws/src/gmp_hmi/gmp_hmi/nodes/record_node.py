@@ -15,7 +15,10 @@ from rosidl_runtime_py.convert import message_to_ordereddict
 from gmp_interfaces.msg import CellEvent, CellState, Deviation, DispenseResult, ScoopCycle, WeightReading
 from gmp_hmi.core.db import CellDB
 
-LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+# 상태는 최신값만이 아니라 전이마다 기록해야 한다 — 세트 끝 예약 주문(v1.9)은 DONE(앞 배치) 뒤 0.25초 안에
+# RUNNING(다음 배치)을 낸다. 받는 쪽 보관이 1개면 콜백이 바쁠 때 DONE 이 덮여 앞 배치가 DB 에서 끝나지 않는다
+# (9/29 DDS 검증 「recipe-02 DONE 기록 시간 초과」). 재접속 때 받는 latched 값은 발행 쪽이 1개만 들고 있어 그대로다.
+LATCHED = QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
 
 class RecordNode(Node):

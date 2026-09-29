@@ -422,7 +422,7 @@ MOVEJ를 제거하고, `cartesian_ready` 상태도 삭제한다. 각 호출부�
 명령과 목표 인자를 표시한다. 기존 `SafePose` 서비스의 명시적 MOVEJ와
 취소·안전·도착 검증은 유지한다. DRL 시작의 선행 MOVEL을 주문마다 추가하지 않는다.
 
-**C 인계(미적용):** `gmp_process/core/process_fsm.py`의 `start()` 및
+**C 인계 — 9/29 적용(`feat/order-start-safe-pose`, `safe(reason=ORDER_START)`, step SELF_CHECK 유지, 정지 게이트 통과·실패 시 빈 통 이송 차단):** ~~(미적용)~~ `gmp_process/core/process_fsm.py`의 `start()` 및
 `on_result()` SELF_CHECK→PICK_CONTAINER 사이에 기존 safe 요청과 성공 대기를
 연결한다. `process_node.py`의 기존 주문 경계 wait_nudge 완료 이후 다음 주문에
 적용하고 첫 주문 대기는 추가하지 않는다. 실패/취소 시 빈 통 이송 차단 및

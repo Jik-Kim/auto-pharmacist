@@ -49,12 +49,22 @@ const root=path.resolve(__dirname,'..');
   });
   // 원료별 분주 결과: 지금 배치가 레시피 순서 A→B→C 로 맨 위(결과 없는 원료도 자리 — QA 대기 = A·B 결과, C 대기),
   // 이전 배치는 구분 줄 아래. 이전 배치 결과를 하나 섞어 넣어 순서를 본다.
+  // 지금 배치 A·B·C 가 표 칸을 꽉 채우고(마지막 줄이 칸 바닥), 이전 배치는 스크롤 아래에 있어야 한다.
+  // 렌더와 측정을 한 evaluate 안에서 한다 — 사이에 데모 주기 갱신이 끼면 섞어 넣은 이전 배치가 사라진다.
   const resultTable=await page.evaluate(async()=>{source.reset('qa');const st=await source.status();
    st.results=[{batch_id:'B-000',material_id:'A',target_g:69,actual_g:69,error_pct:0,verdict:'OK',attempts:1},...st.results];render(st);
-   return [...document.querySelectorAll('#results tbody tr')].map(tr=>tr.classList.contains('sep')?'|'+tr.textContent:tr.cells[0].textContent);});
-  assert.deepEqual(resultTable,['A','B','C','|이전 배치 B-000','A'],JSON.stringify(resultTable));
-  // 지금 배치 A·B·C 가 표 칸을 꽉 채우고(마지막 줄이 칸 바닥), 이전 배치는 스크롤 아래에 있어야 한다.
-  assert.equal(await page.evaluate(()=>{const box=document.getElementById('results').getBoundingClientRect(),rows=[...document.querySelectorAll('#results tbody tr')];return Math.abs(rows[2].getBoundingClientRect().bottom-box.bottom)<=3&&rows[3].getBoundingClientRect().top>=box.bottom-3;}),true);
+   const box=$('results').getBoundingClientRect(),rows=[...document.querySelectorAll('#results tbody tr')];
+   return {rows:rows.map(tr=>tr.classList.contains('sep')?'|'+tr.textContent:tr.cells[0].textContent),
+    fills:Math.abs(rows[2].getBoundingClientRect().bottom-box.bottom)<=3&&rows[3].getBoundingClientRect().top>=box.bottom-3,
+    tight:document.querySelector('section:has(#results)').className.includes('tight')};});
+  assert.deepEqual(resultTable,{rows:['A','B','C','|이전 배치 B-000','A'],fills:true,tight:false},JSON.stringify(resultTable));
+  // 첫 배치에 원료 A 잔량 경고 + 「부족 알림 확인」 버튼이 떠 결과 칸이 줄어도 A·B·C 가 칸 안에 보여야 한다(9/29 교육장 PC).
+  const tight=await page.evaluate(async()=>{source.reset('running');const st=await source.status();st.results=[];
+   Object.assign(st.inventory.items[0],{remaining_g:138,percent:13.8,low:true,available_g:138});render(st);
+   $('showStockAlert').hidden=false;fitCurrentResults();
+   const box=$('results').getBoundingClientRect(),rows=[...document.querySelectorAll('#results tbody tr')];
+   return {warning:!$('stockWarning').hidden,rows:rows.map(tr=>tr.cells[0].textContent),inside:rows[2].getBoundingClientRect().bottom<=box.bottom+1};});
+  assert.deepEqual(tight,{warning:true,rows:['A','B','C'],inside:true},JSON.stringify(tight));
   await page.evaluate(async()=>{source.reset('idle');render(await source.status());});
   await page.waitForFunction(()=>document.querySelector('#connection').textContent.startsWith('상태 수신'));
   assert.equal(await page.locator('#operation > .column').count(),4);
@@ -66,6 +76,6 @@ const root=path.resolve(__dirname,'..');
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
   assert.deepEqual(errors,[]);
-  console.log('PASS: initial load, 10 demo states, results current batch A→B→C fills box, older below scroll, live/test render branches, visible inventory card, 4 columns, mobile overflow, no JS errors');
+  console.log('PASS: initial load, 10 demo states, results current batch A→B→C fills box, older below scroll, fits under stock warning, live/test render branches, visible inventory card, 4 columns, mobile overflow, no JS errors');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

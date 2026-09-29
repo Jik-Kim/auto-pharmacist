@@ -39,7 +39,7 @@
 | 단계 | 상태 | 스킬 호출 | 판정·분기 |
 |---|---|---|---|
 | 1 | `ACCEPTED` | — | `SubmitOrder` 수락, batch_id 발급 |
-| 2 | `SELF_CHECK` | `MeasureForce`(빈 그리퍼) · 툴/TCP 확인 | 실패 → `ERROR` |
+| 2 | `SELF_CHECK` | `MeasureForce`(빈 그리퍼) · 툴/TCP 확인 → `SafePose(ORDER_START)` (주문 시작 안전 자세, 9/29) | 실패 → `ERROR` (안전 자세 성공 전에는 빈 통을 잡지 않는다) |
 | 3 | `PICK_CONTAINER` | **carry**: `MoveToStation(passbox_empty, slot)` → `SetGripper(close, cup)` → `MoveToStation(workbench)` → `SetGripper(open)` | 사람이 Pass Box 「빈통」 칸에 넣어 둔 빈 약통을 로봇이 `workbench` 로 가져온다 (D-18·D-24, 매거진 폐지). `grip_inferred=false` → `GRIP_FAIL` 재시도 ≤ 3 |
 | 4 | `TARE` | `MeasureForce` (빈 그리퍼 영점 기준, workbench ABOVE) → `WeighContainer(tare_g=0)` | 빈 용기 풍량 기록. 영점은 VERIFY 직전 대조 기준이 된다 — **같은 자세에서 재야 성립한다** |
 | 5 | `PICK_SCOOP` | `MoveToStation(scoop_N)` → `SetGripper(close, scoop_width)` | `grip_inferred=false` → `Deviation(GRIP_FAIL)` 재시도 ≤ 3 |

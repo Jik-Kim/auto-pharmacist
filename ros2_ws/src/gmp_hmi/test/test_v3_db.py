@@ -125,7 +125,7 @@ def test_export_batch_id_cannot_escape_directory(tmp_path):
     db.close()
 
 
-def record_type(monkeypatch):
+def record_type(monkeypatch, node_base=object):
     # ROS 가 없는 단위 테스트에서도 실제 콜백을 호출한다. DDS 시험은 별도 launch 의 책임이다.
     names = ['rclpy', 'rclpy.node', 'rclpy.qos', 'ament_index_python',
              'ament_index_python.packages', 'rosidl_runtime_py', 'rosidl_runtime_py.convert',
@@ -133,7 +133,7 @@ def record_type(monkeypatch):
     modules = {name: types.ModuleType(name) for name in names}
     for name, module in modules.items():
         monkeypatch.setitem(sys.modules, name, module)
-    modules['rclpy.node'].Node = object
+    modules['rclpy.node'].Node = node_base
     modules['rclpy.qos'].DurabilityPolicy = types.SimpleNamespace(TRANSIENT_LOCAL=1)
     modules['rclpy.qos'].QoSProfile = lambda **kw: kw
     modules['ament_index_python.packages'].get_package_share_directory = lambda _: str(ROOT)
@@ -201,4 +201,38 @@ def test_record_restart_paused_recovers_context_without_rewriting_start(tmp_path
     node._on_weight(types.SimpleNamespace(header=stamp(11), station='scale', subject='container', samples=0,
                     gross_g=0, tare_g=0, net_g=0, std_g=0, valid=False))
     assert node.db.recent_weights()[-1]['batch_id'] is None
+    node.db.close()
+
+
+def test_record_keeps_every_state_transition_for_queued_order(tmp_path, monkeypatch):
+    """세트 끝 예약 주문(v1.9) — DONE(앞 배치) 직후 RUNNING(다음 배치)이 와도 앞 배치를 닫는다.
+
+    9/29 DDS 검증에서 state 구독 보관이 1개라 DONE 이 RUNNING 에 덮여 recipe-02 가 DB 에서 끝나지 않았다.
+    보관 수는 DDS 에서만 드러나므로 구독 QoS 자체를 확인하고, 두 상태를 차례로 받았을 때의 기록도 본다.
+    """
+    subscriptions = {}
+
+    class FakeNode:
+        def __init__(self, _name):
+            self.params = {'db_path': str(tmp_path / 'cell.db'), 'export_dir': str(tmp_path / 'out')}
+
+        def declare_parameter(self, name, default):
+            self.params.setdefault(name, default)
+
+        def get_parameter(self, name):
+            return types.SimpleNamespace(value=self.params[name])
+
+        def create_subscription(self, msg_type, topic, callback, qos):
+            subscriptions[topic] = qos
+
+        def get_logger(self):
+            return types.SimpleNamespace(info=lambda _: None, warning=lambda _: None)
+
+    node = record_type(monkeypatch, FakeNode)()
+    assert subscriptions['state']['depth'] > 1 and subscriptions['state']['durability'] == 1
+    state(node, 'B2', 1, 'SCOOP', 1)
+    state(node, 'B2', 5, 'DONE', 2)
+    state(node, 'B3', 1, 'SCOOP', 3)
+    assert node.db.batch_status('B2')['result'] == 'DONE'
+    assert node.db.batch_status('B3')['finished_at'] is None and node.active
     node.db.close()

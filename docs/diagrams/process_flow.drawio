@@ -111,7 +111,7 @@
         <mxCell id="c3" value="IDLE&lt;br&gt;submit_order 대기" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="40" y="120" width="190" height="72" as="geometry" />
         </mxCell>
-        <mxCell id="c4" value="SELF_CHECK&lt;br&gt;req: measure — 빈 그리퍼 외력&lt;br&gt;(영점·센서 확인, 용기 아님)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="c4" value="SELF_CHECK&lt;br&gt;req: measure — 빈 그리퍼 외력&lt;br&gt;(영점·센서 확인, 용기 아님)&lt;br&gt;→ safe(ORDER_START) 주문 시작 안전 자세" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="320" y="120" width="190" height="72" as="geometry" />
         </mxCell>
         <mxCell id="c5" value="PICK_CONTAINER&lt;br&gt;req: carry passbox_empty→workbench" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -171,7 +171,7 @@
         <mxCell id="c23" value="submit_order 수락&lt;br&gt;batch_id 발급 · event BATCH_START" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c3" target="c4">
           <mxGeometry x="0" y="-22" relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c24" value="measure valid" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c4" target="c5">
+        <mxCell id="c24" value="measure valid ·&lt;br&gt;safe(ORDER_START) 성공" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c4" target="c5">
           <mxGeometry x="0" y="-14" relative="1" as="geometry" />
         </mxCell>
         <mxCell id="c25" value="carry grip_inferred=true" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c5" target="c6">
@@ -393,7 +393,7 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c61" value="measure invalid (TODO)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c19">
+        <mxCell id="c61" value="measure invalid (TODO) ·&lt;br&gt;주문 시작 안전 자세 실패" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c19">
           <mxGeometry x="0.5" y="-14" relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="173.0" y="165" />
@@ -664,8 +664,8 @@
         <mxCell id="c20" value="SELF_CHECK" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=12;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="810" y="300" width="200" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="c21" value="MeasureForce srv (빈 그리퍼)&lt;br&gt;samples, settle_s → fz_mean, fz_std, valid" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="1090" y="300" width="360" height="46" as="geometry" />
+        <mxCell id="c21" value="MeasureForce srv (빈 그리퍼)&lt;br&gt;samples, settle_s → fz_mean, fz_std, valid&lt;br&gt;SafePose srv (reason ORDER_START) → success&lt;br&gt;성공 전 빈 통 이송 금지 · 정지 게이트를 거침" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+          <mxGeometry x="1090" y="300" width="360" height="76" as="geometry" />
         </mxCell>
         <mxCell id="c22" value="호출 → 결과" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="c20" target="c21">
           <mxGeometry x="0" y="-10" relative="1" as="geometry" />
