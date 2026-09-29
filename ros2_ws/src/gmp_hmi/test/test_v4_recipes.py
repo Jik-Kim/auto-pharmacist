@@ -6,11 +6,11 @@ from gmp_process.core.recipe import load
 
 def test_fixed_recipe_catalog_uses_shared_loader_and_material_ids():
     directory = Path(__file__).resolve().parents[1] / 'config' / 'test_recipes' / 'v4'
-    # SOT D-33 (9/23 조장) — 고정 스쿱 85 g 에 맞춘 목표량, 허용오차 ±10 %.
+    # #306 (9/29) — 원료별 스쿱 1회량 A·C 69 / B 57 g 에 맞춘 목표량(138 g 은 2스쿱), 허용오차 ±10 %.
     expected = {
-        'recipe-01': [('A', 85.0), ('B', 85.0), ('C', 85.0)],
-        'recipe-02': [('A', 170.0), ('B', 85.0)],
-        'recipe-03': [('A', 85.0), ('B', 85.0), ('C', 170.0)],
+        'recipe-01': [('A', 69.0), ('B', 57.0), ('C', 69.0)],
+        'recipe-02': [('A', 138.0), ('B', 57.0)],
+        'recipe-03': [('A', 69.0), ('B', 57.0), ('C', 138.0)],
     }
     assert {p.stem for p in directory.glob('*.yaml')} == set(expected)
     for name, items in expected.items():

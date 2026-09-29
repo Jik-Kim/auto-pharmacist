@@ -112,6 +112,20 @@ def test_height_holds_running_without_claiming_entry_and_requires_all_refills_ex
     assert process.station == 'passbox_done'
 
 
+
+def test_scoop_cycles_follow_per_material_nominal(process):
+    """#306 — 원료별 1회량(A·C 69 / B 57 g). B 를 공통값으로 나누면 시도 수가 틀어진다."""
+    process.scoop_nominal_by_material = process.per_material_nominal(['A', 'B', 'C'], [69.0, 57.0, 0.0])
+    assert process.scoop_nominal_by_material == {'A': 69.0, 'B': 57.0}      # 0 은 공통값(C → 40)
+    assert order(process, A=138, B=57, C=40).accepted
+    advance(process, 30)
+    cycles = [m for m in process.published if type(m).__name__ == 'ScoopCycle']
+    assert [(c.material_id, c.attempt, c.delivered_g) for c in cycles] == [
+        ('A', 1, 69.0), ('A', 2, 69.0), ('B', 1, 57.0), ('C', 1, 40.0)]
+    for bad in ([69.0, 57.0], [69.0, -1.0, 0.0], [69.0, float('nan'), 0.0]):
+        with pytest.raises(ValueError):
+            process.per_material_nominal(['A', 'B', 'C'], bad)
+
 def test_height_hold_does_not_skip_qa_or_transfer(process):
     process.params['scenario'] = 'overfill'
     assert order(process, A=40, B=40).accepted

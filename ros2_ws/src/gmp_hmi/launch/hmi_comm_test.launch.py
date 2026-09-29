@@ -40,8 +40,9 @@ def _start(context):
              output='screen', parameters=[{'db_path': db_path, 'export_dir': test_dir}]),
         Node(package='gmp_hmi', executable='hmi_test_process', namespace=namespace,
              output='screen', parameters=[{'scenario': scenario, 'item_duration_s': duration,
-                          # SOT D-33 한 스쿱 85 g. 시험 사이클 수를 운영 기준과 맞춘다.
-                          'test_scoop_nominal_g': 85.0,
+                          # 원료별 한 스쿱 A·C 69 / B 57 g(#306). 시험 사이클 수를 운영 기준과 맞춘다.
+                          'test_scoop_nominal_g': 69.0,
+                          'test_scoop_nominal_by_material_g': [69.0, 57.0, 69.0],
                           'test_material_ids': ['A', 'B', 'C'],
                           'test_capacity_g': [1000.0, 1000.0, 1000.0],
                           'test_initial_g': [float(value) for value in initial]}]),

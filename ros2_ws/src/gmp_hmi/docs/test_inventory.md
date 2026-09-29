@@ -10,13 +10,13 @@
 
 | 파일 | A | B | C | 합계 |
 |---|---:|---:|---:|---:|
-| recipe-01.yaml | 85 g | 85 g | 85 g | 255 g |
-| recipe-02.yaml | 170 g | 85 g | 항목 없음 | 255 g |
-| recipe-03.yaml | 85 g | 85 g | 170 g | 340 g |
+| recipe-01.yaml | 69 g | 57 g | 69 g | 195 g |
+| recipe-02.yaml | 138 g | 57 g | 항목 없음 | 195 g |
+| recipe-03.yaml | 69 g | 57 g | 138 g | 264 g |
 
 기존 `RecipeItem`의 `material_id`, `target_g`, `tol_pct`만 사용한다. 대문자 A/B/C, 배열 순서가 투입 순서다. 원료 위치 `material_1/2/3` 및 스쿱 위치 `scoop_1/2/3`는 `stations.yaml`이 관리한다. 레시피에 좌표를 복사하지 않는다.
 
-값은 운영 레시피(`gmp_bringup/params/recipes`)와 같다 — SOT D-33(9/23 조장, 한 스쿱 85 g 고정)의 목표량과 허용 오차 ±10 %. `test/test_v4_recipes.py` 가 운영과 사본이 같은지 대조한다. 85 g 의 ±8.5 g, 170 g 의 ±17 g 성능은 실물 검증 전이다. 통신 시험 launch 는 시험 노드에 `test_scoop_nominal_g` 85 g 을 넘겨 170 g 을 85 g 두 시도 기록으로 생성하지만 동작·시간·무게 모두 가상이다.
+값은 운영 레시피(`gmp_bringup/params/recipes`)와 같다 — #306(9/29, 원료별 스쿱 1회량 A·C 69 / B 57 g)의 목표량과 허용 오차 ±10 %. 이전 D-35(79/158 g)는 테이프 없이 잰 측정이라 무효. 운영 레시피 파일·값도 D 담당이다(9/25). `test/test_v4_recipes.py` 가 운영과 사본이 같은지 대조한다. 69 g 의 ±6.9 g, 57 g 의 ±5.7 g, 138 g 의 ±13.8 g 성능은 실물 검증 전이다. 통신 시험 launch 는 시험 노드에 원료별 1회량 `test_scoop_nominal_by_material_g` [69, 57, 69] 를 넘겨 138 g 을 69 g 두 시도 기록으로 생성하지만 동작·시간·무게 모두 가상이다.
 
 ## 재고·차단
 
