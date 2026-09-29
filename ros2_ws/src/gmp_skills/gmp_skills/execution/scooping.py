@@ -32,17 +32,22 @@ class ScoopingSkills:
         측정한 원료면 높이에 맞춰 경유점을 보정한다. height_measure_only는
         원료면 측정만 수행한다. 설정되지 않은 높이 보정은 이동 전에 거부한다.
         """
-        if getattr(self.ctx.state, 'return_rescoop_blocked', False):
+        material = job.args['material_id']
+        if (getattr(self.ctx.state, 'return_rescoop_blocked', False)
+                and getattr(self.ctx.state, 'returned_material', '') != material):
+            # 그 원료의 반환이 성공하지 않았다(실패·취소·다른 원료) — 어느 모드든 첫 이동 전에 거부
             raise RuntimeError('반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
         self.motion._require_scoop_extracted()
-        material = job.args['material_id']
         self.motion._require_held_scoop(material)
         if getattr(self.ctx.config, 'height_measure_only', False):
             return self._measure_surface_world(job)
         profile = self.ctx.stations.scooping.get(material)
         # 시연용 고정 티칭 경로는 원료면 측정·높이 보정 없이 바로 실행한다.
+        # 반환 끝 → 재스쿱 연결도 이 경로에서만 잇는다 (_connect_after_return).
         if profile and profile.get('execution_mode', 'height_compensated') == 'taught_fixed':
             return self._do_fixed_scoop(job, profile)
+        if getattr(self.ctx.state, 'return_rescoop_blocked', False):
+            raise RuntimeError('반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
         if profile and profile.get('execution_mode', 'height_compensated') != 'height_compensated':
             raise ValueError('알 수 없는 스쿠핑 실행 모드')
         if not profile or profile.get('calibrated') is not True:
@@ -157,6 +162,7 @@ class ScoopingSkills:
             # 스플라인·직선 이동·털기 대기 중 파지 상태를 반복 확인한다.
             self.motion._require_held_scoop(material)
 
+        self._connect_after_return(material, station, cancel)
         if cancel():
             raise RuntimeError('cancelled')
         if not self.motion._pose_matches(self.ctx.arm.current_posx(), station.posx):
@@ -190,6 +196,37 @@ class ScoopingSkills:
         # 고정 경로는 접촉을 측정하지 않으므로 아래 false/0을 실측 결과로 해석하지 않는다.
         return dict(contact_detected=False, max_contact_force_n=0.0, insertion_depth_mm=0.0,
                     message='TAUGHT_FIXED: 검증된 full 경로 완료; 접촉력·삽입 깊이 미측정')
+
+    def _connect_after_return(self, material, station, cancel):
+        """반환 끝에서 같은 원료의 재스쿱을 잇는다 (#64, 계약 v1.5.1 「검증된 재스쿱 연결」).
+
+        그 원료의 반환이 성공했고(returned_material) 로봇이 아직 반환 끝(TCP, 관절은 손목 뒤집힘 포함)에
+        있을 때만 원료 계량 자세로 직선 이동한다 — 수납 연결(motion)의 첫 구간과 같은 이동이다.
+        반환 실패·취소·다른 원료·수동 이동은 종전대로 거부한다. 연결 이동이 실패·취소되면 반환 이력을
+        지운 채 차단을 유지해, 반환 성공 이력으로 다시 시작하지 않는다.
+        """
+        if not getattr(self.ctx.state, 'return_rescoop_blocked', False):
+            return
+        if getattr(self.ctx.state, 'returned_material', '') != material:
+            raise RuntimeError('반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
+        end = self.motion._pose_from_extra(station, 'return_end_posx')
+        end_joints = self.motion._pose_from_extra(station, 'return_end_posj')
+        actual_joints = self.ctx.arm.current_posj()
+        if (not self.motion._pose_matches(self.ctx.arm.current_posx(), end)
+                or not joints_match_or_wrist_flipped(actual_joints, end_joints,
+                                                     self.ctx.config.joint_tolerance)):
+            raise RuntimeError('반환 끝 자세가 아니므로 재스쿱 연결을 차단한다: '
+                               f'현재 {format_joints(actual_joints)} 기준 {format_joints(end_joints)}')
+        self.ctx.state.returned_material = ''
+        self.ctx.state.returned_scoop_stowed = ''
+        if cancel():
+            raise RuntimeError('cancelled')
+        # MOVEL · TCP 직선 이동: station.posx — 반환 끝 → 원료 계량 자세
+        self.ctx.arm.movel_cancellable(list(station.posx), self.ctx.config.vel_scale, cancel,
+                                       self.ctx.config.motion_timeout_s)
+        if cancel():
+            raise RuntimeError('cancelled')
+        self.ctx.state.return_rescoop_blocked = False
 
     def _measure_surface_world(self, job: Job):
         """접촉 순간의 TCP와 스쿱 끝 오프셋으로 원료면 높이를 추정한다.

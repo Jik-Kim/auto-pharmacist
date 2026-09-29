@@ -825,6 +825,7 @@ def test_return_end_attempt_blocks_followup_scoop_before_any_motion(monkeypatch,
         with pytest.raises(RuntimeError):
             module.SkillNode._do_return_material(node, job)
     before = list(moves)
+    node.stations.scooping = {}    # 깊이 보정 모드 — 반환 끝 → 재스쿱 연결은 고정 경로에서만 잇는다 (#64)
     for material_id in ('A', 'B'):
         with pytest.raises(RuntimeError, match='재스쿱 연결 경로 미구현'):
             module.SkillNode._do_scoop(node, module.Job('scoop', {'material_id': material_id}))
