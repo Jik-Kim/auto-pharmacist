@@ -106,7 +106,7 @@ ret = S(1, 2, 'RETURN_SCOOP', 'req: move(scoop_N) → grip(open)\n전용 스쿱 
 verify = S(3, 2, 'VERIFY', 'req: move(workbench ABOVE) → measure(영점 재확인) → weigh\n배치 끝 1회. 판정은 ① 레시피 총량 하나 (② 는 관측)')
 finish = S(4, 2, 'FINISH', 'req: carry workbench→passbox_done')
 nudgew = S(5, 2, 'NUDGE_WAIT', 'req: move(nudge_wait) → wait_nudge\n세트 끝 — 건드릴 때까지 PAUSED · 주문은 1건 예약 (D-23, v1.9)', 'p')
-done = S(6, 2, 'DONE', 'event BATCH_END', 'd')
+done = S(6, 2, 'DONE', 'event BATCH_END\n다음 주문 → SELF_CHECK 에서\n안전 자세(ORDER_START)부터', 'd')
 err = S(0, 3, 'ERROR', 'req: safe(then None)\nevent INTERVENTION_FORCED', 'e')
 paused = S(2, 3, 'PAUSED', 'req: safe → wait_interlock', 'p')
 dev = S(4, 3, 'DEVIATION', 'req: wait_qa (QA 원격 판정)', 'p')
@@ -130,6 +130,11 @@ p2.edge(ret, verify, '마지막 원료였음 (그리퍼 비어 있음)', color=A
 p2.edge(verify, finish, '① |net − Σtarget| ≤ Σ(target×tol)', color=OK, lpos=(0, -22))
 p2.edge(finish, nudgew, 'carry ok', color=OK, lpos=(0, -14))
 p2.edge(nudgew, done, 'NUDGE (사람이 건드림)\n→ DONE · 폐기면 DISCARDED', color=OK, lpos=(0, -22))
+# 세트 끝 → 다음 주문. 넛지로 세트가 끝나면 다음 주문(예약이 있으면 바로)이 SELF_CHECK 에서 안전 자세를 거쳐
+# 빈 통을 잡는다 (SOT 「주문 시작 준비와 명시적 이동」, #320). 넛지 대기를 더하지 않는다. 오른쪽 복도 → 위쪽 여백.
+p2.edge(done, idle, '다음 주문 (예약 주문은 넛지 직후 바로, v1.9)\n→ SELF_CHECK: measure → 안전 자세(ORDER_START) → 빈 통 · 넛지 대기 추가 없음',
+        color=GRAY, dashed=True, exit=(1, 0.5), entry=(0.5, 0),
+        points=((X[6] + W + 15, Y[2] + H * 0.5), (X[6] + W + 15, 95), (cx(0), 95)), lpos=(0.55, -12))
 p2.edge(disc, nudgew, 'carry ok — 폐기도 세트의 끝\n같은 자리에서 기다린다', color=RED, exit=(0.5, 0), entry=(0.5, 1), lpos=(0.2, 0))
 # ── 보정·재계량 (주황·회색) — 1행 위 복도 (y 340)
 p2.edge(wres, scoop, 'UNDER, attempts<max_attempts(8) → scoop(attempt+1, fraction 힌트)', color=WARM,
