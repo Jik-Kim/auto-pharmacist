@@ -14,7 +14,7 @@ from pathlib import Path
 from .context import Job
 from gmp_skills.core.scooping import finite, plan_scoop, tip_offset_local, tip_z
 from gmp_skills.core.surface_height import tip_position_base
-from gmp_skills.core.transfer import joints_match, vector6
+from gmp_skills.core.transfer import format_joints, joints_match_or_wrist_flipped, vector6
 
 
 class ScoopingSkills:
@@ -509,9 +509,11 @@ class ScoopingSkills:
             self.ctx.arm.wait_motion_cancellable(cancel, self.ctx.config.motion_timeout_s)
             if not self.motion._pose_matches(self.ctx.arm.current_posx(), end):
                 raise RuntimeError('반환 털기 종료 TCP 자세 미확인')
-            if not joints_match(self.ctx.arm.current_posj(), end_joints,
-                                self.ctx.config.joint_tolerance):
-                raise RuntimeError('반환 털기 종료 관절 자세 미확인')
+            actual_joints = self.ctx.arm.current_posj()
+            if not joints_match_or_wrist_flipped(actual_joints, end_joints,
+                                                 self.ctx.config.joint_tolerance):
+                raise RuntimeError(f'반환 털기 종료 관절 자세 미확인: 현재 {format_joints(actual_joints)} '
+                                   f'기준 {format_joints(end_joints)}')
         except Exception:
             self.ctx.arm.stop_motion()
             raise

@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 
 from gmp_skills.core.stations import StationTable
-from gmp_skills.core.transfer import MotionAnchor, joints_match, pose_matches, validate_start
+from gmp_skills.core.transfer import (MotionAnchor, joints_match, joints_match_or_wrist_flipped,
+                                      pose_matches, validate_start)
 
 
 def teaching_data():
@@ -32,6 +33,25 @@ def test_pose_comparison_uses_rotation_not_euler_subtraction():
 @pytest.mark.parametrize('delta', [-360, 360])
 def test_j6_branch_change_is_not_wrapped(delta):
     assert not joints_match([0, 0, 0, 0, 0, delta], [0]*6, 1)
+
+
+def test_wrist_flipped_solution_matches_same_tcp():
+    # 9/29 실측: 같은 A 계량 자세(TCP)의 두 관절 해 — 붓기 뒤에는 손목이 뒤집힌 해로 온다
+    normal = [-46.0, 7.6, 84.2, -0.05, 88.2, -225.8]
+    flipped = [-46.0, 7.6, 84.6, 179.95, -87.8, -45.8]
+    assert not joints_match(flipped, normal, 1)
+    assert joints_match_or_wrist_flipped(flipped, normal, 1)
+    assert joints_match_or_wrist_flipped(normal, normal, 1)
+
+
+@pytest.mark.parametrize('actual', [
+    [0, 0, 0, 180, -30, -180],      # J4·J6 반대 방향 — J6 이 360° 다르게 감긴 해
+    [0, 0, 0, 180, 30, 180],        # J5 부호가 그대로
+    [5, 0, 0, 180, -30, 180],       # 팔(J1)이 다르다
+    [0, 0, 0, 0, 30, 360],          # 360° 감김은 여전히 거부
+])
+def test_wrist_flip_does_not_accept_other_solutions(actual):
+    assert not joints_match_or_wrist_flipped(actual, [0, 0, 0, 0, 30, 0], 1)
 
 
 @pytest.mark.parametrize('field,value', [

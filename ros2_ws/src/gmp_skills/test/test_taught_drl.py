@@ -412,6 +412,22 @@ def test_returned_material_stows_via_drl_return_entry(motion, material, index, r
     assert node._return_rescoop_blocked is (not released)
 
 
+def test_returned_material_stows_from_wrist_flipped_return_end(motion):
+    """반환 끝 확인과 같은 기준 — 손목만 뒤집힌 해로 끝난 반환도 수납을 잇는다 (9/29)."""
+    node, job, calls, state, _ = motion
+    node._held_payload, node._held_material_id = 'scoop', 'A'
+    state.update(grip_inferred=True)
+    node._return_rescoop_blocked = True
+    node._returned_material = 'A'
+    source = node.stations.for_material('A')
+    j = source.extra['return_end_posj']
+    node.arm.joints[:] = [j[0], j[1], j[2], j[3] + 180.0, -j[4], j[5] + 180.0]
+    job.args.update(station_id='scoop_1')
+    node._do_move(job)
+    assert calls[0][1] == source.posx
+    assert calls[-1][1] == node.stations.get('scoop_1').posx
+
+
 @pytest.mark.parametrize('failure_step', range(1, 5))
 def test_return_stow_failure_keeps_guard(motion, failure_step):
     node, job, calls, state, _ = motion

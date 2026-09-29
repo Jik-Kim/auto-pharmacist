@@ -9,7 +9,8 @@ import math
 from .context import Job
 from gmp_interfaces.action import MoveToStation
 from gmp_skills.core.scooping import finite
-from gmp_skills.core.transfer import MotionAnchor, joints_match, pose_matches, validate_start, vector6
+from gmp_skills.core.transfer import (MotionAnchor, format_joints, joints_match, joints_match_or_wrist_flipped,
+                                      pose_matches, validate_start, vector6)
 
 
 class MotionSkills:
@@ -199,8 +200,11 @@ class MotionSkills:
                         raise RuntimeError('원료 반환 성공이 확인되지 않아 수납 연결을 차단한다')
                     material = self.ctx.stations.for_material(material_id)
                     end = self._pose_from_extra(material, 'return_end_posj')
-                    if not joints_match(self.ctx.arm.current_posj(), end, self.ctx.config.joint_tolerance):
-                        raise RuntimeError('원료 반환 끝 관절 자세가 아니므로 수납 연결을 차단한다')
+                    actual_joints = self.ctx.arm.current_posj()
+                    # 반환 끝 확인(scooping)과 같은 기준 — 손목만 뒤집힌 해도 같은 반환 끝이다
+                    if not joints_match_or_wrist_flipped(actual_joints, end, self.ctx.config.joint_tolerance):
+                        raise RuntimeError('원료 반환 끝 관절 자세가 아니므로 수납 연결을 차단한다: '
+                                           f'현재 {format_joints(actual_joints)} 기준 {format_joints(end)}')
                     # DRL 순서: 반환 끝 → 원료 계량 자세 → 반환 진입점 → 하강 → 삽입.
                     targets = [list(material.posx)] + targets
                     # 중간 실패 이후에는 반환 성공 이력으로 경로를 다시 시작하지 않는다.
