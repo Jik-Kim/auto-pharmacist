@@ -126,3 +126,7 @@ BASE 기준 진폭 X=14/Y=15 mm, 주기 X=0.3/Y=0.5초, 가속 0.5초, 3회 턴�
 ## DRL 반환 수납 경로 정정 (2026-09-29)
 
 사용자 제공 m0609_tw_return_material.drl의 return_material_N → scoop_N_return 전체를 대조했다. 앞서 추가한 scoop ABOVE 경유는 DRL에 없어 철회한다. 반환 끝 → material_N.posx → return_entry_posx → Z -100 → Y -150 → 열기 → Z +100 순서로 수정한다. 속도 1.0, 계량 안정화 10초를 유지한다. A/B/C 공통 반환 털기는 기존 승인 사항이다(DRL 원본의 털기는 A에만 있음). 수정한 수납 경로는 실물 재검증 전이다.
+
+## 계량 후 수동 확인 대기
+
+`tools/manual_weigh_return.py`는 운영 스킬을 속도 1.0·안정화 10초로 호출한다. 측정 결과(무효 포함)와 로그의 원시 표본을 records CSV에 매 계량마다 저장하고 fsync한다. 스쿠핑 후 유효 계량 뒤에는 Enter 전까지 반환·수납을 호출하지 않는다. 실제 저울 확인·원상 복귀 후 재개하며 process_node 동시 실행은 거부한다.
