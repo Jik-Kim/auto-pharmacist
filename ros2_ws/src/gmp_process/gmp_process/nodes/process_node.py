@@ -756,6 +756,7 @@ class ProcessNode(Node):
             res.granted, res.message = False, '복합 용기 반송 중단 — 중복 파지 방지를 위해 자동 재개 불가'
             return res
         revision = self._interlock_revision
+        cancelled_before = self._batch_cancel.is_set()   # 복구 전에 이미 중단된 배치 — 아래 참조
         try:
             restored = self._call_srv('restore_grip', RestoreGrip.Request())
         except SkillError as e:
@@ -765,13 +766,20 @@ class ProcessNode(Node):
             res.granted, res.message = False, f'파지 복구 실패 — 재개 불가: {restored.message}'
             return res
         with self._safety_event_lock:
-            if (self._safety_stop or revision != self._interlock_revision
-                    or self._stop.is_set() or self._batch_cancel.is_set()):
+            # 실행 루프가 끝났나 — 그러면 이 EXIT 가 재개할 배치가 없다
+            idle = ((self._thread is None or not self._thread.is_alive())
+                    and (self.fsm is None or self.fsm.mode in ('IDLE', 'DONE', 'ERROR')))
+            # 배치 취소는 **돌고 있는 배치**의 재개와 복구 **도중** 들어온 취소만 막는다. EXIT 전에 이미
+            # 끝난 배치의 _batch_cancel 은 다음 주문(_claim_slot)에서야 지워지는데, 새 주문은 _pause 에
+            # 막히므로 여기서까지 막으면 서로 물려 노드 재기동 말고는 풀 길이 없다
+            # (9/29: 이송 중 ENTER → EXIT 거부 → 배치 중단 → EXIT 거부)
+            stale_cancel = cancelled_before and idle
+            if (self._safety_stop or revision != self._interlock_revision or self._stop.is_set()
+                    or (self._batch_cancel.is_set() and not stale_cancel)):
                 res.granted, res.message = False, '파지 복구 중 취소/안전 상태 변경 — 재개 불가'
                 return res
             # 실행 루프가 없으면 이후 주문에 EXIT 신호가 남지 않게 즉시 해제한다.
-            if ((self._thread is None or not self._thread.is_alive())
-                    and (self.fsm is None or self.fsm.mode in ('IDLE', 'DONE', 'ERROR'))):
+            if idle:
                 self._pause = False
                 self._interlock_exit.clear()
                 self.note = ''

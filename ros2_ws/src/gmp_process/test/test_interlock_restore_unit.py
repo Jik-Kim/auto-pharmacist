@@ -40,6 +40,18 @@ def test_failed_restore_keeps_pause_and_never_signals_resume(node, module, fault
     assert node._pause and not node._interlock_exit.is_set()
 
 
+def test_exit_after_cancelled_batch_ended_unpauses(node):
+    """9/29 셀 잠김: 이송 중 ENTER → 배치 중단으로 끝남 → EXIT. 끝난 배치의 취소 표시가 EXIT 를 막으면
+    새 주문도 _pause 에 막혀 노드 재기동 말고는 풀 길이 없다."""
+    assert enter(node).granted
+    node.fsm = NS(mode='ERROR', state='ABORTED', idx=0)   # 루프는 BatchCancelled 로 끝났다
+    node._batch_cancel.set()                              # 다음 주문의 _claim_slot 까지 남는다
+    node._call_srv = lambda *_: Message(success=True, payload='empty')
+    reply = leave(node)
+    assert reply.granted, reply.message
+    assert not node._pause and not node._interlock_exit.is_set()
+
+
 def test_exit_during_enter_is_rejected(node):
     replies = []
     def safe(*_):
