@@ -627,3 +627,34 @@ def test_invalid_weigh_cleanup_dispatch_returns_scoop_before_safe(node, module, 
                  ('grip', False), ('safe', 'RECOVERY')]
     assert trace == expected
     assert fsm.state == 'ERROR'
+
+
+# ── 주문 시작 안전 자세는 정지 게이트를 거친다 (9/28 SOT, #298 조장 요청) ──────────────
+def test_order_start_safe_waits_at_the_gate_while_paused(node):
+    """물러나는 안전 자세(RECOVERY·REFILL·ENTER)와 달리 주문 시작 안전 자세는 배치의 첫 이동이다 —
+    NUDGE·인터락 정지 중에는 움직이지 않고 게이트에서 기다린다."""
+    from test_process_fsm import Cell
+    cell, seen = Cell([40], residual=0), []
+
+    def dispatch(req):
+        seen.append(f"{req['kind']}:{req.get('reason', '')}")
+        out = cell(req)
+        if req['kind'] in ('weigh', 'weigh_scoop'):
+            out.update(tare_g=req.get('tare_g', 0.0), net_g=out['gross_g'] - req.get('tare_g', 0.0),
+                       std_g=0.0, samples=4, station='workbench')
+        return out
+    node._dispatch = dispatch
+    h = accept(node)
+    node._nudge_paused = True
+    pool = ThreadPoolExecutor(1)
+    try:
+        f = pool.submit(node._execute_batch, h)
+        time.sleep(0.4)
+        assert seen == [], seen            # 안전 자세로 움직이지 않고 기다린다
+        node._on_event(Message(code='NUDGE'))        # 다시 건드려 정지 해제
+        r = f.result(5)
+    finally:
+        node._stop.set()
+        pool.shutdown(wait=True)
+    assert seen[:3] == ['safe:BATCH_START', 'measure:', 'carry:'], seen
+    assert r.result == 'DONE', r.message

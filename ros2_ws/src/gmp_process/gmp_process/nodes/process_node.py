@@ -53,6 +53,9 @@ HUMAN_WAITS = ('wait_qa', 'wait_interlock', 'wait_nudge')
 # 게이트를 건너뛰는 요청 — 사람 대기 + 안전 자세. `safe` 는 "사람이 곧 들어오니 물러나라" 는 이동이라
 # NUDGE·인터락 정지보다 우선한다 (ENTER 가 NUDGE 정지 중에도 safe_pose 를 부르는 것과 같은 논리)
 GATE_BYPASS = HUMAN_WAITS + ('safe',)
+# 단, **주문 시작 안전 자세**는 물러나는 이동이 아니라 배치의 첫 이동이다 — NUDGE·인터락 정지 중에는
+# 움직이지 않고 게이트에서 기다린다 (9/28 #298 조장 요청, SOT 「주문 시작 준비와 명시적 이동」)
+GATED_SAFE_REASONS = ('BATCH_START',)
 
 # 일탈 → ScoopCycle.outcome. 시도가 실패로 끝난 것만 여기 있다 (OVERFILL·TIMEOUT 은 시도 자체는 끝났다)
 DEV_TO_OUTCOME = {'SCOOP_EMPTY': 'SCOOP_EMPTY', 'MATERIAL_EMPTY': 'SCOOP_EMPTY',
@@ -1086,7 +1089,7 @@ class ProcessNode(Node):
             while req is not None and rclpy.ok() and not self._stop.is_set():
                 self._check_batch_interrupt()
                 step = fsm.state
-                if req['kind'] not in GATE_BYPASS:
+                if req['kind'] not in GATE_BYPASS or req.get('reason') in GATED_SAFE_REASONS:
                     # 다음 **로봇 동작**을 시작하기 전에 멈춘다 — 정지를 잡는 자리는 여기 하나뿐이다.
                     # 사람을 기다리는 요청·safe 앞에서는 멈추지 않는다: 로봇이 움직이지 않거나(대기) 물러나는
                     # 이동(safe)이라 멈출 이유가 없고, QA 대기 앞에서 잡으면 판정을 못 받은 채 서 버린다

@@ -41,6 +41,11 @@ class WeighingSkills:
                                 station_id: str = 'workbench') -> WeightReading:
         # 센서 원시값 → gmp_dosing의 보정 → 빈 물체 무게(tare_g) 차감 순서다.
         # 빈 스쿱 첫 계량이면 이후 원료면 진단에 쓸 힘 기준값도 저장한다.
+        # 경로 확인은 로봇 계량 전에 — 잘못된 호출에 계량 시간을 쓰지 않는다.
+        # 보정 직선은 경로마다 다르다 — 용기(workbench ABOVE)와 스쿱(원료 계량 자세)의 gain 이
+        # 9/29 실측으로 11 % 갈렸다(#307). 하나로 두면 어느 쪽이든 순량이 10 % 넘게 틀린다.
+        if subject not in ('container', 'scoop'):
+            raise ValueError(f'계량 경로는 container 또는 scoop 이어야 한다: {subject}')
         p = self.ctx.parameter
         capture_baseline = (subject == 'scoop'
                             and getattr(self.ctx.state, 'empty_scoop_baseline_pending', False))
@@ -76,9 +81,9 @@ class WeighingSkills:
                 raw_hf_std = 0.0
         model = WeightModel(ScaleConfig(
             method=method,
-            gain=float(p('scale.gain').value),
-            offset_g=float(p('scale.offset_g').value),
-            max_std_g=float(p('scale.max_std_g').value),
+            gain=float(p(f'scale.{subject}.gain').value),
+            offset_g=float(p(f'scale.{subject}.offset_g').value),
+            max_std_g=float(p(f'scale.{subject}.max_std_g').value),
             max_hf_std_g=float(p('scale.max_hf_std_g').value),
             fz_sign=float(p('scale.fz_sign').value),
         ))
@@ -94,7 +99,7 @@ class WeighingSkills:
             'raw_std': baseline_std,
             'result_std_g': std_g, 'raw_hf_std': raw_hf_std,
             'fit_applied': fitted_period_s > 0, 'fitted_period_s': fitted_period_s,
-            'valid': bool(valid), 'gain': float(p('scale.gain').value),
+            'valid': bool(valid), 'gain': float(p(f'scale.{subject}.gain').value),
         }, ensure_ascii=False))
         reading = WeightReading(
             gross_g=gross_g,
