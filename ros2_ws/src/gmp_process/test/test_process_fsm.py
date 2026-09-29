@@ -849,7 +849,7 @@ def test_213_cleanup_투입전_세_단계의_요청_순서를_고정한다():
     """#213 4번 — 손에 뭐가 있느냐로 정리 경로가 갈린다 (9/22 조장 확인).
 
     `TARE` 빈 그리퍼 → 정리 없음 · `SCOOP_TARE` 빈 스쿱 → 반환 없이 스쿱만 반납 ·
-    `WEIGH_SCOOP` 원료 든 스쿱 → 원료통 반환 후 스쿱 반납. 중간 경유는 `material_N`(AT) 다.
+    `WEIGH_SCOOP` 원료 든 스쿱 → 원료통 반환 후 스쿱 반납. 빈 스쿱의 중간 경유는 `material_N`(AT) 다.
     빈 스쿱을 원료통에 기울이는 동작(SCOOP_TARE 의 RETURN_MATERIAL)은 넣지 않는다.
     """
     # TARE — 정리 없음
@@ -885,10 +885,20 @@ def test_213_cleanup_weigh_scoop_은_원료를_먼저_반환한다():
                 return {'gross_g': 0.0, 'valid': False}
         return orig(req)
     tap.n = 0
-    for st, k in run(fsm, tap):
+    stations = []
+    orig_tap = tap
+
+    def record(req):
+        if fsm.state == 'CLEANUP' and req['kind'] == 'move':
+            stations.append(req['station'])
+        return orig_tap(req)
+    for st, k in run(fsm, record):
         if st == 'CLEANUP':
             trace.append(k)
-    assert trace == ['return_material', 'move', 'move', 'grip'], trace
+    # 반환 뒤에는 material AT 를 끼우지 않는다 — skill 수납 연결이 반환 끝 관절을 확인하고
+    # 반환 끝 → material_N.posx → 반환 진입점으로 잇는다 (9/29, 끼우면 수납이 거부됐다)
+    assert trace == ['return_material', 'move', 'grip'], trace
+    assert stations == ['scoop'], stations
     d = fsm.deviations[-1]
     assert (d['kind'], d['step'], d['action']) == ('WEIGH_INVALID', 'WEIGH_SCOOP', 'FORCED')
     assert 'return_material' in d['detail'], d['detail']

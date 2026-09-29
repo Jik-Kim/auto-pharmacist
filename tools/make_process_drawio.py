@@ -100,7 +100,7 @@ stare = S(1, 1, 'SCOOP_TARE', 'req: weigh_scoop — 빈 스쿱\n든 채 (원료�
 scoop = S(2, 1, 'SCOOP', 'req: scoop(material, attempt, depth_fraction)\nA/B/C: 고정 full spline → 털기\n높이 보정 비활성 · fraction=1만 지원\n접촉 미측정 → fixed_scoop 이면 무게로 판정 (D-34)')
 wscoop = S(3, 1, 'WEIGH_SCOOP', 'req: weigh_scoop — 붓기 전\n퍼낸 양 → 빈 스쿱 / 반환 / 전량 붓기')
 pour = S(4, 1, 'POUR', 'req: pour(fraction=1)\nmiddle→ABOVE→start→end\n→ABOVE→Z+50→middle')
-wreturn = S(3, 3, 'RETURN_MATERIAL', 'req: return_material(material_id)\n끝 자세 유지 · 직접 재스쿱 차단\n별도 수납·열기·후퇴 성공 후 해제', 'p')
+wreturn = S(3, 3, 'RETURN_MATERIAL', 'req: return_material(material_id)\n끝 자세 유지 · 고정 경로는 반환 끝→계량 자세로 이어 재스쿱(#64)\n그 밖은 수납·열기·후퇴 성공 후 해제', 'p')
 wres = S(5, 1, 'POUR 내부 판정', '추가 계량 없음\n추정 투입량 += 붓기 전 순량 → decide()')
 ret = S(1, 2, 'RETURN_SCOOP', 'req: move(scoop_N) → grip(open)\n전용 스쿱 = 교차오염 방지')
 verify = S(3, 2, 'VERIFY', 'req: move(workbench ABOVE) → measure(영점 재확인) → weigh\n배치 끝 1회. 판정은 ① 레시피 총량 하나 (② 는 관측)')
@@ -260,7 +260,7 @@ ROWS = [
  ('DEVIATION', 'p', 'QaDecision srv\nAPPROVE / DISCARD, operator_id\nevent HMI_QA_APPROVE/DISCARD → audit', '(로봇 대기 — 호출 없음)', None, 'deviation 재발행\n(decision, operator_id, 같은 id) · state', False),
  ('PAUSED (REFILL)', 'p', 'InterlockRequest srv\nENTER(reason) → granted / EXIT\nevent HMI_INTERLOCK_ENTER/EXIT → audit', 'SafePose srv (ENTER 시)\n진행 중 Action 은 cancel_goal 먼저 (I-004)', None, 'event INTERLOCK_ENTER/EXIT\nstate PAUSED', False),
  ('PAUSED (NUDGE)', 'p', None, 'event NUDGE ← skill_node 발행\n(get_tool_force 폴링, D-21)\nprocess 는 구독 → 루프 게이트 토글', None, 'state PAUSED(note NUDGE)\nevent NUDGE (skill 이 낸 것을 record 가 저장)', True),
- ('CLEANUP', 'p', None, 'ReturnMaterial act (WEIGH_SCOOP 만)\nMoveToStation act (material_N, AT → scoop_N, AT) · SetGripper srv (open)', '투입 전 계량 무효 — 손에 든 것을 정리한 뒤 멈춘다 (#213)\nTARE 정리 없음 · SCOOP_TARE 반환 없이 · WEIGH_SCOOP 반환부터. 재스쿱 없음(#64)', 'deviation(WEIGH_INVALID/FORCED, 정리 시작 전 기록)\n정리 중 반환 실패 → FORCE_LIMIT/FORCED 별건 · state', False),
+ ('CLEANUP', 'p', None, 'ReturnMaterial act (WEIGH_SCOOP 만)\nMoveToStation act (SCOOP_TARE 는 material_N, AT → scoop_N, AT · 반환 뒤는 scoop_N, AT 만) · SetGripper srv (open)', '투입 전 계량 무효 — 손에 든 것을 정리한 뒤 멈춘다 (#213)\nTARE 정리 없음 · SCOOP_TARE 반환 없이 · WEIGH_SCOOP 반환부터. 정리 중 재스쿱 없음', 'deviation(WEIGH_INVALID/FORCED, 정리 시작 전 기록)\n정리 중 반환 실패 → FORCE_LIMIT/FORCED 별건 · state', False),
  ('ERROR', 'e', None, 'SafePose srv (then None)', None, 'event INTERVENTION_FORCED\nstate ERROR', False),
  ('DISCARDED', 'e', None, 'MoveToStation + SetGripper(open) (스쿱 반납)\ncarry workbench → reject_bin → NUDGE_WAIT 로', None, 'state DISCARDED(mode RUNNING — 반송 중)\nmode DONE 은 넛지 뒤 한 번 · event BATCH_END', False),
 ]

@@ -499,25 +499,27 @@ class ProcessFSM:
             # 거부한다 (v1.5.1 · PR #43). 플래그는 풀리지 않으므로 같은 요청을 재시도해도 같은
             # 이유로 거부된다 — 실패 사유가 무엇이든 반환 직후 스쿱은 재시도가 의미 없다.
             # FORCE_LIMIT 2건(RETRY→FORCED)을 쌓는 대신 사유를 남기고 한 번에 끝낸다.
-            # A 가 연결 경로(#64)를 구현하면 이 분기는 없어진다.
+            # 9/29 고정 경로는 연결(#64)을 쓴다 — 반환 끝 확인이나 연결 이동이 실패하면 여전히 여기로 온다.
             return self._return_failed(f'반환 후 재스쿱 차단 — {detail or "스킬 거부"}', step=self.state)
         return self._deviate('FORCE_LIMIT', self.state, retry=req, detail=detail)
 
     # ── 투입 전 계량 무효: 손에 든 것을 정리한 뒤 멈춘다 (#213) ──────────
     def _cleanup_path(self, step: str) -> list:
-        """그 단계에서 손에 뭐가 있느냐로 갈린다. 재스쿱은 하지 않는다 (#64).
+        """그 단계에서 손에 뭐가 있느냐로 갈린다. 정리 중에는 재스쿱하지 않는다.
 
-        중간 경유는 `material_N.posx`(AT) 다 — 원료통 위 충돌 회피 자세이고 새 스테이션이 아니다
-        (9/22 조장 확인). `return_end_posj` 는 `ReturnMaterial` 이 끝나는 자세라 여기서 안 쓴다.
+        빈 스쿱의 중간 경유는 `material_N.posx`(AT) 다 — 원료통 위 충돌 회피 자세이고 새 스테이션이
+        아니다 (9/22 조장 확인). 반환 뒤에는 그 경유를 끼우지 않는다: skill 의 수납 연결이 반환 끝 관절을
+        확인한 뒤 반환 끝 → `material_N.posx` → 반환 진입점 순서로 잇기 때문이다 (9/29 — 사이에 material
+        AT 를 넣으면 반환 끝이 아니라서 수납이 거부됐다).
         """
         if step == 'TARE':
             return []                                   # 그리퍼가 비어 있고 용기는 workbench 에 놓여 있다
-        via = [{'kind': 'move', 'station': 'material', 'material_id': self.cur.material_id, 'approach': 'AT'},
-               {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'},
-               {'kind': 'grip', 'close': False}]
-        if step == 'SCOOP_TARE':
-            return via                                  # 빈 스쿱이라 반환할 원료가 없다
-        return [self._return_material()] + via          # WEIGH_SCOOP — 스쿱에 원료가 들어 있다
+        stow = [{'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'},
+                {'kind': 'grip', 'close': False}]
+        if step == 'SCOOP_TARE':                        # 빈 스쿱이라 반환할 원료가 없다
+            return [{'kind': 'move', 'station': 'material', 'material_id': self.cur.material_id,
+                     'approach': 'AT'}] + stow
+        return [self._return_material()] + stow         # WEIGH_SCOOP — 스쿱에 원료가 들어 있다
 
     def _cleanup_then_error(self, kind: str, step: str, detail: str = ''):
         """일탈을 먼저 기록하고 정리 경로로 들어간다 — 정리 도중 죽어도 원인이 남아야 한다."""
