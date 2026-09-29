@@ -130,7 +130,7 @@ p2.edge(ret, verify, '마지막 원료였음 (그리퍼 비어 있음)', color=A
 p2.edge(verify, finish, '① |net − Σtarget| ≤ Σ(target×tol)', color=OK, lpos=(0, -22))
 p2.edge(finish, nudgew, 'carry ok', color=OK, lpos=(0, -14))
 p2.edge(nudgew, done, 'NUDGE (사람이 건드림)\n→ DONE · 폐기면 DISCARDED', color=OK, lpos=(0, -22))
-p2.edge(disc, nudgew, 'carry ok — 폐기도 세트의 끝\n같은 자리에서 기다린다', color=RED, exit=(0.5, 0), entry=(0.5, 1), lpos=(0.2, 0))
+p2.edge(disc, nudgew, 'carry ok — 폐기도 세트의 끝\n안전 자세를 거쳐 같은 자리에서 기다린다', color=RED, exit=(0.5, 0), entry=(0.5, 1), lpos=(0.2, 0))
 # ── 보정·재계량 (주황·회색) — 1행 위 복도 (y 340)
 p2.edge(wres, scoop, 'UNDER → 원료통 AT 복귀 → scoop(attempt+1)', color=WARM,
         exit=(0.3, 0), entry=(0.75, 0), points=((cx(5, 0.3), 340), (cx(2, 0.75), 340)), lpos=(0, -14))
@@ -255,14 +255,14 @@ ROWS = [
  ('RETURN_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT — 원료통 아래)\nSetGripper srv (open)', None, 'state', False),
  ('VERIFY', 'n', None, 'MoveToStation(workbench, ABOVE) → MeasureForce (영점 재확인 — TARE 와 같은 자세)\nWeighContainer act — tare_g → reading(net, subject=container)', '영점 이동 > scale.zero_drift_limit_n → 재계량 → WEIGH_INVALID\n① Σ(target×tol) — 레시피 총량 대조\n(② 회계 대조는 9/22 폐지 — 관측만)', 'weight(net) · state\nevent(VERIFY, ①② 수치)', False),
  ('FINISH', 'n', None, 'carry workbench → passbox_done(slot)', None, 'state', False),
- ('NUDGE_WAIT', 'p', None, 'MoveToStation act (nudge_wait, AT)\nevent NUDGE ← skill_node (D-21) — 여기서는\n정지가 아니라 「다음 세트」 신호 (D-23)', None, 'event SET_DONE (대기 진입) · SET_NEXT (건드림)\nstate PAUSED(note NUDGE_WAIT) — RunBatch 주문 1건 예약\nORDER_QUEUED · 넛지 없이 끝나면 ORDER_DROPPED', True),
+ ('NUDGE_WAIT', 'p', None, 'MoveToStation act (nudge_wait, AT)\n폐기면 그 앞에 SafePose srv (DISCARD_PARK) → safe→nudge_wait 이송 (D-40)\nevent NUDGE ← skill_node (D-21) — 여기서는\n정지가 아니라 「다음 세트」 신호 (D-23)', None, 'event SET_DONE (대기 진입) · SET_NEXT (건드림)\nstate PAUSED(note NUDGE_WAIT) — RunBatch 주문 1건 예약\nORDER_QUEUED · 넛지 없이 끝나면 ORDER_DROPPED', True),
  ('DONE', 'd', None, None, None, 'state DONE · event BATCH_END\n(record_node 가 JSON 내보내기 — HMI 는 DB 를 읽어 이력·KPI 표시)', False),
  ('DEVIATION', 'p', 'QaDecision srv\nAPPROVE / DISCARD, operator_id\nevent HMI_QA_APPROVE/DISCARD → audit', '(로봇 대기 — 호출 없음)', None, 'deviation 재발행\n(decision, operator_id, 같은 id) · state', False),
  ('PAUSED (REFILL)', 'p', 'InterlockRequest srv\nENTER(reason) → granted / EXIT\nevent HMI_INTERLOCK_ENTER/EXIT → audit', 'SafePose srv (ENTER 시)\n진행 중 Action 은 cancel_goal 먼저 (I-004)', None, 'event INTERLOCK_ENTER/EXIT\nstate PAUSED', False),
  ('PAUSED (NUDGE)', 'p', None, 'event NUDGE ← skill_node 발행\n(get_tool_force 폴링, D-21)\nprocess 는 구독 → 루프 게이트 토글', None, 'state PAUSED(note NUDGE)\nevent NUDGE (skill 이 낸 것을 record 가 저장)', True),
  ('CLEANUP', 'p', None, 'ReturnMaterial act (WEIGH_SCOOP 만)\nMoveToStation act (SCOOP_TARE 는 material_N, AT → scoop_N, AT · 반환 뒤는 scoop_N, AT 만) · SetGripper srv (open)', '투입 전 계량 무효 — 손에 든 것을 정리한 뒤 멈춘다 (#213)\nTARE 정리 없음 · SCOOP_TARE 반환 없이 · WEIGH_SCOOP 반환부터. 정리 중 재스쿱 없음', 'deviation(WEIGH_INVALID/FORCED, 정리 시작 전 기록)\n정리 중 반환 실패 → FORCE_LIMIT/FORCED 별건 · state', False),
  ('ERROR', 'e', None, 'SafePose srv (then None)', None, 'event INTERVENTION_FORCED\nstate ERROR', False),
- ('DISCARDED', 'e', None, 'MoveToStation + SetGripper(open) (스쿱 반납)\ncarry workbench → reject_bin → NUDGE_WAIT 로', None, 'state DISCARDED(mode RUNNING — 반송 중)\nmode DONE 은 넛지 뒤 한 번 · event BATCH_END', False),
+ ('DISCARDED', 'e', None, 'MoveToStation + SetGripper(open) (스쿱 반납)\ncarry workbench → reject_bin → NUDGE_WAIT 로\n(폐기함에서 곧장 못 가 안전 자세를 거친다, D-40)', None, 'state DISCARDED(mode RUNNING — 반송 중)\nmode DONE 은 넛지 뒤 한 번 · event BATCH_END', False),
 ]
 def lane_box(k, y, text, h, fill, stroke):
     x, w = LX[k]
