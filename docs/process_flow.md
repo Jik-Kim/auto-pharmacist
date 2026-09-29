@@ -152,7 +152,7 @@ FSM 이 돌려주는 요청은 `{'kind': ..., ...}` 하나. 노드는 kind 별�
 | `DEVIATION` | `wait_qa` → decision | APPROVED → (원료 일탈) 결과에 남기고 RETURN_SCOOP / (VERIFY) FINISH. DISCARDED → 스쿱 든 채면 먼저 반납 → 용기째 폐기 | `move(scoop_N)` / `carry(workbench→passbox_done)` / `carry(workbench→reject_bin)` | `deviation` 재발행(decision·operator_id 채움) |
 | `PAUSED` | `wait_interlock` → {} | `_resume` 요청을 그대로 다시 실행 | `_resume` | `event INTERLOCK_ENTER/EXIT`, `state PAUSED` |
 | `ERROR` | `safe(then=None)` | 종료 | None | `event INTERVENTION_FORCED`, `state ERROR` |
-| `DISCARDED` | `move` / `grip(open)` / `carry` | 스쿱 반납 후 용기 폐기 → 폐기도 세트의 끝이라 `NUDGE_WAIT` 로 | `grip(open)` → `carry(workbench→reject_bin)` → `move(nudge_wait)` | 종료 상태는 `DISCARDED` 로 남는다 (record_node 가 본다) |
+| `DISCARDED` | `move` / `grip(open)` / `carry` | 스쿱 반납 후 용기 폐기 → 폐기도 세트의 끝이라 `NUDGE_WAIT` 로 | `grip(open)` → `carry(workbench→reject_bin)` → `move(nudge_wait)` | 종료 상태는 `DISCARDED` 로 남는다 (record_node 가 본다). **판정은 완료가 아니다** — 반송·넛지 대기 동안 step 은 `DISCARDED`, mode 는 `RUNNING`/`PAUSED` 이고 **`mode=DONE` 은 넛지 뒤 한 번만** 나간다(9/28, D #295 — 판정 즉시 DONE 을 내 record_node 가 반송 전에 배치를 닫고, 반송 중 ENTER 가 PAUSED 로 안 보이던 것) |
 
 ## 5. 일탈 정책표 (`core/deviation.py` — 바꾸려면 여기만)
 

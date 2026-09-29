@@ -600,7 +600,7 @@ class ProcessFSM:
             if decision == 'APPROVED':
                 self.state, self.mode = 'TARE', 'RUNNING'
                 return self._weigh_cup(0.0)
-            self.state, self.mode = 'DISCARDED', 'DONE'
+            self.state, self.mode = 'DISCARDED', 'RUNNING'   # DONE 은 넛지 뒤 한 번만 — 아래 폐기 분기 주석
             return self._carry('workbench', 'reject_bin')
         holding_scoop = self._qa_step != 'VERIFY'      # VERIFY 는 스쿱을 반납한 뒤라 그리퍼가 비어 있다
         if decision == 'APPROVED':
@@ -617,7 +617,11 @@ class ProcessFSM:
             self.results.append(self.cur)              # 원료 단위 일탈 승인 → 결과에 남기고 스쿱 반납
             self.state, self.mode = 'RETURN_SCOOP', 'RUNNING'
             return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}
-        self.state, self.mode = 'DISCARDED', 'DONE'
+        # 폐기 **판정**이지 폐기 **완료**가 아니다 — 아직 스쿱 반납·폐기함 반송·넛지 대기가 남았다.
+        # 여기서 mode=DONE 을 내면 record_node 가 반송 전에 배치를 닫고(반송 실패도 기록에 안 남는다),
+        # HMI 는 주문 버튼을 켜고, 반송 중 인터락 ENTER 가 PAUSED 로 안 보인다(D #295, 9/28).
+        # step 이름은 DISCARDED 그대로 두고 mode 만 RUNNING — DONE 은 넛지 뒤 `_final` 에서 한 번만 나간다.
+        self.state, self.mode = 'DISCARDED', 'RUNNING'
         if holding_scoop:                              # 스쿱부터 반납해야 용기를 잡을 수 있다
             return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}
         return self._carry('workbench', 'reject_bin')      # 용기째 폐기 — 결과는 on_result 의 DISCARDED 분기

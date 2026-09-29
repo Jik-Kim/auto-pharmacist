@@ -105,8 +105,8 @@ ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거�
 | `passbox_done → nudge_wait` | 기존 값은 보존했지만 passbox_done ABOVE·EXIT 관절각은 새 Z/sol=3에 맞춰 재티칭 필요 | 놓기 후 ABOVE 후퇴 완료 상태에서 EXIT로 직선 이탈하고 nudge_wait AT로 관절 직접 도착. 간섭 검증은 사용자 담당 |
 
 - ABOVE·EXIT는 기준점에 **BASE Z 상대 높이**를 더해 계산한다. XYZ/자세 절대값은 중복 저장하지 않는다.
-  - workbench 파지: AT Z=130, `approach_mm: 50`, `exit_mm: 150` → Z=180/280.
-  - passbox_empty·passbox_done·reject_bin: AT Z=130, `approach_mm: 50`, `exit_mm: 150` → Z=180/280.
+  - workbench 파지: AT Z=130, 로컬 `approach_mm: 50` → ABOVE Z=180, `exit_mm: 200` → EXIT Z=330. 빈 그리퍼가 workbench에서 용기를 집을 때는 `middle_posx → empty_approach_posj` 뒤 EXIT Z≈330에서 `empty_descent_mm: 200`만큼 AT까지 직선 하강한다.
+  - passbox_empty·passbox_done·reject_bin: AT Z=130, `approach_mm: 50` → ABOVE Z=180, `exit_mm: 200` → EXIT Z=330.
   - 스쿱·원료·계량의 높이는 바꾸지 않는다. **nudge_wait ABOVE는 사용하지 않는다.**
   workbench는 AT/ABOVE→EXIT를 확인한다. passbox_done은 놓기 후 AT→ABOVE 후퇴를 먼저 완료하고,
   넛지 이송에서는 ABOVE→EXIT만 수행한다. AT에서 넛지로 바로 요청하면 이동 없이 거부한다.
@@ -118,8 +118,8 @@ ROS Action 필드는 그대로다. 실행 중 도징에는 자동 반영하거�
 - 기존 `arrival: above` 경로는 `approach: 0`이면 ABOVE에서 끝나고, `approach: 1`이면 AT까지 직선 접근한다.
   넛지의 `arrival: at` 경로는 **`approach: 1`만 허용**하며 최종 직선 접근 없이 관절 이동으로 끝난다.
   `approach: 0` 요청을 AT로 바꿔 처리하지 않고 거부한다.
-- `robot.transfer_joint_vel_deg_s`·`robot.transfer_joint_acc_deg_s2`는 현재 0이다.
-  사용자가 검증할 양수 값을 설정해야 한다. Action `vel_scale`을 곱해 적용하며,
+- `robot.transfer_joint_vel_deg_s=60`·`robot.transfer_joint_acc_deg_s2=100`이다(PR #290).
+  Action `vel_scale`을 곱해 적용하며,
   직선 이동의 `robot.task_vel`·`robot.task_acc`와는 별개다.
 - 출발 AT/ABOVE에서 확인된 관절 구성과 마지막 도착 상태가 맞아야 한다.
   티칭 도중 수동 이동하거나 노드를 재시작한 뒤에는 이전 위치·파지 이력을 재사용하지 않는다.
@@ -275,6 +275,7 @@ A 구현: `Scoop.depth_fraction` → 접촉 자세로 표면 WORLD Z 계산 → 
 **현재 운용 결정:** 힘 측정이 신뢰되지 않고 파지부에서 스쿱이 상대 회전하므로 최초 접촉 정지와 접촉 자세 기반 원료 높이 측정을 운영에서 비활성화한다. 관련 설정·파라미터와 단위 테스트는 유지하지만 `calibrated=false`를 해제하지 않는다. 높이 보정 시험보다 전체 노드 통합과 공정 플로우 검증을 먼저 수행한다.
 
 인계 목록(다른 담당 코드는 수정하지 않음):
+> **9/25 문서 관리 대조 — 아래 목록은 9/22 기록이다.** 「기준 순량 65 g」「`min_fraction` 0.15」「첫 시도 1.0 고정」은 SOT D-33(`scoop_nominal_g`·`min_fraction` 현행값은 `common.yaml` `dosing`)과 PR #289(고정 모드는 첫·재스쿱 깊이 1.0, `dosing.fixed_scoop`)로 대체됐다. 지우지 않고 남긴다(practice 규칙 3).
 - B `gmp_dosing/core/dosing.py:DosingConfig.scoop_nominal_g`와 C 설정: 원료 A 기준 순량65 g과 통일할 것. 기본40 g을 그대로 사용하면 요청량과 맞지 않는다. 원료별 계수를 다른 원료에 그대로 적용하지 않는다.
 - C `gmp_process/core/process_fsm.py:_scoop` 및 첫 SCOOP 진입: 첫 시도부터 남은 목표/기준 순량을 깊이 비율로 전달할 것. 현재 첫 시도1.0 고정은 작은 레시피를 반영하지 못한다. 큰 목표는 검증 최대 깊이1.0 이내에서 여러 번 계량하며 분할한다.
 - B/C `min_fraction`: A profile 하한0.15와 일치 필요. 하한보다 적은 목표를 조용히 올려 과다 채취하지 말고 별도 처리한다. 무효 계량의 fraction=0 경로는 A에서 거부된다.

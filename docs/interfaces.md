@@ -94,7 +94,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 |---|---|---|
 | `RecipeItem` | HMI → process (`Recipe.items`) | `material_id`: 원료 ID, `target_g`: 목표 순량, `tol_pct`: 허용 오차율. 전용 스쿱은 메시지가 아니라 `stations.yaml` 의 `scoop_N`(`material_id` 일치)으로 찾는다 |
 | `Recipe` | HMI → process (`SubmitOrder`/`RunBatch`) | `header`: 생성 시각, `batch_id`: 빈 값이면 process가 발급, `product`: 표시명, `items`: 투입 순서 그대로의 원료 배열 |
-| `CellState` | process → HMI·record | `mode`: 셀 운전 모드, `batch_id`: 현재 배치, `step`: FSM 상태, `item_index`: 0 기반 원료 순번, `station`: 마지막 도착 위치, `note`: 화면용 보충 설명 |
+| `CellState` | process → HMI·record | `mode`: 셀 운전 모드 — **`DONE` 은 배치가 물리적으로 끝난 뒤(세트 끝 넛지 뒤) 한 번만**, 그때 `step` 은 `DONE`\|`DISCARDED`. 폐기 판정 뒤 스쿱 반납·폐기함 반송·넛지 대기 동안은 `step=DISCARDED`·`mode=RUNNING`(대기는 `PAUSED`)이다 — record_node 가 이 DONE 으로 배치를 닫는다(9/28 명확화, 종전 C 는 판정 즉시 DONE 을 냈다 — D #295), `batch_id`: 현재 배치, `step`: FSM 상태, `item_index`: 0 기반 원료 순번, `station`: 마지막 도착 위치, `note`: 화면용 보충 설명 |
 | `WeightReading` | skill → process (`WeighContainer.Result`), process → HMI·record (`weight`) | `gross_g`: 기준 차감 전 값, `tare_g`: 동일 자세·파지의 빈 용기/스쿱 기준, `net_g`: 차감값, `std_g`·`samples`: 분산과 표본 수, `valid`: 사용 가능 여부, `station`: 계량 자세 ID |
 | `ScoopCycle` | process → record | 스쿠핑 시도 한 건의 완결 기록. 세부 필드는 1.1 표를 따른다 |
 | `DispenseResult` | process → HMI·record | `batch_id`·`material_id`, `target_g`·`actual_g`, `error_pct`, `verdict`(`OK/UNDER/OVER/INVALID`), `attempts`, `duration_s` |
@@ -172,7 +172,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 |---|---|---|
 | `common.yaml` | `robot.*`(id·모델·툴·TCP·속도), `gripper.*`(백엔드·폭·힘·마진), `scale.*`(표본·정착·환산·영점), `dosing.*`(시도 상한·털어내기 비율), `safety.*`(힘 상한·충돌 감도), `interlock.*`, 타임아웃 | 조장 (값은 담당이 제안) |
 | `stations.yaml` | 스테이션 ID → `posx`(mm·deg) 접근점/작업점, 계량 자세, 원료통·전용 스쿱의 `material_id` 짝. **데이터 yaml** — 런치가 경로만 넘기고 `skill_node` 가 직접 읽는다 | A (티칭) |
-| `recipes/*.yaml` | 배치 레시피. **스키마·검증은 `gmp_process/core/recipe.py` 가 단일 출처** — D 의 HMI 는 `recipe.load()` 로 읽어 `SubmitOrder` 로 보낸다 (인라인 파싱 금지). 값은 G1 결과로 조장이 확정 (D-08) | **C** (스키마·검증) |
+| `recipes/*.yaml` | 배치 레시피. **스키마·검증은 `gmp_process/core/recipe.py` 가 단일 출처** — D 의 HMI 는 `recipe.load()` 로 읽어 `RunBatch` Goal 로 보낸다 (인라인 파싱 금지, `hmi_web_node.py`). 목표·허용오차 값은 SOT 결정(D-08→D-33→D-35)을 따른다 | **D** (파일·값 — 9/25 팀 공지, `gmp_hmi/config/test_recipes/v4` 사본과 한 PR 로 같이 바꾼다) · 스키마·검증은 **C** |
 
 **사람 입력 대기와 응답 제한은 다르다.** `wait_qa`(QA 판정), `wait_interlock`(사람 퇴장 `EXIT`), `wait_nudge`(세트 회수 뒤 다음 세트 신호)는 자동 진행시키지 않는 무기한 대기다. 따라서 `qa.decision_timeout_s`·`interlock.timeout_s`·NUDGE 대기용 timeout 키는 두지 않는다. 취소·안전 정지·노드 종료만 이 대기를 해제한다. 반대로 `server_wait_s`·`skill_timeout_s`·`robot.motion_timeout_s` 등은 ROS 서비스·액션 또는 로봇 동작의 **응답/실행 제한**이며 사람의 판정·재개 대기와 섞지 않는다 (#150).
 
@@ -188,7 +188,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | 지표 | 1건의 단위 | 시작 → 끝 | 읽는 곳 |
 |---|---|---|---|
 | 칭량 정확도 | 원료 1종 분주 | 판정 시점 `error_pct` | `dispense_result` (CSV) |
-| 배치 성공률 | 배치 1건 | `RunBatch` 수락 → 결과. 일탈 `DISCARD` 는 실패 | `record` JSON `result` |
+| 계량 검증 완료율 | 배치 1건 | `RunBatch` 수락 → 결과. `result == DONE` 만 센다 — 계량 무효를 QA 가 승인한 `DONE_UNMEASURED` 는 「미측정 승인」으로 따로 세고, 완주율은 둘의 합(SOT D-29·D-32). 일탈 `DISCARD` 는 실패 | `record` JSON `result` |
 | **MTBI** (강제 개입 사이 시간) | 강제 개입 1건 = 로봇이 못 해서 사람이 셀에 들어간 것 | 무인 운전 구간 합 ÷ 개입 수 | `event` 코드 `INTERVENTION_FORCED` |
 | 자동 복구율 | 일탈 1건 | `decision == AUTO_RECOVERED` / 전체 일탈 (FORCED 는 분모에만 든다) | `deviation` |
 | 사이클타임 | 배치 1건 | 수락 → 완료 | `record` JSON |
