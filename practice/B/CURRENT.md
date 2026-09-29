@@ -9,7 +9,7 @@
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 공구 설정 `tool_weight` (펜던트, **동결**) | A 소관 동결값 — 숫자는 원본에서 본다 | [`practice/A/CURRENT.md`](../A/CURRENT.md) · `gmp_dosing/config/scale_reference.yaml` retracted_0923 · PR #235 |
-| 런타임 계량 `scale.gain / offset_g / max_std_g` | 0.8859 / 247.091 / 10.0 — **우드락 공구(9/19~21) 조건 값. 9/29 실측으로 틀린 값 확인** — 용기 순량 237 g 을 193 g(−19 %)으로 읽는다. **9/29 결정: gain·offset 을 경로별(용기·스쿱)로 나눈다** — 구조 변경 미착수 | `ros2_ws/src/gmp_bringup/params/common.yaml:91-93` |
+| 런타임 계량 — **경로별** `scale.{container,scoop}.{gain,offset_g,max_std_g}` (#307) | **container 1.0975 / 229.0 / 10.0 · scoop 0.983 / 103.5 / 10.0** — `execution/weighing.py` 가 subject 로 고른다. 공통 키 없음. ~~공통 0.8859 / 247.091 / 10.0 (9/19 우드락)~~ → 용기 순량 −19 % 로 읽던 값 | `common.yaml` `scale`, PR(#307) |
 | **용기 경로** gain / offset_g (9/29, #187) | **1.0975 ± 0.6 % / 229.0** — 79·154·229·316 g 한 파지, 최대 잔차 1.95 g. ~~≈ 1.076 (9/23 2점)~~ | `calibration/g1_0929_gain3pt.csv`, 일지 2026-09-29 |
 | **스쿱 경로** gain / offset_g (9/29) | **0.983 ± 1.0 %(A·C 합산) / 103.5(material_1)** — 스테이션별 gain 불필요(A 0.980 · B 0.968 · C 0.983). offset 은 스테이션마다 다름(순량엔 무관). ~~0.980 ± 4.2 % 미확정~~ | `calibration/g1_0929_scoop_gain3pt.csv` |
 | 계량 전제 — 공구 등록 | 등록 1.36 kg 동결, 실물은 부착물(≈ 60 g) 제거로 ≈ 1.30 kg. **위 offset 은 이 상태 전제 — 공구를 재등록하면 offset 재측정** | 일지 2026-09-29 |

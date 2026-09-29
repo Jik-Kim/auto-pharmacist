@@ -73,11 +73,15 @@ class WeighingSkills:
                 raw_mean, raw_std, raw_hf_std, _ = fit_oscillation(raw_samples, period_s)
             else:
                 raw_hf_std = 0.0
+        # 보정 직선은 경로마다 다르다 — 용기(workbench ABOVE)와 스쿱(원료 계량 자세)의 gain 이
+        # 9/29 실측으로 11 % 갈렸다(#307). 하나로 두면 어느 쪽이든 순량이 10 % 넘게 틀린다.
+        if subject not in ('container', 'scoop'):
+            raise ValueError(f'계량 경로는 container 또는 scoop 이어야 한다: {subject}')
         model = WeightModel(ScaleConfig(
             method=method,
-            gain=float(p('scale.gain').value),
-            offset_g=float(p('scale.offset_g').value),
-            max_std_g=float(p('scale.max_std_g').value),
+            gain=float(p(f'scale.{subject}.gain').value),
+            offset_g=float(p(f'scale.{subject}.offset_g').value),
+            max_std_g=float(p(f'scale.{subject}.max_std_g').value),
             max_hf_std_g=float(p('scale.max_hf_std_g').value),
             fz_sign=float(p('scale.fz_sign').value),
         ))
