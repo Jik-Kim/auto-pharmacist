@@ -201,8 +201,8 @@ class MotionSkills:
                     end = self._pose_from_extra(material, 'return_end_posj')
                     if not joints_match(self.ctx.arm.current_posj(), end, self.ctx.config.joint_tolerance):
                         raise RuntimeError('원료 반환 끝 관절 자세가 아니므로 수납 연결을 차단한다')
-                    # 반환 끝 → 원료 계량 자세 → 스쿱 ABOVE → 기존 수납 경로.
-                    targets = [list(material.posx), station.above(self.ctx.stations.approach_mm)] + targets
+                    # DRL 순서: 반환 끝 → 원료 계량 자세 → 반환 진입점 → 하강 → 삽입.
+                    targets = [list(material.posx)] + targets
                     # 중간 실패 이후에는 반환 성공 이력으로 경로를 다시 시작하지 않는다.
                     self.ctx.state.returned_material = ''
                     self.ctx.state.returned_scoop_stowed = ''

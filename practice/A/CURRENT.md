@@ -122,3 +122,7 @@ BASE 기준 진폭 X=14/Y=15 mm, 주기 X=0.3/Y=0.5초, 가속 0.5초, 3회 턴�
 ## 레시피 1 목표·허용오차 변경 (2026-09-29 사용자 승인)
 
 운영 원본 `ros2_ws/src/gmp_bringup/params/recipes/recipe-01.yaml`과 HMI 시험 사본을 A/B/C 각각 target_g=69.0, tol_pct=15.0으로 맞췄다. 원료별 허용폭은 ±10.35 g, 합격 범위는 58.65~79.35 g이다. 합계 목표는 207 g, 최종 합계 허용폭은 ±31.05 g이다. 레시피 2·3과 원료별 스쿱 1회량 보정 설정은 유지한다. 직전 부분 공정 A 5.254 g·B 32.685 g·C 50.734 g은 새 범위에서도 모두 미달이다. 직접 RunBatch를 요청할 때는 Goal에도 각 target_g=69.0·tol_pct=15.0을 넣어야 한다. 이미 접수한 주문은 바뀌지 않는다.
+
+## DRL 반환 수납 경로 정정 (2026-09-29)
+
+사용자 제공 m0609_tw_return_material.drl의 return_material_N → scoop_N_return 전체를 대조했다. 앞서 추가한 scoop ABOVE 경유는 DRL에 없어 철회한다. 반환 끝 → material_N.posx → return_entry_posx → Z -100 → Y -150 → 열기 → Z +100 순서로 수정한다. 속도 1.0, 계량 안정화 10초를 유지한다. A/B/C 공통 반환 털기는 기존 승인 사항이다(DRL 원본의 털기는 A에만 있음). 수정한 수납 경로는 실물 재검증 전이다.

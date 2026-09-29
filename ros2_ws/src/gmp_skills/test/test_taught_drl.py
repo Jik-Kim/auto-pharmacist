@@ -390,7 +390,7 @@ def test_failed_explicit_safe_does_not_start_container_approach(motion):
 
 @pytest.mark.parametrize('material,index', [('A', 1), ('B', 2), ('C', 3)])
 @pytest.mark.parametrize('released', [True, False])
-def test_returned_material_stows_via_material_and_above(motion, material, index, released):
+def test_returned_material_stows_via_drl_return_entry(motion, material, index, released):
     node, job, calls, state, module = motion
     node._held_payload, node._held_material_id = 'scoop', material
     state.update(grip_inferred=True)
@@ -401,7 +401,9 @@ def test_returned_material_stows_via_material_and_above(motion, material, index,
     node.arm.joints[:] = source.extra['return_end_posj']
     job.args.update(station_id=scoop.station_id)
     node._do_move(job)
-    assert [c[1] for c in calls[:2]] == [source.posx, scoop.above(node.stations.approach_mm)]
+    assert [c[1] for c in calls] == [source.posx, scoop.extra['return_entry_posx'],
+        [*scoop.extra['return_entry_posx'][:2], scoop.extra['return_entry_posx'][2] - 100,
+         *scoop.extra['return_entry_posx'][3:]], scoop.posx]
     assert calls[-1][1] == scoop.posx
     assert node._return_rescoop_blocked
     node.gripper.release = lambda _: released
@@ -410,7 +412,7 @@ def test_returned_material_stows_via_material_and_above(motion, material, index,
     assert node._return_rescoop_blocked is (not released)
 
 
-@pytest.mark.parametrize('failure_step', range(1, 6))
+@pytest.mark.parametrize('failure_step', range(1, 5))
 def test_return_stow_failure_keeps_guard(motion, failure_step):
     node, job, calls, state, _ = motion
     node._held_payload, node._held_material_id = 'scoop', 'A'
