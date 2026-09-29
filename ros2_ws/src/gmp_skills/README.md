@@ -5,8 +5,21 @@
 
 ## 구조
 
+`skill_node:main` 진입점과 Action/Service 계약은 유지한다. 아래 `execution/`은
+노드를 추가하지 않으며, 기존 단일 `dsr-worker` 안에서 호출되는 실행 객체들이다.
+모든 실행 객체는 하나의 `ExecutionContext`를 공유한다. 위치·파지·안전·큐 상태는
+`SkillState`, 초기화 설정은 `SkillConfig`에 둔다. 노드 전체를 실행 객체에 넘기지 않고
+장치·파라미터 조회·ROS 시계·로그·이벤트 발행 콜백만 주입한다.
+
+
 ```text
 nodes/skill_node.py       rclpy 노드(ns cell) — Action/Service 서버, gripper_state 10 Hz. 콜백은 Job 을 큐에 넣고 기다린다
+execution/runtime.py     Job 큐·단일 워커·기동/종료, handlers로 실행 객체 선택
+execution/safety.py      안전 감시·차단·복구·넛지 관측
+execution/motion.py      스테이션 이동·그리퍼 개폐·파지/도착 조건
+execution/scooping.py    고정/높이 보정 스쿠핑·붓기·원료 반환
+execution/weighing.py    용기/스쿱 계량·WeightReading 구성
+execution/context.py    공통 설정·공유 상태·장치 및 ROS 콜백 의존성
 adapters/dsr_arm.py       DR_init 노드(ns dsr01) 소유. DSR_ROBOT2 블로킹 함수 래핑. 워커 스레드에서만 부른다
 adapters/rg2_gripper.py   /onrobot/sendCommand + 폭 피드백. 백엔드 modbus | dio | virtual
 core/stations.py          stations.yaml 파싱, 접근점 계산 (ROS 비의존)
@@ -65,3 +78,39 @@ SDK 호출 자체의 강제 취소 및 실제 충돌 성능 검증은 이 검사
 `core/scooping.py`가 접촉 자세와 스쿱 끝 오프셋으로 WORLD 표면 높이를 계산하고 TW spline을 Z 보정한다. `Scoop.depth_fraction=1`은 원료 A 기준 순량65 g에 대응하는 기준 깊이이며 실제 질량 보장은 아니다. `stations.yaml:scooping.A.calibrated=false`에서는 이동 전 거부한다. 제공 근사 치수와 실측의 차이를 보정해야 한다. `amovesx` 완료·취소 감시, 털기·계량 복귀를 구현했으며 B/C·반환 후 재스쿱은 미검증이다. 레시피 연동 인계는 `docs/setup.md` 참조.
 
 현재는 힘 측정이 신뢰되지 않고 파지부에서 스쿱이 상대 회전하므로 최초 접촉 정지와 원료 높이 측정 경로를 운영에서 비활성화한다. 관련 설정·파라미터와 단위 테스트만 유지하되 `calibrated=false`를 해제하지 않고, 전체 노드 통합과 공정 플로우 검증을 우선한다.
+
+## 실제 호출 위치를 찾는 순서
+
+1. `nodes/skill_node.py`의 `_exec_*`/`_srv_*`가 요청을 받아
+   `execution.runtime._submit()`으로 작업을 넣고 결과를 기다린다.
+2. `execution/runtime.py`의 `_worker()`가 큐를 직렬 처리하고 `handlers`에서
+   작업 종류에 대응하는 메서드를 선택한다.
+3. 예를 들어 `scoop`은 `ScoopingSkills._do_scoop()` → `_do_fixed_scoop()` →
+   `ctx.arm.movesx_cancellable()` 순서로 실행한다. 그리퍼는
+   `MotionSkills._do_grip()` → `ctx.gripper.grip()/release()`로 실행한다.
+4. 실제 두산 API 호출은 `adapters/dsr_arm.py`, DIO 개폐·완료 판정은
+   `adapters/rg2_gripper.py`에 있다. Job 완료 후 ROS 콜백이 결과를 반환한다.
+
+스쿱 파지·인출/계량·스쿠핑·붓기는 각각 별도 요청이다. 전체 배치 순서는
+C의 `process_fsm.py`와 `process_node.py`가 결정한다. 내부 실행 메서드를 다른 노드에서
+직접 호출하지 않는다. `core/`는 ROS 비의존 계산/검증, `execution/`은 상태 있는
+장치 동작 순서, `nodes/`는 ROS 입출력을 담당한다.
+
+
+## 명시적 이동과 주문 시작 준비 (2026-09-28)
+
+- `motion.py`의 호출부에서 `movej_cancellable`(MOVEJ/관절각),
+  `movel_cancellable`(MOVEL/TCP 직선), `movejx_cancellable`(MOVEJX/TCP 목표 관절 이동)을
+  직접 확인한다. 스쿠핑 스플라인은 `movesx_cancellable`(MOVESX)이다.
+- `_taught_linear` 및 `cartesian_ready`는 제거했다. 일반 직선 이동 요청에
+  안전 자세 MOVEJ를 자동으로 끼워 넣지 않는다. `_motion_scale`은 배율 검증만 한다.
+- 정상 주문 준비는 기존 `SafePose` 요청으로 `safe.posj`에 명시적으로 이동한다.
+  노드 기동/스쿱 복원에서는 이동하지 않는다. SafePose 속도 배율 0.3은 기존대로 유지한다.
+  요청을 시작하면 이전 스테이션의 출발 자세 이력을 무효화하며, 실패·시간 초과 뒤에도 옛 이력을 재사용하지 않는다.
+- **C 연결 후 순서:** 첫 주문은 안전 자세 성공 확인 → 빈 통 접근·파지.
+  후속 주문은 기존 주문 경계 넛지 대기 완료 → 안전 자세 성공 확인 → 빈 통 접근·파지.
+  첫 주문에 넛지를 추가하지 않으며 일반 PAUSED 재개에 초기화를 삽입하지 않는다.
+- **현재 C에는 이 연결이 아직 없다.** `process_fsm.start()`/`SELF_CHECK` 뒤
+  `PICK_CONTAINER`로 진행하기 전에 safe 성공을 기다리는 단계를 C가 추가해야 한다.
+  실패·취소 시 빈 통 이송을 요청하지 않아야 한다. 중간 스쿱/도징 테스트는
+  정상 주문 시작과 분리한다. ROS 계약 변경은 없다.

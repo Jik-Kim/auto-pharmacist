@@ -393,3 +393,38 @@ M0609 + RG2 로 **조제 칭량 셀**을 만든다 — 레시피 1건(원료 3�
    깊이 조절·계량 보정·지문 검증도 별도다. 다른 담당 코드와 계량 보정값은 수정하지 않는다.
 4. DI 폴링 시간 제한은 완료 신호 대기에 적용된다. 기존 DSR 동기 IO 함수 자체가
    응답하지 않는 경우까지 선점하는 기능은 없다. ROS 이식 후 실물 완료·취소 확인이 필요하다.
+
+
+## 스킬 실행 객체 분리 (2026-09-28 사용자 승인)
+
+`gmp_skills/nodes/skill_node.py`는 기존 ROS 진입점과 Action/Service 콜백을 유지하고,
+내부 실행을 `execution/`의 `SkillRuntime`, `SafetyController`, `MotionSkills`,
+`ScoopingSkills`, `WeighingSkills`로 분리한다. 구성 원본은
+[gmp_skills README](../ros2_ws/src/gmp_skills/README.md)의 구조/호출 순서다.
+
+- `SkillRuntime.handlers`가 작업 종류와 실행 메서드를 명시적으로 연결한다.
+  DSR 호출은 기존 단일 워커에서 직렬 실행하며 DR_init 노드는 executor에 넣지 않는다.
+- 하나의 `ExecutionContext`에 `SkillConfig`·`SkillState`·장치·ROS 기능 콜백을 둔다.
+  실행 객체별 위치/파지/안전 상태 복제나 노드 전체 전달은 하지 않는다.
+- 기존 `SkillNode`, `main`, `Job` import 경로와 ROS 계약은 유지한다.
+  이동 좌표·속도·고정 경로 fraction 제한·접촉 미측정 의미·계량 보정값은 변경하지 않는다.
+  B/C/D 노드 수정은 필요하지 않다. 내부 `_do_*` 직접 참조 테스트는 새 실행 객체로 연결한다.
+
+
+## 주문 시작 준비와 명시적 이동 (2026-09-28 사용자 승인)
+
+첫 주문은 넛지 없이 **안전 자세 이동 → 빈 통 접근·파지**, 후속 주문은 기존
+주문 경계의 넛지 대기 완료 후 같은 준비 순서로 시작한다. 노드 실행 자체는
+이동의 계기가 아니며, 스쿱을 든 상태의 복원/도징 시험은 별도다.
+
+A는 `motion.py`의 `_taught_linear` 및 일반 직선 이동에 숨어 있던 안전 자세
+MOVEJ를 제거하고, `cartesian_ready` 상태도 삭제한다. 각 호출부에 실제 이동
+명령과 목표 인자를 표시한다. 기존 `SafePose` 서비스의 명시적 MOVEJ와
+취소·안전·도착 검증은 유지한다. DRL 시작의 선행 MOVEL을 주문마다 추가하지 않는다.
+
+**C 인계(미적용):** `gmp_process/core/process_fsm.py`의 `start()` 및
+`on_result()` SELF_CHECK→PICK_CONTAINER 사이에 기존 safe 요청과 성공 대기를
+연결한다. `process_node.py`의 기존 주문 경계 wait_nudge 완료 이후 다음 주문에
+적용하고 첫 주문 대기는 추가하지 않는다. 실패/취소 시 빈 통 이송 차단 및
+첫 주문·후속 주문·일반 일시정지 재개의 차이를 검증해야 한다.
+A 변경만으로 주문 시작 순서가 자동 연결되지는 않는다.

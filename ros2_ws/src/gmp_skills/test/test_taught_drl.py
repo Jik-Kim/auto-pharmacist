@@ -142,7 +142,7 @@ def motion(monkeypatch):
     node.joint_tolerance = node.pose_xyz_tolerance = node.pose_rotation_tolerance = 2
     node._cancel_requested = lambda: False
     node._now_s = lambda: 0
-    node._cartesian_ready, node.mode = True, 'real'
+    node.mode = 'real'
     state = dict(busy=False, width_mm=100, grip_inferred=False)
     node.gripper = SimpleNamespace(state=lambda _: state, open_width_mm=100, grip_margin_mm=2)
     node.arm = SimpleNamespace(pose=[0]*6, joints=[0]*6)
@@ -318,13 +318,11 @@ def test_robot_launch_removes_vendor_modbus_server_for_dio(tmp_path, backend, ex
     assert sum(n.node_executable == 'rg2_status_driver' for n in nodes) == expected
 
 
-def test_first_scoop_pick_enters_joint_home_before_cartesian_motion(motion):
+def test_scoop_pick_has_no_implicit_joint_home(motion):
     node, job, calls, _, _ = motion
-    node._cartesian_ready = False
     job.args['station_id'] = 'scoop_1'
     node._do_move(job)
-    assert [c[0] for c in calls] == ['J','L','L']
-    assert calls[0][1] == [0,0,90,0,90,0]
+    assert [c[0] for c in calls] == ['L','L']
 
 
 def test_bad_joint_speed_never_moves_even_departure(motion):
@@ -332,3 +330,37 @@ def test_bad_joint_speed_never_moves_even_departure(motion):
     node.transfer_joint_vel = 0
     with pytest.raises(ValueError): node._do_move(job)
     assert not calls
+
+
+def test_explicit_safe_then_empty_container_approach(motion):
+    node, job, calls, _, module = motion
+    node.arm.compliance_off = lambda: None
+    node._motion_anchor = object()
+    assert node._do_safe(module.Job('safe', {'reason': 'ORDER_START'}))
+    assert node._motion_anchor is None
+    node._do_move(job)
+    # 주문 준비 MOVEJ 한 번, 빈 통 접근 MOVEJ, 파지 높이 MOVEL.
+    assert [c[0] for c in calls] == ['J', 'J', 'L']
+    assert calls[0][1] == node.stations.get('safe').extra['posj']
+    assert calls[1][1] == node.stations.get('passbox_empty').extra['approach_posj']
+    assert calls[2][1] == node.stations.get('passbox_empty').posx
+
+
+def test_plain_cartesian_move_has_no_implicit_joint_home(motion):
+    node, job, calls, _, _ = motion
+    job.args['station_id'] = 'material_1'
+    node._do_move(job)
+    assert calls == [('L', node.stations.get('material_1').posx)]
+
+
+def test_failed_explicit_safe_does_not_start_container_approach(motion):
+    node, _, calls, _, module = motion
+    node.arm.compliance_off = lambda: None
+    node._motion_anchor = object()
+    def fail(*args, **kwargs):
+        raise TimeoutError('safe pose timeout')
+    node.arm.movej_cancellable = fail
+    with pytest.raises(TimeoutError, match='safe pose timeout'):
+        node._do_safe(module.Job('safe', {'reason': 'ORDER_START'}))
+    assert not calls
+    assert node._motion_anchor is None

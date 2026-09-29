@@ -1,14 +1,17 @@
-"""외력 표본으로 서로 분리된 nudge 입력을 판정한다."""
+"""사람이 로봇을 밀어 준 외력을 한 번의 넛지 입력으로 판정한다.
+
+짧은 힘 노이즈나 한 번 밀고 있는 동안의 반복 이벤트를 걸러낸다.
+"""
 from dataclasses import dataclass
 import math
 
 
 @dataclass
 class NudgeDetector:
-    """힘 임계값이 일정 시간 이어진 뒤 한 번만 nudge를 발생시킨다.
+    """힘 크기가 threshold_n 이상으로 window_s 동안 유지되면 참을 반환한다.
 
-    같은 접촉을 두 번 세지 않도록 힘이 임계값 아래로 내려가야 다시 무장한다.
-    ``now_s``는 ROS clock 등 한 종류의 단조 증가 시각을 호출자가 주입한다.
+    같은 접촉을 두 번 세지 않도록 힘이 임계값 아래로 내려가고 cooldown_s가
+    지나야 다시 판정한다. now_s는 호출자가 전달하는 동일한 시간 기준이다.
     """
 
     threshold_n: float

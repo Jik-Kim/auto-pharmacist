@@ -1,10 +1,14 @@
-"""ROS에 의존하지 않는 OnRobot RG 상태 변환."""
+"""벤더가 반환한 RG2 Modbus 상태를 메시지에 넣을 정수 필드로 바꾼다.
+
+상태를 발행하는 노드는 nodes/rg2_status_driver.py이며, 이 파일은
+단위 변환과 원시 상태 워드 검증만 한다.
+"""
 
 from collections.abc import Mapping
 
 
 def _tenth_mm(value: object, *, signed: bool = False) -> int:
-    """밀리미터 값을 메시지의 0.1 mm uint16 필드로 변환한다."""
+    """mm 값을 0.1 mm 정수로 바꿔 16비트 메시지 필드에 맞춘다."""
     encoded = int(round(float(value) * 10.0))
     if signed:
         # gfof는 uint16 필드지만 문서상 signed two's-complement 값이다.
@@ -28,9 +32,9 @@ def status_fields(status: Mapping[str, object]) -> dict[str, int]:
     missing = sorted(name for name in required if name not in status)
     if missing:
         raise KeyError(f"필수 그리퍼 상태 필드 누락: {', '.join(missing)}")
-    # comModbusTcp가 response[10] 원시 gSTA word를 잘못 ``busy``라고
-    # 이름 붙여 반환한다. response[11] 이후를 grip/safety 비트로 나누면
-    # reserved 레지스터를 해석하게 되므로 인접 키는 사용하지 않는다.
+    # 벤더 dict의 busy 키에는 단순 참/거짓이 아니라 response[10]의 gSTA
+    # 상태 비트 전체가 들어 있다. 인접 response[11] 이후는 예약 영역이므로
+    # 파지·안전 비트는 gSTA 한 값에서만 해석한다.
     gsta = int(status["busy"])
     if not 0 <= gsta <= 0x7F:
         raise ValueError("원시 gSTA word가 유효한 0..127 범위를 벗어남")

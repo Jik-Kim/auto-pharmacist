@@ -74,7 +74,7 @@ def prepared(monkeypatch):
     node._pose_matches = lambda *a: True
     result = dict(contact_detected=True, contact_pose_base=[0,0,75,0,0,0],
                   max_contact_force_n=2., insertion_depth_mm=3.)
-    monkeypatch.setattr(type(node), '_do_check_depth', lambda self, job: result)
+    monkeypatch.setattr(node, '_do_check_depth', lambda job: result)
     return node, job, calls, result
 
 

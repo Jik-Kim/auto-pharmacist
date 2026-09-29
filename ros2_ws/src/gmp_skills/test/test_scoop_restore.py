@@ -49,7 +49,7 @@ def test_startup_restores_confirmed_scoop_without_motion(monkeypatch):
     assert node._do_startup(job)[0]
     assert node._configured
     assert (node._held_payload, node._held_material_id, node._station_id) == ('scoop', 'A', 'material_1')
-    assert node._cartesian_ready and node._motion_anchor is None
+    assert node._motion_anchor is None
     assert not node._pending_scoop_extract and not node._scoop_extract_uncertain
 
 

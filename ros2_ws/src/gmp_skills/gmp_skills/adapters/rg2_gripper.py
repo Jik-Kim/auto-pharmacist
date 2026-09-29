@@ -1,20 +1,19 @@
-"""RG2 어댑터 — 백엔드 modbus | dio | virtual (SOT D-04~D-06).
+"""RG2 그리퍼의 명령과 완료 판정을 장치 방식별로 처리한다.
 
-실물 드라이버(OnRobotRGControllerServer)는
-  · `/onrobot/sendCommand` (SetCommand.command 문자열): 'c' 닫기 / 'o' 열기 / 'i','d' 파지력 ±2.5 N / "<정수>" 폭 1/10 mm
-  · `/onrobot_joint_states` (JointState 50 Hz): finger_joint rad → 폭 mm (아래 기구 상수)
-  · Modbus 의 grip·안전스위치 비트는 **토픽으로 내지 않는다** (I-002) → 파지는 폭 추론 (계약 2절)
-가상 노드(gripper_virtual_node)는 같은 서비스 이름을 받지만 숫자 문자열을 **rad** 로 읽는다 — 의미가 다르다.
-dio 백엔드는 9/16 교육 grip_test.py 방식 (DO1 grip / DO2 release), 폭·힘 설정 없음.
+modbus: /onrobot/sendCommand에 폭(0.1 mm 정수 문자열) 또는 힘 증감(i/d)을
+보낸다. 확장 드라이버의 /onrobot/status에서 동작 중·파지·안전 비트와 폭을
+받아 완료를 판정한다. virtual: 숫자 문자열을 손가락 관절각(rad)으로 보낸다.
+dio: 로봇 DO1/DO2로 닫기/열기를 명령하고 DI1/DI2로 완료를 확인한다.
+dio에서는 폭과 파지력을 측정하거나 설정하지 않는다.
 
-이 클래스는 ROS 클라이언트(서비스·구독)를 **skill_node 가 주입**한다 — 어댑터는 노드를 만들지 않는다.
-DIO: 약통 DI1=1, 스쿱 DI1=DI2=1 후 안정 대기, 열림 DI1=0. 폭·힘은 미측정.
+ROS 서비스 호출 함수는 skill_node가 전달하며 이 클래스는 ROS 노드를 만들지 않는다.
 """
 import math
 import threading
 import time
 
-# RG2 기구 상수 (OnRobotRGControllerServer.initParams 와 동일)
+# 가상/JointState의 손가락 관절각(rad)을 그리퍼 폭(mm)으로 바꿀 때 쓰는 기구 치수.
+# 값은 OnRobotRGControllerServer.initParams의 기구 모델과 같다.
 _L1, _L3, _TH1, _TH3, _DY = 0.108505, 0.055, 1.41371, 0.76794, -0.0144
 RG2_MAX_WIDTH_MM, RG2_MAX_FORCE_N, FORCE_STEP_N = 110.0, 40.0, 2.5
 
@@ -32,9 +31,9 @@ class Rg2Gripper:
     def __init__(self, backend: str, send_command, arm=None, grip_margin_mm=2.0, slip_mm=1.5,
                  open_width_mm=100.0, dio_pins=(1, 2), din_pins=(), logger=None, now_fn=None,
                  state_timeout_s=0.5, dio_settle_s=0.3, completion_settle_s=0.2):
-        self.backend = backend            # modbus | dio | virtual
-        self._send = send_command         # callable(str) -> bool (skill_node 가 서비스 클라이언트로 만든다)
-        self.arm = arm                    # dio 백엔드용 DsrArm
+        self.backend = backend            # 명령·상태 입력 방식: modbus / dio / virtual
+        self._send = send_command         # skill_node가 준 ROS 명령 호출 함수: 문자열 → 성공 여부
+        self.arm = arm                    # dio에서 로봇 디지털 입출력을 제어하는 DsrArm
         self.grip_margin_mm, self.slip_mm, self.open_width_mm = grip_margin_mm, slip_mm, open_width_mm
         self.dio_pins, self.din_pins = dio_pins, din_pins
         self.log = logger
@@ -68,7 +67,7 @@ class Rg2Gripper:
         self.cancel_requested = lambda: False
 
     def refresh_dio(self):
-        """DSR 워커에서만 입력을 읽고, 타이머에는 캐시만 제공한다."""
+        """워커에서 로봇 DI1/DI2를 읽어 저장한다. ROS 타이머는 저장값만 사용한다."""
         if self.backend != 'dio':
             return
         if len(self.din_pins) != 2 or any(type(p) is not int or p <= 0 for p in self.din_pins):
@@ -80,7 +79,7 @@ class Rg2Gripper:
             self._dio_inputs, self._dio_at = values, self._now()
 
     def confirm_open_dio(self):
-        """기동 시 열려 있는 입력만 수용한다. 개폐 명령은 보내지 않는다."""
+        """기동 시 DI1이 열림을 뜻하는 0인지 확인하고, 명령 없이 빈 상태를 기록한다."""
         self.refresh_dio()
         with self._lock:
             if self._dio_inputs[0]:
@@ -112,7 +111,8 @@ class Rg2Gripper:
         try:
             if self.cancel_requested():
                 raise RuntimeError('cancelled')
-            # width_mm으로 개폐를 추론하지 않는다. 약통 폭 60도 명시적인 닫기다.
+            # DIO 방식은 목표 폭을 쓰지 않는다. 요청이 닫기면 DO1, 열기면 DO2를
+            # 설정하고 아래에서 해당 DI 입력이 바뀌었는지 확인한다.
             self.arm.dout(self.dio_pins[0], close)
             if self.cancel_requested():
                 raise RuntimeError('cancelled')
@@ -145,7 +145,11 @@ class Rg2Gripper:
 
 
     def on_native_status(self, status, stamp_s):
-        """벤더 상태 비트 사용. 폭은 기존 relative_width 기준을 유지한다."""
+        """확장 드라이버의 gSTA 비트와 폭 값을 최신 상태로 저장한다.
+
+        gSTA bit0은 동작 중, bit1은 물체 파지, 그 밖의 안전 비트는 이상 상태다.
+        메시지 ggwd는 핑거팁 오프셋을 뺀 폭, gwdf는 오프셋을 포함한 폭이다.
+        """
         with self._lock:
             # 통신 공백이나 상태 변화 뒤에는 이전 완료 이력을 재사용하지 않는다.
             if self._last_completed is not None:
@@ -177,7 +181,7 @@ class Rg2Gripper:
     def _native_stale_locked(self, now):
         return self._native_at is None or now - self._native_at > self.state_timeout_s
 
-    # skill_node 의 JointState 콜백이 부른다
+    # 가상 모드의 skill_node JointState 콜백이 손가락 관절각을 전달한다.
     def on_joint_state(self, finger_joint_rad: float, stamp_s: float):
         width_mm = joint_to_width_mm(finger_joint_rad)
         with self._lock:
@@ -193,7 +197,7 @@ class Rg2Gripper:
             return self._width_mm
 
     def busy(self, now_s: float | None = None) -> bool:
-        """최근 0.15초 안에 폭이 변했으면 busy로 본다."""
+        """장치가 이동 중이거나 상태가 오래돼 완료를 확인할 수 없으면 참을 반환한다."""
         now_s = self._now() if now_s is None else now_s
         with self._lock:
             if self.backend == 'dio':
@@ -229,7 +233,7 @@ class Rg2Gripper:
             return slip
 
     def set_force(self, force_n: float):
-        """modbus 만. 2.5 N 스텝으로 i/d 를 반복한다 (D-06)."""
+        """Modbus의 i/d 명령을 반복해 요청 파지력에 2.5 N 단위로 맞춘다."""
         if self.backend != 'modbus':
             return True
         target = max(3.0, min(RG2_MAX_FORCE_N, force_n))
@@ -272,8 +276,9 @@ class Rg2Gripper:
                     fresh = not self._native_stale_locked(self._now())
                     if self._native_safety or not fresh:
                         return False
-                    # 명령 전 idle 표본을 완료로 쓰지 않는다. busy 관측 후 idle만 인정한다.
-                    # 이미 같은 폭인 무동작 명령은 명령 전후 모두 목표 근처일 때만 인정한다.
+                    # 명령 전에 받았던 정지 상태를 새 명령의 완료로 착각하지 않는다.
+                    # 실제 busy→idle 전이를 보거나, 이미 목표 폭이라 움직일 필요가
+                    # 없었음을 명령 전후 폭과 최근 완료 기록으로 확인한다.
                     at_target = (initial_command_width is not None and self._command_width_mm is not None
                                  and abs(initial_command_width - target_mm) <= self.grip_margin_mm
                                  and abs(self._command_width_mm - target_mm) <= self.grip_margin_mm)
@@ -308,7 +313,11 @@ class Rg2Gripper:
         return False
 
     def grip(self, width_mm: float, force_n: float, timeout_s: float = 3.0, *, scoop=False):
-        """닫기. 반환 (success, final_width_mm, grip_inferred)."""
+        """그리퍼를 닫고 (명령 성공, 최종 폭, 실제 파지 확인)을 반환한다.
+
+        Modbus는 파지 비트, DIO는 DI 완료 입력, 가상은 목표보다 큰 최종 폭으로
+        물체가 끼었는지를 판정한다. DIO에서는 폭을 읽을 수 없어 -1을 반환한다.
+        """
         if self.backend == 'dio':
             ok = self._move_dio(True, timeout_s, scoop=scoop)
             return ok, -1.0, ok

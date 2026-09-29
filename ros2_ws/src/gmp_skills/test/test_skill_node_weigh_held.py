@@ -13,7 +13,7 @@ def _module(name, **members):
     return module
 
 
-def _load_skill_node(monkeypatch):
+def _load_skill_node(monkeypatch, node_base=object):
     class Interface:
         class Goal:
             ABOVE = 0
@@ -50,7 +50,7 @@ def _load_skill_node(monkeypatch):
             'rclpy.callback_groups', ReentrantCallbackGroup=object),
         'rclpy.executors': _module(
             'rclpy.executors', MultiThreadedExecutor=object),
-        'rclpy.node': _module('rclpy.node', Node=object),
+        'rclpy.node': _module('rclpy.node', Node=node_base),
         'rclpy.qos': _module(
             'rclpy.qos',
             QoSProfile=lambda **_: None,
@@ -97,8 +97,12 @@ def _load_skill_node(monkeypatch):
     }
     for name, module in fake_modules.items():
         monkeypatch.setitem(sys.modules, name, module)
+    for name in list(sys.modules):
+        if name == 'gmp_skills.execution' or name.startswith('gmp_skills.execution.'):
+            monkeypatch.delitem(sys.modules, name)
     sys.modules.pop('gmp_skills.nodes.skill_node', None)
-    return importlib.import_module('gmp_skills.nodes.skill_node')
+    from skill_execution_fixture import install_legacy_fixture
+    return install_legacy_fixture(importlib.import_module('gmp_skills.nodes.skill_node'))
 
 
 def test_scoop_grip_marks_extraction_pending(monkeypatch):
@@ -249,10 +253,11 @@ def test_measure_weight_fits_raw_samples_and_applies_hf_gate(monkeypatch):
             model_calls.append((mean, std, valid, raw_hf_std))
             return 10.0, 0.0, 10.0, 0.4, True
 
-    skill_node.ScaleConfig = lambda **values: values
-    skill_node.WeightModel = Model
-    skill_node.fit_oscillation = lambda values, period: (
-        fitted.append((values, period)) or (1.2, 0.03, 0.04, 4.1))
+    weighing = sys.modules['gmp_skills.execution.weighing']
+    monkeypatch.setattr(weighing, 'ScaleConfig', lambda **values: values)
+    monkeypatch.setattr(weighing, 'WeightModel', Model)
+    monkeypatch.setattr(weighing, 'fit_oscillation', lambda values, period: (
+        fitted.append((values, period)) or (1.2, 0.03, 0.04, 4.1)))
     params = {
         'scale.samples': 4, 'scale.settle_s': 1.0, 'scale.method': 'tool_force',
         'scale.simulated': False, 'scale.gain': 1.0, 'scale.offset_g': 0.0,
@@ -561,10 +566,11 @@ def test_sampling_parameter_reaches_all_measurement_paths(monkeypatch, entry):
                                               if kw.get('include_samples') else ([0]*6, 2, 0, True))),
             measure_workpiece=lambda *a, **kw: (calls.append((a, kw)) or (2, 0, True, [2]*3))))
     node._scale_period_s = lambda: module.SkillNode._scale_period_s(node)
-    monkeypatch.setattr(module, 'ScaleConfig', lambda **kw: kw)
-    monkeypatch.setattr(module, 'fit_oscillation',
+    weighing = sys.modules['gmp_skills.execution.weighing']
+    monkeypatch.setattr(weighing, 'ScaleConfig', lambda **kw: kw)
+    monkeypatch.setattr(weighing, 'fit_oscillation',
                         lambda values, period: (sum(values)/len(values), 0, 0, period))
-    monkeypatch.setattr(module, 'WeightModel', lambda _: SimpleNamespace(
+    monkeypatch.setattr(weighing, 'WeightModel', lambda _: SimpleNamespace(
         set_tare=lambda _: None,
         reading=lambda mean, std, valid, raw_hf_std: (mean, 0, mean, std, valid)))
     if entry == 'service':
@@ -574,7 +580,7 @@ def test_sampling_parameter_reaches_all_measurement_paths(monkeypatch, entry):
     if entry == 'simulated':
         assert calls == []
     else:
-        expected = {'period_s': 0.82, 'observer': node._observe_force}
+        expected = {'period_s': 0.82, 'observer': node.execution.safety._observe_force}
         if entry != 'service':
             expected['include_samples'] = True
         assert calls == [((3, 0.2), expected)]

@@ -1,8 +1,12 @@
-"""stations.yaml 파싱과 접근점 계산. ROS 비의존 — 단위 테스트 대상.
+"""stations.yaml의 위치 설정을 읽고 작업점·상부 접근점·이탈점을 계산한다.
 
-yaml 형식 (gmp_bringup/params/stations.yaml):
-  frame: base | user            # D-15 판 좌표계를 쓰면 user
-  approach_mm: 60.0             # 작업점 위 접근 높이 (z+)
+posx=[x,y,z,a,b,c]는 로봇 TCP의 위치(mm)와 회전(deg)이다. AT는 posx의
+작업점, ABOVE는 그 점의 BASE Z에 approach_mm을 더한 접근점이다.
+이 파일은 ROS나 로봇 장치를 호출하지 않고 좌표 설정만 검증한다.
+
+YAML 형식 (gmp_bringup/params/stations.yaml):
+  frame: base | user            # 로봇 BASE 또는 사용자 좌표계
+  approach_mm: 60.0             # 작업점 위 접근 높이 (BASE Z+)
   stations:
     workbench: {posx: [x, y, z, a, b, c], note: "용기 파지 AT — 용기 계량은 ABOVE"}
 """
@@ -19,7 +23,7 @@ class Station:
     extra: dict = field(default_factory=dict)
 
     def offset_z(self, height_mm: float) -> list:
-        """기준 자세에서 BASE Z 상대 높이를 적용한다. TOOL 방향과 무관하다."""
+        """TCP의 X/Y·회전을 유지하고 로봇 BASE Z에 높이(mm)를 더한다."""
         if (isinstance(height_mm, bool) or not isinstance(height_mm, (int, float))
                 or not math.isfinite(height_mm) or height_mm < 0):
             raise ValueError('BASE Z 높이는 유한한 0 이상 숫자여야 한다')
