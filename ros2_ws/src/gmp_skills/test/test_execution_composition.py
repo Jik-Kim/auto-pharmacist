@@ -120,3 +120,36 @@ def test_real_composition_dispatch_and_shutdown_use_single_worker(monkeypatch):
     assert worker.ident != threading.get_ident()
     assert ctx.state.worker_stopped.is_set()
     assert execution.runtime._submit('measure').error == 'skill_node shutdown'
+
+
+def test_runtime_keeps_return_history_until_scoop_handler_runs(monkeypatch):
+    """9/30 실물: 실행기가 scoop 작업 시작 전에 returned_material 을 지워 반환 끝 → 재스쿱 연결이
+    언제나 거부됐다(「반환 후 재스쿱 연결 경로 미구현」 3회). 연결 판정은 핸들러가 한다."""
+    _load_skill_node(monkeypatch)
+    from gmp_skills.execution import ExecutionContext, SkillExecution
+    from gmp_skills.execution.context import SkillConfig, SkillState
+    from gmp_skills.execution.runtime import Job
+
+    ctx = ExecutionContext(
+        parameter=lambda key: SimpleNamespace(value={'scale.period_s': .1, 'scale.simulated': False}[key]),
+        clock=lambda: None, now=lambda: 0., logger=lambda: SimpleNamespace(error=lambda *_: None),
+        event=lambda *_: None, ok=lambda: True,
+        config=SkillConfig(mode='virtual', shutdown_timeout_s=1.),
+        state=SkillState(ready=True),
+        arm=SimpleNamespace(stop_motion=lambda: None, compliance_off=lambda: None))
+    execution = SkillExecution(ctx)
+    seen = []
+    execution.runtime.handlers['scoop'] = lambda job: seen.append(ctx.state.returned_material)
+    execution.runtime.handlers['pour'] = lambda job: seen.append(ctx.state.returned_material)
+    worker = threading.Thread(target=execution.runtime._worker)
+    ctx.state.worker_thread = worker
+    worker.start()
+    try:
+        for kind in ('scoop', 'pour'):
+            ctx.state.returned_material = 'C'
+            job = Job(kind, {'material_id': 'C'})
+            ctx.state.q.put(job)
+            assert job.done.wait(2) and not job.error, job.error
+    finally:
+        assert execution.runtime.shutdown()
+    assert seen == ['C', '']          # scoop 은 이력을 받고, 다른 작업은 종전대로 지운 뒤 시작한다

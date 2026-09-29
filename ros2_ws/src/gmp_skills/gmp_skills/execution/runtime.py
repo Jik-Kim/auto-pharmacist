@@ -125,7 +125,9 @@ class SkillRuntime:
                         self.safety._poll_safety(force=True)
                     if job.cancel or (self.ctx.state.safety_latched and job.kind not in ('startup', 'recover')):
                         raise RuntimeError(f'SAFETY_STOP: {self.ctx.state.safety_reason}' if self.ctx.state.safety_latched else 'cancelled')
-                    if job.kind not in ('move', 'grip', 'return_material'):
+                    # scoop 도 뺀다 — 반환 끝 → 재스쿱 연결(_connect_after_return)이 이 이력으로 판정하고
+                    # 스스로 지운다. 여기서 먼저 지우면 연결이 언제나 거부된다(9/30 실물 3회).
+                    if job.kind not in ('move', 'grip', 'return_material', 'scoop'):
                         self.ctx.state.returned_material = ''
                         self.ctx.state.returned_scoop_stowed = ''
                     if job.kind in ('scoop', 'pour', 'return_material', 'weigh_held', 'safe'):
