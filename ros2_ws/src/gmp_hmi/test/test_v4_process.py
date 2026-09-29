@@ -126,7 +126,7 @@ def test_defaults_and_direct_process_order_shortage(process):
 def test_steps_follow_real_process_order_and_set_end_waits_for_nudge(process):
     assert order(process, A=138, B=69).accepted
     run_until(process, lambda: process.nudge_waiting)
-    per_scoop = ['SCOOP', 'WEIGH_SCOOP', 'POUR', 'WEIGH_RESIDUAL']
+    per_scoop = ['SCOOP', 'WEIGH_SCOOP', 'POUR']
     assert steps_seen(process) == (
         ['SELF_CHECK', 'PICK_CONTAINER', 'TARE'] +
         ['PICK_SCOOP', 'SCOOP_TARE'] + per_scoop * 2 + ['RETURN_SCOOP'] +

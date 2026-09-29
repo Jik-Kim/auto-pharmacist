@@ -23,6 +23,7 @@ DEFAULT_SETTINGS = dict(inventory_material_ids=['A', 'B', 'C'],
                         inventory_capacity_g=[0.0, 0.0, 0.0],
                         inventory_initial_g=[-1.0, -1.0, -1.0],
                         inventory_low_pct=20.0, ui_stale_after_s=3.0)
+INVENTORY_KEYS = ('inventory_material_ids', 'inventory_capacity_g', 'inventory_initial_g', 'inventory_low_pct')
 
 
 def _password_hash(password):
@@ -167,6 +168,24 @@ class AdminStore:
     def settings(self):
         with self.lock:
             return copy.deepcopy(self.data['settings'])
+
+    def fill_unset_inventory(self, launch):
+        """원료 재고 기준이 전부 미설정(기준량 0 · 초기량 -1)일 때만 런치 값으로 채운다. 채웠으면 True.
+
+        설정 파일은 최초 기동 때 한 번 만들어지고 그 뒤로는 런치 값을 읽지 않는다. 그래서 운영 기준
+        (common.yaml)이 나중에 생겨도 이미 있는 파일은 「미설정」으로 남아 화면이 비었다(9/29 실물 통합).
+        관리자가 한 번이라도 저장한 기준은 덮지 않는다.
+        """
+        with self.lock:
+            now = self.data['settings']
+            unset = (all(c <= 0 for c in now['inventory_capacity_g']) and
+                     all(v < 0 for v in now['inventory_initial_g']))
+            given = validate_settings(dict(now, **{k: launch[k] for k in INVENTORY_KEYS}))
+            if not unset or not any(c > 0 for c in given['inventory_capacity_g']):
+                return False
+            self.data['settings'] = given
+            self._save()
+            return True
 
     def update_settings(self, changes):
         with self.lock:

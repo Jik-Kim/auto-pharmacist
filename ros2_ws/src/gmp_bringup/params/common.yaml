@@ -9,6 +9,7 @@
 #   safety               : 힘제어·넛지·이동 제한
 #   pour                 : 붓기와 털어내기
 #   interlock            : 정지 시 복귀 위치
+#   inventory_*          : HMI 원료 잔량 표시 기준 (hmi_web_node)
 #
 # cell.launch.py의 mode·vel_scale·simulated·stations_file 인자는 아래 값을 실행 시 덮어쓴다.
 /**:
@@ -172,3 +173,11 @@
     # ── 인터락 복귀 ──────────────────────────────────────────────────
     interlock:
       safe_station: safe
+
+    # ── HMI 원료 잔량 표시 (hmi_web_node) ────────────────────────────
+    # 만충 1,000 g 에서 분주 사용량을 뺀 HMI 표시용 추정치 — 시험 공정(hmi_comm_test)과 같은 사용자 확정 기준.
+    # C 공정의 재고·주문 수락과는 별개다(운영 재고 계약 미정). HMI 설정 파일이 미설정일 때만 이 값으로 채우고,
+    # 관리자가 설정 창에서 저장한 값은 덮지 않는다. 실제로 담은 양이 다르면 설정 창에서 바꾼다.
+    inventory_material_ids: [A, B, C]
+    inventory_capacity_g: [1000.0, 1000.0, 1000.0]
+    inventory_initial_g: [1000.0, 1000.0, 1000.0]
