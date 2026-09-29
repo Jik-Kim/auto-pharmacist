@@ -386,3 +386,16 @@ def test_failed_explicit_safe_does_not_start_container_approach(motion):
         node._do_safe(module.Job('safe', {'reason': 'ORDER_START'}))
     assert not calls
     assert node._motion_anchor is None
+
+
+@pytest.mark.parametrize('material', ['A', 'B', 'C'])
+def test_refill_safe_to_material_reaches_fixed_scoop_start(motion, material):
+    node, job, calls, sensor, _ = motion
+    station = node.stations.for_material(material)
+    node._held_payload, node._held_material_id = 'scoop', material
+    sensor['grip_inferred'] = True
+    job.args.update(station_id=station.station_id, approach=1)
+    assert node._do_move(job) == station.station_id
+    assert calls == [('L', station.posx)]
+    assert node.arm.current_posx() == station.posx
+    assert node._held_material_id == material

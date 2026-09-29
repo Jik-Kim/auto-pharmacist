@@ -127,3 +127,24 @@ def test_service_forwards_expectation_and_reports_extraction(setup, payload, err
     assert res.success == (not error and not canceled)
     if not res.success:
         assert res.payload == 'unknown' and res.material_id == ''
+
+
+@pytest.mark.parametrize('kind,resumable', [(None, True), ('scoop', False), ('pour', False),
+                                          ('weigh_held', False), ('grip', False)])
+def test_planned_refill_and_forced_interruption_are_distinct(setup, kind, resumable):
+    node, module, sensor = setup
+    node._held_payload, node._held_material_id = 'scoop', 'A'
+    node._pending_scoop_extract = node._scoop_extract_uncertain = False
+    node._current = module.Job(kind, {}) if kind else None
+    node._submit = lambda *a, **k: NS(error='')
+    node.event = lambda *a: None
+    module.SkillNode._srv_safe(node, NS(reason='REFILL'), NS())
+    assert node._resume_grip['resumable'] == resumable
+    node._resume_grip_ready = True
+    sensor['grip_inferred'] = True
+    job = module.Job('restore_grip', dict(expected_payload='scoop', expected_material_id='A'))
+    if resumable:
+        assert node._do_restore_grip(job) == ('scoop', 'A')
+    else:
+        with pytest.raises(RuntimeError, match='불확실'):
+            node._do_restore_grip(job)

@@ -72,3 +72,55 @@ def test_compound_carry_cannot_restart_from_source(node, module):
     result = node._srv_interlock(Message(request=module.InterlockRequest.Request.EXIT, reason=""), Message())
     assert not result.granted
     assert node._pause and not node._interlock_exit.is_set()
+
+
+def test_order_start_checks_safe_then_empty_gripper(node):
+    calls = []
+    def call(key, request):
+        calls.append((key, request))
+        return Message(success=True, message='')
+    node._call_srv = call
+    assert node._dispatch({'kind': 'safe', 'reason': 'BATCH_START'})['success']
+    assert [key for key, _ in calls] == ['safe', 'restore_grip']
+    assert calls[1][1].expected_payload == 'empty'
+    assert node.station == 'safe'
+
+
+@pytest.mark.parametrize('failed', ['safe', 'restore_grip'])
+def test_order_start_failure_prevents_next_stage(node, module, failed):
+    calls = []
+    def call(key, request):
+        calls.append(key)
+        return Message(success=key != failed, message='거부')
+    node._call_srv = call
+    with pytest.raises(module.SkillError):
+        node._dispatch({'kind': 'safe', 'reason': 'BATCH_START'})
+    assert calls == (['safe'] if failed == 'safe' else ['safe', 'restore_grip'])
+
+
+@pytest.mark.parametrize('fault', ['', 'payload', 'material', 'extraction', 'failed'])
+def test_refill_requires_matching_extracted_scoop(node, fault):
+    node.fsm = NS(mode='PAUSED', state='PAUSED', idx=0, cur=NS(material_id='B'))
+    node._refill_waiting = True
+    calls = []
+    def restore(key, request):
+        calls.append(key)
+        assert request.expected_payload == 'scoop'
+        assert request.expected_material_id == 'B'
+        return Message(success=fault != 'failed', payload='cup' if fault == 'payload' else 'scoop',
+                       material_id='A' if fault == 'material' else 'B',
+                       scoop_extracted=fault != 'extraction')
+    node._call_srv = restore
+    assert leave(node).granted == (not fault)
+    assert node._interlock_exit.is_set() == (not fault)
+    if not fault:
+        assert leave(node).granted
+        assert calls == ['restore_grip']
+
+
+def test_refill_material_move_uses_station_map(node, module, monkeypatch):
+    monkeypatch.setattr(module.MoveToStation.Goal, "AT", 1, raising=False)
+    calls = []
+    node._move = lambda station, approach: calls.append((station, approach))
+    node._dispatch(dict(kind='move', station='material', material_id='B', approach='AT'))
+    assert calls == [('material_2', 1)]

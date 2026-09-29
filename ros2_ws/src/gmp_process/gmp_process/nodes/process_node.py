@@ -752,14 +752,23 @@ class ProcessNode(Node):
         if getattr(self, '_active_request_kind', None) == 'carry':
             res.granted, res.message = False, '복합 용기 반송 중단 — 중복 파지 방지를 위해 자동 재개 불가'
             return res
+        if self._interlock_exit.is_set():
+            res.granted, res.message = True, '재개 승인 완료 — 실행 루프 소비 대기'
+            return res
         revision = self._interlock_revision
+        material = self.fsm.cur.material_id if self._refill_waiting else ''
         try:
-            restored = self._call_srv('restore_grip', RestoreGrip.Request())
+            restored = self._call_srv('restore_grip', RestoreGrip.Request(
+                expected_payload='scoop' if material else '', expected_material_id=material))
         except SkillError as e:
             res.granted, res.message = False, f'파지 복구 응답 미확인 — 재개 불가: {e}'
             return res
         if not restored.success:
             res.granted, res.message = False, f'파지 복구 실패 — 재개 불가: {restored.message}'
+            return res
+        if material and (restored.payload != 'scoop' or restored.material_id != material
+                         or not restored.scoop_extracted):
+            res.granted, res.message = False, '보충 재개에 필요한 스쿱·원료·인출 확인 실패'
             return res
         with self._safety_event_lock:
             if (self._safety_stop or revision != self._interlock_revision
@@ -899,6 +908,8 @@ class ProcessNode(Node):
 
     def _station_of(self, req: dict) -> str:
         s = req.get('station', '')
+        if s == 'material':
+            return self.smap.material_of(req['material_id'])
         return self.smap.scoop_of(req['material_id']) if s == 'scoop' else s
 
     # ── 요청 실행 ─────────────────────────────────────────────────────
@@ -983,6 +994,12 @@ class ProcessNode(Node):
         if k == 'safe':
             reason = req.get('reason', '')
             r = self._call_srv('safe', SafePose.Request(reason=reason))
+            self._check('safe_pose', r.success, r.message)
+            self.station = 'safe'
+            if reason == 'BATCH_START':
+                restored = self._call_srv('restore_grip', RestoreGrip.Request(
+                    expected_payload='empty', expected_material_id=''))
+                self._check('restore_grip', restored.success, restored.message)
             if r.success and req.get('then') == 'wait_interlock':
                 # 성공 후 즉시 EXIT를 받을 준비를 한다. 다음 dispatch까지의 틈에도 유지한다.
                 self._refill_waiting = True

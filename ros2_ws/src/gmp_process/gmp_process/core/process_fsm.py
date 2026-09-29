@@ -120,7 +120,7 @@ class ProcessFSM:
     # ── 진입 ─────────────────────────────────────────────────────────
     def start(self):
         self.state, self.mode = 'SELF_CHECK', 'RUNNING'
-        return {'kind': 'measure'}                      # 빈 그리퍼 외력 — 자가진단 겸 영점 후보
+        return {'kind': 'safe', 'reason': 'BATCH_START'}  # 안전 자세 성공 후 자가진단
 
     def _item(self) -> ItemRun:
         it = self.spec.items[self.idx]
@@ -255,6 +255,20 @@ class ProcessFSM:
     # ── 전이 ─────────────────────────────────────────────────────────
     def on_result(self, req: dict, res: dict):
         k, st = req['kind'], self.state
+        if k == 'safe' and req.get('reason') in ('BATCH_START', 'SET_COMPLETE'):
+            if not res.get('success', False):
+                self.state, self.mode = 'ERROR', 'ERROR'
+                return None
+            if req['reason'] == 'BATCH_START':
+                return {'kind': 'measure'}
+            self.state, self.mode = self._final, 'DONE'
+            return None
+        if k == 'move' and req.get('then') == 'resume_refill':
+            if not res.get('success', False):
+                self.state, self.mode = 'ERROR', 'ERROR'
+                return None
+            self.state = self._resume_state
+            return self._resume
         # 종료·대기 전이 — 요청에 then 이 명시된 경우가 우선
         if 'then' in req and k in ('safe', 'move', 'carry'):
             nxt = req['then']
@@ -458,8 +472,8 @@ class ProcessFSM:
             self.mode = 'PAUSED'                       # 로봇은 섰다 — 다음 주문은 예약만(RunBatch), HMI 는 사유를 본다
             return {'kind': 'wait_nudge'}
         if k == 'wait_nudge' and st == 'NUDGE_WAIT':
-            self.state, self.mode = self._final, 'DONE'
-            return None
+            self.mode = 'RUNNING'
+            return {'kind': 'safe', 'reason': 'SET_COMPLETE'}
         # DISCARDED — 스쿱을 든 채였다면 먼저 반납하고(move → grip open) 용기째 폐기함으로
         if k == 'move' and st == 'DISCARDED':
             return {'kind': 'grip', 'close': False}
@@ -472,8 +486,10 @@ class ProcessFSM:
         if k == 'wait_qa':
             return self._after_qa(res.get('decision'))
         if k == 'wait_interlock':
-            self.state, self.mode = self._resume_state, 'RUNNING'
-            return self._resume
+            self.mode = 'RUNNING'
+            # SafePose에서 고정 Scoop을 바로 시작할 수 없다. 원료별 계량 자세부터 복귀한다.
+            return {'kind': 'move', 'station': 'material', 'material_id': self.cur.material_id,
+                    'approach': 'AT', 'then': 'resume_refill'}
         raise RuntimeError(f'전이 없음: state={st} req={k}')   # 전이표 밖 = 버그. 조용히 넘기지 않는다
 
     # ── VERIFY 판정 근거 ──────────────────────────────────────────────
