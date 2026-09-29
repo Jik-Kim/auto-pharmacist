@@ -1235,3 +1235,16 @@ def test_order_start_safe_failure_never_takes_the_container(cell):
     assert _wait_done(proc) == 'ERROR', _why(proc)
     assert not any(c.startswith('move:passbox_empty') for c in fake.calls), fake.calls
     assert fake.calls.count(ORDER_START_SAFE) == 1, '실패한 주문 시작 이동을 재시도하지 않는다'
+
+
+def test_idle_enter_then_exit_accepts_the_next_order(cell):
+    """배치가 없을 때 ENTER→EXIT 뒤에는 새 주문을 받아야 한다 (9/29 — 종전엔 `resume` 이라 답하고도 영영 거부)."""
+    from gmp_interfaces.srv import InterlockRequest
+    proc, fake, col = cell
+    assert _lock(col, InterlockRequest.Request.ENTER, 'CHECK').granted
+    blocked = _submit(col, [('A', 100.0, 5.0)])
+    assert not blocked.accepted, '진입 중에는 거부가 맞다'
+    assert _lock(col, InterlockRequest.Request.EXIT, 'CHECK').message == 'resume'
+    r = _submit(col, [('A', 100.0, 5.0)])
+    assert r.accepted, r.message
+    assert _wait_done(proc) == 'DONE', _why(proc)

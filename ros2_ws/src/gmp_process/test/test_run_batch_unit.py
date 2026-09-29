@@ -619,3 +619,39 @@ def test_order_start_safe_waits_at_the_gate_while_paused(node):
         pool.shutdown(wait=True)
     assert seen[:3] == ['measure:', 'safe:ORDER_START', 'carry:'], seen
     assert r.result == 'DONE', r.message
+
+
+# ── 유휴 인터락 EXIT (9/29) ──────────────────────────────────────────────
+# ENTER 가 세운 정지(`_pause`)는 「루프만 내린다」 — 끊긴 스킬이 돌아오기 전에 내리면 그 실패가 진짜
+# 실패로 읽히기 때문이다. 그런데 **배치가 없으면 내려 줄 루프가 없다.** 종전에는 유휴 ENTER→EXIT 뒤
+# EXIT 가 `resume` 이라고 답하고도 정지가 남아 새 주문을 영영 거부했다(9/29 재현).
+
+def test_idle_enter_then_exit_lifts_the_pause_and_accepts_orders(node):
+    enter = node._srv_interlock(Message(request=0, reason='CHECK'), Message())
+    assert enter.granted and node._pause
+    assert node._goal_batch(Message(recipe=recipe('DURING'))) == 0      # 진입 중에는 거부가 맞다
+    exit_ = node._srv_interlock(Message(request=1, reason='CHECK'), Message())
+    assert exit_.granted, exit_.message
+    assert not node._pause and not node._interlock_exit.is_set(), '유휴 EXIT 는 정지를 직접 내린다'
+    node._pub_state()
+    assert 'EXIT' not in node.published['state'][-1].note, '「EXIT 확인 후 새 주문 가능」 안내가 남으면 안 된다'
+    assert node._goal_batch(Message(recipe=recipe('AFTER'))) == 1
+
+
+def test_exit_after_the_batch_ended_while_paused_also_lifts_the_pause(node):
+    """배치 중 ENTER 뒤 배치가 취소 등으로 먼저 끝나 루프가 사라졌다 — 유휴와 같다."""
+    node._pause = True
+    node._thread = NS(is_alive=lambda: False)
+    node.fsm = NS(mode='ERROR', state='ABORTED', idx=0)
+    assert node._srv_interlock(Message(request=1, reason='CHECK'), Message()).granted
+    assert not node._pause
+    assert node._goal_batch(Message(recipe=recipe('NEXT'))) == 1
+
+
+def test_exit_during_a_batch_still_leaves_the_pause_to_the_loop(node):
+    """배치 중에는 종전대로 신호만 세운다 — 정지를 내리는 것은 루프다."""
+    node._pause = True
+    node._thread = NS(is_alive=lambda: True)
+    node._reserved = True
+    assert node._srv_interlock(Message(request=1, reason='CHECK'), Message()).granted
+    assert node._pause and node._interlock_exit.is_set()

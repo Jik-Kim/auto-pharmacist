@@ -723,8 +723,22 @@ class ProcessNode(Node):
             # mode==PAUSED 로 가르면 안 된다 — NUDGE 정지도 PAUSED 라서 그때 눌린 EXIT 가 신호로 남는다
             res.granted, res.message = True, '대기 중이 아니다 (무시)'
             return res
-        self._interlock_exit.set()
+        with self._order_lock:               # 판정과 해제 사이에 배치가 시작되지 않게 — 주문 접수와 같은 잠금
+            # 보충 대기(`_refill_waiting`)는 배치가 EXIT 를 기다리는 중이다 — 루프가 이 신호를 받아야 한다
+            idle = (not self._reserved and not (self._thread and self._thread.is_alive())
+                    and not self._refill_waiting)
+            if idle:
+                # 배치가 없으면 정지를 내려 줄 루프가 없다. 끊긴 스킬도 없으니 「루프만 내린다」의 이유가
+                # 없어 여기서 내린다 — 종전에는 `resume` 이라고 답하고도 정지가 남아 새 주문을 영영
+                # 거부했다(9/29 재현). 배치 중 ENTER 뒤 배치가 먼저 끝나 루프가 사라진 경우도 같다.
+                self._pause = False
+                self._interlock_exit.clear()
+                self.note = ''                # ENTER 가 실은 「인터락 ENTER (…)」 안내를 내린다
+            else:
+                self._interlock_exit.set()
         self.event('INFO', 'INTERLOCK_EXIT', req.reason)
+        if idle:
+            self._pub_state()
         res.granted, res.message = True, 'resume'
         return res
 

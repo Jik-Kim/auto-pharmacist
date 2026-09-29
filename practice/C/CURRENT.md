@@ -18,7 +18,7 @@
 | 원료별 1회량 | 노드가 스테이션 이름표의 원료마다 `dosing.scoop_nominal.<원료>` 를 선언(0 = 원료별 값 없음)해 `DosingConfig.scoop_nominal_by_material` 로 넘긴다. FSM 은 1회량을 쓰는 두 곳(첫 깊이, `decide()`)에서 `_cfg()` = `for_material(지금 원료)` 를 쓴다. **값이 빠진 원료의 주문은 `_parse_order` 에서 접수 거부** — 공통값으로 조용히 떨어지지 않는다. 값 자체는 `common.yaml` 참조(B 소관, 규칙 5). yaml 에는 소수점으로 적는다(선언 기본값이 실수) | #313(B) · `feat/per-material-nominal-wiring`(C, 9/29) |
 | 고정 스쿱 모드 | **`dosing.fixed_scoop` 하나**가 네 곳을 움직인다 — `decide()` 의 깊이·보충 판정(**#274**, e301cc9·e62b8da), `_first_fraction()`·`_rescoop_fraction()`·노드 배선(**A #289**), **FSM 의 접촉 우회**(C #287). 무게 그물(`empty_scoop_g`)은 플래그와 무관하게 늘 돈다(#287). 켜면 깊이는 언제나 1.0 | SOT **D-34**(#284) · #282 |
 | 무효 계량 통합 시험 | fake_skill_node 손잡이 없이 `_publish_result` 직접 호출 | PR #225 |
-| 통합 시험 기준선 | gmp_process **234 passed / 8 skipped** (9/29 C 실측, ROS 소싱·도메인 격리 — main `1ade008` + `feat/order-start-safe-pose`, 주문 시작 시험 4건 추가. #314 단독은 230/8). skip 8 은 전부 `test_run_batch_ros.py` 의 **DOMAIN 88 전용** — 88 이 빈 것을 `ros2 node list` 로 보고 따로 돌려 **8/8**. ~~219/8 (9/29 문서 관리가 합산한 추정값, ROS 합본 실측 전)~~ → 위 실측으로 대체. **내 파트 것만 적는다** — 다른 파트 현황은 `practice/<파트>/CURRENT.md` (규칙 5) | ROS 소싱 필수. **숫자로 소싱 누락을 가리지 말 것** — ROS 없이 돌려도 150 passed / 2 skipped 가 나온다(9/25). `python3 -c "import rclpy"` 로 확인한다. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
+| 통합 시험 기준선 | gmp_process **238 passed / 8 skipped** (9/29 C 실측, ROS 소싱·도메인 격리 — main `d4917d7`(#320 까지) + `fix/idle-interlock-exit`, 유휴 EXIT 시험 4건 추가. #320 단독은 234/8). skip 8 은 전부 `test_run_batch_ros.py` 의 **DOMAIN 88 전용** — 88 이 빈 것을 `ros2 node list` 로 보고 따로 돌려 **8/8**. ~~219/8 (9/29 문서 관리가 합산한 추정값, ROS 합본 실측 전)~~ → 위 실측으로 대체. **내 파트 것만 적는다** — 다른 파트 현황은 `practice/<파트>/CURRENT.md` (규칙 5) | ROS 소싱 필수. **숫자로 소싱 누락을 가리지 말 것** — ROS 없이 돌려도 150 passed / 2 skipped 가 나온다(9/25). `python3 -c "import rclpy"` 로 확인한다. `.msg` 바뀐 브랜치는 워크트리 안에 `gmp_interfaces` 빌드 먼저 |
 
 ## 열린 과제 (이슈 번호)
 - #108 본래 주제: `ScoopCycle` 6축 wrench 채울 경로 — 전제(모멘트 = 파지 품질) 근거 부족(노션 9/22), 미정리.
@@ -38,6 +38,7 @@
 - 계량 경로 전체를 태우는 무효 계량 통합 시험(후속). **막힘 해소** — `fake_skill_node` 에 무효 손잡이가 필요해 `test/t6-fault-injection` 과 같은 파일에서 충돌하던 것이, 양쪽 다 머지돼 지금은 가능하다.
 
 ## 알려진 함정
+- **정지(`_pause`)는 「루프만 내린다」의 예외가 하나 있다 — 배치가 없을 때의 EXIT(9/29).** 내려 줄 루프가 없어서, 종전에는 유휴 ENTER→EXIT 뒤 `resume` 을 답하고도 새 주문을 영영 거부했다. 지금은 유휴(예약·루프 없음, 보충 대기 아님)면 EXIT 핸들러가 직접 내린다. EXIT 처리를 고칠 때(조장 제안: 파지 상태 복구 뒤 재개) 이 분기를 같이 본다.
 - **안전 자세 호출 수를 셀 때는 `ORDER_START` 를 뺀다(9/29)** — 주문마다 한 번씩 나가므로 「오류·인터락으로 물러났는가」 단언이 사유 없이 세면 늘 참이 되거나 깨진다(`test_process_node.ORDER_START_SAFE`). fake 의 SafePose 는 **도는 스킬이 있을 때만** 취소를 남긴다 — 스킬 사이에 부르면 다음 이송이 엉뚱하게 취소되던 모사 오류를 고쳤다.
 - **세트 끝 예약은 HMI 가 막고 있다(9/28)** — C 는 받지만 `hmi.js canStartOrder` 가 `NUDGE_WAIT` 에서 버튼을 끄고, `hmi_web_node` 가 「물리적 완료 확인 대기」로 거부하며, 진행 중 goal 을 **하나만** 추적한다(예약 goal 이 덮으면 취소가 엉뚱한 배치로 간다). D 가 고치기 전에는 현장 동작이 그대로다 — C 쪽 머지는 그래서 안전하다. 예약 goal 은 **시작 전 피드백이 없다**(사유는 `CellState.note`).
 - **깊이를 내는 곳이 셋이다** — 첫 스쿱(`_first_fraction`) · 보충(`decide()`) · **반환 뒤 재스쿱(`_rescoop_fraction`)**. 깊이 규칙을 바꿀 때는 셋 다 본다. 내가 앞 둘만 고쳤다가 셋째에서 0.1 대 값이 그대로 나가는 것을 시험이 잡았다. 셋의 출처가 다르다 — 보충(`decide()`)은 #274, 첫·재스쿱은 A #289.
