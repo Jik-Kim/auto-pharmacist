@@ -111,7 +111,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `InterlockRequest` | HMI → process | `request`(`ENTER/EXIT`), `reason` → `granted`, `message`. ENTER는 안전 자세 도달 뒤 승인한다 |
 | `SetGripper` | process → skill | `close`, `width_mm`, `force_n`, `timeout_s` → `success`, 실제 정지 폭 `final_width_mm`, `grip_inferred`(modbus는 grip 비트, virtual은 폭 추론, dio는 DI 완료 확인), `message` |
 | `MeasureForce` | process → skill | `samples`, `settle_s` → `force[6]`, `fz_mean_n`, `fz_std_n`, `valid`, `message`. `force`는 `get_tool_force(DR_BASE)`의 tool 외력 wrench `[Fx,Fy,Fz,Mx,My,Mz]`; 앞 3개는 N, 뒤 3개는 N·m이며 관절 토크가 아니다. 작용점은 컨트롤러의 설정 tool/TCP 기준으로 사용하고 실물 G1에서 확인한다 |
-| `SafePose` | process → skill | `reason` → `success`, `message`. 인터락·오류 시 공통 안전 자세로 후퇴한다 |
+| `SafePose` | process → skill | `reason` → `success`, `message`. 인터락·오류 시 공통 안전 자세로 후퇴한다. **주문 시작 준비에도 쓴다**(9/29, SOT 「주문 시작 준비와 명시적 이동」): process 가 매 주문 SELF_CHECK 뒤 `reason='ORDER_START'` 로 부르고 성공을 확인한 뒤 빈 통을 잡는다. 메시지 정의는 그대로다 |
 
 액션은 긴 동작 중 Feedback을 여러 번 보내고 종료 시 Result를 한 번 보낸다.
 
