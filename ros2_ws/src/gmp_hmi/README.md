@@ -4,7 +4,7 @@ V3 재고 패치를 기준으로 두 화면(운전·모니터링 / 기록·통�
 
 **완성된 재고·높이·보충 흐름은 `/hmi_test`와 브라우저 데모용이다. 실제 `/cell`의 주문은 C 공정으로 전달한다. 시험 재고·높이는 운영 주문 게이트에 적용하지 않는다.** 기존 상태·QA·인터락·기록은 유지한다. 실제 C/로봇 코드·공용 메시지·좌표·도징 설정은 변경하지 않는다.
 
-시험 레시피(`config/test_recipes/v4`): `recipe-01` A85/B85/C85, `recipe-02` A170/B85, `recipe-03` A85/B85/C170, 허용 오차 10% — 운영 레시피 사본이다(SOT D-33, `test_v4_recipes.py` 가 대조). 공통 C 로더를 사용한다. 실물 정밀도는 미검증. 시험 목록에는 새 3종만 표시한다. 운영 레시피는 `gmp_bringup/params/recipes`를 단일 출처로 사용한다.
+시험 레시피(`config/test_recipes/v4`): `recipe-01` A69/B57/C69, `recipe-02` A138/B57, `recipe-03` A69/B57/C138, 허용 오차 10% — 운영 레시피 사본이다(#306 원료별 스쿱 1회량 A·C 69 / B 57 g, 9/29 결정, `test_v4_recipes.py` 가 대조). 운영 레시피 파일·값도 D 담당이다(9/25). 공통 C 로더를 사용한다. 실물 정밀도는 미검증. 시험 목록에는 새 3종만 표시한다. 운영 레시피는 `gmp_bringup/params/recipes`를 단일 출처로 사용한다.
 
 ## 화면 상태 (2026-09-22 기준)
 
@@ -37,13 +37,31 @@ ros2 launch gmp_hmi hmi_comm_test.launch.py
 
 http://127.0.0.1:5002 — 각 원료 1,000 g으로 시작한다. 실행마다 새 시험 DB·계정을 만들며 운영 데이터는 유지한다. `/demo`는 브라우저 메모리 전용이고 ROS/SQLite 시험이 아니다.
 
+### 시험 공정 흐름 (실제 공정과 같은 단계)
+
+시험 공정(`hmi_test_process`)은 실제 C 공정(`process_fsm`·`process_node`)의 단계 이름·순서·정지 사유를 따른다. 로봇·무게는 가상이다.
+
+`SELF_CHECK → PICK_CONTAINER → TARE → (원료마다) PICK_SCOOP → SCOOP_TARE → (SCOOP → WEIGH_SCOOP → POUR → WEIGH_RESIDUAL) × 스쿱 수 → RETURN_SCOOP → VERIFY → FINISH → NUDGE_WAIT → DONE`
+
+- **세트 끝 넛지 대기** — `NUDGE_WAIT` 에서 멈추고(PAUSED) 사람이 로봇을 건드려야 DONE 이 된다. 세트 끝 구간(FINISH·폐기 반송·NUDGE_WAIT)의 주문은 **1건 예약**되고(계약 v1.9, `ORDER_QUEUED`) 넛지로 세트가 끝나면 바로 시작한다. 취소 등 넛지 없이 끝나면 예약은 시작하지 않는다(`ORDER_DROPPED`). 두 이벤트는 예약 주문 ID 로 기록된다. HMI 는 예약 주문을 진행 배치와 따로 추적하고 「예약 주문 취소」 버튼을 따로 둔다. 시험에서는 아래 명령이 「건드림」이다(skill_node 대역).
+- **운전 중 접촉** — 같은 명령을 운전 중에 내면 그 자리에서 정지, 한 번 더 내면 재개. 대기 중에 내면 다시 낼 때까지 새 주문 차단.
+- **원료 소진** (`material_empty`) — QA 가 아니라 빈 스쿱 자동 재시도 3회 → `MATERIAL_EMPTY` 보충 대기(PAUSED·REFILL). 보충한 뒤 EXIT 로 재개.
+
+```bash
+ros2 topic pub --once -w 3 /hmi_test/event gmp_interfaces/msg/CellEvent \
+  "{level: 0, code: NUDGE, text: manual}"
+```
+
+`-w 3` 은 구독자 3개(시험 공정·HMI·기록)가 붙을 때까지 기다렸다 **한 번만** 낸다. 두 번 가면 토글이 되돌아간다.
+시나리오는 실행 중에도 바꿀 수 있다 — 다음 주문부터 적용: `ros2 param set /hmi_test/hmi_test_process scenario overfill` (`normal`·`overfill`·`batch_out_of_spec`·`wrong_tool`·`weigh_invalid`·`material_empty`).
+
 ## 자동 검사
 
-부족을 빠르게 재현하려고 A만 170 g으로 시작한다(recipe-01 뒤 85 g 이 남아 recipe-02 의 A 170 g 을 못 채운다). 기존 시험 launch를 종료하고 같은 터미널에서:
+부족을 빠르게 재현하려고 A만 138 g으로 시작한다(recipe-01 뒤 69 g 이 남아 recipe-02 의 A 138 g 을 못 채운다). 기존 시험 launch를 종료하고 같은 터미널에서:
 
 ```bash
 ros2 launch gmp_hmi hmi_comm_test.launch.py \
-  test_initial_g:='[170.0,1000.0,1000.0]' item_duration_s:=2.0
+  test_initial_g:='[138.0,1000.0,1000.0]' item_duration_s:=2.0
 ```
 
 다른 터미널에서 위와 같은 ROS 환경·계정·비밀번호를 설정한 뒤:
@@ -52,6 +70,7 @@ ros2 launch gmp_hmi hmi_comm_test.launch.py \
 python3 ~/auto-pharmacist/ros2_ws/src/gmp_hmi/tools/verify_ros_http.py
 ```
 
+23 항목을 검사한다 — 세트 끝 NUDGE_WAIT·세트 끝 주문 예약(예약·중복 거부·예약 취소·넛지 뒤 자동 시작)·운전 중 접촉 정지·유휴 접촉 차단·원료 소진 보충 대기를 포함한다. 검증기는 세트마다 위 NUDGE 명령을 직접 낸다.
 검사 중 웹 주문을 별도로 누르지 않는다. 재검사는 새 launch에서 한다. 검사 후 기본 launch로 재시작하면 1,000 g 시연 화면이 된다.
 
 높이 부족 수동 재현:

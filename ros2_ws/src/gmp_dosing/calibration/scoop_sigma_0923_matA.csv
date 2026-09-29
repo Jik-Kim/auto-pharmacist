@@ -1,0 +1,86 @@
+# 회차 · 투입량_g · 원료면 · 비고
+# 붓기 방식 — 저울 위 용기에 부어 **회차마다 저울 1번**만 읽는다.
+#   투입량_g  붓기 직전 저울을 0 으로 맞추고(tare), 붓고 나서 읽은 값
+#             = 용기에 실제로 들어간 양. 이것이 판정 대상이다
+#   원료면    가득 | 중간 | 바닥
+# tare 를 깜빡했으면 비고에 적는다 — 누적값이 섞이면 산포가 통째로 틀린다.
+# 용기가 차면 비우고 다시 tare 한다. 비운 회차도 비고에 적는다.
+#
+# ── 측정 조건 (2026-09-23, 실측 시작 시점에 실행 중인 값을 읽어 기록) ────────
+#   vel_scale        1.0   ← ros2 param get /cell/skill_node robot.vel_scale 로 확인
+#                          스쿠핑 spline 속도 = stations.yaml velocity x vel_scale
+#                          = [250.0, 80.625] x 1.0 = DRL 검증값 그대로
+#   acceleration     [1000.0, 322.5] x 1.0
+#   execution_mode   taught_fixed  (고정 티칭 경로, depth_fraction=1.0 고정)
+#   원료             A (material_1), 전용 스쿱 scoop_1, 기대 폭 15.5 mm
+#   털기             shake_repeat 3
+#   용기_g           아래 지시자. 빈 시료통을 한 번만 정확히 재서 적는다
+#   계량             외부 저울, workbench 용기 자리. 로봇 계량값은 쓰지 않는다
+#                    (런타임 scale.gain/offset_g 가 우드락 공구 조건 값이라 미검증)
+#   공구             1.36 kg, CoG [5.31, -34.68, 8.28] mm (동결)
+#   실행 경로        실물 로봇 + ROS 2 — 시연과 같은 경로(브링업 → skill_node → Scoop·Pour 액션 → 고정 티칭 경로)
+#                    브링업: ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100 vel_scale:=1.0
+#                    1회차 (측정자 기록):
+#                      ros2 service call /cell/set_gripper gmp_interfaces/srv/SetGripper
+#                        "{close: false, width_mm: 0.0, force_n: 0.0, timeout_s: 15.0}"   그리퍼 열기
+#                      cd ros2_ws/src/gmp_dosing/calibration/records && ./scoop_run.sh setup
+#                        스쿱 파지 → 인출 → 원료통 계량 자세
+#                      ./scoop_run.sh trial   Scoop → Pour(workbench 저울 위 시료통) → 저울값 입력 → 원료통 자세 복귀
+#                    2~15회차 (9/28 측정 PC 원본으로 확인 — bash 기록 · ~/.ros/log · 파일 시각):
+#                      21:45:55 로컬 main 이 d4eeb67(#290 포함)로 ff → 21:45:59 colcon build
+#                      21:46:06 브링업 재기동 (vel_scale:=1.0)
+#                      ros2 service call /cell/set_gripper ... "{close: false, ...}"   그리퍼 열기
+#                      ./scoop_run.sh setup    21:46:44 이동 → 21:47:22 [EMPTY_SCOOP_FZ_BASELINE]
+#                                              = 스쿱 AT 에서 새로 파지했다 (**재기동 뒤 setup 을 다시 했다**)
+#                      ./scoop_run.sh trial    21:47:41 Scoop·Pour — #290 속도 확인용, 기록하지 않음 (아래)
+#                      ./scoop_run.sh run 14   21:49:01 ~ 21:59:34 Scoop·Pour 14번 → 2~15회차
+#                    「파이썬 코드로 실행」(측정자 기억)은 scoop_run.sh 가 부르는 record.py 다.
+#                      저울값·원료면을 프롬프트에 입력하면 record.py put 이 기록지에 적는다.
+#                      record.py 는 저장소 calibration/record.py 와 같은 파일이다(sha256 942aad94…).
+#                      (9/25 「파일명·명령은 못 찾았다」 → 측정 PC ros2_ws/src/gmp_dosing/calibration/records/ 에
+#                       scoop_run.sh·record.py·scoop_sigma_0924.csv 원본이 남아 있었다. 9/28 정정)
+#                    재기동 뒤 Scoop·Pour 는 15번, 기록은 14행(2~15)이다. 기록 안 된 한 번은
+#                      run 14 직전의 trial(21:47:41)이다 — run 14 가 정확히 14번 돌았고(모션 로그) 기록지가
+#                      15행에서 멈추므로, run 시작 때 빈 행이 14개(2~15)였다.
+#                    그 trial 은 #290 반영 재기동 직후 **속도 확인용**이라 버렸다(측정자 확인 9/28) — 측정 조건
+#                      확인 전 시운전이므로 **제외를 유지한다.** 저울값은 남아 있지 않다.
+#   기록 방식        총무게_g·원료면 모두 측정자가 입력했다 (15회 전부).
+#                      총무게_g = 빈 시료통 79 g + 투입된 시료, 저울값 그대로
+#                      원료면   = 원료통에 남은 시료의 양. **매 회차 원료통을 가득 채운 뒤 쟀다**
+#                               → 15회 전부 「가득」은 우연이 아니라 통제한 조건이다
+#                    1회차의 형식(158.0·원료면 공란·비고)은 record.py 출력이 아니다 — record.py 는 158 로 쓴다.
+#                      1회차는 파일에 직접 적은 것으로 보인다(record.py 최종 수정 21:43:50 은 1회차 21:39 뒤).
+#                      2~15회차는 프롬프트 입력을 record.py 가 적었다.
+#                      ~~형식 차이는 입력 도구 차이가 아니다~~ → 철회(9/28). 값 자체는 둘 다 측정자가 읽은 저울값이다.
+#                    scoop_run.sh 는 당시 records/(gitignore) 에 있었고 9/25 eb046b5 가 A/B/C 공용판으로
+#                    calibration/ 에 옮겼다. 당시판(sha256 25072e94…)은 원료 A 고정·기록지 경로 고정만 다르다.
+#                    process_node(FSM) 는 거치지 않았다.
+#   저장소           1회차 로컬 main 25e40a0(= 5b658e0 + HMI·문서 변경, skill_node 쪽 차이 없음) · 21:37:48 기동
+#                      · 21:39:08 Scoop·Pour 1번(모션 로그) · 2~15회차 #290(545ef89, 직선속도 60 → 250 mm/s) 적용 후
+#
+# ⚠️ vel_scale 을 바꾸면 채취량이 바뀐다. 다른 값으로 잰 회차를 여기 섞지 말 것.
+#
+#
+# ── 빈 시료통 무게 (여기 한 줄만 고치면 전 회차에 적용된다) ────────────
+# 용기_g: 79.0
+#   ↑ 비워두면 분석이 거부한다. 78 인지 79 인지 확정해서 적을 것.
+#   저울값(총무게_g)에서 이 값을 빼서 투입량을 낸다 — 회차마다 뺄셈하지 않는다.
+#   시료통을 바꾸면 이 값도 바꾼다.
+#
+회차,총무게_g,원료면,비고
+1,158.0,,vel_scale=1.0
+2,155,가득,
+3,153,가득,
+4,159,가득,
+5,155,가득,
+6,160,가득,
+7,160,가득,
+8,154,가득,
+9,157,가득,
+10,156,가득,
+11,155,가득,
+12,155,가득,
+13,161,가득,
+14,165,가득,
+15,166,가득,
+# 9/29 판정: 이 15회는 스쿱 손잡이에 마찰테이프가 없을 때 잰 값이다(측정자 확인 9/29). 테이프 없는 B 는 스쿠핑마다 기울어 71→96 g 으로 늘었다 — 현 구성(테이프·손잡이 폭 16.5/17.5/18.5 mm)의 대표값이 아니다. 현행은 scoop_sigma_0929_mat*.csv

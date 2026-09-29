@@ -16,26 +16,26 @@
 | DRL 이동 속도 | 관절 60°/s·100°/s², 병진 250 mm/s·1000 mm/s², 회전 80.625°/s·322.5°/s². `vel_scale`을 속도·가속도에 적용하며 1.0이면 DRL 기준값. ROS 실물 재검증 필요 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [dsr_arm.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/dsr_arm.py) |
 | 그리퍼 | 기본 백엔드 DIO. DO1/2 개폐, 약통 `DI1=1`, 스쿱 `DI1=DI2=1` 뒤 0.8초 안정, 열림 `DI1=0`. 어댑터는 DIO 폭을 `-1`로 반환하고, `process_node`가 `fingerprint_tolerance_mm=0`의 지문을 FSM에 넘겨 현재 비활성화한다 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [process_node.py](../../ros2_ws/src/gmp_process/gmp_process/nodes/process_node.py), [rg2_gripper.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/rg2_gripper.py) |
 | 안전 자가진단 | 실물 기동·복구 때 등록 툴 `tool_weight`, TCP `GripperDA_v1`, 충돌 감도 50%를 조회해 모두 일치해야 통과한다. 자동 변경하지 않는다 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [dsr_arm.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/dsr_arm.py) |
-| 공구 설정 | B CURRENT 참조: 1.36 kg · CoG `[5.31, -34.68, 8.28]` mm 동결 | [B CURRENT](../B/CURRENT.md), [PR #235](https://github.com/Jik-Kim/auto-pharmacist/pull/235) |
-| 스쿱 최소 깊이 | `dosing.min_fraction=0.10`, `scooping.A.min_fraction=0.10`. 중복 선언은 남아 있으므로 항상 함께 바꿔야 한다 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml), [#222](https://github.com/Jik-Kim/auto-pharmacist/issues/222) |
+| 공구 설정 | B CURRENT의 동결 공구 설정을 참조한다. A 문서에는 수치를 복사해 유지하지 않는다 | [B CURRENT](../B/CURRENT.md), [PR #235](https://github.com/Jik-Kim/auto-pharmacist/pull/235) |
+| 스쿱 최소 깊이 | `dosing.min_fraction`과 `scooping.A.min_fraction`은 두 yaml에서 같은 값이어야 하며, 일치는 [도징 시험](../../ros2_ws/src/gmp_dosing/test/test_dosing.py)이 강제한다 | [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml), [stations.yaml](../../ros2_ws/src/gmp_bringup/params/stations.yaml) |
 | Scoop Action 종료 코드 | 내부 시간 초과는 ABORTED, 실제 클라이언트 취소만 CANCELED | [skill_node.py](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py), [PR #236](https://github.com/Jik-Kim/auto-pharmacist/pull/236) |
 | 계량 표본 품질 | `measure_force`/`measure_workpiece` 원시 표본열을 운영 계량 경로에서 받아 `fit_oscillation()` 잔차 σ와 고주파 σ를 각각 `max_std_g`/`max_hf_std_g` 게이트에 전달 | [skill_node.py](../../ros2_ws/src/gmp_skills/gmp_skills/nodes/skill_node.py), [dsr_arm.py](../../ros2_ws/src/gmp_skills/gmp_skills/adapters/dsr_arm.py), [#208](https://github.com/Jik-Kim/auto-pharmacist/issues/208) |
 
 ## 검증 기준선
 - 9/26 #208 계량 품질 배선: `gmp_skills` 모의 시험 **490건 통과**. `gmp_process` 회귀까지 합쳐 634 passed / 2 skipped / 1 xfailed. 실물 Fz 표본의 적합 결과와 임계값 재검증은 남아 있다. [#208](https://github.com/Jik-Kim/auto-pharmacist/issues/208)
+- 9/28 호출 흐름 및 함수 74개 역할 주석 추가: 실행 AST 동일·구문 검사 통과. 동작/현행값 변경 없음. [작업 일지](2026-09-28_스킬_호출흐름_주석.md)
 - 9/23 DRL 속도 정합화: `gmp_skills` 모의 테스트 **488건 통과**. 배율 1.0/0.2에서 관절·병진·회전 명령값, 초기 속도 설정, B 계측용 기존 생성자 호출 호환성을 확인했다. 공정 그림 재생성 diff 없음. 새 속도의 ROS 실물 검증은 미수행.
 - `gmp_skills` 모의 테스트 **488건 통과**. Python 구문·YAML/XML 파싱·diff 공백 검사와 공정 다이어그램 재생성도 통과했다. [PR #290](https://github.com/Jik-Kim/auto-pharmacist/pull/290), [DRL·DIO 일지](2026-09-23_DRL_고정경로_DIO.md)
 - 사용자 제공 DRL의 핵심 플로우는 실물 검증됐지만, **ROS로 이식한 경로의 통합 기동·실물 재검증은 수행하지 않았다.** [PR #277](https://github.com/Jik-Kim/auto-pharmacist/pull/277)
 
 ## 열린 과제 (이슈 번호)
-- [#208](https://github.com/Jik-Kim/auto-pharmacist/issues/208) A 배선·설정·회귀시험은 9/26 완료. 남은 일은 B [#219](https://github.com/Jik-Kim/auto-pharmacist/issues/219) 병합과 실물 표본 재검증.
-- [#222](https://github.com/Jik-Kim/auto-pharmacist/issues/222) `min_fraction` 중복 선언 해소. 현재 두 원본은 모두 0.10으로 맞춰져 있다.
-- workbench 자세 Mx ≈ +0.9 Nm 원인, material_1/2 계량 σ·무효율 기전(B 인계분).
-- `common.yaml`의 `robot.tool_name` 옆 공구 질량·CoG 주석은 두 세대 전 값이므로 B CURRENT 동결값으로 정정 필요.
-- C 인계: 고정 Scoop의 접촉 미측정(`false/TAUGHT_FIXED`) 처리와 첫 fraction 요청 확인. 반환 후 재스쿱 및 `passbox_done → nudge_wait` 경로는 미검증. [setup](../../docs/setup.md)
+- [#208](https://github.com/Jik-Kim/auto-pharmacist/issues/208) 계량 고주파 게이트 배선 — 원시 표본과 `raw_hf_std`를 `skill_node`에서 전달하는 A 작업은 9/26 완료(배선·설정·회귀시험, PR #293). 남은 일은 B [PR #219](https://github.com/Jik-Kim/auto-pharmacist/pull/219) 병합과 실물 표본 재검증.
+- workbench 자세 모멘트와 material_1/2 계량 산포·무효율의 원인은 B 측정 분석을 참조한다. A는 실물 동선·파지 조건만 인계받는다. [B CURRENT](../B/CURRENT.md), [#187](https://github.com/Jik-Kim/auto-pharmacist/issues/187)
+- `common.yaml`의 `robot.tool_name` 옆 공구 질량·CoG 주석은 두 세대 전 값이다. 변경 근거와 동결값은 B CURRENT·PR #235를 따른다.
+- C 인계: 고정 Scoop의 접촉 미측정(`false/TAUGHT_FIXED`) 처리만 남았다([#287](https://github.com/Jik-Kim/auto-pharmacist/pull/287)). 첫 fraction 요청은 PR #289로 해소됐다. 반환 후 재스쿱 및 `passbox_done → nudge_wait` 경로는 미검증. [setup](../../docs/setup.md)
 
 ## 알려진 함정
-- 공구 자동측정 결과를 임의로 펜던트에 다시 넣지 않는다(동결). cz 89 는 철회됐다.
+- 공구 자동측정 결과를 임의로 펜던트에 다시 넣지 않는다(동결). `cz 89` 해석은 철회됐으며 근거는 [PR #235](https://github.com/Jik-Kim/auto-pharmacist/pull/235)다.
 - `calibrated=false`를 Scoop 전체 비활성으로 읽지 않는다. `execution_mode=taught_fixed`와 `fixed_path.verified=true`가 고정 경로 실행 조건이다.
 - workbench 빈 용기 진입은 EXIT Z≈330에서 하강하며, 로컬 AT→ABOVE만 Z=180이다. 둘을 같은 좌표로 가정하면 충돌 검토를 잘못한다.
 - DIO에서는 폭이 `-1`이고 파지력 명령도 적용되지 않는다. `process_node`의 지문 허용치는 0이라 `WRONG_TOOL` 폭 지문이 동작한다고 보고하면 안 된다.

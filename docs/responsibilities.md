@@ -7,7 +7,7 @@
 | `gmp_dosing` | **B 김민준** [도징] | `core/scale.py`, `core/dosing.py`, `test/` | 힘·작업물무게 → 그램(영점·보정), 이중 폐루프 도징 정책. **ROS 비의존 — 로봇 없이 pytest 로 완성한다** |
 | `gmp_process` | **C 김병직** [공정] | `nodes/process_node.py`, `core/process_fsm.py`, `core/recipe.py`, `core/deviation.py` | 레시피 실행 상태기계, 일탈 분기, 인터락, `RunBatch`/`SubmitOrder`/`QaDecision`/`InterlockRequest` 서버 |
 | `gmp_hmi` | **D 서동권** [HMI·기록] | `nodes/hmi_web_node.py`, `templates/index.html`, `nodes/record_node.py`, `core/db.py`, `config/schema.sql` | 웹 HMI(주문·상태·계량 그래프·**원격 QA 판정**·인터락·이력·감사 추적), 배치 기록 SQLite — **평가 「입출력 데이터 이해도」의 산출물** |
-| `gmp_bringup` | 조장 고희태 | `launch/cell.launch.py`, `params/*.yaml`, `params/recipes/` | real/virtual 실행, 파라미터 단일 출처, 스테이션 좌표(티칭값은 A 가 적는다). **데이터 yaml 은 파일이 여기 살 뿐 내용 담당은 따로다** — `stations.yaml` A(티칭), `recipes/*.yaml` C(스키마). 파일별 담당의 단일 출처는 `docs/interfaces.md` §4 |
+| `gmp_bringup` | 조장 고희태 | `launch/cell.launch.py`, `params/*.yaml`, `params/recipes/` | real/virtual 실행, 파라미터 단일 출처, 스테이션 좌표(티칭값은 A 가 적는다). **데이터 yaml 은 파일이 여기 살 뿐 내용 담당은 따로다** — `stations.yaml` A(티칭), `recipes/*.yaml` D(파일·값, 9/25 팀 공지 — 스키마·검증 `recipe.py` 는 C). 파일별 담당의 단일 출처는 `docs/interfaces.md` §4 |
 
 `core/` 는 ROS 비의존이므로 단위 테스트 대상이다. `nodes/`·`adapters/` 는 가상 모드·실물 테스트 대상이다.
 

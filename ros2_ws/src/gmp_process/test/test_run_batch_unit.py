@@ -398,3 +398,192 @@ def test_refill_enter_does_not_grant_on_paused_mode_alone(node):
     node.params['server_wait_s'] = 0.01
     reply = node._srv_interlock(Message(request=0, reason='REFILL'), Message())
     assert not reply.granted
+
+
+# ── 세트 끝 주문 예약 (9/28 조장 제기·사용자 결정 A안) ─────────────────────
+# 종전에는 NUDGE_WAIT 중 주문을 거부해 운영자가 「주문 → 거부 → 넛지 → 다시 주문」을 해야 했다.
+# 이제 RunBatch 는 세트 끝 구간(FINISH·폐기 반송·NUDGE_WAIT)의 주문을 **한 건 예약**하고, 직전 배치가
+# **넛지로 끝났을 때만** 시작한다 — 넛지가 곧 완성품 회수 확인이다(D-23). 그 밖의 끝(취소·안전
+# 정지·오류)이면 칸이 비었다는 근거가 없으므로 예약을 시작하지 않고 ABORTED 로 돌려준다.
+
+def _at_set_end(node, state='NUDGE_WAIT', mode='PAUSED'):
+    """배치 1 이 세트 끝에 있는 모양 — 루프가 살아 있고 슬롯을 쥐고 있다."""
+    node.fsm = NS(mode=mode, state=state, idx=0)
+    node.batch_id = 'B1'                            # 지금 배치 — 예약 사건이 이 ID 로 새면 안 된다
+    node._thread = NS(is_alive=lambda: True)
+    node._reserved = True
+    node._nudge_waiting = state == 'NUDGE_WAIT'
+    node._batch_handle = Handle()
+
+
+def _batch1_ended(node, outcome='DONE', nudged=True):
+    ended = outcome if outcome in ('DONE', 'DISCARDED', 'ABORTED') else 'ERROR'
+    node.fsm = NS(mode='DONE' if ended in ('DONE', 'DISCARDED') else 'ERROR', state=ended, idx=0)
+    node._thread = NS(is_alive=lambda: False)
+    node._reserved = False
+    node._batch_handle = None
+    node._set_next, node._batch_outcome = nudged, outcome
+
+
+def accept_queued(node, r):
+    goal = Message(recipe=r)
+    assert node._goal_batch(goal) == 1
+    h = Handle(); h.request = goal          # rclpy 는 goal_callback 에 준 요청을 handle.request 로 둔다
+    node._accept_batch(h)
+    return h
+
+
+def codes(node):
+    return [e.code for e in node.published['event']]
+
+
+def batch_of(node, code):
+    """그 코드 이벤트들이 실린 batch_id — 예약 사건은 예약 주문 ID 여야 한다 (#303 조장 리뷰 P2)."""
+    return [e.batch_id for e in node.published['event'] if e.code == code]
+
+
+@pytest.mark.parametrize('state,mode', [('NUDGE_WAIT', 'PAUSED'), ('FINISH', 'RUNNING'),
+                                        ('DISCARDED', 'RUNNING'), ('DISCARDED', 'DONE')])   # 폐기 반송: 수정 후·전
+def test_set_end_order_is_queued_not_rejected(node, state, mode):
+    _at_set_end(node, state, mode)
+    batch1 = node._batch_handle
+    h = accept_queued(node, recipe('B2'))
+    assert node._queued[1] == 'B2' and node._queued_handle is h
+    assert node._batch_handle is batch1, '예약이 실행 중 배치의 handle 을 덮으면 안 된다'
+    assert batch_of(node, 'ORDER_QUEUED') == ['B2'], '예약 사건은 B1 이 아니라 예약 주문 B2 의 기록이다'
+
+
+def test_nudge_wait_note_names_the_queued_order(node):
+    _at_set_end(node)
+    accept_queued(node, recipe('B2'))
+    assert node.note.startswith('NUDGE_WAIT —') and 'B2' in node.note, node.note   # HMI 는 앞머리로 사유를 가른다
+
+
+def test_service_and_mid_batch_orders_are_still_rejected(node):
+    _at_set_end(node)
+    reply = node._srv_submit(Message(recipe=recipe('SVC')), Message())
+    assert not reply.accepted and 'NUDGE_WAIT' in reply.message       # 서비스는 예약을 걸어 둘 곳이 없다
+    node.fsm = NS(mode='RUNNING', state='SCOOP', idx=0)
+    assert node._goal_batch(Message(recipe=recipe('B2'))) == 0       # 세트 끝이 아니면 종전대로
+
+
+def test_only_one_order_is_queued_and_it_cannot_be_overtaken(node):
+    _at_set_end(node)
+    accept_queued(node, recipe('B2'))
+    assert node._goal_batch(Message(recipe=recipe('B3'))) == 0
+    _batch1_ended(node)
+    assert node._goal_batch(Message(recipe=recipe('B3'))) == 0, '예약 주문보다 먼저 슬롯을 잡으면 안 된다'
+
+
+def test_queued_order_is_promoted_after_nudge(node):
+    _at_set_end(node)
+    h = accept_queued(node, recipe('B2'))
+    _batch1_ended(node, 'DONE', nudged=True)
+    assert node._promote_queued(h) == ''
+    assert node._batch_handle is h and node._reserved and node._reserved_recipe[1] == 'B2'
+    assert node._queued is None and node._queued_handle is None
+
+
+@pytest.mark.parametrize('outcome,nudged', [('ABORTED', False), ('ERROR', False), ('DONE', False), ('ABORTED', True)])
+def test_queued_order_is_dropped_unless_batch_ended_by_nudge(node, outcome, nudged):
+    """넛지 없이 끝났으면(취소·오류) 회수 확인이 없다 — 예약을 시작하지 않는다."""
+    _at_set_end(node)
+    h = accept_queued(node, recipe('B2'))
+    _batch1_ended(node, outcome, nudged)
+    r = node._execute_batch(h)
+    assert r.result == 'ABORTED' and not r.success and h.terminal == 'aborted', r.message
+    assert '넛지 없이' in r.message
+    assert not node._reserved and node._queued is None
+    assert batch_of(node, 'ORDER_DROPPED') == ['B2'], '시작 못 한 B2 의 종료 근거가 B1 기록에 붙으면 안 된다'
+    assert node._goal_batch(Message(recipe=recipe('B3'))) == 1, '버린 예약이 슬롯을 막으면 안 된다'
+
+
+def test_queued_order_can_be_canceled_while_batch1_still_waits(node):
+    _at_set_end(node)
+    h = accept_queued(node, recipe('B2'))
+    assert node._cancel_batch(h) == 1
+    h.is_cancel_requested = True
+    r = node._execute_batch(h)                      # 배치 1 이 아직 넛지 대기여도 바로 돌아온다
+    assert h.terminal == 'canceled' and r.result == 'ABORTED'
+    assert batch_of(node, 'ORDER_DROPPED') == ['B2'], '예약 취소도 B2 의 기록이다'
+    assert node._reserved and node._batch_handle is not h, '배치 1 의 슬롯은 그대로다'
+    assert node._queued is None
+
+
+def test_queued_order_runs_after_real_nudge_wait(node):
+    """실제 루프로: 배치 1 이 NUDGE_WAIT 에 서면 주문을 예약하고, 넛지 하나로 배치 1 종료 → 배치 2 완료."""
+    from test_process_fsm import Cell
+    cells = {'B1': Cell([40], residual=0), 'B2': Cell([40], residual=0)}   # 배치마다 새 용기·스쿱
+    real = node._dispatch
+
+    def dispatch(req):
+        if req['kind'] == 'wait_nudge':
+            return real(req)                        # 넛지 대기는 실제 노드 코드로
+        out = cells[node.batch_id](req)
+        if req['kind'] in ('weigh', 'weigh_scoop'):
+            out.update(tare_g=req.get('tare_g', 0.0), net_g=out['gross_g'] - req.get('tare_g', 0.0),
+                       std_g=0.0, samples=4, station='workbench')
+        return out
+    node._dispatch = dispatch
+    h1 = accept(node)
+    pool = ThreadPoolExecutor(2)
+    try:
+        f1 = pool.submit(node._execute_batch, h1)
+        deadline = time.monotonic() + 5
+        while not node._nudge_waiting and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert node._nudge_waiting and node.fsm.state == 'NUDGE_WAIT', (node.fsm.state, node.note)
+        h2 = accept_queued(node, recipe('B2'))
+        f2 = pool.submit(node._execute_batch, h2)
+        time.sleep(0.3)
+        assert not f2.done() and node.fsm.state == 'NUDGE_WAIT', '넛지 전에는 시작하지 않는다'
+        node._on_event(Message(code='NUDGE'))
+        r1 = f1.result(5)
+        deadline = time.monotonic() + 5              # 배치 2 도 세트 끝에서 다시 넛지를 기다린다
+        while not (node.batch_id == 'B2' and node._nudge_waiting) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert node.batch_id == 'B2' and node._nudge_waiting, (node.batch_id, node.fsm.state)
+        node._on_event(Message(code='NUDGE'))
+        r2 = f2.result(5)
+    finally:
+        node._stop.set()                            # 단언이 깨져도 넛지 대기에 걸린 스레드를 푼다
+        pool.shutdown(wait=True)
+    assert (r1.result, r2.result) == ('DONE', 'DONE'), (r1.message, r2.message)
+    assert h1.terminal == h2.terminal == 'succeeded'
+    assert h2.feedback and all(f.state.batch_id == 'B2' for f in h2.feedback)
+    assert any('예약 주문 B2 시작' in e.text for e in node.published['event'] if e.code == 'SET_NEXT')
+    assert batch_of(node, 'SET_NEXT')[0] == 'B1', 'SET_NEXT 는 B1 세트가 끝났다는 B1 의 사건이다'
+    assert batch_of(node, 'ORDER_QUEUED') == ['B2']
+    assert not node._reserved and node._queued is None
+
+
+# ── 원료별 1회량 배선 (#313) ────────────────────────────────────────────
+STATIONS = PKG.parent / 'gmp_bringup' / 'params' / 'stations.yaml'
+
+
+def _node_with_nominals(module, **by_material):
+    return module.ProcessNode(parameter_overrides=[NS(name='stations_file', value=str(STATIONS))] + [
+        NS(name=f'dosing.scoop_nominal.{m}', value=g) for m, g in by_material.items()])
+
+
+def test_원료별_1회량_파라미터가_도징_설정까지_간다(module):
+    """common.yaml `dosing.scoop_nominal: {A: …}` 는 `dosing.scoop_nominal.A` 로 풀린다. 그 값이
+    `DosingConfig.scoop_nominal_by_material` 에 들어가야 FSM 이 원료별로 판정한다."""
+    n = _node_with_nominals(module, A=69.0, B=57.0, C=69.0)
+    assert n.dosing_cfg.scoop_nominal_by_material == {'A': 69.0, 'B': 57.0, 'C': 69.0}
+
+
+def test_원료별_1회량이_없으면_종전처럼_공통값_하나다(module):
+    n = _node_with_nominals(module)
+    assert n.dosing_cfg.scoop_nominal_by_material == {}
+    assert n.dosing_cfg.for_material('B') is n.dosing_cfg
+
+
+def test_원료별_1회량이_빠진_원료의_주문은_접수_때_거부한다(module):
+    """배치 중간 KeyError 로 서는 것보다 주문 거부가 낫다 — 원료 스테이션 검사와 같은 자리다."""
+    n = _node_with_nominals(module, A=69.0, B=57.0)
+    bad = Message(batch_id='NOC', product='t', items=[Message(material_id='C', target_g=69.0, tol_pct=10.0)])
+    assert n._goal_batch(Message(recipe=bad)) == 0
+    assert not n._reserved
+    ok = Message(batch_id='OKB', product='t', items=[Message(material_id='B', target_g=57.0, tol_pct=10.0)])
+    assert n._goal_batch(Message(recipe=ok)) == 1

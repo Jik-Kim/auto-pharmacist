@@ -143,3 +143,63 @@ def test_restart_persists_readonly_and_never_resumes(app_db, node, backend):
     assert not node.act_batch.calls
     db.finish_batch('B1', 5, 'ERROR')
     assert reader.restart_records()==[]
+
+
+def set_end(batch='B1', step='NUDGE_WAIT', mode=2):
+    s = state(batch, mode)
+    s.step = step
+    s.note = 'NUDGE_WAIT — 세트 완료, 건드리면 다음 세트' if step == 'NUDGE_WAIT' else ''
+    return s
+
+
+def queue_goal(node):
+    goal = PendingGoal()
+    accepted = Future(); accepted.set_result(goal)
+    node.act_batch.send_goal_async = lambda *a, **k: accepted
+    assert node.submit('demo_batch', 'admin').accepted
+    return goal, node.snapshot()['batch_control']['queued']['batch_id']
+
+
+def test_set_end_order_is_queued_apart_from_running_goal_then_promoted(node):
+    """계약 v1.9 — 세트 끝 주문은 진행 배치 handle·목표선을 건드리지 않고 예약 칸에 둔다."""
+    from gmp_hmi.nodes.hmi_web_node import order_queueable
+    first = own_goal(node)
+    node._on_state(set_end())
+    second, queued_id = queue_goal(node)
+    control = node.snapshot()['batch_control']
+    assert control['queued'] == dict(batch_id=queued_id, accepted=True, cancel_state='', can_cancel=True)
+    assert node._batch_handle is first and node._batch_id == 'B1' and control['can_cancel']
+    assert node.snapshot()['active_recipe']['product'] == '레시피 1'   # 예약 주문이 목표선을 가로채지 않는다
+    with pytest.raises(RuntimeError, match='이미 예약'):
+        node.submit('demo_batch', 'admin')
+    first.result.set_result(NS(result=NS(success=True, items_done=2, deviations=0, result='DONE', message='done')))
+    assert node._batch_handle is None and node.snapshot()['batch_control']['queued']['batch_id'] == queued_id
+    node._on_state(state(queued_id))            # 넛지 뒤 공정이 예약 주문을 시작했다
+    control = node.snapshot()['batch_control']
+    assert control['queued'] is None and node._batch_handle is second and control['can_cancel']
+    assert node.snapshot()['active_recipe']['product'] == 'DEMO-01'
+    # 끝난 배치의 DONE/DISCARDED 는 예약이 아니라 보통 주문이다.
+    assert not order_queueable(dict(step='DISCARDED', mode='DONE'))
+    assert order_queueable(dict(step='DISCARDED', mode='RUNNING')) and order_queueable(dict(step='FINISH', mode='RUNNING'))
+    # 세트 끝이어도 인터락 ENTER·접촉 정지 중이면 C 가 거부한다 — NUDGE_WAIT 자체의 정지만 허용.
+    assert order_queueable(dict(step='NUDGE_WAIT', mode='PAUSED', pause_reason='SET_COMPLETE'))
+    assert not order_queueable(dict(step='NUDGE_WAIT', mode='PAUSED', pause_reason='INTERLOCK'))
+    assert not order_queueable(dict(step='FINISH', mode='PAUSED', pause_reason='NUDGE'))
+
+
+def test_queued_cancel_and_drop_leave_running_goal_alone(node):
+    first = own_goal(node)
+    node._on_state(set_end('B1', 'FINISH', 1))
+    second, queued_id = queue_goal(node)
+    assert node.cancel_batch(queued_id, True, 'admin', timeout_s=0) is None
+    assert node.snapshot()['batch_control']['queued']['cancel_state'] == 'pending'
+    assert node._batch_cancel_state == '' and second.cancel_count == 1 and first.cancel_count == 0
+    second.cancel.set_result(NS(return_code=0, goals_canceling=[NS(goal_id=second.goal_id)]))
+    assert node.snapshot()['batch_control']['queued']['cancel_state'] == 'accepted'
+    second.result.set_result(NS(result=NS(success=False, items_done=0, deviations=0, result='ABORTED',
+                                          message='예약 주문 취소 요청')))
+    control = node.snapshot()['batch_control']
+    assert control['queued'] is None and node._batch_handle is first and control['can_cancel']
+    assert 'run_batch' not in node.snapshot() or node.snapshot()['run_batch'].get('result') != 'ABORTED'
+    # 시작 못 한 예약의 사유를 잠깐 보여 준다 — 운영자가 왜 시작 안 됐는지 바로 안다.
+    assert control['queued_dropped'] == dict(batch_id=queued_id, result='ABORTED', message='예약 주문 취소 요청')

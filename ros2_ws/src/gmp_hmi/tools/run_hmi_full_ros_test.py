@@ -69,7 +69,7 @@ def start_launch(env, duration):
         "ros2", "launch", "gmp_hmi", "hmi_comm_test.launch.py",
         "scenario:=normal",
         f"item_duration_s:={duration}",
-        "test_initial_g:=[170.0,1000.0,1000.0]",
+        "test_initial_g:=[138.0,1000.0,1000.0]",
     ]
     process = subprocess.Popen(command, env=env, start_new_session=True)
     opener = build_opener(ProxyHandler({}))
@@ -130,7 +130,8 @@ def manual_runbatch_and_popup(password):
     check.wait("RUNNING 재개", lambda: check.mode("RUNNING", batch_id))
     print("PASS  6/8 Interlock EXIT → RunBatch 재개 · 팝업 해제", flush=True)
 
-    check.wait("DONE", lambda: check.mode("DONE", batch_id), timeout=90)
+    # 세트 끝 NUDGE_WAIT — 사람이 로봇을 건드려야 끝난다 (D-23). 여기서는 NUDGE 이벤트로 대신한다.
+    check.finish_set(batch_id)
     result = check.wait("RunBatch Result", lambda:
         (lambda rb: rb if rb.get("status") == "FINISHED" else None)(
             check.guard().get("run_batch", {})), timeout=20)
