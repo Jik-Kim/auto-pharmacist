@@ -100,7 +100,7 @@ ReturnMaterial 자체는 여전히 반환 끝에서 종료하며, 수납 없이 
 
 ## 9/29 현장 통합 현행값
 
-- 계량 경로별 gain: 용기 1.0975, 스쿱 0.983. settle_s=1.0, samples=20, period_s=0.82. 10초 안정화가 아니다. [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml)
+- 계량 경로별 gain: 용기 1.0975, 스쿱 0.983. settle_s=10.0, samples=20, period_s=0.82. 1초 설정 기록은 사용자 지시 누락으로 철회하며 실제 공정도 10초를 사용한다. [common.yaml](../../ros2_ws/src/gmp_bringup/params/common.yaml)
 - 사인 적합 가드는 apply_ratio=0.50 유지. 도징 알고리즘 원본은 [scale.py](../../ros2_ws/src/gmp_dosing/gmp_dosing/core/scale.py)를 따른다.
 - 붓기 후 잔량 계량 제거·추정 투입량 누적·최종 용기 검증 유지: [공정 문서](../../docs/process_flow.md).
 - 반환 후 수납은 구현·모의 검증 완료, 실물 미검증. 실행 중 노드에는 재시작 후 적용된다. 자동 CLEANUP 연결 제약과 검증 결과는 [일지](2026-09-29_현장통합_반환수납.md) 참조.

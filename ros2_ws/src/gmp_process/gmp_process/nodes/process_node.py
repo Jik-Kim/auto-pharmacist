@@ -91,7 +91,7 @@ class ProcessNode(Node):
             # 선언 기본값은 운영값(common.yaml)과 같게 둔다 — 종전 0.5 는 운영 0.1 과 달라, 런치 없이 띄운
             # 노드가 운영보다 5배 느슨한 검사로 돌았다 (D-35 대조, 9/25 팀장 지적).
             ('scale.zero_drift_limit_n', 0.1),
-            ('scale.samples', 20), ('scale.settle_s', 1.0),
+            ('scale.samples', 20), ('scale.settle_s', 10.0),
             # max_attempts 는 **붓기 시도** 상한이다. 목표량÷스쿱 1회량에 비례해야 한다
             # (옛 데모 A 200 g ÷ 40 g = 5회가 하한이었다). max_returns 는 **초과 반환** 상한으로 성격이 다르다 (#189).
             ('dosing.max_attempts', 8), ('dosing.max_returns', 3),
