@@ -476,9 +476,12 @@ class SkillNode(Node):
 
     def _srv_restore_grip(self, req, res):
         # 센서 조회와 이력 갱신은 DSR 단일 워커에서만 실행한다.
-        job = self.execution.runtime._submit('restore_grip')
+        job = self.execution.runtime._submit(
+            'restore_grip', expected_payload=req.expected_payload,
+            expected_material_id=req.expected_material_id)
         res.success = not job.error and not job.cancel
         res.payload, res.material_id = ('unknown', '') if not res.success else job.result
+        res.scoop_extracted = res.success and res.payload == 'scoop'
         res.message = job.error or ('파지 상태 복구 완료' if res.success else '복구 취소')
         return res
 

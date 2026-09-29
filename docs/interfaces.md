@@ -47,7 +47,7 @@
 | `srv/InterlockRequest` | HMI → process → skill. `ENTER`(사람 투입) / `EXIT`(재개) | `ENTER` 는 로봇이 안전 자세에 **도달한 뒤** `granted=true` |
 | `srv/SetGripper` | process → skill. 열기/닫기와 폭·힘 설정 | `/cell/set_gripper`. 응답에 정지 폭과 파지 추론 |
 | `srv/MeasureForce` | process → skill. 정지 상태 외력 평균 | 로봇이 움직이는 중이면 `valid=false` |
-| `srv/RestoreGrip` | process → skill. `/cell/restore_grip` | 빈 요청 → `success`, `payload`, `material_id`, `message`. 센서 확인 후 상태만 복구 |
+| `srv/RestoreGrip` | process → skill. `/cell/restore_grip` | `expected_payload`, `expected_material_id` → `success`, `payload`, `material_id`, `scoop_extracted`, `message`. 센서 확인 후 상태만 복구 |
 | `srv/SafePose` | process → skill. 안전 자세로 후퇴 | 인터락·에러 공통 |
 | `srv/RecoverSafety` | HMI → process → skill. 안전 정지 복구 | A `/cell/recover_safety`. C 중계 서비스 `/cell/request_safety_recovery` 구현 완료(process_node, 9/20). D의 단일 복구 요청 버튼도 구현됐으며 실제 C/A·실물 연동 검증은 별도 |
 | `action/MoveToStation` | 스테이션 이동 (`ABOVE` 접근점 / `AT` 작업점) | 좌표는 `stations.yaml` 단일 출처 |
@@ -114,7 +114,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `InterlockRequest` | HMI → process | `request`(`ENTER/EXIT`), `reason` → `granted`, `message`. ENTER는 안전 자세 도달 뒤 승인한다 |
 | `SetGripper` | process → skill | `close`, `width_mm`, `force_n`, `timeout_s` → `success`, 실제 정지 폭 `final_width_mm`, `grip_inferred`(modbus는 grip 비트, virtual은 폭 추론, dio는 DI 완료 확인), `message` |
 | `MeasureForce` | process → skill | `samples`, `settle_s` → `force[6]`, `fz_mean_n`, `fz_std_n`, `valid`, `message`. `force`는 `get_tool_force(DR_BASE)`의 tool 외력 wrench `[Fx,Fy,Fz,Mx,My,Mz]`; 앞 3개는 N, 뒤 3개는 N·m이며 관절 토크가 아니다. 작용점은 컨트롤러의 설정 tool/TCP 기준으로 사용하고 실물 G1에서 확인한다 |
-| `RestoreGrip` | process → skill | 빈 요청 → `success`, `payload`(empty/cup/scoop, 실패 unknown), `material_id`(scoop만), `message` |
+| `RestoreGrip` | process → skill | `expected_payload`, `expected_material_id` → `success`, `payload`(empty/cup/scoop, 실패 unknown), `material_id`(scoop만), `scoop_extracted`, `message` |
 | `SafePose` | process → skill | `reason` → `success`, `message`. 인터락·오류 시 공통 안전 자세로 후퇴한다 |
 
 액션은 긴 동작 중 Feedback을 여러 번 보내고 종료 시 Result를 한 번 보낸다.
@@ -311,3 +311,5 @@ A 워커는 작업 전·유휴·이동/계량 취소 확인 구간에서 상태�
 - RestoreGrip 성공은 파지 상태의 확인이며 개별 경로·배치의 완주 보장은 아닙니다. 실물 복구 시험은 별도입니다.
 
 복합 `carry` 중단은 출발지부터 재실행할 경우 중복 파지가 가능하므로 EXIT 자동 재개를 거부합니다. 복합 동작의 단계별 복구는 별도 후속 범위입니다.
+
+**9/29 C 후속 검토 반영(사용자 수정 승인):** 기대값은 `empty/cup/scoop`이며 scoop에는 기대 원료가 필수입니다. 불일치·잘못된 요청은 상태 반영 전에 거부합니다. 기대값 두 필드가 모두 빈 문자열이면 기존 C 호출처럼 A의 저장 이력과 센서로 판단합니다. `scoop_extracted`는 성공한 scoop 복구에서만 true이며, 안전 자세 완료와 중단 전 인출 이력에 근거합니다(추가 인출 센서/동작 없음). C는 이송 단계에 맞는 기대값 전달과 단계별 재개를 후속 연결해야 합니다. ROS 타입이 바뀌므로 관련 노드를 함께 재빌드해야 합니다.

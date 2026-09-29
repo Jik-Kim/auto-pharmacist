@@ -77,3 +77,53 @@ def test_safe_request_saves_candidate_before_cancel(setup):
     assert result.success and node._current.cancel
     assert node._resume_grip['payload'] == 'cup'
     assert not node._resume_grip_ready
+
+
+@pytest.mark.parametrize('payload,material,valid', [
+    ('cup', '', True), ('empty', '', False), ('unknown', '', False),
+    ('scoop', '', False), ('cup', 'A', False), ('', 'A', False),
+])
+def test_expected_payload_is_checked_before_commit(setup, payload, material, valid):
+    node, module, sensor = setup
+    node._resume_grip['payload'] = 'cup'
+    node._held_payload = 'unknown'
+    sensor['grip_inferred'] = True
+    job = module.Job('restore_grip', dict(expected_payload=payload, expected_material_id=material))
+    if valid:
+        assert node._do_restore_grip(job) == ('cup', '')
+    else:
+        with pytest.raises(RuntimeError):
+            node._do_restore_grip(job)
+        assert node._held_payload == 'unknown'
+
+
+@pytest.mark.parametrize('material,valid', [('A', True), ('B', False)])
+def test_expected_scoop_material_must_match_history(setup, material, valid):
+    node, module, sensor = setup
+    node._resume_grip.update(payload='scoop', material_id='A')
+    sensor['grip_inferred'] = True
+    job = module.Job('restore_grip', dict(expected_payload='scoop', expected_material_id=material))
+    if valid:
+        assert node._do_restore_grip(job) == ('scoop', 'A')
+    else:
+        with pytest.raises(RuntimeError, match='기대 파지/원료'):
+            node._do_restore_grip(job)
+
+
+@pytest.mark.parametrize('payload,error,canceled,extracted', [
+    ('scoop', '', False, True), ('cup', '', False, False),
+    ('scoop', '센서 불일치', False, False), ('scoop', '', True, False),
+])
+def test_service_forwards_expectation_and_reports_extraction(setup, payload, error, canceled, extracted):
+    node, module, _ = setup
+    def submit(kind, **args):
+        assert kind == 'restore_grip'
+        assert args == dict(expected_payload='scoop', expected_material_id='A')
+        return NS(error=error, cancel=canceled, result=(payload, 'A' if payload == 'scoop' else ''))
+    node._submit = submit
+    res = module.SkillNode._srv_restore_grip(
+        node, NS(expected_payload='scoop', expected_material_id='A'), NS())
+    assert res.scoop_extracted == extracted
+    assert res.success == (not error and not canceled)
+    if not res.success:
+        assert res.payload == 'unknown' and res.material_id == ''

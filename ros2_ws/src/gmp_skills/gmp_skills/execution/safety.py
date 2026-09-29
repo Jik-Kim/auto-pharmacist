@@ -210,6 +210,12 @@ class SafetyController:
         """안전 자세에서 개폐 없이 파지 이력을 복구한다. 불명확한 물체는 거부한다."""
         state = self.ctx.state
         saved = state.resume_grip
+        requested = job.args.get('expected_payload', '')
+        material = job.args.get('expected_material_id', '')
+        if requested not in ('', 'empty', 'cup', 'scoop'):
+            raise RuntimeError('잘못된 기대 파지 상태')
+        if (requested == 'scoop' and not material) or (requested != 'scoop' and material):
+            raise RuntimeError('기대 원료는 scoop 기대 시에만 필수다')
         if not state.resume_grip_ready or saved is None:
             raise RuntimeError('안전 자세 완료 및 중단 전 파지 이력이 필요하다')
         if not saved['resumable'] or saved['pending'] or saved['uncertain']:
@@ -244,6 +250,8 @@ class SafetyController:
                     raise RuntimeError('스쿱 원료 이력 없음 — 자동 재개 불가')
         else:
             raise RuntimeError('센서와 중단 전 파지 이력이 불일치한다. 물체 확인이 필요하다')
+        if requested and (payload != requested or material_id != material):
+            raise RuntimeError('C의 기대 파지/원료와 복구 상태가 불일치한다')
         with state.job_lock:
             if job.cancel or state.stopping.is_set() or state.safety_latched or revision != state.safety_revision:
                 raise RuntimeError('파지 복구 중 취소/안전 상태 변경 — 재개 불가')
