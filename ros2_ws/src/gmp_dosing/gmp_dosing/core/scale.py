@@ -99,7 +99,7 @@ class ScaleConfig:
     method: str = 'tool_force'       # tool_force | workpiece — 9/21 재측정은 tool_force 로 했다 (workpiece 는 결론 미정)
     gain: float = 1.0                # 실제 저울 대비 선형 보정 — 보정 전 중립값. 값은 common.yaml 이 넣는다 (9/21 실측 1.03)
     offset_g: float = 0.0            # **method 에 종속** — 기본값 0(미보정). 세션마다 ±5 g 움직이지만 tare 가 소거한다 (scale_reference.yaml)
-    max_std_g: float = 8.0           # reading()에서 측정의 유효 여부를 판정할 때 사용하는 표준편차 상한값
+    max_std_g: float = 8.0           # **정확도** 게이트. fit_oscillation 의 residual_std 와 비교한다 (적합 전 표본 σ 가 아니다)
     max_hf_std_g: float = 9.5        # **무결성** 게이트 — 재는 중 하중이 바뀌면 고주파가 튄다. 0 이면 끔.
                                      # 9/22 실측 분리: 오염 10.57·12.26·26.45 vs 양성 최대 8.54 (양성 15건·오염 3건)
     fz_sign: float = -1.0            # Fz 부호 — 아래 하중이 +Fz 로 읽혀 뒤집는다 (9/21 material_3 에서 재확인)
