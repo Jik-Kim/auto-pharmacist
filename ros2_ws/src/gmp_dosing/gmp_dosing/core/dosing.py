@@ -12,13 +12,13 @@ decide() 는 상태를 갖지 않는다. 이력은 호출자(process_fsm)가 넘
             (계약 v1.5 `Scoop.depth_fraction`). process_fsm 이 `_scoop(d.fraction)` 으로 넘긴다.
   DEVIATION 초과(OVERFILL) 또는 시도 상한(TIMEOUT) 또는 계량 무효 반복(WEIGH_INVALID)
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 
 @dataclass
 class DosingConfig:
     max_attempts: int = 3
-    scoop_nominal_g: float = 85.0     # 스쿱 1회 퍼올림 평균 (9/23 조장 결정, 종전 9/18 실측 40.0)
+    scoop_nominal_g: float = 69.0     # 원료별 값이 없을 때의 공통 1회량 = A·C 값 (9/29). ~~79.0 (D-35)~~ 은 테이프 없는 측정이라 무효
     min_fraction: float = 0.10        # 담그기 깊이 비율의 하한 (계약 v1.5). 이보다 얕게는 제어가 안 된다
                                       # ⚠️ 교착 조건 min_fraction × scoop_nominal_g ≤ 2 × target × tol 을
                                       #    지켜야 한다. common.yaml 주석과 test_dosing 의 단언 참조
@@ -32,6 +32,32 @@ class DosingConfig:
     max_invalid_retries: int = 2      # 계량 무효 시 **다시 재는** 횟수. 최초 측정은 여기 안 든다 —
                                       # 총 측정은 이 값 + 1 이다 (#213 결정 1). 종전 이름 max_invalid 는
                                       # 「무효 결과 총 횟수」였는데 읽는 사람마다 다르게 세었다.
+    scoop_nominal_by_material: dict = field(default_factory=dict, kw_only=True)
+    """원료별 스쿱 1회 투입량 [g] — 비어 있으면 모든 원료가 `scoop_nominal_g` 하나를 쓴다(종전 동작).
+
+    9/29 실측(현 구성: 마찰테이프·손잡이 16.5/17.5/18.5 mm)에서 원료통 B 만 경사·높이가 달라
+    A 69 · B 57 · C 67 g 이 나왔고 조장이 **A·C 묶음 / B 별도**로 정했다. 값을 채우면
+    `for_material()` 이 그 원료 값으로 바꾼 설정을 낸다 — `decide()` 는 설정만 받으므로 손대지 않는다.
+    """
+
+    def __post_init__(self):
+        for mid, g in self.scoop_nominal_by_material.items():
+            if not isinstance(mid, str) or not mid or isinstance(g, bool) or not isinstance(g, (int, float)) \
+                    or not g > 0 or g == float('inf'):
+                raise ValueError(f'scoop_nominal_by_material 은 원료 ID → 유한한 양수 [g] 이어야 한다: {mid!r}: {g!r}')
+
+    def for_material(self, material_id: str) -> 'DosingConfig':
+        """그 원료의 1회량을 `scoop_nominal_g` 에 넣은 설정. 원료별 값이 없으면 자기 자신.
+
+        원료별 값을 채웠는데 그 원료가 없으면 **예외**다 — 조용히 `scoop_nominal_g` 로 떨어지면
+        B 가 A 값으로 깊이·보충을 판정해 틀린 채로 돈다(9/29 에 B 는 A 보다 12 g 적다).
+        """
+        if not self.scoop_nominal_by_material:
+            return self
+        if material_id not in self.scoop_nominal_by_material:
+            raise KeyError(f'원료 {material_id!r} 의 스쿱 1회량이 없다 — '
+                           f'있는 원료: {sorted(self.scoop_nominal_by_material)}')
+        return replace(self, scoop_nominal_g=float(self.scoop_nominal_by_material[material_id]))
 
 
 @dataclass

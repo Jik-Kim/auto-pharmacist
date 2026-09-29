@@ -36,12 +36,16 @@ def _start(context):
     recipes_dir = os.path.dirname(os.path.realpath(os.path.join(recipes_dir, 'recipe-01.yaml')))
     return [
         LogInfo(msg='[ROS 통신 시험] 실제 로봇 연결 없음 · http://127.0.0.1:5002 · DB: ' + db_path),
+        # 시험 공정도 실제처럼 세트 끝 NUDGE_WAIT 에서 사람 접촉을 기다린다 (D-23).
+        LogInfo(msg='[ROS 통신 시험] 사람 접촉(NUDGE) 대역: ros2 topic pub --once -w 3 /hmi_test/event '
+                    'gmp_interfaces/msg/CellEvent "{level: 0, code: NUDGE, text: manual}"'),
         Node(package='gmp_hmi', executable='record_node', namespace=namespace,
              output='screen', parameters=[{'db_path': db_path, 'export_dir': test_dir}]),
         Node(package='gmp_hmi', executable='hmi_test_process', namespace=namespace,
              output='screen', parameters=[{'scenario': scenario, 'item_duration_s': duration,
-                          # SOT D-33 한 스쿱 85 g. 시험 사이클 수를 운영 기준과 맞춘다.
-                          'test_scoop_nominal_g': 85.0,
+                          # 원료별 한 스쿱 A·C 69 / B 57 g(#306). 시험 사이클 수를 운영 기준과 맞춘다.
+                          'test_scoop_nominal_g': 69.0,
+                          'test_scoop_nominal_by_material_g': [69.0, 57.0, 69.0],
                           'test_material_ids': ['A', 'B', 'C'],
                           'test_capacity_g': [1000.0, 1000.0, 1000.0],
                           'test_initial_g': [float(value) for value in initial]}]),

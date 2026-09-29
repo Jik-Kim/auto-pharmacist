@@ -19,7 +19,7 @@ from gmp_interfaces.action import RunBatch
 from gmp_interfaces.msg import CellState, Deviation, Recipe, RecipeItem
 from gmp_interfaces.srv import QaDecision, SubmitOrder
 from gmp_process.nodes.process_node import ProcessNode
-from fake_skill_node import FakeSkillNode
+from fake_skill_node import NOMINAL_SCOOP_G, FakeSkillNode
 from test_process_node import Collector
 
 pytestmark = pytest.mark.skipif(os.environ.get('ROS_DOMAIN_ID') != '88', reason='DOMAIN 88 전용 시험')
@@ -48,7 +48,10 @@ def rig():
     proc=ProcessNode(parameter_overrides=[
         Parameter('stations_file',value=str(STATIONS)),Parameter('scale.samples',value=4),
         Parameter('scale.settle_s',value=0.0),Parameter('server_wait_s',value=5.0),
-        Parameter('skill_timeout_s',value=8.0)])
+        Parameter('skill_timeout_s',value=8.0),
+        # 선언 기본값이 운영값(D-35)으로 바뀌어도 가짜 스킬 노드의 공칭 40 g 과 짝을 유지한다 (9/25)
+        Parameter('dosing.scoop_nominal_g',value=NOMINAL_SCOOP_G),
+        Parameter('dosing.min_fraction',value=0.15),Parameter('scale.zero_drift_limit_n',value=0.5)])
     fake=FakeSkillNode(); probe=Collector()
     executor=MultiThreadedExecutor(num_threads=8)
     for n in (proc,fake,probe):executor.add_node(n)
@@ -119,6 +122,50 @@ def test_cancel_set_boundary_nudge_wait(rig):
     reply=result(goal.get_result_async())
     assert reply.result.result=='ABORTED' and not reply.result.success
     wait_until(lambda: any(s.mode==CellState.ERROR for s in probe.states))
+
+
+def _fresh_cell(fake):
+    """가짜 셀을 다음 배치 상태로 — 첫 배치의 용기 내용물이 남으면 계량이 어긋난다 (test_process_node 와 같다)."""
+    with fake.lock:
+        fake.in_cup, fake.held = 0.0, None
+        fake.content.clear()
+
+
+def test_order_during_nudge_wait_is_queued_and_starts_on_nudge(rig):
+    """9/28 A안: 세트 끝 대기 중 주문은 거부하지 않고 예약한다. 넛지 하나로 배치 1 이 끝나고 예약이 시작된다."""
+    proc,fake,probe,send,feedback=rig
+    fake.attendant=False
+    first=send('ROS-Q1');assert first.accepted
+    wait_until(lambda: proc._nudge_waiting,60)
+    second=send('ROS-Q2');assert second.accepted,'세트 끝 주문은 예약된다'
+    wait_until(lambda: any(e.code=='ORDER_QUEUED' for e in probe.events))
+    assert [e.batch_id for e in probe.events if e.code=='ORDER_QUEUED']==['ROS-Q2'],'예약 사건은 예약 주문의 기록이다'
+    time.sleep(.3)
+    assert proc.fsm.state=='NUDGE_WAIT' and proc.batch_id=='ROS-Q1','넛지 전에는 시작하지 않는다'
+    assert 'ROS-Q2' in proc.note
+    _fresh_cell(fake)
+    fake.attendant=True                      # 배치 1 대기를 풀고, 배치 2 의 세트 끝도 건드려 준다
+    assert result(first.get_result_async(),60).result.result=='DONE'
+    reply=result(second.get_result_async(),60)
+    assert reply.status==GoalStatus.STATUS_SUCCEEDED and reply.result.result=='DONE'
+    assert any(e.code=='SET_NEXT' and e.batch_id=='ROS-Q1' and 'ROS-Q2' in e.text for e in probe.events)
+
+
+def test_cancel_at_nudge_wait_drops_the_queued_order(rig):
+    """넛지 없이 끝난 세트(취소)는 회수 확인이 없다 — 예약 주문은 시작하지 않고 ABORTED 로 돌려준다."""
+    proc,fake,probe,send,feedback=rig
+    fake.attendant=False
+    first=send('ROS-C1');assert first.accepted
+    wait_until(lambda: proc._nudge_waiting,60)
+    second=send('ROS-C2');assert second.accepted
+    assert result(first.cancel_goal_async()).goals_canceling
+    assert result(first.get_result_async()).result.result=='ABORTED'
+    reply=result(second.get_result_async())
+    assert reply.status==GoalStatus.STATUS_ABORTED and reply.result.result=='ABORTED'
+    assert '넛지 없이' in reply.result.message
+    assert proc.batch_id=='ROS-C1' and not any(c.startswith('move:') and 'ROS-C2' in c for c in fake.calls)
+    wait_until(lambda: any(e.code=='ORDER_DROPPED' for e in probe.events))
+    assert [e.batch_id for e in probe.events if e.code=='ORDER_DROPPED']==['ROS-C2'],'시작 못 한 예약의 근거는 그 주문 기록에'
 
 
 def test_qa_discard_returns_discarded(rig):

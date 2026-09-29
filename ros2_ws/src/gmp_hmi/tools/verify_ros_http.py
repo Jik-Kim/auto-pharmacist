@@ -3,9 +3,13 @@
 
 외부망/실제 /cell 조작을 막기 위해 loopback:5002, /hmi_test 및 시험 노드만 허용.
 관리자 비밀번호는 GMP_HMI_ADMIN_PASSWORD 환경변수로만 입력한다. 로그에는 출력하지 않는다.
-검증용 새 launch: test_initial_g:='[170.0,1000.0,1000.0]' item_duration_s:=2.0
-만충 용량은 1,000g이며 최초 A만 170g으로 시작하여 실제 부족 차단을 재현한다
-(recipe-01 이 A 85g 을 쓰면 85g 이 남아 recipe-02 의 A 170g 을 못 채운다).
+검증용 새 launch: test_initial_g:='[138.0,1000.0,1000.0]' item_duration_s:=2.0
+만충 용량은 1,000g이며 최초 A만 138g으로 시작하여 실제 부족 차단을 재현한다
+(recipe-01 이 A 69g 을 쓰면 69g 이 남아 recipe-02 의 A 138g 을 못 채운다).
+시험 공정은 실제 공정처럼 세트 끝 NUDGE_WAIT 에서 사람 접촉을 기다린다. 검증기는
+skill_node 대신 /hmi_test/event 에 code='NUDGE' 를 한 번씩 발행한다 (구독 3개 확인 후 1회).
+세트 끝(반송·NUDGE_WAIT)의 주문은 계약 v1.9 대로 1건 예약된다 — 예약·중복 거부·예약 취소(ORDER_DROPPED)와
+넛지 뒤 예약 주문 자동 시작을 확인한다.
 """
 import argparse
 import http.cookiejar
@@ -124,7 +128,7 @@ class RosHttpCheck:
 
     def direct_order_rejected(self, requirements=None):
         # HMI를 우회해도 같은 공정 재고/높이 차단이 적용되어야 한다.
-        requirements = requirements or {'A':170.0,'B':85.0}
+        requirements = requirements or {'A':138.0,'B':57.0}
         data={'recipe':{'product':'BYPASS_TEST','items':[
             {'material_id':mid,'target_g':float(amount),'tol_pct':10.0}
             for mid,amount in requirements.items()]}}
@@ -180,6 +184,21 @@ class RosHttpCheck:
     def mode(self,want,batch=None):
         state=self.guard().get('state',{})
         return state if state.get('mode')==want and (batch is None or state.get('batch_id')==batch) else None
+    def nudge(self):
+        # skill_node 대역 — 사람이 로봇을 건드렸다. 구독자 3개(시험 공정·HMI·기록)가 붙은 뒤 한 번만 낸다.
+        # 두 번 가면 토글이 되돌아가므로 재시도하지 않는다.
+        self.guard()
+        self.ros('topic','pub','--once','-w','3','/hmi_test/event','gmp_interfaces/msg/CellEvent',
+                 "{level: 0, code: NUDGE, text: 'verify_ros_http'}")
+    def finish_set(self,batch):
+        """세트 끝 NUDGE_WAIT 까지 기다렸다가 건드려 배치를 끝낸다 (D-23)."""
+        self.wait('NUDGE_WAIT '+batch,lambda:(lambda st:st if st.get('mode')=='PAUSED' and st.get('step')=='NUDGE_WAIT'
+                  and st.get('batch_id')==batch else None)(self.guard().get('state',{})))
+        self.nudge()
+        done=self.wait('NUDGE 뒤 DONE '+batch,lambda:self.mode('DONE',batch))
+        # 실제처럼 세트가 끝나야 RunBatch Result 가 온다. 그 전에는 HMI 가 새 주문을 받지 않는다.
+        self.wait('RunBatch Result '+batch,lambda:self.guard().get('run_batch',{}).get('status')=='FINISHED')
+        return done
     def record(self,batch,result='DONE',count=3):
         response=self.get('/batch/'+parse.quote(batch,safe=''))
         if response.get('result')!=result or len(response.get('items',[]))!=count: return None
@@ -202,7 +221,7 @@ class RosHttpCheck:
         if decision==2:
             state=self.guard().get('state',{})
             if state.get('mode')=='DONE': raise CheckFailed('폐기 반송 완료 전에 DONE이 발행됨')
-        self.wait('최종 완료',lambda:self.mode('DONE',batch))
+        self.finish_set(batch)
 
     def extra_checks(self):
         """Transport-specific checks, overridden only by the explicit non-DDS harness."""
@@ -221,16 +240,16 @@ class RosHttpCheck:
         if self.guard().get('state',{}).get('mode')!='IDLE' or self.get('/history'):
             raise CheckFailed('새 DB의 시험 세션이 필요합니다. launch를 종료 후 재실행하세요.')
         if any(abs(stock[mid]['capacity_g']-1000.0)>1e-6 or
-               abs(stock[mid]['remaining_g']-amount)>1e-6 for mid,amount in [('A',170),('B',1000),('C',1000)]):
-            raise CheckFailed("검증용 초기 재고가 필요합니다. 새 launch에 test_initial_g:='[170.0,1000.0,1000.0]' 를 지정하세요. 만충은 1,000g 그대로입니다.")
+               abs(stock[mid]['remaining_g']-amount)>1e-6 for mid,amount in [('A',138),('B',1000),('C',1000)]):
+            raise CheckFailed("검증용 초기 재고가 필요합니다. 새 launch에 test_initial_g:='[138.0,1000.0,1000.0]' 를 지정하세요. 만충은 1,000g 그대로입니다.")
         self.report('시험 네임스페이스·노드3·RunBatch 액션1·서비스5·토픽9 및 인증 전 접근 차단')
         catalog={r['name']:r for r in self.get('/recipes')}
-        expected={'recipe-01':{'A':85,'B':85,'C':85},'recipe-02':{'A':170,'B':85},'recipe-03':{'A':85,'B':85,'C':170}}
+        expected={'recipe-01':{'A':69,'B':57,'C':69},'recipe-02':{'A':138,'B':57},'recipe-03':{'A':69,'B':57,'C':138}}
         for name,items in expected.items():
             if name not in catalog or {it['material_id']:it['target_g'] for it in catalog[name]['items']}!=items:
                 raise CheckFailed('레시피 원료/목표량 불일치: '+name)
             if any(it['tol_pct']!=10.0 for it in catalog[name]['items']): raise CheckFailed('허용 오차 불일치: '+name)
-        self.report('레시피3종 목표량(D-33 85/170g)·원료 A/B/C·허용오차10% 및 recipe-02 C 생략')
+        self.report('레시피3종 목표량(#306 A·C 69/138 · B 57g)·원료 A/B/C·허용오차10% 및 recipe-02 C 생략')
         for role,name in [('operator',self.operator),('qa',self.qa),('viewer',self.viewer)]:
             self.http('POST','/users',{'username':name,'password':self.test_password,'role':role,'active':True},expected=201)
         self.http('POST','/settings',{},expected=403,csrf=False)
@@ -268,12 +287,36 @@ class RosHttpCheck:
         self.post('/interlock',{'request':2,'reason':'INSPECTION'})
         self.wait('EXIT 재개',lambda:self.mode('RUNNING',first))
         self.report('ENTER 허가 후 개별 보충 · PAUSED 유지 · EXIT로만 재개')
-        self.wait('정상 DONE',lambda:self.mode('DONE',first))
+        parked=self.wait('세트 끝 NUDGE_WAIT',lambda:(lambda st:st if st.get('step')=='NUDGE_WAIT' and st.get('mode')=='PAUSED'
+                         else None)(self.guard().get('state',{})))
+        if parked.get('pause_reason')!='SET_COMPLETE' or parked.get('station')!='nudge_wait':
+            raise CheckFailed('NUDGE_WAIT 표시 사유/위치 불일치: '+str(parked))
+        # 계약 v1.9 — 세트 끝 주문은 1건 예약된다. 여기서는 예약을 취소해 재고 흐름을 그대로 둔다.
+        queued=self.post('/order',{'recipe':'recipe-03'})['batch_id']
+        control=self.wait('예약 주문 접수',lambda:(lambda q:q if q and q.get('batch_id')==queued and q.get('accepted')
+                          else None)(self.guard().get('batch_control',{}).get('queued')))
+        if self.guard()['state'].get('batch_id')!=first or queued not in (self.guard()['state'].get('note') or ''):
+            raise CheckFailed('예약 주문이 진행 배치를 바꿨거나 세트 끝 note 에 예약이 없음')
+        dup=self.http('POST','/order',{'recipe':'recipe-01'},expected=503)
+        if dup.get('ok') is not False: raise CheckFailed('예약이 있는데 두 번째 주문이 수락됨')
+        self.post('/batch/cancel',{'batch_id':queued,'confirmed':True})
+        self.wait('예약 주문 취소 → 예약 칸 비움',lambda:self.guard().get('batch_control',{}).get('queued') is None)
+        time.sleep(1.0)
+        if not self.mode('PAUSED',first): raise CheckFailed('NUDGE 없이 세트가 끝났거나 예약 취소가 진행 배치를 멈춤')
+        self.finish_set(first)
+        self.wait('SET_DONE·SET_NEXT 기록',lambda:{'SET_DONE','SET_NEXT'}<=
+                  {e.get('code') for e in self.get('/batch/'+first).get('events',[])})
+        # 예약 이벤트는 예약 주문 ID 로 남는다(C #303 f654f12). 시작 못 한 예약은 batches 행이 없어 /events 로 찾는다.
+        self.wait('ORDER_QUEUED·ORDER_DROPPED 기록 (예약 주문 ID)',lambda:{'ORDER_QUEUED','ORDER_DROPPED'}<=
+                  {e.get('code') for e in self.get('/events?query='+parse.quote(queued,safe='')) if e.get('batch_id')==queued})
+        if any(e.get('code') in ('ORDER_QUEUED','ORDER_DROPPED') for e in self.get('/batch/'+first).get('events',[])):
+            raise CheckFailed('예약 이벤트가 진행 배치 기록에 붙음')
+        self.report('세트 끝 NUDGE_WAIT — PAUSED·SET_COMPLETE·주문 1건 예약·중복 거부·예약 취소(ORDER_DROPPED) → NUDGE 로만 DONE')
         rec=self.wait('정상 SQLite 기록',lambda:self.record(first))
         subjects={w.get('subject') for w in rec['weights']}
         if not {'scoop','container'}<=subjects or not all(w.get('samples')==20 for w in rec['weights']):
             raise CheckFailed('subject/samples 저장 누락')
-        self.wait('recipe-01 소비 반영',lambda:abs(self.stock()['A']['remaining_g']-85.0)<1e-6)
+        self.wait('recipe-01 소비 반영',lambda:abs(self.stock()['A']['remaining_g']-69.0)<1e-6)
         self.report('WeightReading subject/samples·ScoopCycle·결과3·SQLite 완료 저장')
         self.order_rejected('recipe-02')
         self.direct_order_rejected()
@@ -282,21 +325,50 @@ class RosHttpCheck:
         self.report('A만1,000g 보충 · B/C 불변 · 다음 주문 가능')
         before_c=self.amounts()['C']
         second=self.order('normal','recipe-02')
-        self.wait('recipe-02 DONE',lambda:self.mode('DONE',second))
+        # 계약 v1.9 — 세트 끝에 넣은 다음 주문은 넛지로 세트가 끝나면 바로 시작한다.
+        self.wait('NUDGE_WAIT '+second,lambda:(lambda st:st if st.get('step')=='NUDGE_WAIT' and st.get('mode')=='PAUSED'
+                  and st.get('batch_id')==second else None)(self.guard().get('state',{})))
+        third=self.post('/order',{'recipe':'recipe-03'})['batch_id']
+        self.batches.append(third)
+        self.wait('예약 주문 접수 '+third,lambda:(self.guard().get('batch_control',{}).get('queued') or {}).get('accepted'))
+        self.nudge()
+        self.wait('넛지 뒤 예약 주문 시작',lambda:self.mode('RUNNING',third))
+        c_after_second=self.amounts()['C']   # recipe-03 은 C 를 마지막에 쓴다 — 시작 직후엔 아직 안 썼다
+        control=self.guard().get('batch_control',{})
+        if control.get('queued') is not None or not control.get('can_cancel'):
+            raise CheckFailed('예약 주문이 시작된 뒤 HMI 가 진행 배치로 옮기지 않음: '+str(control))
+        self.wait('recipe-02 DONE 기록',lambda:self.record(second,count=2))
+        if not any('예약 주문 '+third in (e.get('text') or '') for e in self.get('/batch/'+second).get('events',[]) if e.get('code')=='SET_NEXT'):
+            raise CheckFailed('SET_NEXT 에 예약 주문 시작이 기록되지 않음')
+        self.report('세트 끝 다음 주문 예약 → NUDGE 로 앞 배치 DONE·예약 주문 자동 시작 · HMI 진행 배치로 승격')
         rec2=self.wait('recipe-02 원료2 기록',lambda:self.record(second,count=2))
-        if {it['material_id'] for it in rec2['items']}!={'A','B'} or self.amounts()['C']!=before_c:
+        if {it['material_id'] for it in rec2['items']}!={'A','B'} or c_after_second!=before_c:
             raise CheckFailed('recipe-02에서 C가 처리 또는 차감됨')
         a_cycles=sorted((c for c in rec2['scoop_cycles'] if c['material_id']=='A'),key=lambda c:c['attempt'])
-        if [(c['attempt'],c['actual_before_g'],c['delivered_g']) for c in a_cycles]!=[(1,0.0,85.0),(2,85.0,85.0)]:
-            raise CheckFailed('170g 시험 스쿠핑의 85g×2 시도·누적량 기록 불일치')
+        if [(c['attempt'],c['actual_before_g'],c['delivered_g']) for c in a_cycles]!=[(1,0.0,69.0),(2,69.0,69.0)]:
+            raise CheckFailed('138g 시험 스쿠핑의 69g×2 시도·누적량 기록 불일치')
         a_result=next(it for it in rec2['items'] if it['material_id']=='A')
-        if a_result['attempts']!=2 or any(c['payload']['weigh_pose_id']!='workbench' for c in a_cycles):
-            raise CheckFailed('170g 결과 attempts2 또는 공용 계량 위치 ID 불일치')
-        self.report('170g 시험 분주 → 85g×2 시도·누적85g·attempts2·workbench 기록')
-        third=self.order('normal','recipe-03')
-        self.wait('recipe-03 DONE',lambda:self.mode('DONE',third))
+        if a_result['attempts']!=2 or any(c['payload']['weigh_pose_id']!='material_1' for c in a_cycles):
+            raise CheckFailed('138g 결과 attempts2 또는 스쿱 계량 위치 ID(material_1) 불일치')
+        if any(c['payload']['contact_detected'] or c['payload']['commanded_pour_fraction']!=1.0 for c in a_cycles):
+            raise CheckFailed('고정 스쿱 기록 불일치 — 접촉 미측정·전량 붓기여야 함')
+        self.report('138g 시험 분주 → 69g×2 시도·누적69g·attempts2·material_1 계량·고정 스쿱 기록')
+        self.wait('recipe-03 스쿠핑',lambda:self.guard()['state'].get('step')=='SCOOP')
+        self.nudge()
+        touched=self.wait('접촉 정지',lambda:self.mode('PAUSED',third))
+        if touched.get('pause_reason')!='NUDGE': raise CheckFailed('접촉 정지 사유 표시 불일치: '+str(touched))
+        held=(touched.get('step'),touched.get('item_index'),len(self.get('/batch/'+third).get('scoop_cycles',[])))
+        time.sleep(2.3)
+        now=self.guard()['state']
+        if now.get('mode')!='PAUSED' or (now.get('step'),now.get('item_index'),len(self.get('/batch/'+third).get('scoop_cycles',[])))!=held:
+            raise CheckFailed('접촉 정지 중 공정이 진행됨')
+        self.nudge()
+        self.wait('다시 건드려 재개',lambda:self.mode('RUNNING',third))
+        self.finish_set(third)
         self.wait('recipe-03 원료3 기록',lambda:self.record(third))
-        self.report('recipe-02 A/B만 처리·C 불변 및 recipe-03 정상 완료')
+        codes=[e.get('code') for e in self.get('/batch/'+third).get('events',[])]
+        if 'PAUSE' not in codes or 'RESUME' not in codes: raise CheckFailed('PAUSE/RESUME 이벤트 기록 누락')
+        self.report('recipe-02 A/B만 처리·C 불변 · 운전 중 NUDGE 정지(진행 없음)·재개 후 recipe-03 완료')
         fourth=self.order('overfill')
         pending=self.pending(fourth,'OVERFILL')
         self.decide(fourth,pending,1)
@@ -339,13 +411,34 @@ class RosHttpCheck:
         if kpi['run_complete_pct']<kpi['batch_success_pct']-1e-6:
             raise CheckFailed('완주율이 계량 검증 완료율보다 작음 — 미측정이 합산되지 않음')
         self.report('KPI 두 지표 — 계량 검증 완료율(DONE만)·미측정 승인 완료·완주율(합)')
-        before_empty=self.amounts()
-        eighth=self.order('material_empty','recipe-02')
-        pending=self.pending(eighth,'MATERIAL_EMPTY')
-        self.decide(eighth,pending,2)
-        self.wait('원료 소진 폐기 기록',lambda:self.record(eighth,'DISCARDED',0))
-        if self.amounts()!=before_empty: raise CheckFailed('미투입 폐기에서 원료가 소비되거나 복구됨')
-        self.report('MATERIAL_EMPTY(kind 5) → QA 폐기 · 원료 소비 없음')
+        eighth=self.order('material_empty')
+        waiting=self.wait('원료 소진 보충 대기',lambda:(lambda st:st if st.get('mode')=='PAUSED' and st.get('pause_reason')=='REFILL'
+                          and st.get('batch_id')==eighth else None)(self.guard().get('state',{})))
+        batch_devs=lambda:sorted((d for d in self.guard().get('deviations',[]) if d.get('batch_id')==eighth),
+                                 key=lambda d:int(d['deviation_id'].rsplit('-',1)[1]))
+        devs=self.wait('빈 스쿱·원료 소진 일탈 4건',lambda:(lambda found:found if len(found)>=4 else None)(batch_devs()))
+        if [d.get('kind') for d in devs]!=['SCOOP_EMPTY']*3+['MATERIAL_EMPTY'] or any(
+                d.get('decision')!='AUTO_RECOVERED' or d.get('requires_decision') for d in devs):
+            raise CheckFailed('빈 스쿱 3회 자동 재시도 → MATERIAL_EMPTY 자동 복구 기록 불일치: '+str([(d.get('kind'),d.get('decision')) for d in devs]))
+        if waiting.get('station')!='test_safe': raise CheckFailed('보충 대기가 안전 위치가 아님')
+        self.wait('보충 대기 중 보충 허용',lambda:self.guard()['inventory'].get('can_refill'))
+        self.refill('A')
+        time.sleep(.3)
+        if not self.mode('PAUSED',eighth): raise CheckFailed('보충만으로 자동 재개됨')
+        self.post('/interlock',{'request':2,'reason':'REFILL'})
+        self.wait('EXIT 재개',lambda:self.mode('RUNNING',eighth))
+        self.finish_set(eighth)
+        rec8=self.wait('원료 소진 뒤 완료 기록',lambda:self.record(eighth))
+        empty=[c for c in rec8['scoop_cycles'] if c.get('outcome')==1]
+        if len(empty)!=4 or any(c.get('valid') for c in empty): raise CheckFailed('빈 스쿱 시도 4건(valid=false) 기록 누락')
+        self.report('MATERIAL_EMPTY — 빈 스쿱 3회 자동 재시도 → REFILL 대기(QA 아님) → 보충·EXIT → 완료')
+        self.nudge()
+        self.wait('유휴 접촉 정지 표시',lambda:(self.guard()['state'].get('note') or '').startswith('NUDGE'))
+        if self.http('POST','/order',{'recipe':'recipe-01'}).get('ok') is not False:
+            raise CheckFailed('유휴 접촉 정지 중 주문이 수락됨')
+        self.nudge()
+        self.wait('유휴 접촉 해제',lambda:not (self.guard()['state'].get('note') or '').startswith('NUDGE'))
+        self.report('유휴 중 NUDGE → 새 주문 차단 · 다시 건드리면 해제')
         self.login(self.operator,self.test_password)
         self.height('A',19.9); self.height('B',19.9)
         self.wait('원료2개 높이 부족',lambda:self.blocked(['A','B']))
@@ -383,7 +476,7 @@ class RosHttpCheck:
         time.sleep(.3)
         if not self.mode('PAUSED',seventh): raise CheckFailed('높이 부족 보충 후 EXIT 없이 재개')
         self.post('/interlock',{'request':2,'reason':'REFILL'})
-        self.wait('높이 부족 해소 DONE',lambda:self.mode('DONE',seventh))
+        self.finish_set(seventh)
         self.wait('높이 부족 배치 완료 기록',lambda:self.record(seventh))
         self.report('운전 중 높이 부족 → 진행 차단 → ENTER·개별 보충·EXIT 후 완료')
         self.extra_checks()

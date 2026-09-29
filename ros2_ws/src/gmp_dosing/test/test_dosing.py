@@ -212,6 +212,11 @@ def _recipes():
         yield path.name, yaml.safe_load(path.read_text(encoding='utf-8'))['items']
 
 
+def _nominal_for(d, material_id):
+    per = d.get('scoop_nominal') or {}
+    return per[material_id] if per else d['scoop_nominal_g']
+
+
 def test_min_scoop_cannot_overshoot_tolerance():
     """UNDER 뒤 **최소 채취**가 허용 상한을 넘으면 스쿱↔반환이 끝없이 반복된다.
 
@@ -220,9 +225,10 @@ def test_min_scoop_cannot_overshoot_tolerance():
      건너뛸 수밖에 없는 구간이 생긴다.)
     """
     d = _dosing_params()
-    min_scoop = d['min_fraction'] * d['scoop_nominal_g']
     for name, items in _recipes():
         for it in items:
+            # 원료별 1회량(9/29 결정, `dosing.scoop_nominal.<원료>`)이 생기면 그 값으로, 없으면 공통값으로 본다
+            min_scoop = d['min_fraction'] * _nominal_for(d, it['material_id'])
             limit = 2.0 * it['target_g'] * it['tol_pct'] / 100.0
             assert min_scoop <= limit, (
                 f"{name} {it['material_id']}: 최소 채취 {min_scoop:.1f} g 이 한계 {limit:.1f} g 을 넘어 "
@@ -241,8 +247,9 @@ def test_dosing_defaults_match_operational_params():
     cfg = DosingConfig()
     assert cfg.scoop_nominal_g == d['scoop_nominal_g']
     assert cfg.min_fraction == d['min_fraction']
-    # max_invalid_retries 는 common.yaml dosing 절에 없다 — process_node 가 따로 선언한다.
-    # 여기서 단언하면 KeyError 라, 그 값의 정합은 gmp_process 쪽 시험이 본다.
+    # max_invalid_retries 는 common.yaml dosing 절에도 process_node 선언에도 없다 — 출처는
+    # DosingConfig 기본값(2) 하나뿐이라 여기서 대조할 운영값이 없다 (9/25 팀장 대조로 정정.
+    # 종전 주석은 「process_node 가 따로 선언한다」고 했으나 사실이 아니었다).
 
 
 def test_operational_params_explicitly_enable_fixed_scoop():
@@ -250,28 +257,29 @@ def test_operational_params_explicitly_enable_fixed_scoop():
     assert _dosing_params()['fixed_scoop'] is True
 
 
-# ── 고정 스쿱에서 보충 불가 (9/23 조장 결정 · B·C 공동) ────────────────────
-FIXED = DosingConfig(max_attempts=8, scoop_nominal_g=85.0, min_fraction=0.10, fixed_scoop=True)
-DEPTH = DosingConfig(max_attempts=8, scoop_nominal_g=85.0, min_fraction=0.10)
+# ── 고정 스쿱에서 보충 불가 (9/23 조장 결정 · B·C 공동, 9/25 D-35 로 79·158 g) ──────
+# 목표 79 g ±10 % = 71.1~86.9, 158 g ±10 % = 142.2~173.8. 한 스쿱 79 g.
+FIXED = DosingConfig(max_attempts=8, scoop_nominal_g=79.0, min_fraction=0.10, fixed_scoop=True)
+DEPTH = DosingConfig(max_attempts=8, scoop_nominal_g=79.0, min_fraction=0.10)
 
 
 def test_fixed_scoop_single_target_gives_up_at_first_shortfall():
-    """85 g 목표는 한 스쿱짜리라 미달이 나면 **보충이 언제나 초과**다 — 바로 QA 로 보낸다."""
-    d = decide(85.0, 70.0, 10.0, 1, True, 0, FIXED)       # 첫 스쿱 70 g
+    """79 g 목표는 한 스쿱짜리라 미달이 나면 **보충이 언제나 초과**다 — 바로 QA 로 보낸다."""
+    d = decide(79.0, 70.0, 10.0, 1, True, 0, FIXED)       # 첫 스쿱 70 g
     assert (d.action, d.kind) == ('DEVIATION', 'TIMEOUT')
-    assert '보충 불가' in d.detail and '85.0 g' in d.detail and '93.5 g' in d.detail
+    assert '보충 불가' in d.detail and '79.0 g' in d.detail and '86.9 g' in d.detail
 
 
 def test_fixed_scoop_keeps_topping_up_when_two_scoops_fit():
-    """170 g 목표는 두 스쿱짜리다 — 첫 스쿱이 부족해도 한 번 더 퍼면 들어온다. 죽이면 안 된다."""
-    d = decide(170.0, 83.0, 10.0, 1, True, 0, FIXED)      # 83 + 85 = 168 → 153~187 안
+    """158 g 목표는 두 스쿱짜리다 — 첫 스쿱이 부족해도 한 번 더 퍼면 들어온다. 죽이면 안 된다."""
+    d = decide(158.0, 75.0, 10.0, 1, True, 0, FIXED)      # 75 + 79 = 154 → 142.2~173.8 안
     assert d.action == 'SCOOP' and d.verdict == 'UNDER'
 
 
 def test_fixed_scoop_gives_up_when_one_more_scoop_would_overshoot():
-    """같은 170 g 이라도 actual 이 102 g 을 넘으면 한 번 더 퍼는 순간 187 g 을 넘는다."""
-    assert decide(170.0, 102.0, 10.0, 1, True, 0, FIXED).action == 'SCOOP'   # 102+85 = 187 = 상한
-    d = decide(170.0, 110.0, 10.0, 1, True, 0, FIXED)                        # 110+85 = 195 > 187
+    """같은 158 g 이라도 actual 이 94.8 g 을 넘으면 한 번 더 퍼는 순간 173.8 g 을 넘는다."""
+    assert decide(158.0, 94.0, 10.0, 1, True, 0, FIXED).action == 'SCOOP'    # 94+79 = 173 ≤ 173.8
+    d = decide(158.0, 100.0, 10.0, 1, True, 0, FIXED)                        # 100+79 = 179 > 173.8
     assert (d.action, d.kind) == ('DEVIATION', 'TIMEOUT')
     assert '보충 불가' in d.detail
 
@@ -280,29 +288,30 @@ def test_fixed_scoop_always_asks_for_a_full_scoop():
     """고정 스쿱이 SCOOP 을 내면 깊이는 **언제나 1.0** 이어야 한다.
 
     A 의 고정 경로는 `depth_fraction != 1.0` 을 거부한다 — 부분 깊이가 나오면 보충 스쿱이
-    튕겨 배치가 ERROR 로 죽는다. 위 두 시험이 이것을 못 잡은 이유는 고른 actual 이
-    우연히 frac 1.0 을 내는 값(83 → need 87 > 85)이었고, frac 을 아예 안 봤기 때문이다.
-    아래 범위는 **첫 스쿱이 공칭 85 g 언저리에 떨어지는 정상 회차** 전체를 덮는다.
+    튕겨 배치가 ERROR 로 죽는다. 9/23 에 이것을 못 잡은 이유는 고른 actual 이
+    우연히 frac 1.0 을 내는 값(need ≥ nominal)이었고, frac 을 아예 안 봤기 때문이다.
+    아래 범위는 **첫 스쿱이 공칭 79 g 언저리에 떨어지는 정상 회차** 전체를 덮는다
+    (need = 158 − actual < 79 가 되는 79.1 g 이상이 부분 깊이가 나오던 구간이다).
     """
-    for actual in (0.0, 50.0, 85.0, 85.1, 90.0, 95.0, 102.0):
-        d = decide(170.0, actual, 10.0, 1, True, 0, FIXED)
+    for actual in (0.0, 50.0, 79.0, 79.1, 85.0, 90.0, 94.0):
+        d = decide(158.0, actual, 10.0, 1, True, 0, FIXED)
         assert d.action == 'SCOOP', (actual, d)
         assert d.fraction == 1.0, f'actual {actual} g 에서 깊이 {d.fraction} — 고정 경로가 거부한다'
 
 
 def test_depth_control_still_asks_for_a_partial_scoop():
     """짝 시험 — 깊이 제어에서는 부분 깊이가 그대로 나와야 한다. 위 수정이 여기까지 덮으면 안 된다."""
-    d = decide(170.0, 90.0, 10.0, 1, True, 0, DEPTH)
-    assert d.action == 'SCOOP' and abs(d.fraction - 80.0 / 85.0) < 1e-9
+    d = decide(158.0, 90.0, 10.0, 1, True, 0, DEPTH)
+    assert d.action == 'SCOOP' and abs(d.fraction - 68.0 / 79.0) < 1e-9
 
 
 def test_depth_control_never_gives_up_while_deadlock_condition_holds():
     """깊이 제어 모드에서 이 분기는 **교착 조건과 동치**라, 조건이 지켜지면 발동하지 않는다.
 
-    min_fraction×nominal = 8.5 g ≤ 2×target×tol (85 g→17, 170 g→34) 이므로
+    min_fraction×nominal = 7.9 g ≤ 2×target×tol (79 g→15.8, 158 g→31.6) 이므로
     허용 하한 직전까지 전부 SCOOP 이어야 한다.
     """
-    for target in (85.0, 170.0):
+    for target in (79.0, 158.0):
         low = target * 0.9
         for actual in (0.0, low * 0.5, low - 0.01):
             assert decide(target, actual, 10.0, 1, True, 0, DEPTH).action == 'SCOOP', (target, actual)
@@ -310,15 +319,15 @@ def test_depth_control_never_gives_up_while_deadlock_condition_holds():
 
 def test_depth_control_gives_up_when_deadlock_condition_is_broken():
     """교착 조건을 깨는 설정(min_fraction 0.25)이면 무한 루프 대신 QA 로 보낸다 — 안전망."""
-    broken = DosingConfig(max_attempts=8, scoop_nominal_g=85.0, min_fraction=0.25)
-    d = decide(85.0, 76.0, 10.0, 1, True, 0, broken)      # 76 + 21.25 = 97.25 > 93.5
+    broken = DosingConfig(max_attempts=8, scoop_nominal_g=79.0, min_fraction=0.25)
+    d = decide(79.0, 70.0, 10.0, 1, True, 0, broken)      # 70 + 19.75 = 89.75 > 86.9
     assert (d.action, d.kind) == ('DEVIATION', 'TIMEOUT')
     assert '보충 불가' in d.detail
 
 
 def test_attempts_exhausted_keeps_its_own_detail():
     """시도 소진과 보충 불가는 같은 kind 지만 detail 로 갈린다 — 호출자가 술어를 다시 계산하지 않게."""
-    d = decide(170.0, 50.0, 10.0, 8, True, 0, FIXED)      # 50+85 = 135 ≤ 187 이라 보충 가능하나 시도 소진
+    d = decide(158.0, 50.0, 10.0, 8, True, 0, FIXED)      # 50+79 = 129 ≤ 173.8 이라 보충 가능하나 시도 소진
     assert (d.action, d.kind) == ('DEVIATION', 'TIMEOUT')
     assert d.detail == '보정 8회 후에도 미달'
 
@@ -327,4 +336,59 @@ def test_fixed_scoop_is_keyword_only():
     """위치 인자로 잘못 넘기는 것을 막는다 — 설정 dataclass 는 키워드만 (AGENTS)."""
     import pytest
     with pytest.raises(TypeError):
-        DosingConfig(8, 85.0, 0.10, 2, True)
+        DosingConfig(8, 79.0, 0.10, 2, True)
+
+
+# ── 원료별 스쿱 1회량 (9/29 조장 결정: A·C 묶음 / B 별도) ─────────────────────
+# 9/29 현 구성 실측 A 69.3 · B 57.4 · C 67.4 g → 반올림 A·C 69 · B 57 (사용자 결정).
+PER = DosingConfig(max_attempts=8, min_fraction=0.10, fixed_scoop=True,
+                   scoop_nominal_by_material={'A': 69.0, 'B': 57.0, 'C': 69.0})
+
+
+def test_for_material_swaps_in_that_materials_nominal():
+    assert PER.for_material('B').scoop_nominal_g == 57.0
+    assert PER.for_material('A').scoop_nominal_g == PER.for_material('C').scoop_nominal_g == 69.0
+    # 나머지 설정은 그대로 따라간다
+    b = PER.for_material('B')
+    assert (b.max_attempts, b.min_fraction, b.fixed_scoop) == (8, 0.10, True)
+
+
+def test_without_per_material_values_everyone_shares_the_single_nominal():
+    """원료별 값을 안 채우면 종전과 같다 — C 가 호출부를 바꾸기 전에 머지돼도 동작이 안 바뀐다."""
+    assert CFG.for_material('B') is CFG
+
+
+def test_missing_material_is_an_error_not_a_silent_fallback():
+    """원료별 값을 채웠는데 빠진 원료가 있으면 멈춘다 — B 를 A 값으로 판정하면 틀린 채로 돈다."""
+    import pytest
+    with pytest.raises(KeyError):
+        PER.for_material('D')
+
+
+def test_per_material_nominal_changes_the_decision():
+    """같은 상태라도 원료의 1회량에 따라 판정이 갈린다 — 이게 원료별 값을 두는 이유다.
+
+    빈 상태(0 g)에서 첫 스쿱:
+      A 목표 69 g ±10 % = 62.1~75.9, A 1회량 69 → 0 + 69 ≤ 75.9 → SCOOP
+      B 목표 57 g ±10 % = 51.3~62.7, B 1회량 57 → 0 + 57 ≤ 62.7 → SCOOP
+      B 목표에 A 값(69)을 잘못 쓰면 0 + 69 > 62.7 → 보충 불가(TIMEOUT)
+    """
+    a = decide(69.0, 0.0, 10.0, 1, True, 0, PER.for_material('A'))
+    b = decide(57.0, 0.0, 10.0, 1, True, 0, PER.for_material('B'))
+    assert (a.action, b.action) == ('SCOOP', 'SCOOP')
+    # B 목표에 A 의 1회량(69)을 잘못 쓰면 0 g 에서도 한 스쿱이 상한 62.7 을 넘어 보충 불가가 된다
+    wrong = decide(57.0, 0.0, 10.0, 1, True, 0, PER.for_material('A'))
+    assert (wrong.action, wrong.kind) == ('DEVIATION', 'TIMEOUT')
+
+
+def test_per_material_values_are_validated():
+    import pytest
+    for bad in ({'A': 0.0}, {'A': float('nan')}, {'A': float('inf')}, {'A': True}, {'': 57.0}):
+        with pytest.raises(ValueError):
+            DosingConfig(scoop_nominal_by_material=bad)
+
+
+def test_per_material_values_are_keyword_only():
+    import pytest
+    with pytest.raises(TypeError):
+        DosingConfig(8, 69.0, 0.10, 2, {'A': 69.0})

@@ -1,0 +1,121 @@
+# 가상 계량 흔들림 재생 자료 (#156) — B 도징 관리. A 재생 구현이 읽는다.
+#
+# 쓰는 법: 가상 장부의 실제 질량에 **흔들림만** 더한다. 흔들림 = 창(windows[].rows) 안의 표본 − **그 창의 평균**.
+#   ⚠️ 파일 평균을 빼지 않는다. 한 파일에 재파지·하중 변경이 섞여 창마다 기준이 다르다 —
+#      g1_0923_regrip229.csv 에서 창 평균을 빼면 σ 0.071 N, 파일 평균을 빼면 0.104 N(+46 %).
+#      다시 쥘 때의 기준 이동(창 평균끼리 최대 0.26 N ≈ 24 g)이 흔들림으로 들어가 가상 계량이 과하게 무효가 된다.
+#   창 안의 표본 순서(시각_s)를 지킨다 — 사인 적합·고주파 게이트가 시간 구조를 본다.
+#   use: false 창은 쓰지 않는다(이유는 note).
+#
+# 절대값(창 평균)은 가상 판정에 쓰지 않는다. 실물 gain/offset 재보정은 #187 에서 따로 한다.
+# 9/22 이전(우드락 공구·PLA 동결 전) 데이터는 공구 세대가 달라 넣지 않는다 — 스쿱 흔들림이 세대에 따라
+# 0.065 → 0.190 N 으로 달라졌다(#156 B 코멘트). 스쿱 두 상태는 9/29 측정 뒤 채운다.
+
+version: 1
+
+value:
+  column: Z축힘_N              # get_tool_force(DR_BASE) 의 Fz 원시값. g 환산값이 아니다
+  unit: N
+  time_column: 시각_s          # 측정 시작부터의 초. 표본 간격 실측은 이 열의 차분
+  rows: "헤더 제외 데이터 행 번호, 1부터, 양끝 포함"
+  to_grams: "g = fz_sign × Fz / 9.80665 × 1000 × gain + offset_g"   # gmp_dosing/core/scale.py raw_to_g
+  fz_sign: -1.0                # common.yaml scale.fz_sign
+  noise_g_per_n: >-
+    흔들림에는 offset_g 가 빠지고 |fz_sign| × 1000 / 9.80665 × gain 만 곱해진다.
+    런타임 gain 0.8859(common.yaml — 우드락 공구 조건 값)이면 ≈ 90.3 g/N.
+    아래 파일의 동결 공구 gain 은 #187 전까지 미확정이다(용기 경로 추정 ≈ 1.076 이면 ≈ 109.7 g/N).
+    재생 쪽은 런타임과 같은 gain 으로 환산하면 된다 — 흔들림과 판정이 같은 척도가 된다.
+
+states:
+  container_empty:
+    status: ready
+    meaning: TARE — 빈 시료통을 workbench 에서 잡고 들어 올린 계량
+  container_loaded:
+    status: ready
+    meaning: VERIFY — 시료가 든 시료통. 자료 하중 229 g (운영 끝 무게 ≈ 316 g 은 9/29 #187 측정에서 추가 예정)
+  scoop_empty:
+    status: pending
+    meaning: SCOOP_TARE · WEIGH_RESIDUAL — 빈 스쿱(잔량 수 g 은 흔들림에 차이가 없다고 본다, 9/29 에 확인)
+    note: 9/29 측정 PC 실측 예정 — 운영 계량 자세(관절각)를 셀 브링업에서 읽어 재현한다
+  scoop_loaded:
+    status: pending
+    meaning: WEIGH_SCOOP — 자갈을 뜬 스쿱
+    note: 9/29 실측 예정 — 분동이 아니라 실제 자갈을 떠서 잰다(알갱이가 자리 잡는 흔들림 포함)
+
+common_conditions: &c0923
+  measured: 2026-09-23
+  tool: "tool_weight — 9/23 동결값(1.36 kg, CoG [5.31, -34.68, 8.28] mm). gmp_dosing/config/scale_reference.yaml retracted_0923, PR #235"
+  tcp: GripperDA_v1            # measure_g1.py 가 common.yaml robot.tcp_name 으로 set_tcp
+  station: workbench
+  pose: "ABOVE [423, 93, 180] — AT 에서 파지 뒤 50 mm 상승(--pick-lift-mm 50), 관절 분기 --sol-space 3"
+  grip_width_mm: 60
+  object: "빈 시료통 79 g (+ 자갈)"
+  sampling: {samples: 20, period_s: 0.82, settle_s: 10.0}
+  sampling_note: >-
+    samples·period 는 운영(common.yaml scale)과 같다. settle 은 운영 1.0 s 가 아니라 10 s 라,
+    이동 직후 1 s 안의 잔진동은 이 자료에 없다.
+  bringup: "new_bringup.launch.py (로봇 드라이버만, skill_node 없음) + measure_g1.py"
+
+files:
+  - path: g1_0923_frozen_2point.csv
+    <<: *c0923
+    csv_saved: "2026-09-23 11:10 (측정 종료 시각, 원본 records/ mtime)"
+    method: 한 파지 안에서 하중을 늘려 가며 잰다(--load-series 79,79,229,229) — 창 사이에 파지를 놓지 않는다
+    command: >-
+      python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py --actual-g 79 --object container
+      --condition workbench_z180_cz8.28_frozen_2point --goto-station workbench --sol-space 3 --tool-name tool_weight
+      --pick-lift-mm 50 --gripper --grip-width-mm 60 --sets 1 --samples 20 --period 0.82 --settle 10
+      --no-reset --no-workpiece --load-series 79,79,229,229 --out records/g1_0923_frozen_2point.csv
+    windows:
+      - {rows: [1, 20], state: container_empty, load_g: 79, use: true}
+      - {rows: [21, 40], state: container_empty, load_g: 79, use: true}
+      - {rows: [41, 60], state: container_loaded, load_g: 229, use: false,
+         note: "σ 0.600 N — 다른 창(≈ 0.07 N)의 8배. 시료를 붓는 중이거나 손이 닿은 채 잰 오염 회차로 본다"}
+      - {rows: [61, 80], state: container_loaded, load_g: 229, use: true}
+
+  - path: g1_0923_frozen_229.csv
+    <<: *c0923
+    csv_saved: "2026-09-23 11:13"
+    method: 한 파지에서 229 g 을 2회 연속
+    command: >-
+      python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py --actual-g 229 --object container
+      --condition workbench_z180_cz8.28_frozen_229confirm --goto-station workbench --sol-space 3 --tool-name tool_weight
+      --pick-lift-mm 50 --gripper --grip-width-mm 60 --sets 1 --trials 2 --samples 20 --period 0.82 --settle 10
+      --no-reset --no-workpiece --out records/g1_0923_frozen_229.csv
+    windows:
+      - {rows: [1, 20], state: container_loaded, load_g: 229, use: true}
+      - {rows: [21, 40], state: container_loaded, load_g: 229, use: true}
+
+  - path: g1_0923_regrip229.csv
+    <<: *c0923
+    csv_saved: "2026-09-23 11:30"
+    method: >-
+      로봇이 스스로 놓고 다시 집기 8세트(--auto-regrip 3) × 세트당 2회. 운영의 TARE→VERIFY 사이 재파지와 같은 조건.
+      세트마다 기준이 움직이므로(재파지 σ 6.99 g, #187) 반드시 창 평균을 뺀다
+    command: >-
+      python3 ros2_ws/src/gmp_dosing/calibration/measure_g1.py --actual-g 229 --object container
+      --condition workbench_z180_cz8.28_regrip229 --goto-station workbench --sol-space 3 --tool-name tool_weight
+      --pick-lift-mm 50 --gripper --grip-width-mm 60 --auto-regrip 3 --sets 8 --trials 2 --samples 20
+      --period 0.82 --settle 10 --no-reset --no-workpiece --out records/g1_0923_regrip229.csv
+    windows:
+      - {rows: [1, 20], state: container_loaded, load_g: 229, use: true}
+      - {rows: [21, 40], state: container_loaded, load_g: 229, use: true}
+      - {rows: [41, 60], state: container_loaded, load_g: 229, use: true}
+      - {rows: [61, 80], state: container_loaded, load_g: 229, use: true}
+      - {rows: [81, 100], state: container_loaded, load_g: 229, use: true}
+      - {rows: [101, 120], state: container_loaded, load_g: 229, use: true}
+      - {rows: [121, 140], state: container_loaded, load_g: 229, use: true}
+      - {rows: [141, 160], state: container_loaded, load_g: 229, use: true}
+      - {rows: [161, 180], state: container_loaded, load_g: 229, use: true}
+      - {rows: [181, 200], state: container_loaded, load_g: 229, use: true}
+      - {rows: [201, 220], state: container_loaded, load_g: 229, use: true}
+      - {rows: [221, 240], state: container_loaded, load_g: 229, use: true}
+      - {rows: [241, 260], state: container_loaded, load_g: 229, use: true}
+      - {rows: [261, 280], state: container_loaded, load_g: 229, use: true}
+      - {rows: [281, 300], state: container_loaded, load_g: 229, use: true}
+      - {rows: [301, 320], state: container_loaded, load_g: 229, use: true}
+
+# 9/23 스쿱 1회량 실측(#156 요청 4)은 흔들림 자료가 아니라 가상 장부의 스쿱 질량 분포다.
+# 원자료 = gmp_dosing/calibration/scoop_sigma_0923_matA.csv (15회 개별 총무게 + 빈 시료통 79 g, 외부 저울이라
+# 회차당 값 하나가 전부다). PR #283 머지 전에는 feature/scoop-sigma-272 브랜치에 있다.
+scoop_mass_source: ../scoop_sigma_0923_matA.csv
