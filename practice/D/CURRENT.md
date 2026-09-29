@@ -1,4 +1,4 @@
-# D HMI·기록 현행 상태 (갱신: 2026-09-26, D 본인 — D-35 운영 레시피 79/158 g, 레시피 담당 D)
+# D HMI·기록 현행 상태 (갱신: 2026-09-29, D 본인 — #306 원료별 1회량 레시피 A·C 69/138 · B 57 g. 이전 9/26 D-35 79/158 g, 레시피 담당 D)
 
 **담당**: aszx4880-star
 
@@ -23,15 +23,15 @@
 | 배치 완료·폐기 알림 | 모든 화면에서 **떠 있는 알림**(PC 왼쪽 아래·휴대폰 아래), `COMPLETION_SHOW_MS` 5 s 뒤 자동 숨김, ✕ 닫기. 한 자리라 새 알림이 이전 것을 대신하고, 한 번 보인 배치·결과는 옛 상태를 다시 받아도 안 뜸. 칸 사이에 끼우지 않는다(아래 카드를 밀었다) | `hmi.js` `renderCompletion`, 이 PR | PR #229 (`hmi.css:1`·`:73`), 통합 전 정리 PR(`hmi.css` 끝 모바일 블록) |
 | 시연 기기 | 로봇 PC 1대 + **휴대폰 브라우저 HMI 기본**, 같은 네트워크(`http://<로봇 PC Wi-Fi IP>:5000`) | PR #259, `docs/demo_run_procedure.md` T0·G6 |
 | ROS 도메인 | 본운영 70, 격리 시험 88 | `docs/demo_run_procedure.md:38` |
-| 통신 검증 기준선 | `tools/verify_ros_http.py` 20 항목 — D-35(79/158 g) 기대값으로 **9/26 실제 DDS 20/20 PASS**(동권님 집 PC, 도메인 88, `feature/d35-recipes-79`). 그 전 D-33(85/170 g)은 9/23 PASS. 시작 재고 `test_initial_g:='[158.0,1000.0,1000.0]'`. launch 와 검증기의 `GMP_HMI_ADMIN_PASSWORD` 가 **같아야** 한다(다르면 로그인 401) | 9/23 19:50 실행(PR #276), 9/26 실행(PR #291) |
+| 통신 검증 기준선 | `tools/verify_ros_http.py` 20 항목 — **#306 값(A·C 69/138 · B 57 g)으로 바꾼 뒤 실제 DDS 미실행**. 직전 D-35(79/158 g) 기대값은 9/26 실제 DDS 20/20 PASS(동권님 집 PC, 도메인 88, `feature/d35-recipes-79` `e35b723`), 그 전 D-33(85/170 g)은 9/23 PASS. 시작 재고 `test_initial_g:='[138.0,1000.0,1000.0]'`(recipe-01 뒤 A 69 g 이 남아 recipe-02 의 A 138 g 을 못 채운다). launch 와 검증기의 `GMP_HMI_ADMIN_PASSWORD` 가 **같아야** 한다(다르면 로그인 401) | 9/23 19:50 실행(PR #276), 9/26 실행(PR #291) |
 | 시험 시나리오 | `normal`·`overfill`(과다 배율 `OVERFILL_RATIO` 1.15 — 레시피 `tol_pct` 를 확실히 넘어야 해서 1.10 에서 올림)·`batch_out_of_spec`·`wrong_tool`·`weigh_invalid`·`material_empty` | `gmp_hmi/nodes/hmi_test_process.py` |
-| 시험 레시피 사본 | `config/test_recipes/v4` = 운영 `gmp_bringup/params/recipes` 와 **같다**(값은 운영 파일 참조). `test_v4_recipes.py` 가 운영과 대조해 어긋나면 실패한다. 통신 시험 launch 가 시험 노드에 `test_scoop_nominal_g` 79 g 을 넘긴다 | SOT D-35, PR #276·D-35 PR(이 변경) |
-| 운영 레시피 | **D 담당(9/25 팀 공지)** — `gmp_bringup/params/recipes/recipe-01~03.yaml` 파일·값. A79/B79/C79 · A158/B79 · A79/B79/C158, ±10 % (SOT D-35). 스키마·검증은 C(`gmp_process/core/recipe.py`). 사본과 한 PR 로 바꾼다 | SOT D-35, `docs/interfaces.md` §4 |
+| 시험 레시피 사본 | `config/test_recipes/v4` = 운영 `gmp_bringup/params/recipes` 와 **같다**(값은 운영 파일 참조). `test_v4_recipes.py` 가 운영과 대조해 어긋나면 실패한다. 통신 시험 launch 가 시험 노드에 원료별 1회량 `test_scoop_nominal_by_material_g` [69, 57, 69](공통 `test_scoop_nominal_g` 69)을 넘긴다 — 138 g 은 69 g 두 시도, B 57 g 은 한 시도로 기록 | #306, PR #291 |
+| 운영 레시피 | **D 담당(9/25 팀 공지)** — `gmp_bringup/params/recipes/recipe-01~03.yaml` 파일·값. A69/B57/C69 · A138/B57 · A69/B57/C138, ±10 % (#306 9/29 — 원료별 스쿱 1회량 A·C 69 / B 57 g). 철회(9/29, #306): D-35 79/158 g — 근거 측정(9/23)이 마찰테이프 없이 한 것이라 무효. 스키마·검증은 C(`gmp_process/core/recipe.py`). 사본과 한 PR 로 바꾼다 | #306, SOT D-35(담당), `docs/interfaces.md` §4 |
 
 ## 열린 과제 (이슈 번호)
 - **G6 휴대폰 리허설** — 9/23 390px 에서 고정 영역이 화면 절반(데모)~30 %(운영)를 먹던 것을 페이지 스크롤로 바꿨다(통합 전 정리 PR). QA 승인·폐기·진입·안전 복구·주문 버튼 도달·클릭은 playwright 로 확인. **실제 로봇 PC + 휴대폰 실물 리허설은 미검증**.
 - **#261 실제 `/cell` 확인** — `/hmi_test` DDS 경로는 **9/23 검증 완료**(아래 통신 검증 20 항목). 남은 것은 **실제 C 공정·로봇**에서 같은 경로가 도는지다. 가상 `/cell` 은 파지에서 막히므로(아래 함정) 실물이어야 한다.
-- `docs/interfaces.md:188` KPI 이름이 아직 「배치 성공률」 — 계약 문서라 조장 몫(#261 본문에 적음).
+- ~~`docs/interfaces.md:188` KPI 이름이 아직 「배치 성공률」~~ → 해결(9/28 #284 `617c20f`, main `dfc9886`).
 - ~~`tools/test_safety_popup.cjs` 살릴지 지울지 D 판단~~ → **살린다**. 실패 원인은 팝업 로직이 아니라 스텁이었다(9/22 `f349fe2` 가 `hmi.js:151` 에 `appendChild` 추가 → 스텁에 없어 `TypeError`). 스텁 한 줄로 PASS, 가드 17 건 유효(고의로 `robot_state` 허용 목록을 넓히면 실패 확인). `tools/test_frontend_render.cjs` 는 **환경 문제였다** — playwright·Chromium 이 있는 샌드박스에서 `NODE_PATH=/opt/node22/lib/node_modules HMI_TEST_CHROMIUM=/opt/pw-browsers/chromium node tools/test_frontend_render.cjs` 로 9/23 PASS. 심볼릭 링크 불필요.
 
 ## 알려진 함정
