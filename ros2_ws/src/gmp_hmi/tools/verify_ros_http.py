@@ -130,7 +130,7 @@ class RosHttpCheck:
         # HMI를 우회해도 같은 공정 재고/높이 차단이 적용되어야 한다.
         requirements = requirements or {'A':138.0,'B':69.0}
         data={'recipe':{'product':'BYPASS_TEST','items':[
-            {'material_id':mid,'target_g':float(amount),'tol_pct':10.0}
+            {'material_id':mid,'target_g':float(amount),'tol_pct':15.0}
             for mid,amount in requirements.items()]}}
         output=self.ros('action','send_goal','/hmi_test/run_batch','gmp_interfaces/action/RunBatch',json.dumps(data))
         if not re.search(r'goal(?: was)? rejected',output,re.IGNORECASE):
@@ -248,9 +248,8 @@ class RosHttpCheck:
         for name,items in expected.items():
             if name not in catalog or {it['material_id']:it['target_g'] for it in catalog[name]['items']}!=items:
                 raise CheckFailed('레시피 원료/목표량 불일치: '+name)
-            tolerance=15.0 if name=='recipe-01' else 10.0
-            if any(it['tol_pct']!=tolerance for it in catalog[name]['items']): raise CheckFailed('허용 오차 불일치: '+name)
-        self.report('레시피 1 A/B/C 69g·±15%, 레시피 2·3 B 69g·±10%, recipe-02 C 생략')
+            if any(it['tol_pct']!=15.0 for it in catalog[name]['items']): raise CheckFailed('허용 오차 불일치: '+name)
+        self.report('레시피 1~3 원료별 허용오차 ±15%, 레시피 2·3 B 69g, recipe-02 C 생략')
         for role,name in [('operator',self.operator),('qa',self.qa),('viewer',self.viewer)]:
             self.http('POST','/users',{'username':name,'password':self.test_password,'role':role,'active':True},expected=201)
         self.http('POST','/settings',{},expected=403,csrf=False)

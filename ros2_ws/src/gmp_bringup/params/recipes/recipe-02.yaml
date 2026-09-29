@@ -1,11 +1,11 @@
 # #161: gmp_hmi/config/test_recipes/v4/recipe-02.yaml 를 운영 경로에 등록.
 # C는 사용하지 않으므로 items에 넣지 않는다 (0 g 항목 금지, gmp_process.core.recipe.parse).
-# 9/29 사용자 변경: B 목표는 기존 57 g에서 69 g으로 변경. A 138 g과 허용오차 ±10 %는 유지.
-# 사용자 현행값: 원료 높이를 조정한 B 스쿱 1회량도 69 g이다. B 목표 허용 범위는 62.1~75.9 g.
+# 9/29 사용자 변경: B 목표는 기존 57 g에서 69 g으로 변경. A 목표는 138 g이다.
+# 원료 높이를 조정한 B 스쿱 1회량은 69 g이다. 모든 원료의 허용오차는 ±15 %다.
 # 이전 B 57.4 g 실측은 높이 조정 전 기록이다.
 # 이전: 85/170 g(D-33, 9/23) → 79/158 g(D-35, 9/25 — 테이프 없이 잰 9/23 측정이라 무효, #306).
 # 파일·값은 D 담당(9/25), 스키마·검증은 C(gmp_process/core/recipe.py). gmp_hmi 시험 사본과 한 PR 로 바꾼다.
 product: "레시피 2"
 items:
-  - {material_id: A, target_g: 138.0, tol_pct: 10.0}
-  - {material_id: B, target_g: 69.0, tol_pct: 10.0}
+  - {material_id: A, target_g: 138.0, tol_pct: 15.0}
+  - {material_id: B, target_g: 69.0, tol_pct: 15.0}

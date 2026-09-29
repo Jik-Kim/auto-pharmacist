@@ -37,9 +37,8 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from gmp_hmi.core.trial_inventory import TrialInventory
 
-# overfill 시나리오의 과다 투입 배율. 허용오차(±10 %, D-33 이후 유지)를 확실히 넘어야 OVER 가 말이 된다 —
-# 옛 1.10 은 ±5 % 시절 값이라 ±10 % 에서는 경계값이 된다.
-OVERFILL_RATIO = 1.15
+# overfill 시나리오의 과다 투입 배율. 모든 레시피의 ±15 % 상한을 넘긴다.
+OVERFILL_RATIO = 1.20
 # 계약 v1.9 — 이 구간의 RunBatch 주문은 거부하지 않고 1건 예약한다 (process_node._at_set_end 와 같은 단계).
 SET_END_STEPS = ('FINISH', 'DISCARDED', 'NUDGE_WAIT')
 # 원료 밖 단계 하나(SELF_CHECK·PICK_CONTAINER·TARE·VERIFY·FINISH·이동)의 시험 시간 [s].

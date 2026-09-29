@@ -39,7 +39,7 @@ const RECIPES=[
  {name:'recipe-01',product:'레시피 1',items:[['A',69],['B',69],['C',69]]},
  {name:'recipe-02',product:'레시피 2',items:[['A',138],['B',69]]},
  {name:'recipe-03',product:'레시피 3',items:[['A',69],['B',69],['C',138]]},
-].map(r=>({...r,total_g:r.items.reduce((sum,item)=>sum+item[1],0),items:r.items.map(([material_id,target_g])=>({material_id,target_g,tol_pct:r.name==='recipe-01'?15:10}))}));
+].map(r=>({...r,total_g:r.items.reduce((sum,item)=>sum+item[1],0),items:r.items.map(([material_id,target_g])=>({material_id,target_g,tol_pct:15}))}));
 const RECIPE=RECIPES[0];
 // 원료별 스쿱 1회량(#306) — 데모 시도 횟수만 만든다. 운영값은 common.yaml dosing.scoop_nominal.
 const SCOOP_NOMINAL={A:69,B:69,C:69};

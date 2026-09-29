@@ -16,7 +16,7 @@
 
 기존 `RecipeItem`의 `material_id`, `target_g`, `tol_pct`만 사용한다. 대문자 A/B/C, 배열 순서가 투입 순서다. 원료 위치 `material_1/2/3` 및 스쿱 위치 `scoop_1/2/3`는 `stations.yaml`이 관리한다. 레시피에 좌표를 복사하지 않는다.
 
-값은 운영 레시피(`gmp_bringup/params/recipes`)와 같다. 레시피 1은 원료별 69 g·±15 %, 레시피 2·3은 B 목표 69 g·±10 %다. 운영 레시피 파일·값은 D 담당이다(9/25). `test/test_v4_recipes.py`가 운영과 사본을 대조한다. 사용자가 B 원료 높이 조정 후 스쿱 1회량 69 g을 확인해 통신 시험 launch의 `test_scoop_nominal_by_material_g`도 [69, 69, 69]로 맞췄다. 이 설정은 가상 스쿱 사이클 생성 기준이며, 이전 57.4 g 실측은 높이 조정 전 기록이다.
+값은 운영 레시피(`gmp_bringup/params/recipes`)와 같다. 세 레시피의 모든 원료 허용오차는 ±15 %이고, 레시피 2·3의 B 목표는 69 g이다. 운영 레시피 파일·값은 D 담당이다(9/25). `test/test_v4_recipes.py`가 운영과 사본을 대조한다. 사용자가 B 원료 높이 조정 후 스쿱 1회량 69 g을 확인해 통신 시험 launch의 `test_scoop_nominal_by_material_g`도 [69, 69, 69]로 맞췄다. 이 설정은 가상 스쿱 사이클 생성 기준이며, 이전 57.4 g 실측은 높이 조정 전 기록이다.
 
 ## 재고·차단
 
