@@ -40,6 +40,8 @@ class Cell:
 
     def __call__(self, req):
         k = req['kind']
+        if k == 'move':
+            return {'success': True}
         if k == 'safe':
             return {'success': True}
         if k == 'measure':
@@ -1224,3 +1226,29 @@ def test_nudge_requires_successful_safe_before_done():
     assert fsm.mode != "DONE"
     assert fsm.on_result(req, {"success": False}) is None
     assert fsm.mode == "ERROR"
+
+
+@pytest.mark.parametrize('fixed', [False, True])
+def test_refill_returns_to_material_before_retry(fixed):
+    fsm = _fsm(fixed=fixed)
+    cell = Cell(yields=[0] * 4 + [100, 50])
+    req = fsm.start()
+    while req['kind'] != 'wait_interlock':
+        req = fsm.on_result(req, cell(req))
+    retry = fsm._resume
+    move = fsm.on_result(req, {})
+    assert move == dict(kind='move', station='material', material_id='A',
+                        approach='AT', then='resume_refill')
+    assert fsm.on_result(move, {'success': True}) == retry
+    assert fsm.state == 'SCOOP'
+
+
+def test_failed_refill_move_never_scoops():
+    fsm = _fsm(fixed=True)
+    cell = Cell(yields=[0] * 4)
+    req = fsm.start()
+    while req['kind'] != 'wait_interlock':
+        req = fsm.on_result(req, cell(req))
+    move = fsm.on_result(req, {})
+    assert fsm.on_result(move, {'success': False}) is None
+    assert fsm.mode == 'ERROR'

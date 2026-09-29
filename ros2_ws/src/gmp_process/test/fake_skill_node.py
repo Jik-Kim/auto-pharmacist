@@ -333,7 +333,12 @@ class FakeSkillNode(Node):
     def _restore_grip(self, req, res):
         with self.lock:
             self.calls.append('restore_grip')
-        res.success, res.payload, res.message = True, 'empty', '파지 상태 복구 완료'
+            res.payload = 'scoop' if self.held else 'empty'
+            res.material_id = self.scoop_of.get(self.held, '')
+            res.scoop_extracted = bool(self.held and res.material_id)
+        res.success = not req.expected_payload or (
+            res.payload == req.expected_payload and res.material_id == req.expected_material_id)
+        res.message = '파지 상태 복구 완료' if res.success else '기대 파지 불일치'
         return res
 
     def _recover(self, req, res):

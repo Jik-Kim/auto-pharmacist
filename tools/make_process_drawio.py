@@ -166,7 +166,7 @@ p2.edge(wscoop, scoop, 'scooped ≤ empty_scoop_g → SCOOP_EMPTY (모드 무관
 # ── 보충 인터락 (PAUSED) — 2열 2행은 비어 있어 세로로 지난다
 p2.edge(scoop, paused, 'SCOOP_EMPTY 4회 = MATERIAL_EMPTY → REFILL\n_resume = 이 scoop 요청', color=WARM,
         exit=(0.15, 1), entry=(0.15, 0), points=((cx(2, 0.15), Y[3] - 20),), lpos=(0.65, 0))
-p2.edge(paused, scoop, 'EXIT: restore_grip 성공 → _resume 재실행\n(REFILL 은 개입으로 세지 않는다)', color=OK,
+p2.edge(paused, scoop, 'EXIT: 스쿱·원료·인출 복구 확인 → material AT → _resume\n(REFILL 은 개입으로 세지 않는다)', color=OK,
         exit=(0.85, 0), entry=(0.85, 1), points=((cx(2, 0.85), Y[3] - 20),), lpos=(0.65, 0))
 # ── QA 판정 (DEVIATION)
 p2.edge(dev, ret, 'APPROVED (원료 일탈) → 결과에 남기고 스쿱 반납', color=OK,

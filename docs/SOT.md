@@ -492,3 +492,14 @@ passbox_done 접근→열기→EXIT 후퇴→nudge_wait AT→실제 NUDGE(|F|=37
 ## 주문 경계 안전 자세 연결 (2026-09-29 사용자 승인)
 
 시작은 SELF_CHECK의 SafePose 성공 → RestoreGrip(empty) 확인 → 외력 자가진단 → 빈 통 파지 순서입니다. 세트 끝은 넛지 대기 → 실제 넛지 → SafePose 성공 → DONE 및 다음 주문 대기입니다. 안전 자세/빈 그리퍼 확인 실패 시 다음 단계로 진행하지 않습니다. C 변경을 사용자가 승인했습니다. 실물 시험 결과는 별도 기록합니다.
+
+
+## 계획된 원료 보충 재개 (2026-09-29 사용자 승인)
+
+완료된 빈 스쿱 판정으로 MATERIAL_EMPTY에 진입하면 SafePose → 보충 대기 →
+EXIT에서 RestoreGrip(expected_payload=scoop, expected_material_id=현재 원료) 및
+scoop_extracted 확인 → 해당 material_N AT(계량 자세) 이동 성공 → 저장한 Scoop 재요청 순서다.
+스쿠핑·붓기·인출·파지 중 강제 중단은 A의 중단 이력 검사로 자동 재개하지 않는다.
+일반 carry 단계별 재개는 범위 밖이며 기존 차단을 유지한다. 계약 필드·좌표·속도는 변경하지 않았다.
+고정 taught_fixed 경로를 모의시험으로 검증하며 실물 보충·복귀 동선은 미검증이다.
+SafePose에서 지워진 힘 기준선은 복구하지 않으므로 깊이 보정 모드의 기준선 재획득은 별도 과제다.

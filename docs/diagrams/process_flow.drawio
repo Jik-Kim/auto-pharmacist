@@ -355,7 +355,7 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c55" value="EXIT: restore_grip 성공 → _resume 재실행&lt;br&gt;(REFILL 은 개입으로 세지 않는다)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.85;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c20" target="c9">
+        <mxCell id="c55" value="EXIT: 스쿱·원료·인출 복구 확인 → material AT → _resume&lt;br&gt;(REFILL 은 개입으로 세지 않는다)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.85;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c20" target="c9">
           <mxGeometry x="0.65" y="0" relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="761.5" y="940" />

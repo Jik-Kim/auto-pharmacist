@@ -263,6 +263,12 @@ class ProcessFSM:
                 return {'kind': 'measure'}
             self.state, self.mode = self._final, 'DONE'
             return None
+        if k == 'move' and req.get('then') == 'resume_refill':
+            if not res.get('success', False):
+                self.state, self.mode = 'ERROR', 'ERROR'
+                return None
+            self.state = self._resume_state
+            return self._resume
         # 종료·대기 전이 — 요청에 then 이 명시된 경우가 우선
         if 'then' in req and k in ('safe', 'move', 'carry'):
             nxt = req['then']
@@ -480,8 +486,10 @@ class ProcessFSM:
         if k == 'wait_qa':
             return self._after_qa(res.get('decision'))
         if k == 'wait_interlock':
-            self.state, self.mode = self._resume_state, 'RUNNING'
-            return self._resume
+            self.mode = 'RUNNING'
+            # SafePose에서 고정 Scoop을 바로 시작할 수 없다. 원료별 계량 자세부터 복귀한다.
+            return {'kind': 'move', 'station': 'material', 'material_id': self.cur.material_id,
+                    'approach': 'AT', 'then': 'resume_refill'}
         raise RuntimeError(f'전이 없음: state={st} req={k}')   # 전이표 밖 = 버그. 조용히 넘기지 않는다
 
     # ── VERIFY 판정 근거 ──────────────────────────────────────────────

@@ -351,7 +351,8 @@ def test_generated_date_id_skips_explicit_used_id(node):
 
 def test_refill_exit_between_safe_and_wait_is_not_lost(node):
     # idx 는 _pub_state 가 읽는다 — safe 가 정지 사유를 note 에 실으며 발행한다 (#191). 163행과 같은 규약.
-    node.fsm = NS(mode='PAUSED', state='PAUSED', idx=0)
+    node.fsm = NS(mode='PAUSED', state='PAUSED', idx=0, cur=NS(material_id='A'))
+    node._call_srv = lambda *_: Message(success=True, payload='scoop', material_id='A', scoop_extracted=True)
     assert node._dispatch({'kind': 'safe', 'reason': 'REFILL', 'then': 'wait_interlock'})['success']
     assert node._refill_waiting
     enter = node._srv_interlock(Message(request=0, reason='REFILL'), Message())
