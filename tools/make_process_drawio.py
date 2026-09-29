@@ -92,7 +92,7 @@ def S(c, r, name, sub='', kind='n'):
     return p2.box(X[c], Y[r], W, H, name + ('\n' + sub if sub else ''), fill=fill, stroke=stroke, bold=True, size=12)
 cx = lambda c, f=0.5: X[c] + W * f          # 상자 안 x 좌표
 idle = S(0, 0, 'IDLE', 'submit_order 대기', 'i')
-selfc = S(1, 0, 'SELF_CHECK', 'req: measure — 빈 그리퍼 외력\n(영점·센서 확인, 용기 아님)')
+selfc = S(1, 0, 'SELF_CHECK', 'req: safe → 빈 그리퍼 확인 → measure\n(영점·센서 확인, 용기 아님)')
 pickc = S(2, 0, 'PICK_CONTAINER', 'req: carry passbox_empty→workbench')
 tare = S(3, 0, 'TARE', 'req: measure(영점 기준) → weigh\n빈 용기 풍량 (배치 1회)')
 picks = S(0, 1, 'PICK_SCOOP', 'req: move(scoop_N) → grip\n스쿱은 원료통 아래 (D-24)')
@@ -105,7 +105,7 @@ wres = S(5, 1, 'WEIGH_RESIDUAL', 'req: weigh_scoop — 붓기 후 스쿱 잔량\
 ret = S(1, 2, 'RETURN_SCOOP', 'req: move(scoop_N) → grip(open)\n전용 스쿱 = 교차오염 방지')
 verify = S(3, 2, 'VERIFY', 'req: move(workbench ABOVE) → measure(영점 재확인) → weigh\n배치 끝 1회. 판정은 ① 레시피 총량 하나 (② 는 관측)')
 finish = S(4, 2, 'FINISH', 'req: carry workbench→passbox_done')
-nudgew = S(5, 2, 'NUDGE_WAIT', 'req: move(nudge_wait) → wait_nudge\n세트 끝 — 건드릴 때까지 PAUSED · 주문은 1건 예약 (D-23, v1.9)', 'p')
+nudgew = S(5, 2, 'NUDGE_WAIT', 'req: move(nudge_wait) → wait_nudge → safe\n세트 끝 — 건드릴 때까지 PAUSED · 주문은 1건 예약 (D-23, v1.9)', 'p')
 done = S(6, 2, 'DONE', 'event BATCH_END', 'd')
 err = S(0, 3, 'ERROR', 'req: safe(then None)\nevent INTERVENTION_FORCED', 'e')
 paused = S(2, 3, 'PAUSED', 'req: safe → wait_interlock', 'p')

@@ -72,3 +72,27 @@ def test_compound_carry_cannot_restart_from_source(node, module):
     result = node._srv_interlock(Message(request=module.InterlockRequest.Request.EXIT, reason=""), Message())
     assert not result.granted
     assert node._pause and not node._interlock_exit.is_set()
+
+
+def test_order_start_checks_safe_then_empty_gripper(node):
+    calls = []
+    def call(key, request):
+        calls.append((key, request))
+        return Message(success=True, message='')
+    node._call_srv = call
+    assert node._dispatch({'kind': 'safe', 'reason': 'BATCH_START'})['success']
+    assert [key for key, _ in calls] == ['safe', 'restore_grip']
+    assert calls[1][1].expected_payload == 'empty'
+    assert node.station == 'safe'
+
+
+@pytest.mark.parametrize('failed', ['safe', 'restore_grip'])
+def test_order_start_failure_prevents_next_stage(node, module, failed):
+    calls = []
+    def call(key, request):
+        calls.append(key)
+        return Message(success=key != failed, message='거부')
+    node._call_srv = call
+    with pytest.raises(module.SkillError):
+        node._dispatch({'kind': 'safe', 'reason': 'BATCH_START'})
+    assert calls == (['safe'] if failed == 'safe' else ['safe', 'restore_grip'])

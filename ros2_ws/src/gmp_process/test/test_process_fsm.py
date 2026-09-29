@@ -40,6 +40,8 @@ class Cell:
 
     def __call__(self, req):
         k = req['kind']
+        if k == 'safe':
+            return {'success': True}
         if k == 'measure':
             self.n_measure += 1
             # 1회차 SELF_CHECK(자가진단), 2회차 TARE 직전(영점 기준), 3회차부터 VERIFY 직전 재확인.
@@ -111,9 +113,10 @@ def test_happy_path_six_steps():
     seq = [s for s, k in trace]
     i = seq.index('PICK_SCOOP')
     assert seq[i + 2:i + 8] == ['SCOOP_TARE', 'SCOOP', 'WEIGH_SCOOP', 'POUR', 'WEIGH_RESIDUAL', 'RETURN_SCOOP']
-    assert trace[1] == ('PICK_CONTAINER', 'carry') and ('VERIFY', 'weigh') in trace
+    assert trace[:2] == [('SELF_CHECK', 'safe'), ('SELF_CHECK', 'measure')]
+    assert trace[2] == ('PICK_CONTAINER', 'carry') and ('VERIFY', 'weigh') in trace
     # 세트 끝: passbox_done 반송 → nudge_wait 이동 → NUDGE 대기 → DONE (D-23·D-24)
-    assert trace[-3:] == [('FINISH', 'carry'), ('NUDGE_WAIT', 'move'), ('NUDGE_WAIT', 'wait_nudge')]
+    assert trace[-4:] == [('FINISH', 'carry'), ('NUDGE_WAIT', 'move'), ('NUDGE_WAIT', 'wait_nudge'), ('NUDGE_WAIT', 'safe')]
 
 
 def test_oversize_scoop_returns_to_material_before_rescoop():
@@ -156,7 +159,7 @@ def test_repeated_oversize_returns_then_times_out_without_pour():
     assert [k for s, k in trace if s == 'RETURN_MATERIAL'] == ['return_material'] * 3
     # 스쿱을 든 채 일탈 → 스쿱 반납(move, grip open) 후 용기째 폐기함 → 폐기도 세트의 끝이라 nudge_wait 에서 대기
     assert [k for s, k in trace if s == 'DISCARDED'] == ['move', 'grip', 'carry']
-    assert trace[-2:] == [('NUDGE_WAIT', 'move'), ('NUDGE_WAIT', 'wait_nudge')]
+    assert trace[-3:] == [('NUDGE_WAIT', 'move'), ('NUDGE_WAIT', 'wait_nudge'), ('NUDGE_WAIT', 'safe')]
 
 
 def test_return_failure_goes_safe_without_retry_or_repour():
@@ -420,7 +423,7 @@ def test_container_grip_fail_retries_at_pick_container():
     trace = run(fsm, cell)
     assert fsm.deviations == [{'kind': 'GRIP_FAIL', 'step': 'PICK_CONTAINER', 'count': 1, 'action': 'RETRY',
                                'detail': '', 'material_id': None}]
-    assert trace[:3] == [('SELF_CHECK', 'measure'), ('PICK_CONTAINER', 'carry'), ('PICK_CONTAINER', 'carry')]
+    assert trace[:4] == [('SELF_CHECK', 'safe'), ('SELF_CHECK', 'measure'), ('PICK_CONTAINER', 'carry'), ('PICK_CONTAINER', 'carry')]
     assert fsm.tare_g == CUP_TARE and fsm.state == 'DONE' and len(fsm.results) == 2
 
 
@@ -444,7 +447,7 @@ def test_wrong_tool_container_width_mismatch_approved_resumes_dosing():
     trace = run(fsm, cell)
     assert fsm.deviations[0] == {'kind': 'WRONG_TOOL', 'step': 'PICK_CONTAINER', 'count': 1, 'action': 'QA',
                                  'detail': '폭 45.0mm (기대 60.0±1.0mm)', 'material_id': None}
-    assert trace[3] == ('TARE', 'weigh') and fsm.tare_g == CUP_TARE   # SELF_CHECK·PICK_CONTAINER·DEVIATION 다음
+    assert trace[4] == ('TARE', 'weigh') and fsm.tare_g == CUP_TARE   # SELF_CHECK·PICK_CONTAINER·DEVIATION 다음
     assert fsm.state == 'DONE' and len(fsm.results) == 2  # 승인 후 평소대로 두 원료 다 담아 완료
 
 
@@ -1203,3 +1206,21 @@ def test_원료별_1회량이_빠진_원료는_공통값으로_떨어지지_않�
     fsm = ProcessFSM(_two_materials(30, 30), cfg, WeightModel(ScaleConfig()), fingerprint=ToolFingerprint())
     with pytest.raises(KeyError, match='B'):
         run(fsm, DepthCell(nominal=60.0, residual=0.0))
+
+
+def test_start_safe_failure_never_picks_container():
+    fsm = _fsm()
+    req = fsm.start()
+    assert req == {"kind": "safe", "reason": "BATCH_START"}
+    assert fsm.on_result(req, {"success": False}) is None
+    assert fsm.mode == "ERROR"
+
+
+def test_nudge_requires_successful_safe_before_done():
+    fsm = _fsm()
+    fsm.state, fsm.mode = "NUDGE_WAIT", "PAUSED"
+    req = fsm.on_result({"kind": "wait_nudge"}, {})
+    assert req == {"kind": "safe", "reason": "SET_COMPLETE"}
+    assert fsm.mode != "DONE"
+    assert fsm.on_result(req, {"success": False}) is None
+    assert fsm.mode == "ERROR"

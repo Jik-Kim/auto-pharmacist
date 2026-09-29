@@ -983,6 +983,12 @@ class ProcessNode(Node):
         if k == 'safe':
             reason = req.get('reason', '')
             r = self._call_srv('safe', SafePose.Request(reason=reason))
+            self._check('safe_pose', r.success, r.message)
+            self.station = 'safe'
+            if reason == 'BATCH_START':
+                restored = self._call_srv('restore_grip', RestoreGrip.Request(
+                    expected_payload='empty', expected_material_id=''))
+                self._check('restore_grip', restored.success, restored.message)
             if r.success and req.get('then') == 'wait_interlock':
                 # 성공 후 즉시 EXIT를 받을 준비를 한다. 다음 dispatch까지의 틈에도 유지한다.
                 self._refill_waiting = True
