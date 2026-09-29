@@ -53,6 +53,9 @@ HUMAN_WAITS = ('wait_qa', 'wait_interlock', 'wait_nudge')
 # 게이트를 건너뛰는 요청 — 사람 대기 + 안전 자세. `safe` 는 "사람이 곧 들어오니 물러나라" 는 이동이라
 # NUDGE·인터락 정지보다 우선한다 (ENTER 가 NUDGE 정지 중에도 safe_pose 를 부르는 것과 같은 논리)
 GATE_BYPASS = HUMAN_WAITS + ('safe',)
+# 단, **주문 시작 안전 자세**는 물러나는 이동이 아니라 배치의 첫 이동이다 — NUDGE·인터락 정지 중에는
+# 움직이지 않고 게이트에서 기다린다 (9/28 #298 조장 요청, SOT 「주문 시작 준비와 명시적 이동」)
+GATED_SAFE_REASONS = ('BATCH_START',)
 
 # 일탈 → ScoopCycle.outcome. 시도가 실패로 끝난 것만 여기 있다 (OVERFILL·TIMEOUT 은 시도 자체는 끝났다)
 DEV_TO_OUTCOME = {'SCOOP_EMPTY': 'SCOOP_EMPTY', 'MATERIAL_EMPTY': 'SCOOP_EMPTY',
@@ -88,7 +91,7 @@ class ProcessNode(Node):
             # 선언 기본값은 운영값(common.yaml)과 같게 둔다 — 종전 0.5 는 운영 0.1 과 달라, 런치 없이 띄운
             # 노드가 운영보다 5배 느슨한 검사로 돌았다 (D-35 대조, 9/25 팀장 지적).
             ('scale.zero_drift_limit_n', 0.1),
-            ('scale.samples', 20), ('scale.settle_s', 1.0),
+            ('scale.samples', 20), ('scale.settle_s', 10.0),
             # max_attempts 는 **붓기 시도** 상한이다. 목표량÷스쿱 1회량에 비례해야 한다
             # (옛 데모 A 200 g ÷ 40 g = 5회가 하한이었다). max_returns 는 **초과 반환** 상한으로 성격이 다르다 (#189).
             ('dosing.max_attempts', 8), ('dosing.max_returns', 3),
@@ -752,23 +755,14 @@ class ProcessNode(Node):
         if getattr(self, '_active_request_kind', None) == 'carry':
             res.granted, res.message = False, '복합 용기 반송 중단 — 중복 파지 방지를 위해 자동 재개 불가'
             return res
-        if self._interlock_exit.is_set():
-            res.granted, res.message = True, '재개 승인 완료 — 실행 루프 소비 대기'
-            return res
         revision = self._interlock_revision
-        material = self.fsm.cur.material_id if self._refill_waiting else ''
         try:
-            restored = self._call_srv('restore_grip', RestoreGrip.Request(
-                expected_payload='scoop' if material else '', expected_material_id=material))
+            restored = self._call_srv('restore_grip', RestoreGrip.Request())
         except SkillError as e:
             res.granted, res.message = False, f'파지 복구 응답 미확인 — 재개 불가: {e}'
             return res
         if not restored.success:
             res.granted, res.message = False, f'파지 복구 실패 — 재개 불가: {restored.message}'
-            return res
-        if material and (restored.payload != 'scoop' or restored.material_id != material
-                         or not restored.scoop_extracted):
-            res.granted, res.message = False, '보충 재개에 필요한 스쿱·원료·인출 확인 실패'
             return res
         with self._safety_event_lock:
             if (self._safety_stop or revision != self._interlock_revision
@@ -908,9 +902,11 @@ class ProcessNode(Node):
 
     def _station_of(self, req: dict) -> str:
         s = req.get('station', '')
+        if s == 'scoop':
+            return self.smap.scoop_of(req['material_id'])
         if s == 'material':
             return self.smap.material_of(req['material_id'])
-        return self.smap.scoop_of(req['material_id']) if s == 'scoop' else s
+        return s
 
     # ── 요청 실행 ─────────────────────────────────────────────────────
     def _execute(self, req: dict) -> dict:
@@ -1093,7 +1089,7 @@ class ProcessNode(Node):
             while req is not None and rclpy.ok() and not self._stop.is_set():
                 self._check_batch_interrupt()
                 step = fsm.state
-                if req['kind'] not in GATE_BYPASS:
+                if req['kind'] not in GATE_BYPASS or req.get('reason') in GATED_SAFE_REASONS:
                     # 다음 **로봇 동작**을 시작하기 전에 멈춘다 — 정지를 잡는 자리는 여기 하나뿐이다.
                     # 사람을 기다리는 요청·safe 앞에서는 멈추지 않는다: 로봇이 움직이지 않거나(대기) 물러나는
                     # 이동(safe)이라 멈출 이유가 없고, QA 대기 앞에서 잡으면 판정을 못 받은 채 서 버린다
@@ -1229,8 +1225,12 @@ class ProcessNode(Node):
             a.insertion_depth_mm = float(res.get('insertion_depth_mm', 0.0))
         elif step == 'WEIGH_SCOOP' and a is not None and res.get('valid'):
             a.pre_pour = Reading(**res)
-        elif step == 'WEIGH_RESIDUAL' and a is not None and res.get('valid'):
-            a.post_pour = Reading(**res)
+        elif step == 'POUR' and req['kind'] == 'pour' and a is not None and res.get('success'):
+            # 잔량 실측은 없다. 기존 학습 계약의 post_pour/valid를 위조하지 않는다.
+            a._extra['pour_completed'] = True
+            self.event('INFO', 'POUR_ESTIMATE',
+                       f'{a.material_id} attempt={a.attempt}: 전량 붓기 가정 추정 투입량 '
+                       f'{self.fsm.cur.scooped_g:.3f} g (붓기 후 잔량 미측정)')
         elif step == 'RETURN_MATERIAL' and req['kind'] == 'return_material' and a is not None:
             # 반환 성공 뒤에만 닫는다. 실패는 _drain에서 RETURN_FAILED로 기록한다.
             self._close_attempt('RETURNED')
@@ -1254,7 +1254,7 @@ class ProcessNode(Node):
             self._close_attempt('RETURN_FAILED')
         elif outcome:
             self._close_attempt(outcome)
-        elif self._attempt is not None and self._attempt.post_pour is not None:
+        elif self._attempt is not None and self._attempt._extra.get('pour_completed'):
             self._close_attempt('COMPLETE')
 
         for r in fsm.results[self._published_results:]:

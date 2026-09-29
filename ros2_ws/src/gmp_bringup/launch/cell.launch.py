@@ -60,7 +60,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('mode', default_value='virtual', description='virtual | real'),
         DeclareLaunchArgument('host', default_value='127.0.0.1', description='로봇 IP (real: 192.168.1.100)'),
-        DeclareLaunchArgument('vel_scale', default_value='0.3', description='속도 스케일 0~1. 실물 첫 기동 0.2'),
+        DeclareLaunchArgument('vel_scale', default_value='1.0', description='속도 스케일 0~1. 사용자 지정 운영값 1.0'),
         DeclareLaunchArgument('gui', default_value='true', description='RViz'),
         DeclareLaunchArgument('hmi', default_value='true', description='웹 HMI 기동'),
         DeclareLaunchArgument('hmi_port', default_value='5000', description='HMI 포트 — 셀 밖 QA 는 http://<로봇PC>:5000'),

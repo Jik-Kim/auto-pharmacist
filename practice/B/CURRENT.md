@@ -9,7 +9,7 @@
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 공구 설정 `tool_weight` (펜던트, **동결**) | A 소관 동결값 — 숫자는 원본에서 본다 | [`practice/A/CURRENT.md`](../A/CURRENT.md) · `gmp_dosing/config/scale_reference.yaml` retracted_0923 · PR #235 |
-| 런타임 계량 `scale.gain / offset_g / max_std_g` | 0.8859 / 247.091 / 10.0 — **우드락 공구(9/19~21) 조건 값. 9/29 실측으로 틀린 값 확인** — 용기 순량 237 g 을 193 g(−19 %)으로 읽는다. **9/29 결정: gain·offset 을 경로별(용기·스쿱)로 나눈다** — 구조 변경 미착수 | `ros2_ws/src/gmp_bringup/params/common.yaml:91-93` |
+| 런타임 계량 — **경로별** `scale.{container,scoop}.{gain,offset_g,max_std_g}` (#307) | **container 1.0975 / 229.0 / 10.0 · scoop 0.983 / 103.5 / 10.0** — `execution/weighing.py` 가 subject 로 고른다. 공통 키 없음. ~~공통 0.8859 / 247.091 / 10.0 (9/19 우드락)~~ → 용기 순량 −19 % 로 읽던 값 | `common.yaml` `scale`, PR(#307) |
 | **용기 경로** gain / offset_g (9/29, #187) | **1.0975 ± 0.6 % / 229.0** — 79·154·229·316 g 한 파지, 최대 잔차 1.95 g. ~~≈ 1.076 (9/23 2점)~~ | `calibration/g1_0929_gain3pt.csv`, 일지 2026-09-29 |
 | **스쿱 경로** gain / offset_g (9/29) | **0.983 ± 1.0 %(A·C 합산) / 103.5(material_1)** — 스테이션별 gain 불필요(A 0.980 · B 0.968 · C 0.983). offset 은 스테이션마다 다름(순량엔 무관). ~~0.980 ± 4.2 % 미확정~~ | `calibration/g1_0929_scoop_gain3pt.csv` |
 | 계량 전제 — 공구 등록 | 등록 1.36 kg 동결, 실물은 부착물(≈ 60 g) 제거로 ≈ 1.30 kg. **위 offset 은 이 상태 전제 — 공구를 재등록하면 offset 재측정** | 일지 2026-09-29 |
@@ -17,8 +17,8 @@
 | VERIFY ① 허용폭 Σ(target×tol) | 레시피(D) 값에서 나온다 — **가장 엄격한 운영 레시피 값**을 쓴다. D-33 값·D-35 적용 뒤 값은 SOT 에 있다 | `params/recipes/recipe-0*.yaml`, `process_fsm.py:449` `batch_tol_g()`, SOT D-31 9/25 추기 · D-35 |
 | VERIFY ① 성립 여부 | **9/25 결정: 현 재파지 반복성(σ_순량 ≈ 9.9 g)으로 시연한다 — 합격 시험 #249 닫음.** 재파지 3σ 29.7 g 은 recipe-01·02 허용폭을 넘지만(`\|편향\|+3σ ≤ 예산` 미달), 규격 안 배치를 `BATCH_OUT_OF_SPEC` 로 잘못 거는 비율은 ≈ 2 % 추정이고 걸려도 QA 판정으로 가며 안전 문제가 아니다(SOT). 반복성 개선은 **시연 뒤 과제** | SOT D-31 9/25 결정(PR #284 `c2fd498`) |
 | 계량 무효 재시도 | `max_invalid_retries` **2** (총 3회 측정). 출처는 `DosingConfig` 기본값 **하나뿐**이다 — `common.yaml` 에도 `process_node` 선언에도 없다 | `gmp_dosing/core/dosing.py:32`, #213 결정 1, PR #225 |
-| 스쿱 1회량 | **원료별 `dosing.scoop_nominal` A·C 69 · B 57 g**(9/29 조장 결정 A·C 묶음 / B 별도, 반올림은 사용자). 공통 `scoop_nominal_g` **69**(원료별 값 없을 때). `DosingConfig.for_material()` — PR #310. **C 호출부(#306) 전까지 공정은 공통 69 로 판정.** ~~79.0 (D-35)~~ 근거 무효 · 85.0(D-33) · 40.0(9/18) | common.yaml `dosing.scoop_nominal_g`, `DosingConfig` 기본값, SOT D-35 |
-| 스쿱 1회 **투입량 실측** (#272, **9/29 현 구성** — 세 스쿱 마찰테이프, 손잡이 폭 16.5/17.5/18.5 mm, `vel_scale` 1.0, 원료면 가득+평평) | **A 69.3 g (σ 6.2, n 10) · B 57.4 g (σ 3.2, n 5) · C 67.4 g (σ 3.9, n 5) · A·C 묶음 68.7 g (n 15)**. ~~A 78.9 g · σ 3.90 (9/23)~~ → 마찰테이프 없이 잰 값, 현 구성 대표값 아님 | `calibration/scoop_sigma_0929_mat{A,B,C}.csv`, 일지 2026-09-29 |
+| 스쿱 1회량 | **원료별 `dosing.scoop_nominal` A/B/C 모두 69 g**(9/29 사용자: B 원료 높이 조정 후 현재 69 g). 공통 `scoop_nominal_g`도 **69 g**. 종전 B 57 g 설정은 대체했다. `DosingConfig.for_material()`은 유지한다 | `common.yaml` `dosing.scoop_nominal`, [SOT](../../docs/SOT.md#레시피-23-b-목표-변경-2026-09-29-사용자-요청) |
+| 스쿱 1회 **과거 실측** (#272, **B 높이 조정 전** — 세 스쿱 마찰테이프, 손잡이 폭 16.5/17.5/18.5 mm, `vel_scale` 1.0) | **A 69.3 g (σ 6.2, n 10) · B 57.4 g (σ 3.2, n 5) · C 67.4 g (σ 3.9, n 5) · A·C 묶음 68.7 g (n 15)**. B 57.4 g은 현행 69 g 설정의 근거가 아니다. ~~A 78.9 g · σ 3.90 (9/23)~~ → 마찰테이프 없이 잰 값 | `calibration/scoop_sigma_0929_mat{A,B,C}.csv`, 일지 2026-09-29 |
 | 깊이 비율 하한 `min_fraction` | **0.10** (종전 0.15). `stations.yaml scooping.A` 와 같아야 함 | common.yaml `dosing`, `stations.yaml:126` |
 | 교착 여유 | 최소 채취 **7.9 g** (= 0.10 × 79). 한계 2×target×tol 은 레시피 값이라 여기 안 적는다 — 성립 여부는 시험이 레시피 파일을 읽어 단언한다 | `test_dosing.py::test_min_scoop_cannot_overshoot_tolerance` |
 | 영점 이동 한계 `zero_drift_limit_n` | 0.1 N | `common.yaml:94` |
@@ -101,7 +101,7 @@
     **9/23 실측(붓기 방식)으로 대체**됐다. #269 는 Closed. 원문은 `git log -p practice/B/CURRENT.md`
     (이 절 교체 전 커밋 `4ff3fac`). `ScoopCycle` 로봇 계량 교차검증(`reference_delivered_g`)은 보조로 남는다
     — 다만 로봇 스쿱 계량이 PLA 공구에서 미검증이라 그 전에는 의미가 없다.
-- ⛔ **[9/30 시연 필수 — 9/29 안에] 구조 변경 두 건**
+- **[9/29 당시 시연 준비 목록 — 현재 구현값은 위 표 참조] 구조 변경 두 건**
   1. **#306 원료별 1회량 A·C 69 / B 57** — B **PR #310**(구조 + `common.yaml` 값) → C `process_fsm` 의 `decide()`·`_first_fraction()` 에 `for_material(cur.material_id)`, `process_node` 선언 → D 레시피(#291 을 69/138/57 로)
   2. **#307 계량 gain·offset·max_std_g 경로별** — container 1.0975/229.0 · scoop 0.983/103.5 · 둘 다 max_std_g 10. **조장 yaml + A `skill_node` 한 PR**(따로면 없는 키를 읽어 계량 실패). #186 흡수
   - 선행: #283(B) · #287(C) · #293(A). 머지 뒤 가상 1배치 → **실물 1배치**(TARE→VERIFY 순량이 저울 ±3 g)
@@ -133,10 +133,10 @@
     **금지** 파지를 놓았다 다시 잡은 점을 섞어 기울기를 내지 말 것 — 재파지가 기준선을 7 g 움직인다
     (9/23 에 그래서 1.39 가 나왔다). 시료를 붓고 **손을 완전히 뗀 뒤** Enter (9/23 오염 회차 2건이 이 타이밍).
     2점이 아니라 3점인 이유: 9/23 은 79/229 두 점이라 **직선성을 못 봤다**. 하중 두 번 더 넣는 데 30초다.
-    확정 후 `common.yaml` scale.gain/offset_g(·max_std_g) 갱신 PR — B 작성, A 리뷰.
+    ✅ ~~확정 후 `common.yaml` scale.gain/offset_g(·max_std_g) 갱신 PR — B 작성, A 리뷰~~ → 경로별 값으로 PR #317(#307, 9/29).
 - ~~#221 `scoop_nominal_g` 40→65 + `decide()` 하한 + #210 `max_attempts` 하한~~ → **닫힘**(#221 9/24 Closed).
   40→65 는 D-33 의 85 를 거쳐 D-35 의 79 로 대체됐고, 교착 조건은 `test_dosing.py` 가 파라미터 파일로 단언한다.
-- #208 고주파 게이트 `max_hf_std_g` 배선(A) → #219 리베이스(현재 main 과 충돌). #208 배선은 A 의 PR #293. **#219 는 9/28 사용자 결정으로 보류** — #293 머지 뒤, 로봇 없는 날에.
+- ✅ ~~#208 배선(A) → #219 리베이스~~ → #208 은 PR #293 으로 9/29 머지(계량은 `gmp_skills/execution/weighing.py`). **#219 는 9/29 재상륙 PR** — `WeightModel.reading()` 의 `raw_hf_std` 가 **필수 키워드**(누락 TypeError · None ValueError). 운영 호출처는 `weighing.py` 하나이고 늘 값을 넘긴다(무효·가상 경로는 0.0 이지만 `valid_src` 가 거짓이라 무효)
 - ⏸ **조장 결정(9/23, SOT D-31): (라) 파지 반복성 개선 먼저 → 9/25 시연 뒤 과제로 미룸**(#249 닫음, 현 반복성으로 시연). (다) 제외, (가) 보류(필요 시 규격과 분리된
   계량 불확실성 게이트 + QA 처리로 별도 설계), (나) 는 BRD 정합성 판단으로 분리.
   치구는 A 이슈, **합격 시험은 B 이슈**. gain 3점 시험은 보정 확정용이고 재파지 근거로 쓰지 않는다.
@@ -251,7 +251,7 @@
 - gmp_hmi 와 gmp_process 시험을 같은 실행에 넣으면 노드 경합으로 `test_scoop_cycle_attempt_numbers_are_unique_per_material` 이 깨진다. 패키지별로 나눠 돌린다.
 
 ## 철회 이력 (최근 것 위)
-- 2026-09-29 ~~스쿱 1회량 78.9 g(9/23 A) · D-35 79 g 의 근거~~ → 9/23 A 는 마찰테이프 없이 잰 값(측정자 확인). 현 구성 A 69.3 · B 57.4 · C 67.4 g. 결정: A·C 묶음 / B 별도
+- 2026-09-29 ~~스쿱 1회량 78.9 g(9/23 A) · D-35 79 g 의 근거~~ → 9/23 A 는 마찰테이프 없이 잰 값(측정자 확인). 높이 조정 전 구성 A 69.3 · B 57.4 · C 67.4 g. 당시 결정 A·C 묶음 / B 별도는 이후 사용자 B 69 g 현행값으로 대체
 - 2026-09-29 ~~용기 경로 gain ≈ 1.076 (9/23 2점)~~ → 1.0975 (4하중점 8회). ~~스쿱 경로 1.0013 과 2 % 이내면 단일 gain~~ → 스쿱 0.980, 용기와 −11 % → 경로별 분리 결정
 - 2026-09-29 ~~원료 B 1차 8회(71~96 g)~~ → B 손잡이 마찰테이프 없음으로 무효
 - 2026-09-28 ~~B·C 는 스쿱 폭(15.5/18.0/28.0 mm)이 달라 1회량이 다르다~~ → 그 값은 손잡이 폭(SOT Q-04). 세 원료는 같은 자갈·같은 스쿱 뜨는 부분(사용자 확인). B·C 는 스테이션 차이만 보는 5회 확인 측정으로 줄였다.

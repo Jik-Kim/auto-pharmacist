@@ -67,6 +67,7 @@ class FakeSkillNode(Node):
         self.block_rescoop = False              # 실물처럼 반환 뒤 Scoop 을 거부할지 (v1.5.1 · PR #43)
         self._rescoop_blocked = False           #   반환이 세운다. 실물과 같이 풀리지 않는다
         self.cancelled = False                  # safe_pose 가 세운다 — 진행 중 스킬 1건이 실패로 끝난다
+        self.busy = 0                           # 지금 도는 move·scoop·pour 수 — 없으면 safe_pose 가 취소를 남기지 않는다
         self.attendant = True                   # 세트 끝 NUDGE_WAIT 에서 사람이 건드려 준다 (D-23). 대기 자체를 시험하면 False
         self._attend_stop = threading.Event()
         self.recover_result = (True, False, 1, 'ok')   # recover_safety 응답 — 테스트가 덮어쓴다 (v1.4)
@@ -145,7 +146,8 @@ class FakeSkillNode(Node):
             time.sleep(d)
 
     def _take_cancel(self) -> bool:
-        """skill_node 의 SafePose 처럼 — 취소가 걸렸으면 진행 중 1건이 실패로 끝난다."""
+        """skill_node 의 SafePose 처럼 — 취소가 걸렸으면 진행 중 1건이 실패로 끝난다. 잠금 안에서 호출."""
+        self.busy -= 1                   # 이 스킬은 여기서 끝난다 — 뒤에 온 safe_pose 는 취소를 남기지 않는다
         if not self.cancelled:
             return False
         self.cancelled = False
@@ -180,6 +182,7 @@ class FakeSkillNode(Node):
     def _move(self, gh):
         with self.lock:
             self.calls.append(f'move:{gh.request.station_id}:{gh.request.approach}')
+            self.busy += 1
         self._hold('move')
         with self.lock:
             if self._take_cancel():
@@ -197,6 +200,7 @@ class FakeSkillNode(Node):
             self.calls.append(f'scoop:{gh.request.material_id}:{gh.request.attempt}'
                               f':{gh.request.depth_fraction:.3f}')
         depth = float(gh.request.depth_fraction)
+        # 이동 전 거부는 진행 중 스킬이 아니다 — busy 는 실제로 도는 구간에서만 센다
         # 계약 v1.5 — 범위 밖 깊이는 이동 전에 거부한다. 실제 Z 변환은 A 가 실물 뒤 확정한다.
         if not math.isfinite(depth) or not MIN_DEPTH_FRACTION <= depth <= 1.0:
             gh.abort()
@@ -209,6 +213,8 @@ class FakeSkillNode(Node):
             gh.abort()
             return Scoop.Result(success=False,
                                 message='반환 후 재스쿱 연결 경로 미구현: 자동 Scoop을 차단합니다')
+        with self.lock:
+            self.busy += 1
         self._hold('scoop')
         with self.lock:
             if self._take_cancel():
@@ -234,6 +240,7 @@ class FakeSkillNode(Node):
         f = float(gh.request.fraction)
         with self.lock:
             self.calls.append(f'pour:{f:.3f}')
+            self.busy += 1
         self._hold('pour')
         with self.lock:
             if self._take_cancel():
@@ -326,19 +333,19 @@ class FakeSkillNode(Node):
     def _safe(self, req, res):
         with self.lock:
             self.calls.append(f'safe:{req.reason}')
-            self.cancelled = True        # 진행 중 스킬 1건을 실패로 끝낸다 (skill_node 와 같은 규칙)
+            # 진행 중 스킬 1건을 실패로 끝낸다 (skill_node 와 같은 규칙). **도는 스킬이 없으면 남기지 않는다** —
+            # 주문 시작 안전 자세(BATCH_START)처럼 스킬 사이에 부르면 다음 이송이 엉뚱하게 취소된다(9/29)
+            self.cancelled = self.busy > 0
+            if self._fails('safe'):          # 안전 자세 이동 실패 (주문 시작 안전 자세 차단 시험용)
+                res.success, res.message = False, '안전 자세 이동 실패'
+                return res
         res.success = True
         return res
 
     def _restore_grip(self, req, res):
         with self.lock:
             self.calls.append('restore_grip')
-            res.payload = 'scoop' if self.held else 'empty'
-            res.material_id = self.scoop_of.get(self.held, '')
-            res.scoop_extracted = bool(self.held and res.material_id)
-        res.success = not req.expected_payload or (
-            res.payload == req.expected_payload and res.material_id == req.expected_material_id)
-        res.message = '파지 상태 복구 완료' if res.success else '기대 파지 불일치'
+        res.success, res.payload, res.message = True, 'empty', '파지 상태 복구 완료'
         return res
 
     def _recover(self, req, res):

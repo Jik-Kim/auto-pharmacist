@@ -38,11 +38,24 @@ cd ~/auto-pharmacist/ros2_ws && colcon build --symlink-install && source install
 
 ## 실행
 
+기본 `cell.launch.py` 한 번으로 로봇 bringup과 셀 앱 노드 4개가 모두 시작됩니다.
+로봇 bringup은 두산 컨트롤러·에뮬레이터/실물 연결과 설정에 따른 RG2 드라이버를 포함합니다.
+약 12초 뒤 `/cell/skill_node`(로봇 스킬), `/cell/process_node`(공정),
+`/cell/record_node`(기록), `/cell/hmi_web_node`(웹 HMI)를 시작합니다.
+`hmi:=false`는 웹 HMI만 빼고 기록 노드는 유지하며, `gui:=false`는 RViz만 끕니다.
+`gmp_dosing`은 공정에서 가져다 쓰는 라이브러리이고 `gmp_interfaces`는 메시지 정의라 별도 노드가 없습니다.
+런치가 시작됐어도 노드 준비가 끝났다는 뜻은 아니므로 아래 확인 명령으로 실제 기동을 확인합니다.
+
 ```bash
 ros2 launch gmp_bringup cell.launch.py mode:=virtual              # 에뮬레이터 + RViz (랜선 없이)
 ```
 ```bash
-ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100
+ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100 vel_scale:=0.2  # 첫 기동
+```
+
+```bash
+ros2 node list
+ros2 action list -t
 ```
 
 명령·순서·게이트는 [docs/demo_run_procedure.md](docs/demo_run_procedure.md) 가 정본이다.
@@ -77,6 +90,51 @@ ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=0.2
 검증된 속도를 지정하려면 `vel_scale`을 변경한다. 스쿱을 잡은 채 재기동할 때는
 [파지 상태 복원 절차](docs/setup.md#인출-완료-스쿱의-기동-시-복원)를 따르며,
 복원 확인 인자를 상시 실행 명령에 넣지 않는다.
+
+### 각 노드 개별 실행
+
+아래는 실물 모드 예시입니다. `cell.launch.py`와 동시에 실행하면 같은 노드가 중복됩니다.
+위의 `robot.launch.py`를 먼저 실행하고 컨트롤러 활성화를 확인한 뒤,
+서로 다른 터미널에서 스킬·공정·기록·HMI를 한 개씩 실행합니다.
+**각 터미널에서 먼저** 저장소 루트로 이동해 다음 환경을 설정합니다.
+
+```bash
+source tools/env.sh
+GMP_PARAMS="$(ros2 pkg prefix gmp_bringup)/share/gmp_bringup/params"
+GMP_DB="$HOME/auto-pharmacist/records/cell.db"
+```
+
+스킬 노드 — 위의 `skill.launch.py`가 공통 설정과 스테이션 파일을 전달합니다.
+
+```bash
+ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=0.2
+```
+
+공정 노드:
+
+```bash
+ros2 run gmp_process process_node --ros-args -r __ns:=/cell \
+  --params-file "$GMP_PARAMS/common.yaml" -p stations_file:="$GMP_PARAMS/stations.yaml"
+```
+
+기록 노드:
+
+```bash
+ros2 run gmp_hmi record_node --ros-args -r __ns:=/cell \
+  --params-file "$GMP_PARAMS/common.yaml" \
+  -p db_path:="$GMP_DB" -p export_dir:="$(dirname "$GMP_DB")"
+```
+
+웹 HMI 노드:
+
+```bash
+ros2 run gmp_hmi hmi_web_node --ros-args -r __ns:=/cell \
+  --params-file "$GMP_PARAMS/common.yaml" \
+  -p db_path:="$GMP_DB" -p recipes_dir:="$GMP_PARAMS/recipes" -p port:=5000
+```
+
+실물에서 RG2 Modbus 백엔드를 쓰면 `robot.launch.py`가 상태 드라이버를 함께 띄웁니다.
+위 개별 명령은 전체 런치와 같은 `/cell` 네임스페이스와 공통 설정을 사용합니다.
 
 ## 상태
 

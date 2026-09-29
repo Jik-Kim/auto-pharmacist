@@ -221,8 +221,9 @@ def test_baseline_reuses_valid_empty_scoop_raw_force_only(monkeypatch, valid_src
     node._empty_scoop_baseline_pending = pending
     node._held_payload = 'scoop'
     params = {'scale.samples': 20, 'scale.settle_s': 1., 'scale.method': 'tool_force',
-              'scale.simulated': False, 'scale.gain': 1., 'scale.offset_g': 195.,
-              'scale.min_resolvable_g': 5., 'scale.max_std_g': 8.,
+              'scale.simulated': False, 'scale.min_resolvable_g': 5.,
+              'scale.container.gain': 1., 'scale.container.offset_g': 195., 'scale.container.max_std_g': 8.,
+              'scale.scoop.gain': 1., 'scale.scoop.offset_g': 195., 'scale.scoop.max_std_g': 8.,
               'scale.max_hf_std_g': 9.5, 'scale.fz_sign': -1.}
     node.get_parameter = lambda key: SimpleNamespace(value=params[key])
     node._scale_period_s = lambda: .82

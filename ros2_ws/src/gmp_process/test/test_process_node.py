@@ -32,6 +32,8 @@ from gmp_process.nodes.process_node import ProcessNode        # noqa: E402
 from gmp_process.core.process_fsm import ItemRun             # noqa: E402
 
 STATIONS = os.path.join(os.path.dirname(__file__), '..', '..', 'gmp_bringup', 'params', 'stations.yaml')
+# 주문마다 한 번 나가는 주문 시작 안전 자세 (9/28 SOT). 「오류·인터락으로 물러났는가」를 볼 때는 빼고 센다.
+ORDER_START_SAFE = 'safe:BATCH_START'
 
 
 class Collector(Node):
@@ -136,21 +138,21 @@ def test_skill_call_sequence(cell):
     assert _wait_done(proc) == 'DONE', proc.note
 
     calls = fake.calls
-    assert calls[0] == 'measure_force'                       # SELF_CHECK
+    assert calls[:3] == ['safe:BATCH_START', 'restore_grip', 'measure_force']                       # SELF_CHECK
     # 원료 B 는 stations.yaml 에서 scoop_2 로 풀린다 (FSM 은 'scoop' 이라고만 말한다)
     assert any(c == 'move:scoop_2:1' for c in calls), calls
     assert not any(c.startswith('move:scoop:') for c in calls), '원료 → 스쿱 해석이 안 됐다'
     # carry 는 MoveToStation 4쌍 + SetGripper 2회로 조합된다 (D-18)
     assert 'move:passbox_empty:0' in calls and 'move:passbox_done:0' in calls
-    # 계량 횟수 — 용기는 2회(TARE·VERIFY), 스쿱은 **빈 스쿱 1회 + 시도마다 2회**(붓기 전·후).
+    # 계량 횟수 — 용기는 2회(TARE·VERIFY), 스쿱은 **빈 스쿱 1회 + 시도마다 1회**(붓기 전).
     # 빈 스쿱은 원료마다 한 번만 잰다 (D-22) — 시도마다 3회가 아니다
     attempts = proc.fsm.results[0].attempts
     assert calls.count('weigh_container') == 2
-    assert calls.count('weigh_held') == 1 + 2 * attempts
+    assert calls.count('weigh_held') == 1 + attempts
 
     subjects = [w.subject for w in col.weights]
     assert subjects.count('container') == 2
-    assert subjects.count('scoop') == 1 + 2 * attempts
+    assert subjects.count('scoop') == 1 + attempts
 
 
 def test_scoop_grip_commands_the_search_width_not_the_expected_width(cell):
@@ -184,9 +186,9 @@ def test_scoop_cycle_marks_missing_wrench(cell):
     assert _wait_done(proc) == 'DONE', proc.note
 
     c = col.cycles[-1]
-    assert c.valid and c.outcome == ScoopCycle.COMPLETE
-    assert c.delivered_g > 0.0
-    assert c.scoop_tare.valid and c.pre_pour.valid and c.post_pour.valid
+    assert not c.valid and c.outcome == ScoopCycle.COMPLETE
+    assert c.delivered_g == 0.0  # 잔량 미측정: 학습 계약의 실측 투입량은 채우지 않는다
+    assert c.scoop_tare.valid and c.pre_pour.valid and not c.post_pour.valid
     assert not (c.tare_wrench_valid or c.pre_pour_wrench_valid or c.post_pour_wrench_valid)
     assert c.weigh_pose_id == 'material_1'
 
@@ -205,7 +207,7 @@ def test_skill_failure_becomes_force_limit_then_error(cell):
     assert kinds == ['FORCE_LIMIT', 'FORCE_LIMIT'], kinds      # RETRY 1회 → FORCED
     assert [d['action'] for d in proc.fsm.deviations] == ['RETRY', 'FORCED']
     assert fake.calls.count('pour:1.000') == 2                 # 같은 요청을 한 번만 더 부른다
-    assert any(c.startswith('safe:') for c in fake.calls)      # 끝에 안전 자세로 간다
+    assert any(c.startswith('safe:') and c != ORDER_START_SAFE for c in fake.calls)      # 끝에 안전 자세로 간다
     assert col.devs and col.devs[0].kind == Deviation.FORCE_LIMIT
     assert '기울임' in col.devs[0].detail                       # 실패 사유가 일탈에 남는다
 
@@ -217,7 +219,8 @@ def test_missing_skill_server_does_not_hang(cell):
     proc.set_parameters([Parameter('server_wait_s', value=1.0)])
     _submit(col, [('A', 100.0, 5.0)])
     assert _wait_done(proc, timeout=40.0) == 'ERROR'
-    assert proc.fsm.deviations, '일탈 없이 끝났다'
+    assert '안전 자세 실패' in proc.note
+    assert not any(c.startswith('move:') for c in fake.calls)
 
 
 def _qa(col, deviation_id, decision, operator='qa_kim'):
@@ -330,7 +333,7 @@ def test_interlock_enter_pauses_and_exit_resumes(cell):
     time.sleep(0.3)
     assert call(InterlockRequest.Request.ENTER, 'REFILL').granted
     assert _wait_mode(proc, 'PAUSED'), proc.fsm.mode
-    assert any(c.startswith('safe:') for c in fake.calls)
+    assert any(c.startswith('safe:') and c != ORDER_START_SAFE for c in fake.calls)
 
     fake.delay.clear()
     assert call(InterlockRequest.Request.EXIT, 'REFILL').granted
@@ -539,7 +542,7 @@ def test_rescoop_after_return_is_blocked_once_with_a_clear_reason(cell):
     devs = [d for d in proc.fsm.deviations if d['step'] == 'SCOOP']
     assert len(devs) == 1 and devs[0]['action'] == 'FORCED', proc.fsm.deviations
     assert '반환 후 재스쿱 차단' in devs[0]['detail'] and '연결 경로 미구현' in devs[0]['detail']
-    assert any(c.startswith('safe:') for c in fake.calls)      # 끝에 안전 자세로 간다
+    assert any(c.startswith('safe:') and c != ORDER_START_SAFE for c in fake.calls)      # 끝에 안전 자세로 간다
 
 
 def test_submit_rejects_invalid_numbers_and_duplicates(cell):
@@ -588,63 +591,17 @@ def test_213_붓기_전_계량_무효는_원료를_되돌리고_ERROR_로_끝난
     assert not [r for r in col.results if r.material_id == 'A'], col.results
 
 
-def test_213_붓기_뒤_계량_무효는_QA_승인으로_미측정이_기록된다(cell):
-    """#213 결정 3 · #108 — 이미 부은 뒤라 되돌릴 게 없다. 승인하면 **모른 채** 배치를 잇는다.
-
-    9/23 에 고친 경로를 실제 스킬 왕복으로 처음 태우는 시험이다. 종전에는 FSM 이
-    「verdict 가 비었다」까지만 알고, 발행부가 그 빈 값을 `'OK'` 로 떨어뜨리는 것을
-    아무도 보지 못했다.
-    """
+def test_pour_completion_skips_residual_and_records_estimate(cell):
     proc, fake, col = cell
-    fake.weigh_invalid = {'WEIGH_RESIDUAL': 3}
+    fake.weigh_invalid = {'WEIGH_RESIDUAL': 3}  # 호출하지 않으므로 고장 주입도 소비되지 않는다
     _submit(col, [('A', 40.0, 5.0)])
-
-    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
-    dev = proc._pending_dev()
-    assert dev.kind == Deviation.WEIGH_INVALID and dev.requires_decision, dev.kind
-    assert _qa(col, dev.deviation_id, Deviation.APPROVED).accepted
     assert _wait_done(proc) == 'DONE', _why(proc)
-    # 원료 하나라도 미측정이면 배치 결과도 DONE_UNMEASURED 다 (9/23 조장 결정).
-    # 종전에는 VERIFY 미측정만 봐서 이 배치가 그냥 DONE 으로 나갔다.
-    assert proc._batch_outcome == 'DONE_UNMEASURED', proc._batch_outcome
-
-    r = [x for x in col.results if x.material_id == 'A'][-1]
-    assert r.verdict == DispenseResult.INVALID, r.verdict     # 「모른다」 — UNDER 도 OK 도 아니다
-    assert any(e.code == 'DISPENSE_UNMEASURED' for e in col.events), [e.code for e in col.events]
-
-    # 무효 계량 3건이 기록에 남는다. σ 가 게이트 위라 **왜 무효인지**가 기록만 봐도 보인다
-    bad = [w for w in col.weights if not w.valid]
-    assert len(bad) == 3, [(w.subject, w.valid, w.std_g) for w in col.weights]
-    assert all(w.subject == 'scoop' and w.std_g > 8.0 for w in bad), [(w.subject, w.std_g) for w in bad]
-
-
-def test_배치_미측정은_BATCH_UNMEASURED_이벤트로도_나간다(cell):
-    """`DONE_UNMEASURED` 는 `RunBatch.result` 에만 실려 **DB 에 닿지 않는다**.
-
-    `record_node` 는 배치 결과를 `CellState` 에서 만들고 `RunBatch.result` 는 보지 않는다.
-    그래서 조건만 넓히면 기록·KPI 는 그대로다 — 이벤트가 그 틈을 잇는다 (D 발견, 9/23).
-
-    순서는 **최선의 노력**이다. `_pub_state` 가 0.5 s 타이머로도 돌아 DONE 상태가 먼저
-    나갈 수 있고, 그 역전은 D 가 UPDATE 로 흡수한다. 여기서는 **이벤트가 나간다는 것과
-    내용**을 고정한다.
-    """
-    proc, fake, col = cell
-    fake.weigh_invalid = {'WEIGH_RESIDUAL': 3}
-    _submit(col, [('A', 40.0, 5.0)])
-
-    assert _wait_mode(proc, 'DEVIATION'), _why(proc)
-    assert _qa(col, proc._pending_dev().deviation_id, Deviation.APPROVED).accepted
-    assert _wait_done(proc) == 'DONE', _why(proc)
-
-    warn = [e for e in col.events if e.code == 'BATCH_UNMEASURED']
-    assert len(warn) == 1, [e.code for e in col.events]
-    assert warn[0].level == CellEvent.WARN
-    assert "'A'" in warn[0].text and 'VERIFY 미측정 False' in warn[0].text, warn[0].text
-    assert warn[0].batch_id == proc.batch_id, warn[0].batch_id
-
-    # BATCH_END 가 outcome 을 달고 나간다 — 로그만 봐도 어떤 완료인지 구분된다
-    end = [e for e in col.events if e.code == 'BATCH_END'][-1]
-    assert end.text.endswith('DONE_UNMEASURED'), end.text
+    assert fake.weigh_invalid['WEIGH_RESIDUAL'] == 3
+    assert any(e.code == 'POUR_ESTIMATE' for e in col.events)
+    assert not any(w for w in col.weights if not w.valid)
+    assert all(not c.post_pour.valid and not c.valid for c in col.cycles)
+    assert all(c.delivered_g == 0.0 for c in col.cycles)
+    assert proc.fsm.results[0].actual_g == 40.0
 
 
 def test_정상_배치는_BATCH_UNMEASURED_를_내지_않는다(cell):
@@ -774,7 +731,7 @@ def test_nudge_does_not_cut_a_skill_in_flight(cell):
     assert _wait_mode(proc, 'PAUSED')
     # 스쿱은 중간에 끊기지 않고 끝났다 — 그래서 다음 계량까지 가 있다
     assert any(c.startswith('scoop:') for c in fake.calls)
-    assert not any(c.startswith('safe:') for c in fake.calls), 'NUDGE 는 안전 자세로 보내지 않는다'
+    assert not any(c.startswith('safe:') and c != 'safe:BATCH_START' for c in fake.calls), 'NUDGE 는 안전 자세로 보내지 않는다'
 
     fake.delay.clear()
     fake.nudge()
@@ -831,7 +788,7 @@ def test_nudge_and_interlock_both_must_clear(cell):
     # NUDGE 정지는 그 자리에 선 것뿐 — 안전 자세가 아니므로 ENTER 는 멱등 처리로 빠지면 안 된다
     r = _lock(col, InterlockRequest.Request.ENTER)
     assert r.granted and not r.message.startswith('이미'), r.message
-    assert any(c.startswith('safe:') for c in fake.calls), 'ENTER 는 안전 자세로 보내야 한다'
+    assert any(c.startswith('safe:') and c != ORDER_START_SAFE for c in fake.calls), 'ENTER 는 안전 자세로 보내야 한다'
 
     fake.nudge()                                   # NUDGE 만 풀었다
     time.sleep(0.3)
@@ -890,7 +847,7 @@ def test_safe_pose_bypasses_the_nudge_gate(cell):
     _submit(col, [('A', 100.0, 5.0)])
     assert _wait_until(lambda: sum(c.startswith('scoop:') for c in fake.calls) >= 4)
     fake.nudge()                                   # 4번째 스쿱이 도는 중 — 곧 MATERIAL_EMPTY → safe
-    assert _wait_until(lambda: any(c.startswith('safe:') for c in fake.calls), 5.0), \
+    assert _wait_until(lambda: any(c.startswith('safe:') and c != ORDER_START_SAFE for c in fake.calls), 5.0), \
         f'nudge 정지 중에도 safe 는 나가야 한다 — {_why(proc)}'
     assert proc._nudge_paused, 'NUDGE 정지는 그대로 살아 있다'
     assert _wait_until(lambda: proc._refill_waiting, 5.0), _why(proc)
@@ -1185,3 +1142,51 @@ def test_late_recovery_event_cannot_clear_new_safety_stop(cell):
     assert _wait_until(lambda: any(e.code == msg.code and e.text == msg.text for e in col.events))
     assert proc._safety_stop
     assert not _submit(col, [('A', 100.0, 5.0)]).accepted
+
+
+# ── 주문 시작 안전 자세 (9/28 SOT 「주문 시작 준비와 명시적 이동」, #298 조장 요청) ─────
+# A 가 이동 안의 숨은 안전 자세 MOVEJ 를 없앴다(#298). 주문 시작 때 C 가 명시적으로 안전 자세를 거친 뒤
+# 빈 통을 잡는다 — 첫 주문도, 넛지로 앞 세트를 끝낸 후속 주문도 같은 순서이고 넛지 대기를 더하지 않는다.
+
+def _first_container_move(calls):
+    return next(i for i, c in enumerate(calls) if c.startswith('move:passbox_empty'))
+
+
+def test_order_starts_at_safe_pose_before_taking_the_container(cell):
+    proc, fake, col = cell
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_done(proc) == 'DONE', _why(proc)
+    calls = list(fake.calls)
+    assert calls.index(ORDER_START_SAFE) < calls.index('restore_grip') < calls.index('measure_force') < _first_container_move(calls), calls[:6]
+    assert calls.count(ORDER_START_SAFE) == 1, '주문당 한 번'
+
+
+def test_next_order_after_nudge_goes_to_safe_pose_again_without_extra_nudge(cell):
+    proc, fake, col = cell
+    fake.attendant = False
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_until(lambda: proc._nudge_waiting, 60.0), _why(proc)
+    fake.nudge()                                   # 앞 세트를 끝내는 넛지 — 이게 후속 주문 앞의 유일한 넛지다
+    assert _wait_done(proc) == 'DONE', _why(proc)
+    with fake.lock:                                # 가짜 셀을 다음 배치 상태로
+        fake.in_cup, fake.held = 0.0, None
+        fake.content.clear()
+    n = len(fake.calls)
+    fake.attendant = True
+    r = _submit(col, [('A', 100.0, 5.0)])
+    assert r.accepted, r.message
+    assert _wait_done(proc) == 'DONE', _why(proc)
+    later = fake.calls[n:]
+    box = _first_container_move(later)
+    assert later.index(ORDER_START_SAFE) < box, later[:6]
+    assert 'nudge' not in later[:box], '후속 주문 시작 앞에 넛지 대기를 더하지 않는다'
+
+
+def test_order_start_safe_failure_never_takes_the_container(cell):
+    """안전 자세 성공을 확인하기 전에는 빈 통 이송·파지를 요청하지 않는다 — 실패면 ERROR."""
+    proc, fake, col = cell
+    fake.fail['safe'] = 1
+    _submit(col, [('A', 100.0, 5.0)])
+    assert _wait_done(proc) == 'ERROR', _why(proc)
+    assert not any(c.startswith('move:passbox_empty') for c in fake.calls), fake.calls
+    assert fake.calls.count(ORDER_START_SAFE) == 1, '실패한 주문 시작 이동을 재시도하지 않는다'

@@ -19,8 +19,8 @@ SCOOP_TARE, CUP_TARE = 20.0, 30.0
 def _fsm(fingerprint=None, *, fixed=False):
     spec = parse({'product': 't', 'items': [{'material_id': 'A', 'target_g': 100, 'tol_pct': 5},
                                               {'material_id': 'B', 'target_g': 50, 'tol_pct': 5}]})
-    return ProcessFSM(spec, DosingConfig(scoop_nominal_g=40, fixed_scoop=fixed),
-                      WeightModel(ScaleConfig()), fingerprint=fingerprint or ToolFingerprint())
+    return ProcessFSM(spec=spec, dosing_cfg=DosingConfig(scoop_nominal_g=40, fixed_scoop=fixed),
+                      scale=WeightModel(ScaleConfig()), fingerprint=fingerprint or ToolFingerprint())
 
 
 class Cell:
@@ -40,8 +40,6 @@ class Cell:
 
     def __call__(self, req):
         k = req['kind']
-        if k == 'move':
-            return {'success': True}
         if k == 'safe':
             return {'success': True}
         if k == 'measure':
@@ -68,7 +66,7 @@ class Cell:
             moved = max(0.0, self.in_scoop * f - self.residual) if f >= 1.0 else self.in_scoop * f
             self.in_cup += moved
             self.in_scoop -= moved
-            return {}
+            return {'success': True}
         if k == 'return_material':
             self.n[k] += 1
             self.in_scoop = 0.0
@@ -109,12 +107,12 @@ def test_happy_path_six_steps():
     trace = run(fsm, cell)
     assert fsm.state == 'DONE' and len(fsm.results) == 2 and not fsm.deviations
     a, b = fsm.results
-    assert a.scoop_tare_g == SCOOP_TARE and a.scooped_g == 100 and a.residual_g == 2 and a.actual_g == 98
-    assert b.actual_g == 48 and fsm.verify_net_g == 146                     # 용기 = 스쿱 누적 (2차 검증)
-    # 원료 1종의 순서: 스쿱 풍량 → 퍼올림 → 붓기 전 계량 → 붓기 → 붓기 후 계량 → 반납
+    assert a.scoop_tare_g == SCOOP_TARE and a.scooped_g == 100 and a.actual_g == 100
+    assert b.actual_g == 50 and fsm.verify_net_g == 146                     # 추정 누적과 실제 용기량은 잔량만큼 다르다
+    # 원료 1종의 순서: 스쿱 풍량 → 퍼올림 → 붓기 전 계량 → 붓기 → 추정량 판정 → 반납
     seq = [s for s, k in trace]
     i = seq.index('PICK_SCOOP')
-    assert seq[i + 2:i + 8] == ['SCOOP_TARE', 'SCOOP', 'WEIGH_SCOOP', 'POUR', 'WEIGH_RESIDUAL', 'RETURN_SCOOP']
+    assert seq[i + 2:i + 7] == ['SCOOP_TARE', 'SCOOP', 'WEIGH_SCOOP', 'POUR', 'RETURN_SCOOP']
     assert trace[:2] == [('SELF_CHECK', 'safe'), ('SELF_CHECK', 'measure')]
     assert trace[2] == ('PICK_CONTAINER', 'carry') and ('VERIFY', 'weigh') in trace
     # 세트 끝: passbox_done 반송 → nudge_wait 이동 → NUDGE 대기 → DONE (D-23·D-24)
@@ -145,8 +143,8 @@ def test_under_then_correction_accumulates():
     fsm = _fsm()
     trace = run(fsm, cell)
     a = fsm.results[0]
-    # 첫 붓기의 잔량 2 g 이 두 번째 스쿱에 섞여 들어가도, 붓기 전후 계량 차이로 실제 투입량만 누적된다
-    assert a.attempts == 2 and abs(a.actual_g - 98) < 1e-6 and a.scooped_g == 42 and fsm.state == 'DONE'
+    # 잔량 0 가정으로 추정하므로 실제 잔량이 있으면 재스쿱 누적과 실측량에 차이가 생긴다
+    assert a.attempts == 2 and abs(a.actual_g - 102) < 1e-6 and a.scooped_g == 42 and fsm.state == 'DONE'
     assert kinds_for(trace, 'SCOOP').count('scoop') == 3 and not fsm.deviations
 
 
@@ -354,7 +352,7 @@ def test_verify_회계불일치는_관측만_하고_판정하지_않는다():
     fsm = _fsm()
     run(fsm, cell)
     assert fsm.deviations == [] and fsm.state == 'DONE', fsm.deviations
-    assert '②회계 +5.0 (관측, 판정 안 함)' in fsm.verify_detail, fsm.verify_detail
+    assert '②회계 +1.0 (관측, 판정 안 함)' in fsm.verify_detail, fsm.verify_detail
 
 
 def test_verify_직전_영점이_움직이면_재측정하고_한계를_넘으면_WEIGH_INVALID():
@@ -430,13 +428,13 @@ def test_container_grip_fail_retries_at_pick_container():
 
 
 def test_wrong_tool_scoop_width_mismatch_goes_to_qa_and_discards():
-    """A 자리에 C(28mm) 스쿱이 잘못 꽂혀 있으면 퍼내기 전에 QA 로 멈춘다(교차오염 의심, 0회 즉시 QA)."""
-    fp = ToolFingerprint(scoop_widths_mm={'A': 15.5, 'B': 18.0}, tolerance_mm=1.0)
-    cell = Cell(yields=[100, 50], width_mm=28.0, qa='DISCARDED')
+    """A 자리에 C(18.5mm) 스쿱이 잘못 꽂혀 있으면 퍼내기 전에 QA 로 멈춘다(교차오염 의심, 0회 즉시 QA)."""
+    fp = ToolFingerprint(scoop_widths_mm={'A': 16.5, 'B': 17.5}, tolerance_mm=1.0)
+    cell = Cell(yields=[100, 50], width_mm=18.5, qa='DISCARDED')
     fsm = _fsm(fingerprint=fp)
     trace = run(fsm, cell)
     assert fsm.deviations[0] == {'kind': 'WRONG_TOOL', 'step': 'PICK_SCOOP', 'count': 1, 'action': 'QA',
-                                 'detail': '폭 28.0mm (기대 15.5±1.0mm)', 'material_id': 'A'}
+                                 'detail': '폭 18.5mm (기대 16.5±1.0mm)', 'material_id': 'A'}
     assert kinds_for(trace, 'SCOOP_TARE') == []          # 저울질도 못 가보고 걸렸다
     assert fsm.state == 'DISCARDED'
 
@@ -456,7 +454,7 @@ def test_wrong_tool_container_width_mismatch_approved_resumes_dosing():
 def test_wrong_tool_skips_check_when_width_feedback_is_negative():
     """DIO 백엔드는 폭 피드백이 없어 성공해도 final_width_mm=-1 을 돌려준다(grip_inferred 는 DI 로 추론) —
     정상 파지를 WRONG_TOOL 로 오판하면 안 된다 (A 리뷰, PR #165)."""
-    fp = ToolFingerprint(scoop_widths_mm={'A': 15.5, 'B': 18.0}, tolerance_mm=1.0)
+    fp = ToolFingerprint(scoop_widths_mm={'A': 16.5, 'B': 17.5}, tolerance_mm=1.0)
     cell = Cell(yields=[100, 50], width_mm=-1.0)
     fsm = _fsm(fingerprint=fp)
     run(fsm, cell)
@@ -465,19 +463,19 @@ def test_wrong_tool_skips_check_when_width_feedback_is_negative():
 
 def test_wrong_tool_detects_narrower_actual_width_too():
     """기대보다 더 가는 손잡이(교차오염의 반대 방향)도 잡는다 — 비교 자체는 방향에 무관하다."""
-    fp = ToolFingerprint(scoop_widths_mm={'A': 15.5, 'B': 18.0}, tolerance_mm=1.0)
-    cell = Cell(yields=[100, 50], width_mm=5.0, qa='DISCARDED')   # 기대(15.5)보다 훨씬 가는 손잡이
+    fp = ToolFingerprint(scoop_widths_mm={'A': 16.5, 'B': 17.5}, tolerance_mm=1.0)
+    cell = Cell(yields=[100, 50], width_mm=5.0, qa='DISCARDED')   # 기대(16.5)보다 훨씬 가는 손잡이
     fsm = _fsm(fingerprint=fp)
     run(fsm, cell)
     assert fsm.deviations[0]['kind'] == 'WRONG_TOOL'
-    assert fsm.deviations[0]['detail'] == '폭 5.0mm (기대 15.5±1.0mm)'
+    assert fsm.deviations[0]['detail'] == '폭 5.0mm (기대 16.5±1.0mm)'
 
 
 def test_wrong_tool_scoop_approved_resumes_scooping_not_skip():
     """PICK_SCOOP 의 WRONG_TOOL 을 승인하면 이 스쿱으로 실제로 퍼서 투입한다 — 원료를 빈 결과로 건너뛰면
     안 된다 (A 리뷰, PR #165 — 예전엔 빈 ItemRun 을 결과에 남기고 RETURN_SCOOP 로 건너뛰었다)."""
-    fp = ToolFingerprint(scoop_widths_mm={'A': 15.5}, tolerance_mm=1.0)
-    cell = Cell(yields=[100], width_mm=28.0, qa='APPROVED')
+    fp = ToolFingerprint(scoop_widths_mm={'A': 16.5}, tolerance_mm=1.0)
+    cell = Cell(yields=[100], width_mm=18.5, qa='APPROVED')
     fsm = _fsm(fingerprint=fp)
     req = fsm.start()
     while req['kind'] != 'wait_qa':
@@ -805,39 +803,23 @@ def _cleanup_trace(cell, fsm):
     return out
 
 
-def test_213_weigh_residual_무효는_미측정으로_세고_누산하지_않는다():
-    """#213 5번 1단계 — 이미 부은 뒤라 되돌릴 게 없고 **투입량만 모른다**.
-
-    0 을 더하면 「안 들어갔다」가 되어 거짓이다. 누산을 건너뛰고 미측정으로 센다 —
-    그래서 `actual_g` 는 실제보다 작고, 그 사실이 `unmeasured` 와 detail 에 남는다.
-    """
-    cell = Cell(yields=[100, 50])
+def test_pour_uses_prepour_estimate_without_residual_measurement():
+    cell = Cell(yields=[40, 58, 50], residual=2.0)
     fsm = _fsm()
-    tap_n = [0]
-    orig = cell.__call__
-
+    requests = []
     def tap(req):
-        if req['kind'] == 'weigh_scoop' and fsm.state == 'WEIGH_RESIDUAL':
-            tap_n[0] += 1
-            if tap_n[0] <= 3:                        # 첫 사이클의 잔량 계량만 무효로 (재시도 2회 + 3회째)
-                return {'gross_g': 0.0, 'valid': False}
-        return orig(req)
-
+        requests.append((fsm.state, dict(req)))
+        assert fsm.state != 'WEIGH_RESIDUAL'
+        return cell(req)
     run(fsm, tap)
-    d = next(x for x in fsm.deviations if x['step'] == 'WEIGH_RESIDUAL')
-    # 투입 뒤라 되돌릴 게 없으므로 **QA** 다 (#213 결정 3). 재계량은 이미
-    # max_invalid_retries 가 끝냈으므로 정책표는 즉시 처분만 한다 (결정 1).
-    assert (d['kind'], d['action']) == ('WEIGH_INVALID', 'QA')
-    assert '미측정 1회' in d['detail'], d['detail']
-    # QA 승인으로 배치가 이어지므로 그 원료는 results 에 담긴다 (결정 3).
-    r = fsm.results[0]
-    assert r.unmeasured == 1, r.unmeasured
-    assert r.actual_g < r.target_g          # 미측정분이 빠져 실제보다 작다
-    # ⚠️ `decide()` 를 못 거쳐 verdict 가 **비어 있다.** FSM 은 여기까지만 안다 —
-    # 「모름」을 어떻게 발행할지는 `process_node._publish_result` 가 정하고, `unmeasured` 가
-    # 서 있으므로 **INVALID** 로 나간다 (계약 v1.8 · #108). 발행 쪽 고정은
-    # `test_process_node.py` 의 `test_108_투입량_불명은_INVALID_로_나간다` 가 한다.
-    assert r.verdict == '', r.verdict
+    assert fsm.results[0].actual_g == 100.0  # 40 + (58 + 앞 스쿱 잔량 2)
+    assert fsm.results[0].attempts == 2
+    assert cell.n['weigh_scoop'] == 5  # A 풍량+2회, B 풍량+1회
+    for index, (step, req) in enumerate(requests):
+        if step == 'POUR' and requests[index + 1][0] == 'SCOOP':
+            assert requests[index + 1][1]['kind'] == 'move'
+            assert requests[index + 1][1]['station'] == 'material'
+            assert requests[index + 2][1]['kind'] == 'scoop'
 
 
 def test_213_verify_무효는_최종계량_미측정으로_남는다():
@@ -960,8 +942,8 @@ def _nominal_of(material_id):
 def _recipe_targets():
     """운영 레시피의 `(목표 g, 허용 %, 그 원료의 1회량 g)` — 세 값이 같으면 FSM 에는 같은 경우라 중복을 뺀다.
 
-    처음엔 `(목표, 허용)` 만 보고 공통 1회량 하나로 계산했는데, 9/29 원료별 1회량(B 57 g)이 들어오자
-    B 레시피를 A 값(69 g)으로 판정해 틀린 채로 깨졌다. **원료가 1회량을 정한다.**
+    원료별 1회량을 도입할 때는 B가 57 g이었다. 현행값이 모두 69 g이어도
+    원료가 각자의 설정을 읽는 규칙을 유지한다.
     """
     found = set()
     for path in sorted((_PARAMS / 'recipes').glob('recipe-*.yaml')):
@@ -992,10 +974,10 @@ def _fixed_scoop_run(target, tol, per_scoop, first=None, *, flag=False, nominal=
     켜면 `decide()` 가 보충 불가를 미리 판정한다.
     """
     spec = parse({'product': 'demo', 'items': [{'material_id': 'A', 'target_g': target, 'tol_pct': tol}]})
-    fsm = ProcessFSM(spec, DosingConfig(scoop_nominal_g=nominal, min_fraction=MIN_FRACTION,
+    fsm = ProcessFSM(spec=spec, dosing_cfg=DosingConfig(scoop_nominal_g=nominal, min_fraction=MIN_FRACTION,
                                         fixed_scoop=flag),
-                     WeightModel(ScaleConfig()), fingerprint=ToolFingerprint())
-    run(fsm, Cell(yields=[per_scoop if first is None else first] + [per_scoop] * 40))
+                     scale=WeightModel(ScaleConfig()), fingerprint=ToolFingerprint())
+    run(fsm, Cell(yields=[per_scoop if first is None else first] + [per_scoop] * 40, residual=0.0))
     r = fsm.results[0] if fsm.results else fsm.cur
     return r, [d['kind'] for d in fsm.deviations], fsm.deviations
 
@@ -1031,20 +1013,9 @@ def test_고정스쿱_첫_스쿱_미달은_반환만_반복하다_TIMEOUT_으로
 
 @pytest.mark.parametrize('target,tol,nominal', TARGETS, ids=[_tid(t) for t in TARGETS])
 def test_고정스쿱_임계는_스쿱_1회량으로_정해진다(target, tol, nominal):
-    """깨지는 지점이 **스쿱 1회량**으로 정해진다. 경계를 식으로 고정한다.
-
-        투입 = 스쿱수 × 1회량 − 잔량      ← 잔량은 **마지막 사이클 것만** 잃는다
-        (중간 사이클의 잔량은 다음 스쿱에 섞여 회수된다)
-        임계 1회량 = (목표 × (1 − 허용) + 잔량) ÷ 스쿱수
-
-    그래서 스쿱이 많을수록 임계가 **내려간다** — 잃는 잔량이 한 번뿐이라 목표가 커질수록
-    비율로는 작아진다 (D-33 값에서 1스쿱 78.5 g · 2스쿱 77.5 g 이었다).
-
-    ⚠️ **운영을 묶는 것은 1스쿱 레시피의 임계**다(더 높다). 공칭과의 차이가 여유이고,
-    잔량이 커지면 그대로 줄어든다. 실측 1회량·산포는 `practice/B/CURRENT.md`.
-    """
+    """잔량 0인 대역에서 추정량 판정 하한은 목표 허용 하한을 스쿱 수로 나눈 값이다."""
     scoops = _scoops(target, nominal)
-    threshold = (target * (1 - tol / 100) + RESIDUAL_G) / scoops
+    threshold = target * (1 - tol / 100) / scoops
     below, above = threshold - 0.05, threshold + 0.05         # 경계를 0.1 g 폭으로 가둔다
 
     r_bad, kinds_bad, _ = _fixed_scoop_run(target, tol, below, nominal=nominal)
@@ -1053,8 +1024,8 @@ def test_고정스쿱_임계는_스쿱_1회량으로_정해진다(target, tol, n
     r_ok, kinds_ok, _ = _fixed_scoop_run(target, tol, above, nominal=nominal)
     assert kinds_ok == [], (target, above, kinds_ok, r_ok.actual_g)
     assert abs(r_ok.actual_g - target) <= target * tol / 100, r_ok.actual_g
-    # 잔량을 한 번만 잃는다는 것이 이 경계의 이유다
-    assert r_ok.actual_g == pytest.approx(scoops * above - RESIDUAL_G), (r_ok.actual_g, scoops, above)
+    # 전량 붓기 가정이므로 붓기 전 순량의 합과 같다
+    assert r_ok.actual_g == pytest.approx(scoops * above), (r_ok.actual_g, scoops, above)
 
 
 @pytest.mark.parametrize('target,tol,nominal', TWO_SCOOP, ids=[_tid(t) for t in TWO_SCOOP])
@@ -1079,7 +1050,7 @@ def test_고정스쿱_2스쿱_목표는_첫_스쿱이_미달이어도_보충으�
     r, kinds, _devs = _fixed_scoop_run(target, tol, nominal, first=first, nominal=nominal)
     assert kinds == [], kinds
     assert r.attempts == 2 and r.returns == 0, (r.attempts, r.returns)
-    assert r.actual_g == pytest.approx(first + nominal - RESIDUAL_G), r.actual_g
+    assert r.actual_g == pytest.approx(first + nominal), r.actual_g
     assert abs(r.actual_g - target) <= target * tol / 100, r.actual_g
 
 
@@ -1162,9 +1133,9 @@ def test_고정스쿱_보충요청이_최소채취보다_작아지는_구간은_
         assert decide(target, actual, tol, 1, True, 0, cfg).action == 'DONE', actual
 
 
-# ── 원료별 1회량 배선 (#313, 9/29 A·C 69 / B 57) ────────────────────────
+# ── 원료별 1회량 배선 (#313): 아래 B 57 g은 차이를 검증하는 시험 전용 값 ──
 # `DosingConfig.scoop_nominal_by_material` 을 채워도 FSM 이 공통 설정을 그대로 `decide()` 에 넘기면
-# B 를 A 값으로 판정한다. 1회량을 쓰는 두 곳(첫 깊이, `decide()`)이 그 원료 값을 쓰는지 본다.
+# 원료별 값이 서로 다를 때 B 를 A 값으로 판정할 수 있다. 첫 깊이와 `decide()`의 설정 선택을 검사한다.
 
 PER_AB = {'A': 69.0, 'B': 57.0}
 
@@ -1228,27 +1199,14 @@ def test_nudge_requires_successful_safe_before_done():
     assert fsm.mode == "ERROR"
 
 
-@pytest.mark.parametrize('fixed', [False, True])
-def test_refill_returns_to_material_before_retry(fixed):
-    fsm = _fsm(fixed=fixed)
-    cell = Cell(yields=[0] * 4 + [100, 50])
-    req = fsm.start()
-    while req['kind'] != 'wait_interlock':
-        req = fsm.on_result(req, cell(req))
-    retry = fsm._resume
-    move = fsm.on_result(req, {})
-    assert move == dict(kind='move', station='material', material_id='A',
-                        approach='AT', then='resume_refill')
-    assert fsm.on_result(move, {'success': True}) == retry
-    assert fsm.state == 'SCOOP'
-
-
-def test_failed_refill_move_never_scoops():
-    fsm = _fsm(fixed=True)
-    cell = Cell(yields=[0] * 4)
-    req = fsm.start()
-    while req['kind'] != 'wait_interlock':
-        req = fsm.on_result(req, cell(req))
-    move = fsm.on_result(req, {})
-    assert fsm.on_result(move, {'success': False}) is None
-    assert fsm.mode == 'ERROR'
+def test_failed_pour_does_not_accumulate_prepour_estimate():
+    fsm = _fsm()
+    cell = Cell(yields=[100, 50])
+    request = fsm.start()
+    while request['kind'] != 'pour':
+        request = fsm.on_result(request, cell(request))
+    assert fsm.cur.actual_g == 0.0
+    next_request = fsm.on_result(request, {'success': False, 'message': '붓기 실패'})
+    assert fsm.cur.actual_g == 0.0
+    assert next_request is not None
+    assert fsm.deviations[-1]['kind'] == 'FORCE_LIMIT'

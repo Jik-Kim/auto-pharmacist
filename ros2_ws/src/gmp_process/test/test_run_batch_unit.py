@@ -351,8 +351,7 @@ def test_generated_date_id_skips_explicit_used_id(node):
 
 def test_refill_exit_between_safe_and_wait_is_not_lost(node):
     # idx 는 _pub_state 가 읽는다 — safe 가 정지 사유를 note 에 실으며 발행한다 (#191). 163행과 같은 규약.
-    node.fsm = NS(mode='PAUSED', state='PAUSED', idx=0, cur=NS(material_id='A'))
-    node._call_srv = lambda *_: Message(success=True, payload='scoop', material_id='A', scoop_extracted=True)
+    node.fsm = NS(mode='PAUSED', state='PAUSED', idx=0)
     assert node._dispatch({'kind': 'safe', 'reason': 'REFILL', 'then': 'wait_interlock'})['success']
     assert node._refill_waiting
     enter = node._srv_interlock(Message(request=0, reason='REFILL'), Message())
@@ -570,8 +569,8 @@ def _node_with_nominals(module, **by_material):
 def test_원료별_1회량_파라미터가_도징_설정까지_간다(module):
     """common.yaml `dosing.scoop_nominal: {A: …}` 는 `dosing.scoop_nominal.A` 로 풀린다. 그 값이
     `DosingConfig.scoop_nominal_by_material` 에 들어가야 FSM 이 원료별로 판정한다."""
-    n = _node_with_nominals(module, A=69.0, B=57.0, C=69.0)
-    assert n.dosing_cfg.scoop_nominal_by_material == {'A': 69.0, 'B': 57.0, 'C': 69.0}
+    n = _node_with_nominals(module, A=69.0, B=69.0, C=69.0)
+    assert n.dosing_cfg.scoop_nominal_by_material == {'A': 69.0, 'B': 69.0, 'C': 69.0}
 
 
 def test_원료별_1회량이_없으면_종전처럼_공통값_하나다(module):
@@ -582,9 +581,80 @@ def test_원료별_1회량이_없으면_종전처럼_공통값_하나다(module)
 
 def test_원료별_1회량이_빠진_원료의_주문은_접수_때_거부한다(module):
     """배치 중간 KeyError 로 서는 것보다 주문 거부가 낫다 — 원료 스테이션 검사와 같은 자리다."""
-    n = _node_with_nominals(module, A=69.0, B=57.0)
+    n = _node_with_nominals(module, A=69.0, B=69.0)
     bad = Message(batch_id='NOC', product='t', items=[Message(material_id='C', target_g=69.0, tol_pct=10.0)])
     assert n._goal_batch(Message(recipe=bad)) == 0
     assert not n._reserved
-    ok = Message(batch_id='OKB', product='t', items=[Message(material_id='B', target_g=57.0, tol_pct=10.0)])
+    ok = Message(batch_id='OKB', product='t', items=[Message(material_id='B', target_g=69.0, tol_pct=10.0)])
     assert n._goal_batch(Message(recipe=ok)) == 1
+
+
+@pytest.mark.parametrize('material_id', ['A', 'B', 'C'])
+@pytest.mark.parametrize('step', ['SCOOP_TARE', 'WEIGH_SCOOP'])
+def test_invalid_weigh_cleanup_dispatch_returns_scoop_before_safe(node, module, monkeypatch, material_id, step):
+    """3회 무효 뒤 실제 dispatch가 원료별 스테이션을 전달하고 반납 후 안전 자세로 간다."""
+    from gmp_process.core.process_fsm import ProcessFSM, ItemRun
+    monkeypatch.setattr(module.MoveToStation.Goal, 'AT', 1, raising=False)
+    node.smap.scoops['C'] = 'scoop_3'
+    node.smap.materials['C'] = 'material_3'
+    fsm = ProcessFSM(spec=NS(items=[]), dosing_cfg=node.dosing_cfg, scale=None)
+    fsm.cur = ItemRun(material_id=material_id, target_g=40, tol_pct=5)
+    fsm.state = step
+    req = {'kind': 'weigh_scoop'}
+    for _ in range(3):
+        req = fsm.on_result(req, {'valid': False})
+    trace = []
+
+    def action(key, goal):
+        if key == 'move':
+            assert goal.station_id in node.smap.materials.values() or goal.station_id in node.smap.scoops.values()
+            trace.append(('move', goal.station_id))
+        else:
+            trace.append((key, goal.material_id))
+        return Message(success=True, reached=getattr(goal, 'station_id', ''))
+
+    def service(key, request):
+        trace.append((key, request.close if key == 'grip' else request.reason))
+        return Message(success=True, grip_inferred=False, final_width_mm=100.0)
+
+    node._call_act = action
+    node._call_srv = service
+    while req:
+        req = fsm.on_result(req, node._dispatch(req))
+    expected = [('return_material', material_id)] if step == 'WEIGH_SCOOP' else []
+    expected += [('move', node.smap.material_of(material_id)),
+                 ('move', node.smap.scoop_of(material_id)),
+                 ('grip', False), ('safe', 'RECOVERY')]
+    assert trace == expected
+    assert fsm.state == 'ERROR'
+
+
+# ── 주문 시작 안전 자세는 정지 게이트를 거친다 (9/28 SOT, #298 조장 요청) ──────────────
+def test_order_start_safe_waits_at_the_gate_while_paused(node):
+    """물러나는 안전 자세(RECOVERY·REFILL·ENTER)와 달리 주문 시작 안전 자세는 배치의 첫 이동이다 —
+    NUDGE·인터락 정지 중에는 움직이지 않고 게이트에서 기다린다."""
+    from test_process_fsm import Cell
+    cell, seen = Cell([40], residual=0), []
+
+    def dispatch(req):
+        seen.append(f"{req['kind']}:{req.get('reason', '')}")
+        out = cell(req)
+        if req['kind'] in ('weigh', 'weigh_scoop'):
+            out.update(tare_g=req.get('tare_g', 0.0), net_g=out['gross_g'] - req.get('tare_g', 0.0),
+                       std_g=0.0, samples=4, station='workbench')
+        return out
+    node._dispatch = dispatch
+    h = accept(node)
+    node._nudge_paused = True
+    pool = ThreadPoolExecutor(1)
+    try:
+        f = pool.submit(node._execute_batch, h)
+        time.sleep(0.4)
+        assert seen == [], seen            # 안전 자세로 움직이지 않고 기다린다
+        node._on_event(Message(code='NUDGE'))        # 다시 건드려 정지 해제
+        r = f.result(5)
+    finally:
+        node._stop.set()
+        pool.shutdown(wait=True)
+    assert seen[:3] == ['safe:BATCH_START', 'measure:', 'carry:'], seen
+    assert r.result == 'DONE', r.message

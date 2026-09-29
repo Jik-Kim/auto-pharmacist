@@ -125,6 +125,9 @@ class SkillRuntime:
                         self.safety._poll_safety(force=True)
                     if job.cancel or (self.ctx.state.safety_latched and job.kind not in ('startup', 'recover')):
                         raise RuntimeError(f'SAFETY_STOP: {self.ctx.state.safety_reason}' if self.ctx.state.safety_latched else 'cancelled')
+                    if job.kind not in ('move', 'grip', 'return_material'):
+                        self.ctx.state.returned_material = ''
+                        self.ctx.state.returned_scoop_stowed = ''
                     if job.kind in ('scoop', 'pour', 'return_material', 'weigh_held', 'safe'):
                         self.ctx.state.motion_anchor = None
                     if job.kind == 'weigh':
@@ -143,6 +146,8 @@ class SkillRuntime:
                     self.ctx.state.held_material_id = ''
                     self.ctx.state.empty_scoop_force_baseline = None
                     self.ctx.state.empty_scoop_baseline_pending = False
+                    self.ctx.state.returned_material = ''
+                    self.ctx.state.returned_scoop_stowed = ''
                     job.error = f'{type(e).__name__}: {e}'
                     if not self.ctx.state.stopping.is_set():
                         if isinstance(e, TimeoutError):
@@ -151,6 +156,8 @@ class SkillRuntime:
                 finally:
                     with self.ctx.state.job_lock:
                         if job.cancel:
+                            self.ctx.state.returned_material = ''
+                            self.ctx.state.returned_scoop_stowed = ''
                             self.ctx.state.motion_anchor = None
                             self.ctx.state.held_payload = 'unknown'
                             self.ctx.state.held_material_id = ''

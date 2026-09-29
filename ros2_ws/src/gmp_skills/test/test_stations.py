@@ -63,9 +63,9 @@ def test_material_width_fingerprint_lookup():
     table = StationTable({'stations': {
         'safe': {'posx': [0] * 6},
         'workbench': {'posx': [0] * 6},
-        'material_1': {'posx': [0] * 6, 'material_id': 'A', 'expected_scoop_width_mm': 15.5},
+        'material_1': {'posx': [0] * 6, 'material_id': 'A', 'expected_scoop_width_mm': 16.5},
         'scoop_1': {'posx': [0] * 6, 'material_id': 'A'},
     }})
-    assert table.for_material('A').extra['expected_scoop_width_mm'] == 15.5
+    assert table.for_material('A').extra['expected_scoop_width_mm'] == 16.5
     with pytest.raises(KeyError):
         table.for_material('B')

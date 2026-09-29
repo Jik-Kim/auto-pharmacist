@@ -1,9 +1,11 @@
 """스쿠핑 시도 1회의 사실을 모은다 — `ScoopCycle` 발행 직전의 순수 형태. ROS 비의존.
 
 `ScoopCycle` 은 **시도**(attempt) 단위다. 원료 1종이 3번 재시도하면 3건이 나간다.
-정상은 `WEIGH_RESIDUAL` 직후, 실패는 실패가 확정된 단계에서 발행한다 (docs/interfaces.md 1.1).
+정상은 `POUR` 성공 직후, 실패는 실패가 확정된 단계에서 발행한다 (docs/interfaces.md 1.1).
 
-한 시도에서 계량은 셋이다 — 빈 스쿱(`scoop_tare`) · 붓기 전(`pre_pour`) · 붓기 후(`post_pour`).
+현 공정은 빈 스쿱(`scoop_tare`)과 붓기 전(`pre_pour`)만 계량한다.
+붓기 후(`post_pour`)는 None이므로 기존 학습 계약의 valid=false, delivered_g=0을 유지한다.
+공정 추정 투입량은 DispenseResult와 POUR_ESTIMATE 이벤트에 별도로 남긴다.
 빈 스쿱은 원료마다 1회만 재므로 같은 원료의 시도끼리는 같은 값을 공유한다 (D-22).
 """
 from dataclasses import dataclass, field

@@ -1,11 +1,11 @@
 # #161: gmp_hmi/config/test_recipes/v4/recipe-03.yaml 를 운영 경로에 등록.
-# 목표량은 원료별 스쿱 1회량을 따른다(#306, 9/29 조장 결정·사용자 값) — A·C 69 g(2스쿱 138 g), B 57 g.
-# 9/29 현 구성 실측(마찰테이프) A 69.3·B 57.4·C 67.4 g, 원료통 B 만 경사·높이가 달라 B 별도. 허용오차 ±10 % 유지.
-# 교착 조건(min_fraction × 원료별 1회량 ≤ 2 × target × tol) 만족: A·C 6.9 ≤ 13.8 g, B 5.7 ≤ 11.4 g.
+# 9/29 사용자 변경: B 목표는 기존 57 g에서 69 g으로 변경. A 69 g·C 138 g은 유지한다.
+# 원료 높이를 조정한 B 스쿱 1회량은 69 g이다. 모든 원료의 허용오차는 ±15 %다.
+# 이전 B 57.4 g 실측은 높이 조정 전 기록이다.
 # 이전: 85/170 g(D-33, 9/23) → 79/158 g(D-35, 9/25 — 테이프 없이 잰 9/23 측정이라 무효, #306).
 # 파일·값은 D 담당(9/25), 스키마·검증은 C(gmp_process/core/recipe.py). gmp_hmi 시험 사본과 한 PR 로 바꾼다.
 product: "레시피 3"
 items:
-  - {material_id: A, target_g: 69.0, tol_pct: 10.0}
-  - {material_id: B, target_g: 57.0, tol_pct: 10.0}
-  - {material_id: C, target_g: 138.0, tol_pct: 10.0}
+  - {material_id: A, target_g: 69.0, tol_pct: 15.0}
+  - {material_id: B, target_g: 69.0, tol_pct: 15.0}
+  - {material_id: C, target_g: 138.0, tol_pct: 15.0}
