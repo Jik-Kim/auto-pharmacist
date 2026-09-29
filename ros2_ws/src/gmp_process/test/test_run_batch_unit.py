@@ -655,3 +655,40 @@ def test_exit_during_a_batch_still_leaves_the_pause_to_the_loop(node):
     node._reserved = True
     assert node._srv_interlock(Message(request=1, reason='CHECK'), Message()).granted
     assert node._pause and node._interlock_exit.is_set()
+
+
+# ── ENTER 가 안전 자세로 가는 도중의 EXIT (9/29 팀장 검토, #321) ─────────────────
+# interlock 콜백은 Reentrant + MultiThreaded 라 ENTER·EXIT 가 동시에 돈다(휴대폰+PC, 연타). ENTER 가
+# safe_pose 를 기다리는 사이 EXIT 가 먼저 오면 정지가 풀린 뒤 ENTER 가 진입을 허가한다 — 사람이 안에
+# 있는데 새 주문(→ ORDER_START 안전 자세 이동)을 받거나, 배치가 재개된다. 도달 전 EXIT 는 거부한다.
+
+def _enter_with_exit_during_safe(node):
+    replies = []
+
+    def safe_then_exit(key, request):
+        if key == 'safe':                          # 안전 자세로 가는 도중에 EXIT 가 먼저 도착
+            replies.append(node._srv_interlock(Message(request=1, reason='CHECK'), Message()))
+        return Message(success=True)
+    node._call_srv = safe_then_exit
+    enter = node._srv_interlock(Message(request=0, reason='CHECK'), Message())
+    return enter, replies[0]
+
+
+def test_idle_exit_during_enter_safe_pose_is_refused(node):
+    enter, early_exit = _enter_with_exit_during_safe(node)
+    assert enter.granted, '진입은 허가된다'
+    assert not early_exit.granted and '진입 처리 중' in early_exit.message, early_exit.message
+    assert node._pause, '사람이 들어가 있는 동안 정지가 풀리면 안 된다'
+    assert node._goal_batch(Message(recipe=recipe('INSIDE'))) == 0
+    node._call_srv = lambda *a: Message(success=True)
+    assert node._srv_interlock(Message(request=1, reason='CHECK'), Message()).granted   # 도달 뒤 EXIT 는 받는다
+    assert not node._pause and node._goal_batch(Message(recipe=recipe('AFTER'))) == 1
+
+
+def test_batch_exit_during_enter_safe_pose_does_not_resume(node):
+    node._thread = NS(is_alive=lambda: True)
+    node._reserved = True
+    node.fsm = NS(mode='RUNNING', state='SCOOP', idx=0)
+    enter, early_exit = _enter_with_exit_during_safe(node)
+    assert enter.granted and not early_exit.granted, early_exit.message
+    assert node._pause and not node._interlock_exit.is_set(), '루프가 사람을 두고 재개하면 안 된다'

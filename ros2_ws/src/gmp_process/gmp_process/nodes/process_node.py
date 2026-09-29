@@ -168,6 +168,7 @@ class ProcessNode(Node):
         self._interlock_exit = threading.Event()
         self._pause = False          # 인터락 ENTER 가 세운다. **루프만 내린다** — EXIT 핸들러가 내리면
                                      # 취소된 스킬이 돌아오기 전에 풀려 그 실패가 진짜 실패로 읽힌다
+        self._entering = False       # ENTER 가 안전 자세 도달을 기다리는 중 — 이 사이의 EXIT 는 받지 않는다 (#321)
         self._nudge_paused = False   # 사람 접촉으로 멈춤 (D-21). 다음 NUDGE 가 내린다
         self._nudge_waiting = False  # 세트 끝 — nudge_wait 에서 NUDGE 를 기다리는 중 (D-23). 그때의 NUDGE 는 정지가 아니라 '다음 세트'
         self._nudge_go = threading.Event()
@@ -694,6 +695,11 @@ class ProcessNode(Node):
                 return res
             # 진행 중인 스킬을 취소하는 것은 skill_node 다 (SafePose 계약: 대기 Job 은 버리고 진행 Job 에 cancel).
             # 그래서 그 스킬은 success=false 로 돌아오고, 루프가 _pause 를 보고 실패가 아니라 취소로 읽는다.
+            # `_entering` 을 `_pause` 보다 **먼저** 세운다 — 둘 사이에 EXIT 가 끼면 유휴로 보고 정지를 내린다.
+            # interlock 콜백은 Reentrant·MultiThreaded 라 ENTER 가 safe_pose 를 기다리는 동안 EXIT 가 돈다
+            # (휴대폰+PC, 연타). 그 EXIT 를 받으면 정지가 풀린 뒤 ENTER 가 진입을 허가해, 사람이 안에 있는데
+            # 새 주문(→ ORDER_START 안전 자세 이동)을 받거나 배치가 재개된다 (9/29 팀장 검토).
+            self._entering = True
             self._pause = True
             self._interlock_exit.clear()
             try:
@@ -704,6 +710,8 @@ class ProcessNode(Node):
                 self._pause = False
                 res.granted, res.message = False, str(e)
                 return res
+            finally:
+                self._entering = False
             if not res.granted:
                 self._pause = False
                 return res
@@ -717,6 +725,10 @@ class ProcessNode(Node):
             self.note = f'인터락 ENTER ({req.reason or "-"})' + (' — QA 판정 대기 중' if self.fsm and self.fsm.mode == 'DEVIATION' else '')
             self._pub_state()
             self.event('WARN', 'INTERLOCK_ENTER', req.reason)
+            return res
+        if self._entering:
+            # 안전 자세 도달 전이다 — 여기서 풀면 ENTER 가 곧이어 진입을 허가해 사람이 안에 있는 채 재개된다
+            res.granted, res.message = False, '진입 처리 중 — 안전 자세 도달 뒤 다시 EXIT'
             return res
         if not (self._pause or self._refill_waiting):
             # 아무도 안 기다리는데 set 하면 다음 REFILL 대기가 즉시 풀린다 — 보충 없이 재개되는 셈.
