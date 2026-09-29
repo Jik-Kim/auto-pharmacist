@@ -61,7 +61,7 @@ header{flex-wrap:wrap;gap:16px 24px;padding:16px 24px}.brand{font-size:23px}nav{
 }
 
 /* V4 확정 UI 복원: RunBatch·안전 팝업 기능과 독립적으로 운전/기록 배치를 유지한다. */
-.alarm-actions{display:flex;justify-content:flex-end;margin-bottom:10px}.login-safety{display:none}
+.login-safety{display:none}
 body:has(#loginOverlay:not([hidden]))>.safety-banner{visibility:hidden}.login-card{overflow:hidden}.login-card .login-safety{display:flex;flex-direction:column;gap:4px;margin:-28px -28px 20px;padding:12px 16px;background:#fff0f2;border-left:5px solid var(--red);color:#a32338;font-size:11px;line-height:1.5}.login-card .login-safety span{font-size:10px;font-weight:400}
 
 @media(min-width:1440px){
