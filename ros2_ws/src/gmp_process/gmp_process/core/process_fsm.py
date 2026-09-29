@@ -79,6 +79,14 @@ class ProcessFSM:
                                  # 붓기 상한은 목표량÷스쿱 1회량에 비례해야 하고(200 g÷40 g = 5회),
                                  # 반환 상한은 깊이 보정이 수렴하는지를 보는 오류 복구 한계다. 한 상수로
                                  # 묶여 있으면 큰 레시피 때문에 붓기 상한을 올릴 때 반환 허용도 같이 올라간다 (#189).
+    empty_scoop_g: float = 2.0   # 「사실상 아무것도 안 퍼졌다」의 상한 [g]. 이하면 빈 스쿱으로 본다.
+                                 # ⚠️ **잠정값이다.** 근거는 여유뿐이고, 정작 필요한 값 — **빈 스쿱을
+                                 # 쟀을 때의 산포** — 은 아직 아무도 안 쟀다. #272 는 *퍼낸 양*의 산포를
+                                 # 쟀지(평균 78.9 g · σ 3.9 g) 계량 잡음을 잰 게 아니다.
+                                 # 위 여유: 고정 모드의 정상 채취 하한이 78.9 − 3σ ≈ 67 g 이라 33배 아래고,
+                                 # 깊이 보정 모드의 하한 `min_fraction × scoop_nominal_g` 에서도 4배 아래다.
+                                 # 아래 여유: 기록된 **용기** 계량 산포 σ≈0.9 g 의 두 배 위 — 스쿱 계량의
+                                 # 산포는 이 값과 다를 수 있다. 재고 나면 그 숫자로 바꾼다.
     zero_drift_limit_n: float = 0.1   # 빈 그리퍼 영점 이동 한계 [N] — 0 이면 검사 꺼짐.
                                       # **같은 자세(workbench ABOVE) 반복 산포 기준**이다. 잠정값 0.1 N ≈ 10 g
                                       # 으로 σ_cup 0.91 g 의 11배, ① 허용 22.5 g 의 절반 아래 — 이 검사를 만든
@@ -101,6 +109,7 @@ class ProcessFSM:
     _counts: dict = field(default_factory=dict)
     _cleanup: list = field(default_factory=list)   # CLEANUP 상태에서 아직 안 보낸 정리 요청들 (#213)
     _resume: object = None       # 인터락/QA 후 돌아갈 요청
+    _last_scoop: dict | None = None   # 마지막으로 보낸 scoop 요청 — 빈 스쿱 재시도에 그대로 쓴다
     _qa_step: str = ''           # QA 판정을 기다리는 일탈이 난 스텝 — APPROVED/DISCARDED 뒤 경로를 가른다
     _zero_recheck: int = 0       # VERIFY 직전 영점 재확인 재측정 횟수
     _tare_invalid: int = 0       # 빈 용기 계량 무효 횟수 — TARE 시점엔 self.cur 가 없어 _invalid_or 를 못 쓴다
@@ -302,8 +311,14 @@ class ProcessFSM:
             self.state = 'SCOOP'
             return self._scoop(self._first_fraction())
         if k == 'scoop' and st == 'SCOOP':
-            if not res.get('contact_detected', True):
-                return self._scoop_empty(req)
+            self._last_scoop = req                     # 무게 판정은 WEIGH_SCOOP 에서 나므로 그때까지 들고 있는다
+            # 고정 티칭 경로는 힘을 재지 않는다 — 거기서 온 `contact_detected=False` 는 「안 닿았다」가
+            # 아니라 **「안 재봤다」**다 (#277 `skill_node._do_fixed_scoop`). 그걸 접촉 실패로 읽으면
+            # **가득 찬 원료통에도 보충을 영영 요구한다** (#282: PAUSED · 투입 0 g · 보충 요청 96회).
+            # 그 모드에서는 경로 실행 성공만 확인하고 넘어가 아래에서 **무게로 가른다** (A #269 방침 1) —
+            # 실패·취소는 여기까지 오지 않는다 (`process_node._check` 가 SkillError 를 낸다).
+            if not self.dosing_cfg.fixed_scoop and not res.get('contact_detected', True):
+                return self._scoop_empty(req, by_weight=False)
             self.state = 'WEIGH_SCOOP'
             return self._weigh_scoop()                 # 붓기 전 — 퍼낸 양
         if k == 'weigh_scoop' and st == 'WEIGH_SCOOP':
@@ -311,6 +326,17 @@ class ProcessFSM:
             if r is not None:
                 return r
             self.cur.scooped_g = max(0.0, res.get('gross_g', 0.0) - self.cur.scoop_tare_g)
+            # **모드와 무관하게** 여기서 한 번 더 거른다. 순중량 0 g 도 아래 초과량 검사를 통과해
+            # 그대로 POUR 로 가던 구멍이 있었다 (A #269 방침 3) — 고정 모드에서는 이게 유일한
+            # 그물이고, 깊이 보정 모드에서도 접촉이 참인데 안 퍼진 경우를 여기서 잡는다.
+            # 계량 무효는 위 `_invalid_or` 가 이미 걸러 갔다 — **무효를 빈 스쿱으로 보지 않는다**
+            # (A #269 방침 2). 「못 믿는 값」과 「믿을 수 있는 0」은 다른 사실이다.
+            # 직전 스쿱 요청을 그대로 다시 쓴다: 시도 번호가 이미 올라가 있어 새로 만들면 두 번으로 센다.
+            if self.cur.scooped_g <= self.empty_scoop_g:
+                self.state = 'SCOOP'                   # 재시도할 것은 scoop 이다 — 안 되돌리면 결과가 갈 곳이 없다
+                return self._scoop_empty(self._last_scoop
+                                         or self._scoop(self.cur.last_fraction, after_return=True),
+                                         by_weight=True)
             remaining = max(0.0, self.cur.target_g - self.cur.actual_g)
             # 스쿱량이 남은 목표량과 절대 허용오차의 합보다 크면 부분 투입으로 맞추지 않는다.
             # 원료통에 되돌린 뒤 다시 스쿱해야 실제 투입량과 반환량이 섞이지 않는다.
@@ -518,8 +544,13 @@ class ProcessFSM:
         self.state, self.mode = 'ERROR', 'ERROR'
         return {'kind': 'safe', 'then': None, 'reason': 'RECOVERY'}
 
-    def _scoop_empty(self, retry: dict):
-        """접촉 실패. **보충으로 넘어가는 그 순간부터 kind 를 `MATERIAL_EMPTY` 로 올린다** (#111 A안).
+    def _scoop_empty(self, retry: dict, by_weight: bool):
+        """빈 스쿱 — 증거는 둘 중 하나다: 접촉 실패(`by_weight=False`, 깊이 보정 모드만) 또는
+        퍼낸 순중량 ≤ `empty_scoop_g`(`by_weight=True`, 모드 무관 — 고정 모드에서는 유일한 증거, #282).
+        **어느 증거였는지를 `detail` 에 남긴다** — DB 에 남는 문자열이라, 무게로 판정한 것을
+        「원료에 닿지 않는다」로 적으면 기록이 사실과 달라진다.
+
+        **보충으로 넘어가는 그 순간부터 kind 를 `MATERIAL_EMPTY` 로 올린다** (#111 A안).
 
         종전에는 kind 가 끝까지 `SCOOP_EMPTY` 이고 **action 만** REFILL 로 올라가서,
         BRD FR-14·3.5.4·흐름도·HMI 이름표·`DEV_TO_OUTCOME` 이 모두 전제하는 `MATERIAL_EMPTY` 를
@@ -529,15 +560,17 @@ class ProcessFSM:
         사람이 채워야 풀린다. 넘어가는 지점은 여기서 정하지 않고 **정책표에 물어본다**
         (`RULES['SCOOP_EMPTY']` 의 재시도 상한을 고치면 이 경계도 같이 따라온다).
 
-        보충 뒤에도 접촉이 없으면 `SCOOP_EMPTY` 카운터는 상한에 멈춰 있으므로 계속
+        보충 뒤에도 또 비면 `SCOOP_EMPTY` 카운터는 상한에 멈춰 있으므로 계속
         `MATERIAL_EMPTY` 가 나간다 — 「채웠는데 또 비었다」가 그대로 기록된다.
         """
         step = 'SCOOP'
+        why = (f'퍼낸 순중량 {self.cur.scooped_g:.1f} g ≤ 빈 스쿱 문턱 {self.empty_scoop_g:g} g' if by_weight
+               else '원료에 닿지 않는다(contact_detected=false)')
         nxt = self._counts.get((self.idx, step, 'SCOOP_EMPTY'), 0) + 1
         if policy('SCOOP_EMPTY', nxt)[0] == 'RETRY':
-            return self._deviate('SCOOP_EMPTY', step, retry=retry)
+            return self._deviate('SCOOP_EMPTY', step, retry=retry, detail=why)
         return self._deviate('MATERIAL_EMPTY', step, retry=retry,
-                             detail=f'재시도 {RULES["SCOOP_EMPTY"][0]}회 뒤에도 원료에 닿지 않는다 — 보충 필요')
+                             detail=f'재시도 {RULES["SCOOP_EMPTY"][0]}회 뒤에도 빈 스쿱 — {why} — 보충 필요')
 
     def _deviate(self, kind: str, step: str, retry: dict | None = None, detail: str = ''):
         key = (self.idx, step, kind)

@@ -23,7 +23,7 @@ from gmp_interfaces.srv import MeasureForce, RecoverSafety, SafePose, SetGripper
 
 SCOOP_MASS_G = 45.0        # 빈 스쿱
 CUP_MASS_G = 120.0         # 빈 약통
-NOMINAL_SCOOP_G = 40.0     # 1회 퍼올림 (dosing.scoop_nominal_g 와 맞춘다)
+NOMINAL_SCOOP_G = 40.0     # 1회 퍼올림 — ROS 시험이 dosing.scoop_nominal_g 를 이 값으로 명시한다(노드 기본값은 운영값)
 TRANSFER = 0.95            # 부을 때 실제로 옮겨 가는 비율 — 나머지는 스쿱 잔량이 된다
 MIN_DEPTH_FRACTION = 0.15  # dosing.min_fraction 과 맞춘다 (계약 v1.5 유효 범위 하한)
 

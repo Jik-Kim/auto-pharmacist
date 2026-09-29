@@ -85,14 +85,22 @@ class ProcessNode(Node):
             # 여기와 ScaleConfig 기본값과 common.yaml 의 숫자가 당분간 서로 다르다.
             ('scale.max_std_g', 10.0),
             # VERIFY 직전 빈 그리퍼 영점 재확인 임계 [N] — 0 이면 검사 꺼짐. B 실측 전 잠정값.
-            ('scale.zero_drift_limit_n', 0.5),
+            # 선언 기본값은 운영값(common.yaml)과 같게 둔다 — 종전 0.5 는 운영 0.1 과 달라, 런치 없이 띄운
+            # 노드가 운영보다 5배 느슨한 검사로 돌았다 (D-35 대조, 9/25 팀장 지적).
+            ('scale.zero_drift_limit_n', 0.1),
             ('scale.samples', 20), ('scale.settle_s', 1.0),
             # max_attempts 는 **붓기 시도** 상한이다. 목표량÷스쿱 1회량에 비례해야 한다
-            # (데모 A 200 g ÷ 40 g = 5회가 하한). max_returns 는 **초과 반환** 상한으로 성격이 다르다 (#189).
+            # (옛 데모 A 200 g ÷ 40 g = 5회가 하한이었다). max_returns 는 **초과 반환** 상한으로 성격이 다르다 (#189).
             ('dosing.max_attempts', 8), ('dosing.max_returns', 3),
-            ('dosing.scoop_nominal_g', 40.0), ('dosing.min_fraction', 0.15),
+            # 스쿱 1회량·깊이 하한은 SOT D-35(9/25)의 운영값이다 — #272 실측(원료 A)에 맞춘 값.
+            # 종전 40·0.15 는 9/18 값이라 운영(common.yaml)과 달랐다. ROS 시험은 가짜 스킬 노드의
+            # 공칭 40 g 과 짝을 맞추려고 옛 값을 parameter_overrides 로 **명시**한다 (test_process_node·test_run_batch_ros).
+            ('dosing.scoop_nominal_g', 79.0), ('dosing.min_fraction', 0.10),
             # 실물 시연은 끝까지 담그는 고정 스쿱(D-33). 런치 없이 단독 시험할 때만 깊이 제어 기본값을 둔다.
             ('dosing.fixed_scoop', False),
+            # 빈 스쿱 문턱 [g] — 순중량이 이 이하면 「아무것도 안 퍼졌다」로 본다 (#282 ④).
+            # **잠정값**이고 런타임 값은 common.yaml 이다. 빈 스쿱 계량 산포를 재면 바뀐다.
+            ('dosing.empty_scoop_g', 2.0),
             ('gripper.cup_width_mm', 60.0),
             ('gripper.open_width_mm', 100.0), ('gripper.force_n', 20.0),
             ('gripper.fingerprint_tolerance_mm', 0.0),   # [추가 1] WRONG_TOOL 폭 지문 margin. 0 이면 검사 꺼짐
@@ -393,7 +401,8 @@ class ProcessNode(Node):
                                       tolerance_mm=self.p('gripper.fingerprint_tolerance_mm'))
         self.fsm = ProcessFSM(spec, self.dosing_cfg, self.scale, fingerprint=fingerprint,
                               max_returns=int(self.p('dosing.max_returns')),
-                              zero_drift_limit_n=float(self.p('scale.zero_drift_limit_n')))
+                              zero_drift_limit_n=float(self.p('scale.zero_drift_limit_n')),
+                              empty_scoop_g=float(self.p('dosing.empty_scoop_g')))
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name='process-run')
         self._thread.start()
 

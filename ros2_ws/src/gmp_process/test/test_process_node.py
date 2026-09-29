@@ -27,7 +27,7 @@ from gmp_interfaces.msg import (CellEvent, CellState, Deviation, DispenseResult,
                                 Recipe, RecipeItem, WeightReading)
 from gmp_interfaces.srv import SubmitOrder                    # noqa: E402
 
-from fake_skill_node import FakeSkillNode                     # noqa: E402
+from fake_skill_node import NOMINAL_SCOOP_G, FakeSkillNode    # noqa: E402
 from gmp_process.nodes.process_node import ProcessNode        # noqa: E402
 from gmp_process.core.process_fsm import ItemRun             # noqa: E402
 
@@ -57,6 +57,11 @@ def cell():
         Parameter('stations_file', value=os.path.abspath(STATIONS)),
         Parameter('scale.samples', value=4), Parameter('scale.settle_s', value=0.0),
         Parameter('server_wait_s', value=10.0), Parameter('skill_timeout_s', value=15.0),
+        # 노드 선언 기본값이 운영값(D-35)으로 바뀌어도 이 시험의 거동은 그대로 둔다 — 가짜 스킬 노드가
+        # NOMINAL_SCOOP_G(40 g) × 깊이로 퍼 주므로 스쿱 기준값을 그에 맞춰 명시한다 (9/25).
+        Parameter('dosing.scoop_nominal_g', value=NOMINAL_SCOOP_G),
+        Parameter('dosing.min_fraction', value=0.15),
+        Parameter('scale.zero_drift_limit_n', value=0.5),
     ])
     fake = FakeSkillNode()
     col = Collector()
