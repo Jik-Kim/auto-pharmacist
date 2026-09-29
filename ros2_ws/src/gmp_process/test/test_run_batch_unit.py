@@ -555,3 +555,35 @@ def test_queued_order_runs_after_real_nudge_wait(node):
     assert batch_of(node, 'SET_NEXT')[0] == 'B1', 'SET_NEXT 는 B1 세트가 끝났다는 B1 의 사건이다'
     assert batch_of(node, 'ORDER_QUEUED') == ['B2']
     assert not node._reserved and node._queued is None
+
+
+# ── 원료별 1회량 배선 (#313) ────────────────────────────────────────────
+STATIONS = PKG.parent / 'gmp_bringup' / 'params' / 'stations.yaml'
+
+
+def _node_with_nominals(module, **by_material):
+    return module.ProcessNode(parameter_overrides=[NS(name='stations_file', value=str(STATIONS))] + [
+        NS(name=f'dosing.scoop_nominal.{m}', value=g) for m, g in by_material.items()])
+
+
+def test_원료별_1회량_파라미터가_도징_설정까지_간다(module):
+    """common.yaml `dosing.scoop_nominal: {A: …}` 는 `dosing.scoop_nominal.A` 로 풀린다. 그 값이
+    `DosingConfig.scoop_nominal_by_material` 에 들어가야 FSM 이 원료별로 판정한다."""
+    n = _node_with_nominals(module, A=69.0, B=57.0, C=69.0)
+    assert n.dosing_cfg.scoop_nominal_by_material == {'A': 69.0, 'B': 57.0, 'C': 69.0}
+
+
+def test_원료별_1회량이_없으면_종전처럼_공통값_하나다(module):
+    n = _node_with_nominals(module)
+    assert n.dosing_cfg.scoop_nominal_by_material == {}
+    assert n.dosing_cfg.for_material('B') is n.dosing_cfg
+
+
+def test_원료별_1회량이_빠진_원료의_주문은_접수_때_거부한다(module):
+    """배치 중간 KeyError 로 서는 것보다 주문 거부가 낫다 — 원료 스테이션 검사와 같은 자리다."""
+    n = _node_with_nominals(module, A=69.0, B=57.0)
+    bad = Message(batch_id='NOC', product='t', items=[Message(material_id='C', target_g=69.0, tol_pct=10.0)])
+    assert n._goal_batch(Message(recipe=bad)) == 0
+    assert not n._reserved
+    ok = Message(batch_id='OKB', product='t', items=[Message(material_id='B', target_g=57.0, tol_pct=10.0)])
+    assert n._goal_batch(Message(recipe=ok)) == 1

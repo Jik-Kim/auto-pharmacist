@@ -165,6 +165,15 @@ class ProcessFSM:
         ratio = remaining / self.cur.scooped_g
         return max(self.dosing_cfg.min_fraction, min(1.0, self.cur.last_fraction * ratio))
 
+    def _cfg(self):
+        """지금 원료의 도징 설정 — 원료별 1회량이 있으면 그 원료 값으로 바꾼 것 (#313).
+
+        1회량을 쓰는 곳(첫 깊이, `decide()` 의 깊이·보충 불가 판정)은 전부 이걸 거친다. 공통 설정을
+        그대로 넘기면 B(57 g)를 A 값(69 g)으로 판정한다 — 고정 스쿱이면 「보충하면 상한 초과」
+        문턱이 원료마다 틀어진다. 원료별 값이 비어 있으면 `for_material()` 이 자기 자신을 돌려준다.
+        """
+        return self.dosing_cfg.for_material(self.cur.material_id)
+
     def _first_fraction(self) -> float:
         """원료의 **첫** 담그기 깊이. 종전에는 1.0 고정이었다 (#221).
 
@@ -176,7 +185,7 @@ class ProcessFSM:
         문제는 여기가 아니라 `decide()` 에 있고 B 소관이다 (#221) — 첫 사이클만 다른 규칙을
         쓰면 그 문제가 두 곳으로 갈라진다.
         """
-        cfg = self.dosing_cfg
+        cfg = self._cfg()
         if cfg.fixed_scoop:
             # 고정 스쿱은 첫·반환 뒤·보충 모두 끝까지 담근다. `decide()` 만 1.0 으로 고정하면
             # 목표가 공칭량보다 작은 첫 스쿱이 부분 깊이를 내어 A 스킬에서 거부된다 (#270).
@@ -373,7 +382,7 @@ class ProcessFSM:
             self.cur.residual_g = res.get('gross_g', 0.0) - self.cur.scoop_tare_g
             self.cur.actual_g += self.cur.scooped_g - self.cur.residual_g
             d = decide(self.cur.target_g, self.cur.actual_g, self.cur.tol_pct, self.cur.attempts,
-                       True, self.cur.invalid, self.dosing_cfg)
+                       True, self.cur.invalid, self._cfg())
             self.cur.verdict = d.verdict
             if d.action == 'DONE':
                 self.results.append(self.cur)

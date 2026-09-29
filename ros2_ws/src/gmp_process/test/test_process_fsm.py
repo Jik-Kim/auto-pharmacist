@@ -937,42 +937,57 @@ def _dosing_params():
     return next(iter(common.values()))['ros__parameters']['dosing']
 
 
-NOMINAL_G = float(_dosing_params()['scoop_nominal_g'])
+NOMINAL_G = float(_dosing_params()['scoop_nominal_g'])   # 원료별 값이 없을 때의 공통값
 MIN_FRACTION = float(_dosing_params()['min_fraction'])
+# 원료별 1회량 (9/29 조장 결정: A·C 묶음 / B 별도, #306·#313). 공정은 이 값을
+# `DosingConfig.scoop_nominal_by_material` 로 받아 원료마다 `for_material()` 로 판정한다.
+PER_MATERIAL = {k: float(v) for k, v in (_dosing_params().get('scoop_nominal') or {}).items()}
+
+
+def _nominal_of(material_id):
+    """그 원료의 1회량 — 원료별 값이 있으면 그것, 없으면 공통값. 공정의 `for_material()` 과 같은 규칙이다."""
+    if not PER_MATERIAL:
+        return NOMINAL_G
+    assert material_id in PER_MATERIAL, f'원료 {material_id} 의 1회량이 common.yaml dosing.scoop_nominal 에 없다'
+    return PER_MATERIAL[material_id]
 
 
 def _recipe_targets():
-    """운영 레시피의 `(목표 g, 허용 %)` — 원료가 달라도 FSM 에는 같은 경우라 중복을 뺀다."""
+    """운영 레시피의 `(목표 g, 허용 %, 그 원료의 1회량 g)` — 세 값이 같으면 FSM 에는 같은 경우라 중복을 뺀다.
+
+    처음엔 `(목표, 허용)` 만 보고 공통 1회량 하나로 계산했는데, 9/29 원료별 1회량(B 57 g)이 들어오자
+    B 레시피를 A 값(69 g)으로 판정해 틀린 채로 깨졌다. **원료가 1회량을 정한다.**
+    """
     found = set()
     for path in sorted((_PARAMS / 'recipes').glob('recipe-*.yaml')):
         for it in yaml.safe_load(path.read_text(encoding='utf-8'))['items']:
-            found.add((float(it['target_g']), float(it['tol_pct'])))
+            found.add((float(it['target_g']), float(it['tol_pct']), _nominal_of(it['material_id'])))
     assert found, f'{_PARAMS / "recipes"} 에 레시피가 없다'
     return sorted(found)
 
 
-def _scoops(target):
-    """공칭으로 몇 스쿱짜리 목표인가 — 레시피는 공칭의 정수배로 잡는다 (D-33·D-35)."""
-    return max(1, round(target / NOMINAL_G))
+def _scoops(target, nominal):
+    """그 원료 1회량으로 몇 스쿱짜리 목표인가 — 레시피는 1회량의 정수배로 잡는다 (D-33·D-35·#306)."""
+    return max(1, round(target / nominal))
 
 
 TARGETS = _recipe_targets()
-ONE_SCOOP = [t for t in TARGETS if _scoops(t[0]) == 1]
-TWO_SCOOP = [t for t in TARGETS if _scoops(t[0]) == 2]
+ONE_SCOOP = [t for t in TARGETS if _scoops(t[0], t[2]) == 1]
+TWO_SCOOP = [t for t in TARGETS if _scoops(t[0], t[2]) == 2]
 
 
 def _tid(t):
-    return f'{t[0]:g}g±{t[1]:g}%'
+    return f'{t[0]:g}g±{t[1]:g}%@{t[2]:g}g'
 
 
-def _fixed_scoop_run(target, tol, per_scoop, first=None, *, flag=False):
+def _fixed_scoop_run(target, tol, per_scoop, first=None, *, flag=False, nominal=NOMINAL_G):
     """매번 같은 양을 퍼는 스쿱으로 원료 1종을 끝까지 돌린다 — 깊이 요청은 무시된다.
 
     `flag` 는 `DosingConfig.fixed_scoop`. 끄면 **현장 설정을 안 바꿨을 때**의 거동이고,
     켜면 `decide()` 가 보충 불가를 미리 판정한다.
     """
     spec = parse({'product': 'demo', 'items': [{'material_id': 'A', 'target_g': target, 'tol_pct': tol}]})
-    fsm = ProcessFSM(spec, DosingConfig(scoop_nominal_g=NOMINAL_G, min_fraction=MIN_FRACTION,
+    fsm = ProcessFSM(spec, DosingConfig(scoop_nominal_g=nominal, min_fraction=MIN_FRACTION,
                                         fixed_scoop=flag),
                      WeightModel(ScaleConfig()), fingerprint=ToolFingerprint())
     run(fsm, Cell(yields=[per_scoop if first is None else first] + [per_scoop] * 40))
@@ -980,19 +995,19 @@ def _fixed_scoop_run(target, tol, per_scoop, first=None, *, flag=False):
     return r, [d['kind'] for d in fsm.deviations], fsm.deviations
 
 
-def _short_first(target, tol):
+def _short_first(target, tol, nominal):
     """1스쿱 목표에서 허용 하한에 5 g 못 미치게 붓는 첫 스쿱 — 보충 한 번이 곧 초과가 되는 조건."""
     first = target * (1 - tol / 100) - 5.0
     poured = first - RESIDUAL_G
     # 전제: 공칭 한 스쿱을 더하면 허용 상한을 넘는다. 이게 깨지면 아래 시나리오 자체가 성립하지 않는다
-    assert poured + NOMINAL_G > target * (1 + tol / 100), (
-        f'{target:g} g ±{tol:g} %: 보충 한 스쿱({NOMINAL_G:g} g)이 상한 안에 들어간다 — '
+    assert poured + nominal > target * (1 + tol / 100), (
+        f'{target:g} g ±{tol:g} %: 보충 한 스쿱({nominal:g} g)이 상한 안에 들어간다 — '
         f'1스쿱 레시피가 아니다. 레시피와 scoop_nominal_g 가 같은 결정을 따르는지 볼 것')
     return first
 
 
-@pytest.mark.parametrize('target,tol', ONE_SCOOP, ids=[_tid(t) for t in ONE_SCOOP])
-def test_고정스쿱_첫_스쿱_미달은_반환만_반복하다_TIMEOUT_으로_끝난다(target, tol):
+@pytest.mark.parametrize('target,tol,nominal', ONE_SCOOP, ids=[_tid(t) for t in ONE_SCOOP])
+def test_고정스쿱_첫_스쿱_미달은_반환만_반복하다_TIMEOUT_으로_끝난다(target, tol, nominal):
     """보충 요청이 **항상 초과**가 되어 스쿱↔반환을 돌다 반환 한도에서 멈춘다.
 
     고정 스쿱이면 `decide()` 가 몇 g 을 요청하든 공칭 한 스쿱이 온다. 남은 목표량이 그보다
@@ -1001,15 +1016,16 @@ def test_고정스쿱_첫_스쿱_미달은_반환만_반복하다_TIMEOUT_으로
     ⚠️ **일탈이 둘이다.** TIMEOUT 을 QA 가 승인하면 배치가 이어지고, 투입량이 모자란 채
     VERIFY 에 도달해 `BATCH_OUT_OF_SPEC` 이 또 난다 — 시연자가 QA 를 **두 번** 누른다.
     """
-    r, kinds, _devs = _fixed_scoop_run(target, tol, NOMINAL_G, first=_short_first(target, tol))
+    r, kinds, _devs = _fixed_scoop_run(target, tol, nominal, first=_short_first(target, tol, nominal),
+                                       nominal=nominal)
     assert kinds == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], kinds
     assert r.returns == 3, r.returns                          # max_returns 를 소진한다
     assert r.attempts == 2, r.attempts                        # 반환은 붓기 시도를 소모하지 않는다
     assert r.actual_g < target * (1 - tol / 100), r.actual_g  # 허용 하한에도 못 미친 채 끝난다
 
 
-@pytest.mark.parametrize('target,tol', TARGETS, ids=[_tid(t) for t in TARGETS])
-def test_고정스쿱_임계는_스쿱_1회량으로_정해진다(target, tol):
+@pytest.mark.parametrize('target,tol,nominal', TARGETS, ids=[_tid(t) for t in TARGETS])
+def test_고정스쿱_임계는_스쿱_1회량으로_정해진다(target, tol, nominal):
     """깨지는 지점이 **스쿱 1회량**으로 정해진다. 경계를 식으로 고정한다.
 
         투입 = 스쿱수 × 1회량 − 잔량      ← 잔량은 **마지막 사이클 것만** 잃는다
@@ -1022,22 +1038,22 @@ def test_고정스쿱_임계는_스쿱_1회량으로_정해진다(target, tol):
     ⚠️ **운영을 묶는 것은 1스쿱 레시피의 임계**다(더 높다). 공칭과의 차이가 여유이고,
     잔량이 커지면 그대로 줄어든다. 실측 1회량·산포는 `practice/B/CURRENT.md`.
     """
-    scoops = _scoops(target)
+    scoops = _scoops(target, nominal)
     threshold = (target * (1 - tol / 100) + RESIDUAL_G) / scoops
     below, above = threshold - 0.05, threshold + 0.05         # 경계를 0.1 g 폭으로 가둔다
 
-    r_bad, kinds_bad, _ = _fixed_scoop_run(target, tol, below)
+    r_bad, kinds_bad, _ = _fixed_scoop_run(target, tol, below, nominal=nominal)
     assert kinds_bad == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], (target, below, kinds_bad)
 
-    r_ok, kinds_ok, _ = _fixed_scoop_run(target, tol, above)
+    r_ok, kinds_ok, _ = _fixed_scoop_run(target, tol, above, nominal=nominal)
     assert kinds_ok == [], (target, above, kinds_ok, r_ok.actual_g)
     assert abs(r_ok.actual_g - target) <= target * tol / 100, r_ok.actual_g
     # 잔량을 한 번만 잃는다는 것이 이 경계의 이유다
     assert r_ok.actual_g == pytest.approx(scoops * above - RESIDUAL_G), (r_ok.actual_g, scoops, above)
 
 
-@pytest.mark.parametrize('target,tol', TWO_SCOOP, ids=[_tid(t) for t in TWO_SCOOP])
-def test_고정스쿱_2스쿱_목표는_첫_스쿱이_미달이어도_보충으로_합격한다(target, tol):
+@pytest.mark.parametrize('target,tol,nominal', TWO_SCOOP, ids=[_tid(t) for t in TWO_SCOOP])
+def test_고정스쿱_2스쿱_목표는_첫_스쿱이_미달이어도_보충으로_합격한다(target, tol, nominal):
     """**「첫 미달이면 QA」로 단순화하면 이 경우를 잘못 죽인다** (9/23 B 지적, C 원안 철회).
 
     2스쿱 목표는 첫 스쿱이 공칭보다 조금 모자라도, 한 번 더 퍼면 **허용 안에 들어온다** —
@@ -1050,20 +1066,20 @@ def test_고정스쿱_2스쿱_목표는_첫_스쿱이_미달이어도_보충으�
     1스쿱 목표는 미달이면 보충이 곧 초과라 사실상 전 구간이 걸리지만, 2스쿱 목표는
     `actual ≤ 상한 − 공칭` 까지 보충이 허용된다. **한 레시피로 일반화하면 틀린다.**
     """
-    first = NOMINAL_G - RESIDUAL_G
+    first = nominal - RESIDUAL_G
     upper = target * (1 + tol / 100)
     # 경계 — 보충이 상한을 넘기 시작하는 지점. `fixed_scoop` 분기는 여기서 갈려야 한다
-    assert (first - RESIDUAL_G) + NOMINAL_G <= upper, f'첫 투입 뒤 보충이 이미 상한({upper:g} g) 밖이다'
+    assert (first - RESIDUAL_G) + nominal <= upper, f'첫 투입 뒤 보충이 이미 상한({upper:g} g) 밖이다'
 
-    r, kinds, _devs = _fixed_scoop_run(target, tol, NOMINAL_G, first=first)
+    r, kinds, _devs = _fixed_scoop_run(target, tol, nominal, first=first, nominal=nominal)
     assert kinds == [], kinds
     assert r.attempts == 2 and r.returns == 0, (r.attempts, r.returns)
-    assert r.actual_g == pytest.approx(first + NOMINAL_G - RESIDUAL_G), r.actual_g
+    assert r.actual_g == pytest.approx(first + nominal - RESIDUAL_G), r.actual_g
     assert abs(r.actual_g - target) <= target * tol / 100, r.actual_g
 
 
-@pytest.mark.parametrize('target,tol', ONE_SCOOP, ids=[_tid(t) for t in ONE_SCOOP])
-def test_fixed_scoop_플래그는_반환_루프를_없애지만_QA_횟수는_그대로다(target, tol):
+@pytest.mark.parametrize('target,tol,nominal', ONE_SCOOP, ids=[_tid(t) for t in ONE_SCOOP])
+def test_fixed_scoop_플래그는_반환_루프를_없애지만_QA_횟수는_그대로다(target, tol, nominal):
     """`DosingConfig.fixed_scoop` 를 켜면 **헛도는 반환이 사라진다** — 그게 전부다.
 
     ⚠️ **QA 는 여전히 두 번이다.** 투입량이 모자란 사실은 그대로라 배치 끝 VERIFY ① 이
@@ -1073,9 +1089,9 @@ def test_fixed_scoop_플래그는_반환_루프를_없애지만_QA_횟수는_그
     얻는 것은 셋이다: 반환 3회만큼 시연이 짧아지고, `ScoopCycle` 에 의미 없는 RETURNED
     3건이 안 쌓이고, 일탈 detail 이 **왜 멈췄는지**를 말한다.
     """
-    first = _short_first(target, tol)
-    off_r, off_kinds, _ = _fixed_scoop_run(target, tol, NOMINAL_G, first=first, flag=False)
-    on_r, on_kinds, on_devs = _fixed_scoop_run(target, tol, NOMINAL_G, first=first, flag=True)
+    first = _short_first(target, tol, nominal)
+    off_r, off_kinds, _ = _fixed_scoop_run(target, tol, nominal, first=first, flag=False, nominal=nominal)
+    on_r, on_kinds, on_devs = _fixed_scoop_run(target, tol, nominal, first=first, flag=True, nominal=nominal)
 
     assert off_kinds == on_kinds == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], (off_kinds, on_kinds)
     assert off_r.actual_g == on_r.actual_g, (off_r.actual_g, on_r.actual_g)   # 결과는 같다
@@ -1089,12 +1105,12 @@ def test_fixed_scoop_플래그는_반환_루프를_없애지만_QA_횟수는_그
 
 def test_fixed_scoop_플래그를_켜도_맞출_수_있는_배치는_안_죽인다():
     """보충으로 도달 가능한 경우는 플래그와 무관하게 그대로 간다 — 안전망이지 차단기가 아니다."""
-    cases = ([(t, tol, NOMINAL_G - RESIDUAL_G) for t, tol in TWO_SCOOP] +   # 첫 미달 → 보충 합격
-             [(t, tol, NOMINAL_G) for t, tol in ONE_SCOOP])                 # 한 스쿱에 합격
+    cases = ([(t, tol, n, n - RESIDUAL_G) for t, tol, n in TWO_SCOOP] +   # 첫 미달 → 보충 합격
+             [(t, tol, n, n) for t, tol, n in ONE_SCOOP])                 # 한 스쿱에 합격
     assert cases, '운영 레시피에 1·2스쿱 목표가 하나도 없다'
-    for target, tol, first in cases:
-        on = _fixed_scoop_run(target, tol, NOMINAL_G, first=first, flag=True)
-        off = _fixed_scoop_run(target, tol, NOMINAL_G, first=first, flag=False)
+    for target, tol, nominal, first in cases:
+        on = _fixed_scoop_run(target, tol, nominal, first=first, flag=True, nominal=nominal)
+        off = _fixed_scoop_run(target, tol, nominal, first=first, flag=False, nominal=nominal)
         assert on[1] == off[1] == [], (target, first, on[1], off[1])
         assert on[0].actual_g == off[0].actual_g, (target, first)
 
@@ -1114,8 +1130,8 @@ def test_fixed_scoop_첫_스쿱과_반환_뒤에도_전량_깊이만_요청한�
     assert depths(cell, 'A') == [1.0, 1.0, 1.0], depths(cell, 'A')
 
 
-@pytest.mark.parametrize('target,tol', TARGETS, ids=[_tid(t) for t in TARGETS])
-def test_고정스쿱_보충요청이_최소채취보다_작아지는_구간은_없다(target, tol):
+@pytest.mark.parametrize('target,tol,nominal', TARGETS, ids=[_tid(t) for t in TARGETS])
+def test_고정스쿱_보충요청이_최소채취보다_작아지는_구간은_없다(target, tol, nominal):
     """「보충 요청량 < 최소채취면 QA」 분기는 **발동하지 못한다** (9/23 팀장 제안 검토).
 
     보충 요청량이 최소채취(`min_fraction × scoop_nominal_g`) 아래로 내려가기 전에 `decide()` 가
@@ -1125,12 +1141,12 @@ def test_고정스쿱_보충요청이_최소채취보다_작아지는_구간은_
     ⚠️ 여유가 거의 없다: `min_fraction` 과 레시피 허용 %가 같으면 이 조건은 **목표 ≥ 공칭**과
     같다. 레시피와 공칭 중 한쪽만 바뀌면(예: 레시피만 공칭 아래로) 여기서 깨진다.
     """
-    cfg = DosingConfig(scoop_nominal_g=NOMINAL_G, min_fraction=MIN_FRACTION)
+    cfg = DosingConfig(scoop_nominal_g=nominal, min_fraction=MIN_FRACTION)
     floor_g = cfg.min_fraction * cfg.scoop_nominal_g
     tol_g = target * tol / 100
     assert floor_g <= tol_g + 1e-9, (
         f'{target:g} g ±{tol:g} %: 최소채취 {floor_g:.2f} g > 허용오차 {tol_g:.2f} g — '
-        f'레시피와 scoop_nominal_g 가 같은 결정을 따르는지 볼 것')
+        f'레시피와 그 원료의 1회량(common.yaml dosing.scoop_nominal)이 같은 결정을 따르는지 볼 것')
     lower = target - tol_g
     for step in range(0, 200):                            # 허용 하한 아래 20 g 을 0.1 g 간격으로 훑는다
         actual = lower - 0.1 * (step + 1)
@@ -1139,3 +1155,51 @@ def test_고정스쿱_보충요청이_최소채취보다_작아지는_구간은_
             assert target - actual > floor_g, (actual, d)  # 요청량은 늘 최소채취보다 크다
     for actual in (lower + 0.01, target):                 # 허용 안에 들면 이미 끝난다
         assert decide(target, actual, tol, 1, True, 0, cfg).action == 'DONE', actual
+
+
+# ── 원료별 1회량 배선 (#313, 9/29 A·C 69 / B 57) ────────────────────────
+# `DosingConfig.scoop_nominal_by_material` 을 채워도 FSM 이 공통 설정을 그대로 `decide()` 에 넘기면
+# B 를 A 값으로 판정한다. 1회량을 쓰는 두 곳(첫 깊이, `decide()`)이 그 원료 값을 쓰는지 본다.
+
+PER_AB = {'A': 69.0, 'B': 57.0}
+
+
+def _two_materials(target_a, target_b):
+    return parse({'product': 'demo', 'items': [{'material_id': 'A', 'target_g': target_a, 'tol_pct': 10},
+                                                {'material_id': 'B', 'target_g': target_b, 'tol_pct': 10}]})
+
+
+def test_원료별_1회량은_그_원료의_보충_불가_판정에_쓰인다():
+    """고정 스쿱의 「보충하면 상한 초과」 문턱(최소 채취 = 1회량)이 **원료마다** 그 원료 값이어야 한다.
+
+    두 원료 모두 첫 스쿱이 허용 하한에 못 미치게 두면 보충 불가 TIMEOUT 이 난다. 그 detail 의
+    최소 채취가 A 는 69 g, B 는 57 g 이어야 한다 — 배선 전에는 둘 다 공통값 69 g 이었다.
+    """
+    cfg = DosingConfig(scoop_nominal_g=69.0, min_fraction=0.10, fixed_scoop=True,
+                       scoop_nominal_by_material=PER_AB)
+    fsm = ProcessFSM(_two_materials(69, 57), cfg, WeightModel(ScaleConfig()), fingerprint=ToolFingerprint())
+    run(fsm, Cell(yields=[55.0, 40.0] + [0.0] * 10))       # A 투입 53 g · B 38 g — 둘 다 하한 아래
+    timeouts = [d['detail'] for d in fsm.deviations if d['kind'] == 'TIMEOUT']
+    assert len(timeouts) == 2, fsm.deviations
+    assert '최소 채취 69.0 g' in timeouts[0] and '최소 채취 57.0 g' in timeouts[1], timeouts
+
+
+def test_원료별_1회량은_깊이_제어의_첫_깊이에도_쓰인다():
+    """깊이 제어 모드의 첫 깊이 = 목표 ÷ 그 원료의 1회량. 같은 30 g 이라도 B 가 더 깊다."""
+    cfg = DosingConfig(scoop_nominal_g=69.0, min_fraction=0.10, max_attempts=8,
+                       scoop_nominal_by_material=PER_AB)
+    cell = DepthCell(nominal=60.0, residual=0.0)
+    run(ProcessFSM(_two_materials(30, 30), cfg, WeightModel(ScaleConfig()), fingerprint=ToolFingerprint()), cell)
+    assert depths(cell, 'A')[0] == pytest.approx(30 / 69.0), depths(cell, 'A')
+    assert depths(cell, 'B')[0] == pytest.approx(30 / 57.0), depths(cell, 'B')
+
+
+def test_원료별_1회량이_빠진_원료는_공통값으로_떨어지지_않는다():
+    """원료별 값을 채웠는데 그 원료가 없으면 예외다 — 조용히 공통값으로 판정하지 않는다 (`for_material`).
+
+    노드는 이것을 **접수 때** 거부한다(`process_node._parse_order`). FSM 까지 오면 첫 1회량 사용에서 멈춘다.
+    """
+    cfg = DosingConfig(scoop_nominal_g=69.0, fixed_scoop=False, scoop_nominal_by_material={'A': 69.0})
+    fsm = ProcessFSM(_two_materials(30, 30), cfg, WeightModel(ScaleConfig()), fingerprint=ToolFingerprint())
+    with pytest.raises(KeyError, match='B'):
+        run(fsm, DepthCell(nominal=60.0, residual=0.0))
