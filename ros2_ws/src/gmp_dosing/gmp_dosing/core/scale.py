@@ -123,16 +123,27 @@ class WeightModel:
     def set_tare(self, gross_g: float):
         self.tare_g = gross_g
 
-    def reading(self, raw_mean: float, raw_std: float, valid_src: bool, raw_hf_std: float = None):
+    def reading(self, raw_mean: float, raw_std: float, valid_src: bool, *, raw_hf_std: float):
         """(gross_g, tare_g, net_g, std_g, valid).
 
         raw_std 는 fit_oscillation 의 residual_std 를 넣는다 (적합을 안 하면 표본 σ 그대로도 된다).
-        raw_hf_std 를 주면 **무결성** 게이트를 함께 본다 — 재는 중 하중이 바뀐 계량을 잡는다 (9/22).
+        raw_hf_std 로 **무결성** 게이트를 함께 본다 — 재는 중 하중이 바뀐 계량을 잡는다 (9/22).
         둘은 다른 것을 잡는다: std 는 "이 평균을 믿을 수 있나", hf 는 "재는 중에 건드렸나".
         """
+        if raw_hf_std is None:
+            raise ValueError(
+                'raw_hf_std가 None이어서 고주파 무결성 검사를 수행할 수 없습니다'
+            )
+
         gross = self.raw_to_g(raw_mean)
         std_g = self.std_to_g(raw_std)
-        valid = bool(valid_src) and std_g <= self.cfg.max_std_g
-        if valid and raw_hf_std is not None and self.cfg.max_hf_std_g > 0:
-            valid = self.std_to_g(raw_hf_std) <= self.cfg.max_hf_std_g
+        hf_std_g = self.std_to_g(raw_hf_std)
+
+        std_valid = std_g <= self.cfg.max_std_g
+        hf_valid = (
+            self.cfg.max_hf_std_g <= 0
+            or hf_std_g <= self.cfg.max_hf_std_g
+        )
+        valid = bool(valid_src) and std_valid and hf_valid
+
         return gross, self.tare_g, gross - self.tare_g, std_g, valid
