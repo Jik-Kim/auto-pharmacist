@@ -1,5 +1,6 @@
 """용기 스테이션의 관절 구성 선택·직선 접근 회귀 검증."""
 from pathlib import Path
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -131,8 +132,10 @@ def test_manual_movement_invalidates_departure(setup):
     assert not node.calls
 
 
-def test_nudge_route_stays_disabled(setup):
+def test_disabled_nudge_route_rejects_execution(setup):
     node, job, _, _ = setup
+    key = ('passbox_done', 'nudge_wait')
+    node.stations.transfers[key] = replace(node.stations.transfers[key], enabled=False)
     job.args['station_id'] = 'passbox_done'
     node._do_move(job)
     node.calls.clear()

@@ -58,11 +58,11 @@ def test_duplicate_route_rejected():
         StationTable(data)
 
 
-def test_shipped_routes_preserve_teaching_but_remain_disabled():
+def test_shipped_nudge_route_is_enabled_and_preserves_teaching():
     params = Path(__file__).resolve().parents[2] / 'gmp_bringup' / 'params'
     table = StationTable.from_yaml(params / 'stations.yaml')
     assert set(table.transfers) == {('passbox_done', 'nudge_wait')}
-    assert all(not r.enabled for r in table.transfers.values())
+    assert all(r.enabled for r in table.transfers.values())
     empty = table.transfers[('passbox_done', 'nudge_wait')]
     assert empty.exit_posx == (705.0, 77.0, 330, 180, -90, -90)
     assert not empty.start_at_posj
