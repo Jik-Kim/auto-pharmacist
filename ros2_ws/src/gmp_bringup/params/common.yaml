@@ -87,7 +87,7 @@
       method: tool_force            # tool_force | workpiece — 9/19 G1 로 tool_force 확정 (D-07). workpiece 는 리셋이 안 먹어 탈락
       period_s: 0.82                # 표본 시작 간격 시험값(9/19 독립 표본 실측). 호출 지연 시 늘어날 수 있음
       samples: 20
-      settle_s: 10.0
+      settle_s: 5.0                 # [9/30 시연 전 시험] 10 → 5. 0 초는 용기 계량 std 14~30 g 로 3회 무효(9/30 07:3x) → 불가
       # ── 보정 직선은 경로별 (9/29 #307) ─────────────────────────────
       # 용기와 스쿱의 gain 이 9/29 실측으로 11 % 갈렸다 — 하나로 두면 어느 쪽이든 순량이 10 % 넘게 틀린다.
       # skill_node(execution/weighing.py)가 계량 subject 로 골라 읽는다. 공통 gain/offset_g/max_std_g 는 없다 —
