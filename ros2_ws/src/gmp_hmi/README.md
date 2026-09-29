@@ -41,7 +41,7 @@ http://127.0.0.1:5002 — 각 원료 1,000 g으로 시작한다. 실행마다 �
 
 시험 공정(`hmi_test_process`)은 실제 C 공정(`process_fsm`·`process_node`)의 단계 이름·순서·정지 사유를 따른다. 로봇·무게는 가상이다.
 
-`SELF_CHECK → PICK_CONTAINER → TARE → (원료마다) PICK_SCOOP → SCOOP_TARE → (SCOOP → WEIGH_SCOOP → POUR → WEIGH_RESIDUAL) × 스쿱 수 → RETURN_SCOOP → VERIFY → FINISH → NUDGE_WAIT → DONE`
+`SELF_CHECK → PICK_CONTAINER → TARE → (원료마다) PICK_SCOOP → SCOOP_TARE → (SCOOP → WEIGH_SCOOP → POUR) × 스쿱 수 → RETURN_SCOOP → VERIFY → FINISH → NUDGE_WAIT → DONE`
 
 - **세트 끝 넛지 대기** — `NUDGE_WAIT` 에서 멈추고(PAUSED) 사람이 로봇을 건드려야 DONE 이 된다. 세트 끝 구간(FINISH·폐기 반송·NUDGE_WAIT)의 주문은 **1건 예약**되고(계약 v1.9, `ORDER_QUEUED`) 넛지로 세트가 끝나면 바로 시작한다. 취소 등 넛지 없이 끝나면 예약은 시작하지 않는다(`ORDER_DROPPED`). 두 이벤트는 예약 주문 ID 로 기록된다. HMI 는 예약 주문을 진행 배치와 따로 추적하고 「예약 주문 취소」 버튼을 따로 둔다. 시험에서는 아래 명령이 「건드림」이다(skill_node 대역).
 - **운전 중 접촉** — 같은 명령을 운전 중에 내면 그 자리에서 정지, 한 번 더 내면 재개. 대기 중에 내면 다시 낼 때까지 새 주문 차단.
