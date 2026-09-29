@@ -83,7 +83,7 @@ class ProcessNode(Node):
             # 런타임 값은 common.yaml 이 단일 출처다. 아래 기본값은 런치 없이 노드를 띄울 때만 쓰인다.
             # 9/21 영점 재작업의 material_3 재측정값(max_std 8.0)은 조장·A 결정 전까지 미적용이라,
             # 여기와 ScaleConfig 기본값과 common.yaml 의 숫자가 당분간 서로 다르다.
-            ('scale.max_std_g', 10.0),
+            ('scale.max_std_g', 10.0), ('scale.max_hf_std_g', 9.5),
             # VERIFY 직전 빈 그리퍼 영점 재확인 임계 [N] — 0 이면 검사 꺼짐. B 실측 전 잠정값.
             # 선언 기본값은 운영값(common.yaml)과 같게 둔다 — 종전 0.5 는 운영 0.1 과 달라, 런치 없이 띄운
             # 노드가 운영보다 5배 느슨한 검사로 돌았다 (D-35 대조, 9/25 팀장 지적).
@@ -113,7 +113,8 @@ class ProcessNode(Node):
         # **키워드로 넘긴다** — ScaleConfig 는 min_resolvable_g 가 offset_g 와 max_std_g 사이에 있어서,
         # 위치 인자로 두면 그 필드를 뺄 때 max_std_g 가 조용히 한 칸 밀린다 (AGENTS 규칙, #211).
         self.scale = WeightModel(ScaleConfig(method=p('scale.method'), gain=p('scale.gain'),
-                                             offset_g=p('scale.offset_g'), max_std_g=p('scale.max_std_g')))
+                                             offset_g=p('scale.offset_g'), max_std_g=p('scale.max_std_g'),
+                                             max_hf_std_g=p('scale.max_hf_std_g')))
         # 스테이션 이름표 — 없으면 원료 → scoop_N 을 못 찾는다. 경로가 비면 주문 때 거부한다
         self.smap = StationMap.from_yaml(p('stations_file')) if p('stations_file') else StationMap()
         self.dosing_cfg = DosingConfig(max_attempts=p('dosing.max_attempts'),

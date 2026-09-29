@@ -9,7 +9,7 @@ import math
 from .context import Job
 from gmp_interfaces.action import MoveToStation
 from gmp_interfaces.msg import WeightReading
-from gmp_dosing.core.scale import ScaleConfig, WeightModel
+from gmp_dosing.core.scale import ScaleConfig, WeightModel, fit_oscillation
 
 
 class WeighingSkills:
@@ -53,22 +53,37 @@ class WeighingSkills:
         if method not in ('workpiece', 'tool_force'):
             raise ValueError(f'scale.method는 workpiece 또는 tool_force여야 한다: {method}')
         if bool(p('scale.simulated').value):
-            raw_mean, raw_std, valid_src = 0.0, 0.0, False
+            raw_mean, raw_std, raw_hf_std, valid_src = 0.0, 0.0, 0.0, False
+            baseline_mean, baseline_std = raw_mean, raw_std
         elif method == 'workpiece':
-            raw_mean, raw_std, valid_src = self.ctx.arm.measure_workpiece(
-                samples, settle_s, period_s=period_s, observer=self.safety._observe_force)
+            raw_mean, raw_std, valid_src, raw_samples = self.ctx.arm.measure_workpiece(
+                samples, settle_s, period_s=period_s, observer=self.safety._observe_force,
+                include_samples=True)
+            baseline_mean, baseline_std = raw_mean, raw_std
+            if valid_src:
+                raw_mean, raw_std, raw_hf_std, _ = fit_oscillation(raw_samples, period_s)
+            else:
+                raw_hf_std = 0.0
         else:
-            _, raw_mean, raw_std, valid_src = self.ctx.arm.measure_force(
-                samples, settle_s, period_s=period_s, observer=self.safety._observe_force)
+            _, raw_mean, raw_std, valid_src, raw_samples = self.ctx.arm.measure_force(
+                samples, settle_s, period_s=period_s, observer=self.safety._observe_force,
+                include_samples=True)
+            baseline_mean, baseline_std = raw_mean, raw_std
+            if valid_src:
+                raw_mean, raw_std, raw_hf_std, _ = fit_oscillation(raw_samples, period_s)
+            else:
+                raw_hf_std = 0.0
         model = WeightModel(ScaleConfig(
             method=method,
             gain=float(p('scale.gain').value),
             offset_g=float(p('scale.offset_g').value),
             max_std_g=float(p('scale.max_std_g').value),
+            max_hf_std_g=float(p('scale.max_hf_std_g').value),
             fz_sign=float(p('scale.fz_sign').value),
         ))
         model.set_tare(tare_g)
-        gross_g, _, net_g, std_g, valid = model.reading(raw_mean, raw_std, valid_src)
+        gross_g, _, net_g, std_g, valid = model.reading(
+            raw_mean, raw_std, valid_src, raw_hf_std=raw_hf_std)
         reading = WeightReading(
             gross_g=gross_g,
             tare_g=tare_g,
@@ -82,13 +97,13 @@ class WeighingSkills:
         reading.header.stamp = self.ctx.clock().now().to_msg()
         if (capture_baseline and method == 'tool_force' and valid_src
                 and not bool(p('scale.simulated').value)
-                and math.isfinite(raw_mean) and math.isfinite(raw_std) and raw_std >= 0
+                and math.isfinite(baseline_mean) and math.isfinite(baseline_std) and baseline_std >= 0
                 and self.ctx.state.held_payload == 'scoop' and self.ctx.state.held_material_id
                 and not self.runtime._cancel_requested()):
             station = self.ctx.stations.for_material(self.ctx.state.held_material_id)
             if station.station_id == station_id and self.motion._pose_matches(self.ctx.arm.current_posx(), station.posx):
                 self.ctx.state.empty_scoop_force_baseline = {
-                    'fz_mean_n': float(raw_mean), 'fz_std_n': float(raw_std),
+                    'fz_mean_n': float(baseline_mean), 'fz_std_n': float(baseline_std),
                     'weight_valid': bool(valid),
                     'material_id': self.ctx.state.held_material_id, 'station_id': station_id,
                     'pose': list(station.posx),
