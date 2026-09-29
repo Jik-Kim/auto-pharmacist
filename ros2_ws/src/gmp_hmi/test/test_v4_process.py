@@ -132,11 +132,10 @@ def test_steps_follow_real_process_order_and_set_end_waits_for_nudge(process):
         ['PICK_SCOOP', 'SCOOP_TARE'] + per_scoop * 2 + ['RETURN_SCOOP'] +
         ['PICK_SCOOP', 'SCOOP_TARE'] + per_scoop + ['RETURN_SCOOP'] +
         ['VERIFY', 'FINISH', 'NUDGE_WAIT'])
-    # 세트 끝 — 로봇은 섰고 주문은 받지 않는다. HMI 는 note 앞머리로 사유를 본다.
+    # 세트 끝 — 로봇은 섰고 바로 시작하는 주문은 없다. HMI 는 note 앞머리로 사유를 본다.
     assert process.mode == PAUSED and process.note.startswith('NUDGE_WAIT')
     assert [e.code for e in events(process) if e.code in ('SET_DONE', 'SET_NEXT')] == ['SET_DONE']
-    assert not order(process, C=10).accepted
-    assert '세트 완료' in events(process, 'TEST_ORDER_REJECTED')[-1].text
+    assert not events(process, 'ORDER_QUEUED')
     advance(process, 5)
     assert process.mode == PAUSED and not process.batch_done.is_set()   # 사람이 건드리기 전에는 안 끝난다
     nudge(process)
@@ -351,3 +350,72 @@ def test_malformed_height_does_not_clear_existing_latch(process):
         process._height(Message(data=value))
     assert process.inventory.blocked_materials == ['A']
     assert not order(process, B=40).accepted
+
+
+def queue_request(process, **amounts):
+    recipe = Message(batch_id='', product='예약', items=[
+        Message(material_id=mid, target_g=float(amount), tol_pct=10.) for mid, amount in amounts.items()])
+    request = Message(recipe=recipe)
+    return request, process._goal_batch(request) == 1
+
+
+class FakeGoal:
+    def __init__(self, request, cancel=False):
+        self.request, self.is_cancel_requested, self.ended = request, cancel, ''
+    def abort(self):
+        self.ended = 'abort'
+    def canceled(self):
+        self.ended = 'canceled'
+
+
+def test_set_end_order_is_queued_and_starts_after_nudge(process):
+    """계약 v1.9 — 세트 끝(FINISH·폐기 반송·NUDGE_WAIT)의 RunBatch 주문은 1건 예약된다."""
+    assert order(process, A=69).accepted
+    first = process.batch_id
+    run_until(process, lambda: process.step == 'FINISH')
+    request, accepted = queue_request(process, B=57)      # 반송 중(RUNNING)에도 예약
+    assert accepted and process.queued['batch_id'] == request.recipe.batch_id
+    queued_event = events(process, 'ORDER_QUEUED')[-1]
+    # 예약 이벤트는 예약 주문 ID 로, SET_NEXT 는 끝난 세트(앞 배치) ID 로 남는다 (C #303 f654f12)
+    assert queued_event.text.startswith(request.recipe.batch_id) and queued_event.batch_id == request.recipe.batch_id
+    assert not queue_request(process, C=69)[1]            # 1건만
+    assert '이미 예약' in events(process, 'TEST_ORDER_REJECTED')[-1].text
+    run_until(process, lambda: process.nudge_waiting)
+    assert process.note == f'NUDGE_WAIT — 세트 완료, 다음 주문 {request.recipe.batch_id} 예약 — 건드리면 시작'
+    nudge(process)
+    set_next = events(process, 'SET_NEXT')[-1]
+    assert f'예약 주문 {request.recipe.batch_id} 시작' in set_next.text and set_next.batch_id == first
+    # 앞 배치가 끝나고 예약이 시작되기 전 — 슬롯이 비어도 새치기 주문은 받지 않는다 (process_node)
+    assert process.mode == DONE and not order(process, C=69).accepted
+    assert '이미 예약' in events(process, 'TEST_ORDER_REJECTED')[-1].text
+    with process.lock:
+        assert process._take_queued(False) == ''
+    started, _ = process._start_batch(request.recipe)
+    assert started and process.batch_id == request.recipe.batch_id and process.mode == RUNNING
+
+
+def test_queued_order_dropped_when_set_ends_without_nudge_or_cancelled(process):
+    assert order(process, A=69).accepted
+    run_until(process, lambda: process.nudge_waiting)
+    request, accepted = queue_request(process, B=57)
+    assert accepted
+    with process.lock:
+        process._abort('RunBatch 취소 — 배치 자동 재개 없음')   # 넛지 없이 끝남
+    goal = FakeGoal(request)
+    result = process._execute_batch(goal)
+    assert goal.ended == 'abort' and result.result == 'ABORTED' and '넛지 없이 끝남(ABORTED)' in result.message
+    dropped = events(process, 'ORDER_DROPPED')[-1]
+    assert dropped.level == CellEvent_WARN(process) and dropped.batch_id == request.recipe.batch_id
+    assert process.queued is None and process.batch_id != request.recipe.batch_id
+    # 예약 주문 자체의 취소는 CANCELED 로 끝난다.
+    assert order(process, A=69).accepted
+    run_until(process, lambda: process.nudge_waiting)
+    request, _ = queue_request(process, B=57)
+    goal = FakeGoal(request, cancel=True)
+    assert process._execute_batch(goal).message == '예약 주문 취소 요청' and goal.ended == 'canceled'
+    assert events(process, 'ORDER_DROPPED')[-1].batch_id == request.recipe.batch_id
+    assert process.mode == PAUSED and process.nudge_waiting            # 진행 배치는 그대로
+
+
+def CellEvent_WARN(process):
+    return sys.modules['gmp_interfaces.msg'].CellEvent.WARN

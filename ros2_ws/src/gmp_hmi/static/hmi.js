@@ -43,6 +43,9 @@ function visibleTargetBand(s,rows,subject){
 function renderBatchControls(s){
  const c=s.batch_control||{};
  $('cancelHint').textContent=c.can_cancel?'현재 배치에 취소 요청 가능 · 일시정지와 다릅니다':c.reason||'이 HMI에서 수락받은 진행 중 배치가 없습니다';
+ const q=c.queued,dropped=c.queued_dropped;$('queueMsg').hidden=!q&&!dropped;$('cancelQueued').hidden=!q;
+ if(!q&&dropped)$('queueMsg').textContent=`예약 주문 ${dropped.batch_id} 시작 안 됨 · ${dropped.message||dropped.result}`;
+ if(q){$('queueMsg').textContent=`다음 주문 ${q.batch_id} 예약${q.accepted?'됨':' 접수 중'} · 세트 끝 넛지 뒤 시작${q.cancel_state?' · 취소 요청 '+({pending:'처리 중',accepted:'접수',uncertain:'결과 미확인'}[q.cancel_state]||q.cancel_state):''}`;$('cancelQueued').dataset.batchId=q.batch_id;}
  $('inventoryContract').hidden=source.demo||s.inventory?.mode==='test_process';
  $('inventoryContract').textContent=s.integration?.inventory?.message||'운영 재고·보충 계약 미정 · 실제 재고에 반영하지 않습니다';
  const b=s.target_band,rows=filteredWeights(s.weights||[]),shown=visibleTargetBand(s,rows,$('weightSubject').value);
@@ -58,6 +61,7 @@ $('restartList').onclick=e=>{const b=e.target.closest('[data-restart-batch]');if
 $('openCancelBatch').onclick=()=>{cancelBatchId=snapshot.state?.batch_id||'';$('cancelBatchText').textContent='대상 배치: '+cancelBatchId;$('cancelBatchConfirmed').checked=false;$('cancelBatchDialog').showModal();gate();};
 $('closeCancelBatch').onclick=()=>$('cancelBatchDialog').close();
 $('cancelBatchConfirmed').onchange=gate;
+$('cancelQueued').onclick=()=>{const id=$('cancelQueued').dataset.batchId;if(id&&confirm('예약 주문 '+id+' 을 취소합니다. 진행 중인 배치는 그대로입니다.')){$('queueMsg').hidden=false;command('/batch/cancel',{batch_id:id,confirmed:true},'queueMsg');}};
 $('cancelBatchForm').onsubmit=e=>{e.preventDefault();$('cancelBatchDialog').close();$('cancelMsg').hidden=false;command('/batch/cancel',{batch_id:cancelBatchId,confirmed:$('cancelBatchConfirmed').checked},'cancelMsg');};
 function draw(ws){lastWeights=ws;const c=$('chart'),dpr=window.devicePixelRatio||1,w=c.clientWidth||500,h=c.clientHeight||190;c.width=w*dpr;c.height=h*dpr;const ctx=c.getContext('2d');ctx.scale(dpr,dpr);const left=38,top=12,right=w-12,bottom=h-25,finite=ws.filter(v=>Number.isFinite(v.net_g)),band=visibleTargetBand(snapshot,ws,$('weightSubject').value),min=Math.min(0,...finite.map(v=>v.net_g),...(band?[band.lower_g]:[])),max=Math.max(1,...finite.map(v=>v.net_g),...(band?[band.upper_g]:[]))*1.12;ctx.font='10px Arial';ctx.lineWidth=1;if(!ws.length){ctx.fillStyle='#8795a8';ctx.fillText('계량 수신 대기',w/2-35,h/2);return;}for(let i=0;i<=4;i++){const y=top+(bottom-top)*i/4;ctx.strokeStyle='#e7edf5';ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();ctx.fillStyle='#71819a';ctx.fillText(number(max-(max-min)*i/4,0),2,y+4);}const x=i=>left+i*(right-left)/Math.max(ws.length-1,1),y=v=>bottom-(v-min)/(max-min)*(bottom-top);if(band){ctx.fillStyle='rgba(24,150,100,.12)';ctx.fillRect(left,y(band.upper_g),right-left,y(band.lower_g)-y(band.upper_g));ctx.strokeStyle='#15845a';ctx.setLineDash([5,4]);ctx.beginPath();ctx.moveTo(left,y(band.target_g));ctx.lineTo(right,y(band.target_g));ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#15734f';ctx.fillText('최종 목표 '+number(band.target_g)+' g',left+5,y(band.target_g)-5);}ctx.strokeStyle='#1957ed';ctx.lineWidth=2.4;ctx.beginPath();let connect=false;ws.forEach((v,i)=>{if(!v.valid||!Number.isFinite(v.net_g)){connect=false;return;}if(i>0&&(ws[i-1].subject!==v.subject||ws[i-1].observed_batch_id!==v.observed_batch_id))connect=false;connect?ctx.lineTo(x(i),y(v.net_g)):ctx.moveTo(x(i),y(v.net_g));connect=true;});ctx.stroke();ws.forEach((v,i)=>{if(v.valid&&Number.isFinite(v.net_g)){ctx.fillStyle='#1957ed';ctx.beginPath();ctx.arc(x(i),y(v.net_g),2,0,Math.PI*2);ctx.fill();}else{const py=Number.isFinite(v.net_g)?y(v.net_g):bottom;ctx.strokeStyle='#d72440';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x(i)-4,py-4);ctx.lineTo(x(i)+4,py+4);ctx.moveTo(x(i)-4,py+4);ctx.lineTo(x(i)+4,py-4);ctx.stroke();}});ctx.fillStyle='#71819a';ctx.fillText('1',left,bottom+18);ctx.fillText(String(ws.length),right-12,bottom+18);}
 // process_fsm.py 의 State 값(+ process_node 가 취소 때 세우는 ABORTED)과 1:1 이다. 상태가 늘거나 이름이 바뀌면 여기도 같이 고친다 —
@@ -71,18 +75,19 @@ function gate(){
  const enabled=fresh&&!inFlight&&!snapshot.safety_recovery?.active;
  const cancellable=fresh&&!inFlight&&can(['operator'])&&snapshot.batch_control?.can_cancel===true;
  $('openCancelBatch').disabled=!cancellable;
+ $('cancelQueued').disabled=!(fresh&&!inFlight&&can(['operator'])&&snapshot.batch_control?.queued?.can_cancel===true);
  $('sendCancelBatch').disabled=!cancellable||cancelBatchId!==snapshot.state?.batch_id||!$('cancelBatchConfirmed').checked;
  $('refreshRestart').disabled=!session.authenticated||inFlight;
  document.querySelectorAll('#lockForm button').forEach(b=>b.disabled=!enabled||!can(['operator']));
  document.querySelectorAll('#deviations button').forEach(b=>b.disabled=!enabled||!can(['qa'])||heightBlocked().length>0);
- $('orderForm').querySelector('button').disabled=!enabled||snapshot.diagnostics?.actions?.run_batch!==true||!can(['operator'])||snapshot.batch_control?.submitting===true||!canStartOrder(snapshot.state)||!$('recipe').value||!selectedRecipe||((source.demo||snapshot.inventory?.enforced)&&shortage().length>0)||(snapshot.inventory?.enforced&&!snapshot.inventory.fresh)||snapshot.inventory?.order_allowed===false||heightBlocked().length>0;
+ $('orderForm').querySelector('button').disabled=!enabled||snapshot.diagnostics?.actions?.run_batch!==true||!can(['operator'])||snapshot.batch_control?.submitting===true||!canStartOrder(snapshot.state,snapshot.batch_control)||!$('recipe').value||!selectedRecipe||((source.demo||snapshot.inventory?.enforced)&&shortage().length>0)||(snapshot.inventory?.enforced&&!snapshot.inventory.fresh)||snapshot.inventory?.order_allowed===false||heightBlocked().length>0;
  $('saveSettings').disabled=!can([])||inFlight;
  document.querySelectorAll('#userForm input,#userForm select,#saveUser').forEach(el=>el.disabled=!can([]));
  $('userName').disabled=!can([])||Boolean(userEdit);
  const inv=snapshot.inventory||{};
  document.querySelectorAll('[data-refill]').forEach(b=>{const item=inv.items?.find(i=>i.material_id===b.dataset.refill);b.disabled=!enabled||!can(['operator'])||!inv.fresh||!inv.can_refill||!item?.refill_ready;});
  if($('refillConfirm').open){const item=inv.items?.find(i=>i.material_id===refillMaterial);$('confirmRefill').disabled=!enabled||!can(['operator'])||!inv.fresh||!inv.can_refill||!item?.refill_ready||!$('confirmFull').checked;}
- $('showStockAlert').hidden=!(heightBlocked().length||(canStartOrder(snapshot.state)&&shortage().length));
+ $('showStockAlert').hidden=!(heightBlocked().length||(canStartOrder(snapshot.state,snapshot.batch_control)&&shortage().length));
  if(source.demo){$('nudgeDemo').hidden=!(snapshot.state?.mode==='PAUSED'&&snapshot.state?.pause_reason==='NUDGE'&&!snapshot.state?.demo_entry_granted);$('nudgeDemo').disabled=!enabled||!can(['operator']);$('injectHeight').disabled=!enabled||!can(['operator']);}
 
 }
@@ -108,7 +113,7 @@ function renderInventory(s){
 }
 function stockAlerts(){
  const items=snapshot.inventory?.items||[],alerts=heightBlocked().map(id=>({key:'height:'+id,material:id,reason:'높이 20% 미만 신호가 들어왔습니다. 보충 완료 전까지 진행을 차단합니다.'}));
- if(canStartOrder(snapshot.state))for(const id of shortage())if(!alerts.some(a=>a.material===id)){
+ if(canStartOrder(snapshot.state,snapshot.batch_control))for(const id of shortage())if(!alerts.some(a=>a.material===id)){
   const target=selectedRecipe?.items.find(it=>it.material_id===id)?.target_g,item=items.find(it=>it.material_id===id);
   alerts.push({key:'grams:'+id,material:id,reason:`선택 레시피 필요량 ${number(target,0)}g / 주문 가능 ${number(item?.available_g??item?.remaining_g,0)}g. 새 주문을 차단합니다.`});
  }
@@ -140,7 +145,9 @@ $('showStockAlert').onclick=()=>renderStockAlert(true);
 
 function latestBatchResults(s){const batch=s.state?.batch_id,latest=new Map();for(const r of s.results||[])if(r.batch_id===batch)latest.set(r.material_id,r);return [...latest.values()];}
 function completionState(s){const st=s.state||{},terminal=st.mode==='DONE'&&['DONE','DISCARDED'].includes(st.step),pending=st.mode==='DONE'&&!terminal,discarded=st.step==='DISCARDED'||(s.deviations||[]).some(d=>d.batch_id===st.batch_id&&d.decision==='DISCARDED');return {terminal,pending,discarded,mode:pending?'FINISH_PENDING':terminal&&discarded?'DISCARDED':st.mode};}
-function canStartOrder(st){return st?.mode==='IDLE'||st?.mode==='ERROR'||(st?.mode==='DONE'&&['DONE','DISCARDED'].includes(st?.step));}
+// 계약 v1.9 — 세트 끝(반송·넛지 대기)에는 다음 주문 1건을 예약할 수 있다. 끝난 배치의 DONE/DISCARDED 는 보통 주문.
+function orderQueueable(st){return ['FINISH','DISCARDED','NUDGE_WAIT'].includes(st?.step)&&['RUNNING','PAUSED'].includes(st?.mode)&&['','SET_COMPLETE'].includes(st?.pause_reason||'');}
+function canStartOrder(st,control){return st?.mode==='IDLE'||st?.mode==='ERROR'||(st?.mode==='DONE'&&['DONE','DISCARDED'].includes(st?.step))||(orderQueueable(st)&&!control?.queued);}
 function renderProgress(s){const recipe=s.active_recipe,st=s.state||{},items=recipe?.items||[],results=latestBatchResults(s);$('itemProgress').innerHTML=items.length?items.map((it,i)=>{const r=results.find(r=>r.material_id===it.material_id),discarded=st.step==='DISCARDED'||(s.deviations||[]).some(d=>d.batch_id===st.batch_id&&d.decision==='DISCARDED'),devs=(s.deviations||[]).filter(d=>d.batch_id===st.batch_id&&d.material_id===it.material_id),pending=devs.some(d=>d.decision==='PENDING'),unmeasured=r?.verdict==='INVALID',complete=r&&!unmeasured&&(r.verdict==='OK'||devs.some(d=>d.decision==='APPROVED')),current=i===st.item_index&&!['DONE','ERROR'].includes(st.mode),state=pending||unmeasured?'hold':complete?'done':current?(st.mode==='PAUSED'?'hold':'current'):'';const label=pending?'QA 대기':unmeasured?'투입량 미확인':complete?'완료':current&&st.mode==='PAUSED'?'정지':r?.verdict==='UNDER'?'추가 투입':current?'처리 중':r?'결과 확인':discarded||st.mode==='ERROR'?'미처리':'대기';return `<div class="progress-item ${state}"><strong>${escapeHtml(it.material_id)}</strong>${label}</div>`;}).join(''):`<p class="hint">${st.batch_id?'배치 레시피가 확인되면 원료별 진행을 표시합니다.':'주문 후 원료별 진행 상태를 표시합니다.'}</p>`;}
 function renderDiagnostics(s){const d=s.diagnostics||{},topics=d.topics||{},actions=d.actions||{},services=d.services||{};$('diagHint').textContent=source.demo?'데모 데이터 · ROS 미연결':fresh?'상태 수신 중':'상태 수신 대기';$('diagNote').textContent=source.demo?'아래 값은 화면 검증용 예시입니다. 실제 ROS 통신 확인은 실시간 화면에서 진행하세요.':`네임스페이스 ${d.namespace||'—'} · 액션·서비스는 서버 발견 여부, 토픽은 HMI 수신 횟수와 마지막 수신 경과시간입니다.`;const names={state:'공정 상태',weight:'계량값',gripper:'그리퍼',dispense_result:'분주 결과',deviation:'일탈',scoop_cycle:'스쿱 시도',event:'공정 이벤트'},actionNames={run_batch:'배치 실행'},serviceNames={qa_decision:'QA 판정',interlock:'진입·복귀'};if(s.inventory?.enforced){names.test_inventory='시험 재고';for(const id of ['A','B','C'])serviceNames['test_refill_'+id]='시험 '+id+' 개별 보충';}const rows=Object.entries(names).map(([k,label])=>{const t=topics[k]||{};return [escapeHtml(label),'토픽',t.count?badge('수신 '+t.count+'회','info'):t.age_s!=null?badge('수신','info'):badge('미수신'),t.age_s==null?'—':number(t.age_s,1)+'초 전'];});rows.push(...Object.entries(actionNames).map(([k,label])=>[label,'액션',actions[k]===true?badge('서버 발견','good'):actions[k]===false?badge('서버 없음','warn'):badge('확인 전'),'—']));rows.push(...Object.entries(serviceNames).map(([k,label])=>[label,'서비스',services[k]===true?badge('서버 발견','good'):services[k]===false?badge('서버 없음','warn'):badge('확인 전'),'—']));$('diagnostics').innerHTML=table(['항목','방식','상태','마지막 수신'],rows);}
 function renderCompletion(s){
@@ -194,7 +201,7 @@ function renderSafetyPopup(s){
  popup.hidden=!r.active&&r.phase!=='recovered'&&!triggered&&!paused;
  renderRecovery(s);if(popup.hidden)return;
  popup.classList.toggle('critical',Boolean(r.active||triggered));
- $('safetyModeTitle').textContent=r.active?'로봇 안전정지 · 복구 확인 필요':r.phase==='recovered'?'로봇 복구 확인 · 배치 재개 아님':triggered?'그리퍼 안전 입력 감지':s.interlock?.entry_granted===true?'인터락 진입 허가 응답 수신':st.step==='NUDGE_WAIT'?'세트 완료 · 로봇을 건드리면 다음 세트 · 진입 허가 아님':st.pause_reason==='NUDGE'?'접촉 감지 정지 · 다시 건드리면 재개 · 진입 허가 아님':st.pause_reason==='REFILL'?'원료 보충 대기 · 보충 후 EXIT · 진입 허가 아님':'공정 일시 정지 · 진입 허가 아님';
+ $('safetyModeTitle').textContent=r.active?'로봇 안전정지 · 복구 확인 필요':r.phase==='recovered'?'로봇 복구 확인 · 배치 재개 아님':triggered?'그리퍼 안전 입력 감지':s.interlock?.entry_granted===true?'인터락 진입 허가 응답 수신':st.step==='NUDGE_WAIT'?(String(st.note||'').includes('예약')?'세트 완료 · 로봇을 건드리면 예약 주문 시작 · 진입 허가 아님':'세트 완료 · 로봇을 건드리면 다음 세트 · 진입 허가 아님'):st.pause_reason==='NUDGE'?'접촉 감지 정지 · 다시 건드리면 재개 · 진입 허가 아님':st.pause_reason==='REFILL'?'원료 보충 대기 · 보충 후 EXIT · 진입 허가 아님':'공정 일시 정지 · 진입 허가 아님';
  $('safetyModeText').textContent=r.active||r.phase==='recovered'?`${r.reason} · ${r.message} · 상단 안전 복구에서 상세 확인`:triggered?'장치를 확인하세요. 필요 시 비상정지 버튼을 누르세요.':`${st.note||'일시 정지 상태'} · ${st.station||'위치 미확인'}`;
  popup.querySelector('small').textContent=r.active||r.phase==='recovered'?'복구 ≠ 배치 재개/구역 진입 허가. 다음 작업 전 안전 자세·현장 재설정 필요.':'PAUSED만으로 안전 자세 또는 구역 진입을 보장하지 않습니다.';
 }

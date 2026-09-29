@@ -43,7 +43,7 @@ http://127.0.0.1:5002 — 각 원료 1,000 g으로 시작한다. 실행마다 �
 
 `SELF_CHECK → PICK_CONTAINER → TARE → (원료마다) PICK_SCOOP → SCOOP_TARE → (SCOOP → WEIGH_SCOOP → POUR → WEIGH_RESIDUAL) × 스쿱 수 → RETURN_SCOOP → VERIFY → FINISH → NUDGE_WAIT → DONE`
 
-- **세트 끝 넛지 대기** — `NUDGE_WAIT` 에서 멈추고(PAUSED) 새 주문을 받지 않는다. 사람이 로봇을 건드려야 DONE 이 된다. 시험에서는 아래 명령이 「건드림」이다(skill_node 대역).
+- **세트 끝 넛지 대기** — `NUDGE_WAIT` 에서 멈추고(PAUSED) 사람이 로봇을 건드려야 DONE 이 된다. 세트 끝 구간(FINISH·폐기 반송·NUDGE_WAIT)의 주문은 **1건 예약**되고(계약 v1.9, `ORDER_QUEUED`) 넛지로 세트가 끝나면 바로 시작한다. 취소 등 넛지 없이 끝나면 예약은 시작하지 않는다(`ORDER_DROPPED`). 두 이벤트는 예약 주문 ID 로 기록된다. HMI 는 예약 주문을 진행 배치와 따로 추적하고 「예약 주문 취소」 버튼을 따로 둔다. 시험에서는 아래 명령이 「건드림」이다(skill_node 대역).
 - **운전 중 접촉** — 같은 명령을 운전 중에 내면 그 자리에서 정지, 한 번 더 내면 재개. 대기 중에 내면 다시 낼 때까지 새 주문 차단.
 - **원료 소진** (`material_empty`) — QA 가 아니라 빈 스쿱 자동 재시도 3회 → `MATERIAL_EMPTY` 보충 대기(PAUSED·REFILL). 보충한 뒤 EXIT 로 재개.
 
@@ -70,7 +70,7 @@ ros2 launch gmp_hmi hmi_comm_test.launch.py \
 python3 ~/auto-pharmacist/ros2_ws/src/gmp_hmi/tools/verify_ros_http.py
 ```
 
-22 항목을 검사한다 — 세트 끝 NUDGE_WAIT·운전 중 접촉 정지·유휴 접촉 차단·원료 소진 보충 대기를 포함한다. 검증기는 세트마다 위 NUDGE 명령을 직접 낸다.
+23 항목을 검사한다 — 세트 끝 NUDGE_WAIT·세트 끝 주문 예약(예약·중복 거부·예약 취소·넛지 뒤 자동 시작)·운전 중 접촉 정지·유휴 접촉 차단·원료 소진 보충 대기를 포함한다. 검증기는 세트마다 위 NUDGE 명령을 직접 낸다.
 검사 중 웹 주문을 별도로 누르지 않는다. 재검사는 새 launch에서 한다. 검사 후 기본 launch로 재시작하면 1,000 g 시연 화면이 된다.
 
 높이 부족 수동 재현:
