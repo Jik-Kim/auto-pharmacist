@@ -529,3 +529,39 @@ def test_ros_state_pause_display_context(node, mode, step, note, expected):
     # 다음 정상 상태에서 과거 사유를 유지하지 않는다.
     node._on_state(state(mode=1))
     assert node.snapshot()['state']['pause_reason'] == ''
+
+
+# ── 운영 원료 잔량 기준 (9/29 실물 통합) ────────────────────────────────────────────
+# 설정 파일은 최초 기동 때 한 번 만들어져 그 뒤로 런치 값을 읽지 않는다. 운영 기준(common.yaml 1,000 g)이
+# 생기기 전에 만든 파일은 「미설정」으로 남아 실물 화면의 잔량 칸이 비었다.
+FULL = {'inventory_material_ids': ['A', 'B', 'C'], 'inventory_capacity_g': [1000.0] * 3,
+        'inventory_initial_g': [1000.0] * 3, 'inventory_low_pct': 20.0}
+
+
+def test_unset_inventory_in_existing_settings_file_is_filled_from_launch(backend, tmp_path):
+    store = backend.AdminStore(tmp_path / 'admin.json')          # 운영 기준이 없던 때 만든 파일
+    assert store.fill_unset_inventory(FULL)
+    saved = backend.AdminStore(tmp_path / 'admin.json').settings()
+    assert saved['inventory_capacity_g'] == [1000.0] * 3 and saved['inventory_initial_g'] == [1000.0] * 3
+    assert not store.fill_unset_inventory(FULL)                 # 한 번 채우면 다시 건드리지 않는다
+
+
+def test_admin_saved_inventory_is_never_overwritten_by_launch(backend, tmp_path):
+    store = backend.AdminStore(tmp_path / 'admin.json')
+    store.update_settings({'inventory_capacity_g': [500.0] * 3, 'inventory_initial_g': [450.0] * 3})
+    assert not store.fill_unset_inventory(FULL)
+    assert store.settings()['inventory_initial_g'] == [450.0] * 3
+    empty = backend.AdminStore(tmp_path / 'other.json')          # 런치 값도 미설정이면 할 일이 없다
+    assert not empty.fill_unset_inventory({**FULL, 'inventory_capacity_g': [0.0] * 3,
+                                           'inventory_initial_g': [-1.0] * 3})
+
+
+def test_hmi_start_shows_full_stock_with_old_unset_settings_file(backend, monkeypatch, tmp_path):
+    backend.AdminStore(tmp_path / '.config/gmp_hmi/admin.json')   # HOME=tmp_path 의 기본 경로, 미설정
+    original = RosStub.declare_parameter
+    monkeypatch.setattr(RosStub, 'declare_parameter', lambda self, key, value: original(self, key, FULL.get(key, value)))
+    monkeypatch.setattr(RosStub, 'get_logger', lambda self: SimpleNamespace(warning=lambda *_: None, info=lambda *_: None))
+    node = backend.HmiRosNode()
+    stock = node.snapshot()['inventory']
+    assert stock['mode'] == 'session_estimate'
+    assert [i['remaining_g'] for i in stock['items']] == [1000.0] * 3

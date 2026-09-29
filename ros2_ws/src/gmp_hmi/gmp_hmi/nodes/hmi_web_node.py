@@ -157,8 +157,10 @@ class HmiRosNode(Node):
         self.test_inventory_error = ''
         self.cli_test_refill = {}
         self.pub_test_height = None
-        self.admin_store = AdminStore(self.get_parameter('admin_store_path').value,
-            {key: self.get_parameter(key).value for key in DEFAULT_SETTINGS})
+        launch_settings = {key: self.get_parameter(key).value for key in DEFAULT_SETTINGS}
+        self.admin_store = AdminStore(self.get_parameter('admin_store_path').value, launch_settings)
+        if self.admin_store.fill_unset_inventory(launch_settings):
+            self.get_logger().info('설정 파일의 원료 재고 기준이 미설정이라 런치 값으로 채웠습니다 (HMI 표시용 추정)')
         if self.admin_store.setup_required() and os.environ.get('GMP_HMI_ADMIN_PASSWORD'):
             self.admin_store.create_user(os.environ.get('GMP_HMI_ADMIN_USER', 'admin'),
                                          os.environ['GMP_HMI_ADMIN_PASSWORD'], 'admin')
