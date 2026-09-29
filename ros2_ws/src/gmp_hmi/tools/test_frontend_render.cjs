@@ -47,12 +47,14 @@ const root=path.resolve(__dirname,'..');
    if($('stockAlert').open)$('stockAlert').close();
    render(await source.status());
   });
-  // 원료별 분주 결과: 지금 배치가 맨 위에 레시피 순서 A→B→C, 결과 없는 원료도 자리를 둔다(QA 대기 = A·B 결과, C 대기).
-  const resultTable=await page.evaluate(async()=>{source.reset('qa');render(await source.status());
+  // 원료별 분주 결과: 지금 배치가 레시피 순서 A→B→C 로 맨 위(결과 없는 원료도 자리 — QA 대기 = A·B 결과, C 대기),
+  // 이전 배치는 구분 줄 아래. 이전 배치 결과를 하나 섞어 넣어 순서를 본다.
+  const resultTable=await page.evaluate(async()=>{source.reset('qa');const st=await source.status();
+   st.results=[{batch_id:'B-000',material_id:'A',target_g:69,actual_g:69,error_pct:0,verdict:'OK',attempts:1},...st.results];render(st);
    return [...document.querySelectorAll('#results tbody tr')].map(tr=>tr.classList.contains('sep')?'|'+tr.textContent:tr.cells[0].textContent);});
-  assert.deepEqual(resultTable.slice(0,3),['A','B','C'],JSON.stringify(resultTable));
-  // A·B·C 세 줄이 스크롤 없이 한 번에 보여야 한다(표 상자 안).
-  assert.equal(await page.evaluate(()=>{const box=document.getElementById('results').getBoundingClientRect(),rows=[...document.querySelectorAll('#results tbody tr')].slice(0,3);return rows.every(tr=>tr.getBoundingClientRect().bottom<=box.bottom+1);}),true);
+  assert.deepEqual(resultTable,['A','B','C','|이전 배치 B-000','A'],JSON.stringify(resultTable));
+  // 지금 배치 A·B·C 가 표 칸을 꽉 채우고(마지막 줄이 칸 바닥), 이전 배치는 스크롤 아래에 있어야 한다.
+  assert.equal(await page.evaluate(()=>{const box=document.getElementById('results').getBoundingClientRect(),rows=[...document.querySelectorAll('#results tbody tr')];return Math.abs(rows[2].getBoundingClientRect().bottom-box.bottom)<=3&&rows[3].getBoundingClientRect().top>=box.bottom-3;}),true);
   await page.evaluate(async()=>{source.reset('idle');render(await source.status());});
   await page.waitForFunction(()=>document.querySelector('#connection').textContent.startsWith('상태 수신'));
   assert.equal(await page.locator('#operation > .column').count(),4);
@@ -64,6 +66,6 @@ const root=path.resolve(__dirname,'..');
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
   assert.deepEqual(errors,[]);
-  console.log('PASS: initial load, 10 demo states, results current batch A→B→C on top, live/test render branches, visible inventory card, 4 columns, mobile overflow, no JS errors');
+  console.log('PASS: initial load, 10 demo states, results current batch A→B→C fills box, older below scroll, live/test render branches, visible inventory card, 4 columns, mobile overflow, no JS errors');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
