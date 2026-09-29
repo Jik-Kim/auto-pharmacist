@@ -86,13 +86,23 @@ def test_duplicate_route_rejected():
 def test_shipped_nudge_route_is_enabled_and_preserves_teaching():
     params = Path(__file__).resolve().parents[2] / 'gmp_bringup' / 'params'
     table = StationTable.from_yaml(params / 'stations.yaml')
-    assert set(table.transfers) == {('passbox_done', 'nudge_wait')}
+    assert set(table.transfers) == {('passbox_done', 'nudge_wait'), ('safe', 'nudge_wait')}
     assert all(r.enabled for r in table.transfers.values())
     empty = table.transfers[('passbox_done', 'nudge_wait')]
     assert empty.exit_posx == (705.0, 77.0, 330, 180, -90, -90)
     assert not empty.start_at_posj
     assert empty.start_from == 'exit' and empty.arrival == 'at'
     assert empty.waypoints_posj == ((14.57, 35.24, 63.40, -0.12, 81.36, 104.70),)
+    # 9/30 폐기 뒤 넛지 대기: safe(movej 도착) → nudge_wait 관절 1구간. 출발은 safe 의 실측 TCP.
+    park = table.transfers[('safe', 'nudge_wait')]
+    assert park.payload == 'empty' and park.arrival == 'at' and park.start_from == 'at_or_above'
+    assert park.exit_posx == (367.31, 7.33, 215.08, 0.0, 180.0, 0.0)
+    assert park.waypoints_posj == empty.waypoints_posj
+    # SafePose 가 남기는 출발 이력(실측 TCP·safe.posj)으로 출발 검증을 통과한다
+    from gmp_skills.core.transfer import MotionAnchor, validate_start
+    safe_tcp = (367.3147, 7.3291, 215.0758, 90.2678, 179.9716, 90.1289)
+    safe_j = (0.0, 0.0, 90.0, 0.0, 90.0, 0.0)
+    validate_start(park, MotionAnchor('safe', 1, safe_tcp, safe_j), safe_tcp, safe_j, 'empty', 2.0, 2.0, 1.0)
 
 
 def test_above_only_route_can_enable_without_source_at_teaching():

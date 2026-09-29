@@ -202,6 +202,10 @@ class ProcessFSM:
         """세트 끝 — nudge_wait 로 이동해 NUDGE 를 기다린다. final 은 그 뒤의 종료 상태."""
         self._final = final
         self.state, self.mode = 'NUDGE_WAIT', 'RUNNING'
+        if final == 'DISCARDED':
+            # 폐기함 → nudge_wait 이송이 없어 바로 가면 거부된다(9/29~30 실물 4회). 안전 자세로 물러난 뒤
+            # 등록된 safe → nudge_wait 이송으로 들어간다 (stations.yaml transfers, 9/30).
+            return {'kind': 'safe', 'reason': 'DISCARD_PARK'}
         return {'kind': 'move', 'station': 'nudge_wait', 'approach': 'AT'}
 
     def _invalid_or(self, res: dict, step: str, retry: dict):
@@ -447,6 +451,11 @@ class ProcessFSM:
             return self._park('DONE')
         # NUDGE_WAIT — 세트가 끝나면 nudge_wait 로 물러나 사람이 건드리기를 기다린다 (D-23 반자동, D-24 스테이션).
         # 다음 세트(주문)는 그 NUDGE 뒤에만 받는다. 이 대기는 예외가 아니라 설계다.
+        if k == 'safe' and st == 'NUDGE_WAIT' and req.get('reason') == 'DISCARD_PARK':
+            if not res.get('success', False):
+                self.state, self.mode = 'ERROR', 'ERROR'
+                return None
+            return {'kind': 'move', 'station': 'nudge_wait', 'approach': 'AT'}   # safe → nudge_wait 이송
         if k == 'move' and st == 'NUDGE_WAIT':
             self.mode = 'PAUSED'                       # 로봇은 섰다 — 다음 주문은 예약만(RunBatch), HMI 는 사유를 본다
             return {'kind': 'wait_nudge'}
