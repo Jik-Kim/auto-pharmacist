@@ -621,9 +621,12 @@ def test_invalid_weigh_cleanup_dispatch_returns_scoop_before_safe(node, module, 
     node._call_srv = service
     while req:
         req = fsm.on_result(req, node._dispatch(req))
-    expected = [('return_material', material_id)] if step == 'WEIGH_SCOOP' else []
-    expected += [('move', node.smap.material_of(material_id)),
-                 ('move', node.smap.scoop_of(material_id)),
+    # 반환 뒤에는 material AT 를 끼우지 않는다 — skill 수납 연결이 반환 끝 → material_N.posx 로 잇는다 (9/29)
+    if step == 'WEIGH_SCOOP':
+        expected = [('return_material', material_id)]
+    else:
+        expected = [('move', node.smap.material_of(material_id))]
+    expected += [('move', node.smap.scoop_of(material_id)),
                  ('grip', False), ('safe', 'RECOVERY')]
     assert trace == expected
     assert fsm.state == 'ERROR'
