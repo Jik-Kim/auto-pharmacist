@@ -3,9 +3,9 @@
 
 외부망/실제 /cell 조작을 막기 위해 loopback:5002, /hmi_test 및 시험 노드만 허용.
 관리자 비밀번호는 GMP_HMI_ADMIN_PASSWORD 환경변수로만 입력한다. 로그에는 출력하지 않는다.
-검증용 새 launch: test_initial_g:='[158.0,1000.0,1000.0]' item_duration_s:=2.0
-만충 용량은 1,000g이며 최초 A만 158g으로 시작하여 실제 부족 차단을 재현한다
-(recipe-01 이 A 79g 을 쓰면 79g 이 남아 recipe-02 의 A 158g 을 못 채운다).
+검증용 새 launch: test_initial_g:='[138.0,1000.0,1000.0]' item_duration_s:=2.0
+만충 용량은 1,000g이며 최초 A만 138g으로 시작하여 실제 부족 차단을 재현한다
+(recipe-01 이 A 69g 을 쓰면 69g 이 남아 recipe-02 의 A 138g 을 못 채운다).
 시험 공정은 실제 공정처럼 세트 끝 NUDGE_WAIT 에서 사람 접촉을 기다린다. 검증기는
 skill_node 대신 /hmi_test/event 에 code='NUDGE' 를 한 번씩 발행한다 (구독 3개 확인 후 1회).
 """
@@ -126,7 +126,7 @@ class RosHttpCheck:
 
     def direct_order_rejected(self, requirements=None):
         # HMI를 우회해도 같은 공정 재고/높이 차단이 적용되어야 한다.
-        requirements = requirements or {'A':158.0,'B':79.0}
+        requirements = requirements or {'A':138.0,'B':57.0}
         data={'recipe':{'product':'BYPASS_TEST','items':[
             {'material_id':mid,'target_g':float(amount),'tol_pct':10.0}
             for mid,amount in requirements.items()]}}
@@ -238,16 +238,16 @@ class RosHttpCheck:
         if self.guard().get('state',{}).get('mode')!='IDLE' or self.get('/history'):
             raise CheckFailed('새 DB의 시험 세션이 필요합니다. launch를 종료 후 재실행하세요.')
         if any(abs(stock[mid]['capacity_g']-1000.0)>1e-6 or
-               abs(stock[mid]['remaining_g']-amount)>1e-6 for mid,amount in [('A',158),('B',1000),('C',1000)]):
-            raise CheckFailed("검증용 초기 재고가 필요합니다. 새 launch에 test_initial_g:='[158.0,1000.0,1000.0]' 를 지정하세요. 만충은 1,000g 그대로입니다.")
+               abs(stock[mid]['remaining_g']-amount)>1e-6 for mid,amount in [('A',138),('B',1000),('C',1000)]):
+            raise CheckFailed("검증용 초기 재고가 필요합니다. 새 launch에 test_initial_g:='[138.0,1000.0,1000.0]' 를 지정하세요. 만충은 1,000g 그대로입니다.")
         self.report('시험 네임스페이스·노드3·RunBatch 액션1·서비스5·토픽9 및 인증 전 접근 차단')
         catalog={r['name']:r for r in self.get('/recipes')}
-        expected={'recipe-01':{'A':79,'B':79,'C':79},'recipe-02':{'A':158,'B':79},'recipe-03':{'A':79,'B':79,'C':158}}
+        expected={'recipe-01':{'A':69,'B':57,'C':69},'recipe-02':{'A':138,'B':57},'recipe-03':{'A':69,'B':57,'C':138}}
         for name,items in expected.items():
             if name not in catalog or {it['material_id']:it['target_g'] for it in catalog[name]['items']}!=items:
                 raise CheckFailed('레시피 원료/목표량 불일치: '+name)
             if any(it['tol_pct']!=10.0 for it in catalog[name]['items']): raise CheckFailed('허용 오차 불일치: '+name)
-        self.report('레시피3종 목표량(D-35 79/158g)·원료 A/B/C·허용오차10% 및 recipe-02 C 생략')
+        self.report('레시피3종 목표량(#306 A·C 69/138 · B 57g)·원료 A/B/C·허용오차10% 및 recipe-02 C 생략')
         for role,name in [('operator',self.operator),('qa',self.qa),('viewer',self.viewer)]:
             self.http('POST','/users',{'username':name,'password':self.test_password,'role':role,'active':True},expected=201)
         self.http('POST','/settings',{},expected=403,csrf=False)
@@ -302,7 +302,7 @@ class RosHttpCheck:
         subjects={w.get('subject') for w in rec['weights']}
         if not {'scoop','container'}<=subjects or not all(w.get('samples')==20 for w in rec['weights']):
             raise CheckFailed('subject/samples 저장 누락')
-        self.wait('recipe-01 소비 반영',lambda:abs(self.stock()['A']['remaining_g']-79.0)<1e-6)
+        self.wait('recipe-01 소비 반영',lambda:abs(self.stock()['A']['remaining_g']-69.0)<1e-6)
         self.report('WeightReading subject/samples·ScoopCycle·결과3·SQLite 완료 저장')
         self.order_rejected('recipe-02')
         self.direct_order_rejected()
@@ -316,14 +316,14 @@ class RosHttpCheck:
         if {it['material_id'] for it in rec2['items']}!={'A','B'} or self.amounts()['C']!=before_c:
             raise CheckFailed('recipe-02에서 C가 처리 또는 차감됨')
         a_cycles=sorted((c for c in rec2['scoop_cycles'] if c['material_id']=='A'),key=lambda c:c['attempt'])
-        if [(c['attempt'],c['actual_before_g'],c['delivered_g']) for c in a_cycles]!=[(1,0.0,79.0),(2,79.0,79.0)]:
-            raise CheckFailed('158g 시험 스쿠핑의 79g×2 시도·누적량 기록 불일치')
+        if [(c['attempt'],c['actual_before_g'],c['delivered_g']) for c in a_cycles]!=[(1,0.0,69.0),(2,69.0,69.0)]:
+            raise CheckFailed('138g 시험 스쿠핑의 69g×2 시도·누적량 기록 불일치')
         a_result=next(it for it in rec2['items'] if it['material_id']=='A')
         if a_result['attempts']!=2 or any(c['payload']['weigh_pose_id']!='material_1' for c in a_cycles):
-            raise CheckFailed('158g 결과 attempts2 또는 스쿱 계량 위치 ID(material_1) 불일치')
+            raise CheckFailed('138g 결과 attempts2 또는 스쿱 계량 위치 ID(material_1) 불일치')
         if any(c['payload']['contact_detected'] or c['payload']['commanded_pour_fraction']!=1.0 for c in a_cycles):
             raise CheckFailed('고정 스쿱 기록 불일치 — 접촉 미측정·전량 붓기여야 함')
-        self.report('158g 시험 분주 → 79g×2 시도·누적79g·attempts2·material_1 계량·고정 스쿱 기록')
+        self.report('138g 시험 분주 → 69g×2 시도·누적69g·attempts2·material_1 계량·고정 스쿱 기록')
         third=self.order('normal','recipe-03')
         self.wait('recipe-03 스쿠핑',lambda:self.guard()['state'].get('step')=='SCOOP')
         self.nudge()

@@ -4,7 +4,7 @@ V3 재고 패치를 기준으로 두 화면(운전·모니터링 / 기록·통�
 
 **완성된 재고·높이·보충 흐름은 `/hmi_test`와 브라우저 데모용이다. 실제 `/cell`의 주문은 C 공정으로 전달한다. 시험 재고·높이는 운영 주문 게이트에 적용하지 않는다.** 기존 상태·QA·인터락·기록은 유지한다. 실제 C/로봇 코드·공용 메시지·좌표·도징 설정은 변경하지 않는다.
 
-시험 레시피(`config/test_recipes/v4`): `recipe-01` A79/B79/C79, `recipe-02` A158/B79, `recipe-03` A79/B79/C158, 허용 오차 10% — 운영 레시피 사본이다(SOT D-35, `test_v4_recipes.py` 가 대조). 운영 레시피 파일·값도 D 담당이다(9/25). 공통 C 로더를 사용한다. 실물 정밀도는 미검증. 시험 목록에는 새 3종만 표시한다. 운영 레시피는 `gmp_bringup/params/recipes`를 단일 출처로 사용한다.
+시험 레시피(`config/test_recipes/v4`): `recipe-01` A69/B57/C69, `recipe-02` A138/B57, `recipe-03` A69/B57/C138, 허용 오차 10% — 운영 레시피 사본이다(#306 원료별 스쿱 1회량 A·C 69 / B 57 g, 9/29 결정, `test_v4_recipes.py` 가 대조). 운영 레시피 파일·값도 D 담당이다(9/25). 공통 C 로더를 사용한다. 실물 정밀도는 미검증. 시험 목록에는 새 3종만 표시한다. 운영 레시피는 `gmp_bringup/params/recipes`를 단일 출처로 사용한다.
 
 ## 화면 상태 (2026-09-22 기준)
 
@@ -57,11 +57,11 @@ ros2 topic pub --once -w 3 /hmi_test/event gmp_interfaces/msg/CellEvent \
 
 ## 자동 검사
 
-부족을 빠르게 재현하려고 A만 158 g으로 시작한다(recipe-01 뒤 79 g 이 남아 recipe-02 의 A 158 g 을 못 채운다). 기존 시험 launch를 종료하고 같은 터미널에서:
+부족을 빠르게 재현하려고 A만 138 g으로 시작한다(recipe-01 뒤 69 g 이 남아 recipe-02 의 A 138 g 을 못 채운다). 기존 시험 launch를 종료하고 같은 터미널에서:
 
 ```bash
 ros2 launch gmp_hmi hmi_comm_test.launch.py \
-  test_initial_g:='[158.0,1000.0,1000.0]' item_duration_s:=2.0
+  test_initial_g:='[138.0,1000.0,1000.0]' item_duration_s:=2.0
 ```
 
 다른 터미널에서 위와 같은 ROS 환경·계정·비밀번호를 설정한 뒤:

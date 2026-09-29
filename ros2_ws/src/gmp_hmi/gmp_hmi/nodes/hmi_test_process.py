@@ -35,7 +35,7 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from gmp_hmi.core.trial_inventory import TrialInventory
 
-# overfill 시나리오의 과다 투입 배율. 허용오차(±10 %, D-33·D-35)를 확실히 넘어야 OVER 가 말이 된다 —
+# overfill 시나리오의 과다 투입 배율. 허용오차(±10 %, D-33 이후 유지)를 확실히 넘어야 OVER 가 말이 된다 —
 # 옛 1.10 은 ±5 % 시절 값이라 ±10 % 에서는 경계값이 된다.
 OVERFILL_RATIO = 1.15
 # 원료 밖 단계 하나(SELF_CHECK·PICK_CONTAINER·TARE·VERIFY·FINISH·이동)의 시험 시간 [s].
@@ -62,11 +62,16 @@ class HmiTestProcess(Node):
         self.declare_parameter('test_capacity_g', [1000.0, 1000.0, 1000.0])
         self.declare_parameter('test_initial_g', [1000.0, 1000.0, 1000.0])
         self.declare_parameter('test_height_low_pct', 20.0)
-        # SOT D-35 한 스쿱 79 g. 통신 시험 launch 도 같은 값을 넘긴다.
-        self.declare_parameter('test_scoop_nominal_g', 79.0)
+        # 한 스쿱 공통값 A·C 69 g(#306). 통신 시험 launch 도 같은 값을 넘긴다.
+        self.declare_parameter('test_scoop_nominal_g', 69.0)
+        # 원료별 1회량(#306, B DosingConfig.for_material 과 같은 뜻). 0 이면 공통 test_scoop_nominal_g 를 쓴다.
+        self.declare_parameter('test_scoop_nominal_by_material_g', [0.0, 0.0, 0.0])
         self.test_scoop_nominal_g = float(self.get_parameter('test_scoop_nominal_g').value)
         if not math.isfinite(self.test_scoop_nominal_g) or self.test_scoop_nominal_g <= 0:
             raise ValueError('test_scoop_nominal_g는 양수여야 합니다')
+        self.scoop_nominal_by_material = self.per_material_nominal(
+            self.get_parameter('test_material_ids').value,
+            self.get_parameter('test_scoop_nominal_by_material_g').value)
         self.inventory = TrialInventory(
             self.get_parameter('test_material_ids').value,
             self.get_parameter('test_capacity_g').value,
@@ -193,6 +198,19 @@ class HmiTestProcess(Node):
     def _event(self, code, text, level=CellEvent.INFO):
         self.pub_event.publish(self._stamp(CellEvent(
             batch_id=self.batch_id, code=code, text=text, level=level)))
+
+    @staticmethod
+    def per_material_nominal(material_ids, values):
+        """test_material_ids 와 같은 순서의 원료별 1회량. 0 은 「공통값 사용」, 음수·비유한 값은 거부."""
+        values = [float(v) for v in values]
+        if len(values) != len(material_ids):
+            raise ValueError('test_scoop_nominal_by_material_g 는 test_material_ids 와 길이가 같아야 합니다')
+        if any(not math.isfinite(v) or v < 0 for v in values):
+            raise ValueError('test_scoop_nominal_by_material_g 는 0 이상 유한한 값이어야 합니다')
+        return {mid: v for mid, v in zip(material_ids, values) if v > 0}
+
+    def _scoop_nominal(self, material_id):
+        return self.scoop_nominal_by_material.get(material_id, self.test_scoop_nominal_g)
 
     @staticmethod
     def _material_station(material_id):
@@ -385,9 +403,9 @@ class HmiTestProcess(Node):
         mid = item.material_id
         overfill = self.active_scenario == 'overfill' and i == min(1, len(self.items) - 1)
         actual = float(item.target_g * (OVERFILL_RATIO if overfill else 1.0))
-        portions, left = [], actual
+        portions, left, nominal = [], actual, self._scoop_nominal(mid)
         while left > 1e-9:
-            portions.append(min(self.test_scoop_nominal_g, left))
+            portions.append(min(nominal, left))
             left -= portions[-1]
         per_step = self.item_duration / (3 + 4 * len(portions))
         scoop_st, material_st = self._scoop_station(mid), self._material_station(mid)
