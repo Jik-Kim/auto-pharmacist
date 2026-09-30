@@ -1,0 +1,193 @@
+<mxfile host="app.diagrams.net" pages="2">
+  <diagram id="hmi-c-integrated" name="HMI·DB — 현재 통신 흐름">
+    <mxGraphModel dx="2271" dy="1478" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2160" pageHeight="1520" background="#FFFFFF" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=30;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="HMI · DB 데이터 흐름" vertex="1">
+          <mxGeometry height="55" width="1200" x="40" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=19;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="2026-09-30 · 계약 v1.11 · 현재 브랜치 구현 기준 / 운영 PC 1대" vertex="1">
+          <mxGeometry height="40" width="1250" x="40" y="78" as="geometry" />
+        </mxCell>
+        <mxCell id="user" parent="1" style="ellipse;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=18;fontColor=#243248;fillColor=#F5F7FA;strokeColor=#9DAABA;strokeWidth=1.5;spacing=10;align=center;verticalAlign=middle;" value="작업자&#xa;로그인 · 주문 · 확인 · 조회" vertex="1">
+          <mxGeometry height="100" width="260" x="90" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="a" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=18;fontColor=#243248;fillColor=#F2ECF8;strokeColor=#A48CB9;strokeWidth=1.5;spacing=10;align=center;verticalAlign=middle;" value="A · skill_node&#xa;스킬·계량·그리퍼·안전복구&#xa;recover_safety · emergency_stop · safe_pose" vertex="1">
+          <mxGeometry height="110" width="490" x="1400" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ui" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=18;fontColor=#243248;fillColor=#EFF5FF;strokeColor=#7996C5;strokeWidth=1.5;spacing=10;align=center;verticalAlign=middle;" value="D · 웹 화면&#xa;&#xa;레시피 주문 · 진행/예약 취소&#xa;계량 목표선 · 허용범위&#xa;QA 승인 / 폐기&#xa;작업 구역 진입 / 복귀&#xa;소프트웨어 비상정지&#xa;안전복구 · 안전 자세 이동&#xa;이력 · 감사 · KPI · 내보내기&#xa;재기동 기록 조회" vertex="1">
+          <mxGeometry height="360" width="340" x="50" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="hmi" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=18;fontColor=#243248;fillColor=#EFF5FF;strokeColor=#7996C5;strokeWidth=1.5;spacing=10;align=center;verticalAlign=middle;" value="D · hmi_web_node&#xa;Flask + ROS 2&#xa;&#xa;인증 · 역할 권한 · CSRF&#xa;RunBatch ActionClient&#xa;진행 Goal / 예약 Goal 분리&#xa;Feedback · Result · 개별 취소&#xa;&#xa;C에 QA / Interlock / 복구 요청&#xa;A에 emergency_stop / safe_pose 직접 요청&#xa;공정·장치·안전 이벤트 구독&#xa;SQLite 배치 기록 읽기&#xa;HMI_* 감사 이벤트 발행" vertex="1">
+          <mxGeometry height="460" width="460" x="650" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="c" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=18;fontColor=#243248;fillColor=#F2ECF8;strokeColor=#A48CB9;strokeWidth=1.5;spacing=10;align=center;verticalAlign=middle;" value="C · process_node&#xa;&#xa;RunBatch ActionServer 구현&#xa;SubmitOrder와 FSM·접수 슬롯 공유&#xa;세트 끝 주문 1건 예약&#xa;넛지 종료 시에만 예약 실행&#xa;&#xa;QA · Interlock · 안전복구 중계&#xa;carry 중단은 EXIT 재개 거부&#xa;&#xa;state · weight · dispense_result&#xa;deviation · scoop_cycle · event&#xa;&#xa;안전복구 성공 ≠ 배치 재개" vertex="1">
+          <mxGeometry height="460" width="490" x="1400" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="rec" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=18;fontColor=#243248;fillColor=#ECF5EF;strokeColor=#85A68C;strokeWidth=1.5;spacing=10;align=center;verticalAlign=middle;" value="D · record_node&#xa;공정 토픽 · ScoopCycle · CellEvent 구독&#xa;배치 / 결과 / 계량 / 감사 기록 저장&#xa;상태 전이 · 수락 레시피 체크포인트 저장&#xa;배치 종료 JSON 내보내기 · 단일 DB 작성자" vertex="1">
+          <mxGeometry height="200" width="490" x="1400" y="980" as="geometry" />
+        </mxCell>
+        <mxCell id="db" parent="1" style="shape=cylinder3;boundedLbl=1;size=18;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=18;fontColor=#243248;fillColor=#ECF5EF;strokeColor=#85A68C;strokeWidth=1.5;spacing=10;align=center;verticalAlign=middle;" value="SQLite · cell.db&#xa;batches · items · weights · scoop_cycles&#xa;deviations · events · audit&#xa;state_checkpoints · batch_recipes&#xa;(별도 legacy_item_duplicates 보존 테이블)" vertex="1">
+          <mxGeometry height="200" width="460" x="650" y="980" as="geometry" />
+        </mxCell>
+        <mxCell id="file" parent="1" style="shape=document;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=18;fontColor=#243248;fillColor=#F5F7FA;strokeColor=#9DAABA;strokeWidth=1.5;spacing=10;align=center;verticalAlign=middle;" value="배치별 JSON 기록 사본&#xa;웹: CSV / JSON 다운로드" vertex="1">
+          <mxGeometry height="80" width="490" x="1400" y="1320" as="geometry" />
+        </mxCell>
+        <mxCell id="note" parent="1" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=17;fontColor=#243248;fillColor=#FFF8E8;strokeColor=#D5BF89;strokeWidth=1.5;spacing=10;align=left;verticalAlign=middle;" value="현재 구분&#xa;&#xa;운영 /cell · :5000 · DOMAIN 70&#xa;시험 /hmi_test · :5002 · DOMAIN 88&#xa;모든 노드·DB는 PC 1대&#xa;&#xa;잔량 표시는 시험·데모 데이터와 구분&#xa;회수 확인 버튼·카운터 없음&#xa;회수 후 넛지로 세트 종료&#xa;재기동 기록 조회 ≠ 자동 이어하기&#xa;실물 검증은 항목별 일지 참조" vertex="1">
+          <mxGeometry height="330" width="460" x="50" y="860" as="geometry" />
+        </mxCell>
+        <mxCell id="foot" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=16;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="일반 주문·QA·인터락·복구는 C 경유. 비상정지·수동 안전 자세는 HMI → A 직접 Service. 응답 성공과 실물 검증 완료를 구분합니다." vertex="1">
+          <mxGeometry height="45" width="1850" x="40" y="1440" as="geometry" />
+        </mxCell>
+        <mxCell id="user_ui" edge="1" parent="1" source="user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#66809F;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="ui">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a_c" edge="1" parent="1" source="a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#9277AA;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;startArrow=block;startFill=1;" target="c">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ac_label" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=15;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="C → A Action / Service&#xa;스킬·restore_grip·recover_safety&#xa;A → C Result / Feedback" vertex="1">
+          <mxGeometry height="80" width="310" x="1660" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_hmi" edge="1" parent="1" source="ui" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#66809F;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.25;entryX=0;entryY=0.1956521739130435;" target="hmi">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="web_req" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=15;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="HTTP 요청&#xa;/order · /batch/cancel&#xa;/qa · /interlock · /recover&#xa;비상정지 · 안전 자세" vertex="1">
+          <mxGeometry height="100" width="245" x="405" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="hmi_ui" edge="1" parent="1" source="hmi" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#66809F;strokeWidth=2;endArrow=block;endFill=1;exitX=0;exitY=0.6086956521739131;entryX=1;entryY=0.7777777777777778;" target="ui">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="web_res" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=15;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="JSON / 이벤트 스트림&#xa;상태 · 결과 · 접수 / 거부&#xa;기록 · 계량 목표 · 복구 상태" vertex="1">
+          <mxGeometry height="80" width="245" x="398" y="568" as="geometry" />
+        </mxCell>
+        <mxCell id="hmi_c" edge="1" parent="1" source="hmi" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#66809F;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.13043478260869565;entryX=0;entryY=0.13043478260869565;" target="c">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_req" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=15;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="Action /cell/run_batch&#xa;Goal recipe · Cancel&#xa;Service qa_decision / interlock&#xa;request_safety_recovery" vertex="1">
+          <mxGeometry height="100" width="275" x="1120" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="c_hmi_response" edge="1" parent="1" source="c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#66809F;strokeWidth=2;endArrow=block;endFill=1;exitX=0;exitY=0.43478260869565216;entryX=1;entryY=0.43478260869565216;" target="hmi">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_res" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=15;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="Action Feedback: state,last_result&#xa;Result: success,result,message&#xa;Service: accepted/granted,message" vertex="1">
+          <mxGeometry height="78" width="275" x="1130" y="495" as="geometry" />
+        </mxCell>
+        <mxCell id="c_hmi_state" edge="1" parent="1" source="c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#66809F;strokeWidth=2;endArrow=block;endFill=1;exitX=0;exitY=0.7391304347826086;entryX=1;entryY=0.7391304347826086;" target="hmi">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="live" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=15;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="ROS 공정 토픽&#xa;state · weight · 결과 · 일탈&#xa;scoop_cycle · event" vertex="1">
+          <mxGeometry height="78" width="275" x="1118" y="628" as="geometry" />
+        </mxCell>
+        <mxCell id="c_rec" edge="1" parent="1" source="c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#789880;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="rec">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="record_topics" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=16;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="공정 토픽&#xa;상태 · 결과 · 계량 · 시도 · 이벤트" vertex="1">
+          <mxGeometry height="70" width="310" x="1655" y="865" as="geometry" />
+        </mxCell>
+        <mxCell id="hmi_event" edge="1" parent="1" source="hmi" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#AA8C54;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.9130434782608695;entryX=0;entryY=0.3;dashed=1;" target="rec">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1250" y="790" />
+              <mxPoint x="1250" y="1040" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="event_label" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=16;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="/cell/event&#xa;HMI_* · 수락 레시피 문맥" vertex="1">
+          <mxGeometry height="65" width="265" x="1120" y="886" as="geometry" />
+        </mxCell>
+        <mxCell id="hmi_db" edge="1" parent="1" source="hmi" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#66809F;strokeWidth=2;endArrow=block;endFill=1;exitX=0.25;exitY=1;entryX=0.25;entryY=0;" target="db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="query_label" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=16;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="SQL 조회&#xa;읽기 전용" vertex="1">
+          <mxGeometry height="60" width="125" x="656" y="875" as="geometry" />
+        </mxCell>
+        <mxCell id="db_hmi" edge="1" parent="1" source="db" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#66809F;strokeWidth=2;endArrow=block;endFill=1;exitX=0.75;exitY=0;entryX=0.75;entryY=1;" target="hmi">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="query_result" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=16;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="이력 · KPI&#xa;체크포인트" vertex="1">
+          <mxGeometry height="60" width="125" x="1000" y="875" as="geometry" />
+        </mxCell>
+        <mxCell id="rec_db" edge="1" parent="1" source="rec" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#789880;strokeWidth=2;endArrow=block;endFill=1;exitX=0;exitY=0.75;entryX=1;entryY=0.75;" target="db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="save_label" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=17;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="DB 저장 · 갱신" vertex="1">
+          <mxGeometry height="50" width="230" x="1140" y="1080" as="geometry" />
+        </mxCell>
+        <mxCell id="rec_file" edge="1" parent="1" source="rec" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;strokeColor=#789880;strokeWidth=2;endArrow=block;endFill=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="file">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="export_label" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=17;fontColor=#243248;fillColor=none;strokeColor=none;strokeWidth=1.5;spacing=2;align=left;verticalAlign=middle;" value="배치 종료 시 JSON 내보내기" vertex="1">
+          <mxGeometry height="55" width="290" x="1655" y="1220" as="geometry" />
+        </mxCell>
+        <mxCell id="a_hmi_direct" edge="1" parent="1" source="a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#9277AA;strokeWidth=2;endArrow=block;exitX=0;exitY=0.5;entryX=0.5;entryY=0;" target="hmi">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="880" y="175" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a_direct_label" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=17;fontColor=#71538A;fillColor=none;strokeColor=none;align=center;verticalAlign=middle;" value="A → D Topic gripper_state · event&#xa;D → A Service emergency_stop (Trigger)&#xa;D → A Service safe_pose (HMI_SAFE_POSE)" vertex="1">
+          <mxGeometry height="105" width="340" x="935" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="a_rec_event" edge="1" parent="1" source="a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#9277AA;strokeWidth=2;endArrow=block;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" target="rec">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="2020" y="175" />
+              <mxPoint x="2020" y="1080" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a_event_label" parent="1" style="text;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=17;fontColor=#71538A;fillColor=none;strokeColor=none;align=center;verticalAlign=middle;" value="A 안전 이벤트&#xa;/cell/event" vertex="1">
+          <mxGeometry height="80" width="200" x="1910" y="860" as="geometry" />
+        </mxCell>
+        <mxCell id="current-direct-safety" edge="1" parent="1" source="hmi" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#C0392B;fontSize=12;labelBackgroundColor=#FFFFFF;" target="a" value="Service emergency_stop / safe_pose">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="875" y="280" />
+              <mxPoint x="1550" y="280" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="interface-review-0917" name="인터페이스·완료 범위·연동 대기">
+    <mxGraphModel grid="1" gridSize="10" page="1" pageWidth="1600" pageHeight="1420">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="heading" parent="1" vertex="1" value="인터페이스 · 구현 범위&#xa;2026-09-30 · 계약 v1.11 / 소스 기준, 실물 성능 보증과 구분" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=23;align=left;verticalAlign=middle;spacing=2;fillColor=#E8F0FC;strokeColor=#B7C5D6;fontColor=#243248;">
+          <mxGeometry as="geometry" x="40" y="30" width="1520" height="85" />
+        </mxCell>
+        <mxCell id="submit" parent="1" vertex="1" value="① 주문 · 진행/예약 취소&#xa;/order → /cell/run_batch (RunBatch Action)&#xa;Goal recipe → 수락 → Feedback → 최종 Result&#xa;진행·예약 Goal 분리, 소유 Goal 개별 취소&#xa;예약은 세트 끝 1건, 직전 넛지 종료 후 시작&#xa;취소 접수 ≠ 동작 종료: 최종 결과 확인" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=19;align=left;verticalAlign=middle;spacing=10;fillColor=#EFF5FF;strokeColor=#B7C5D6;fontColor=#243248;">
+          <mxGeometry as="geometry" x="40" y="140" width="740" height="230" />
+        </mxCell>
+        <mxCell id="action" parent="1" vertex="1" value="② 운영 공정 서버 · 세트 경계&#xa;C RunBatch ActionServer 구현됨&#xa;HMI 운영 주문 경로와 SubmitOrder는 같은 FSM 사용&#xa;FINISH / 폐기 반송 / NUDGE_WAIT 중 1건 예약&#xa;ORDER_QUEUED / ORDER_DROPPED는 예약 배치 ID&#xa;일반 스킬 실행은 C → A, 안전 직접 요청은 별도" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=19;align=left;verticalAlign=middle;spacing=10;fillColor=#FFF4DF;strokeColor=#B7C5D6;fontColor=#243248;">
+          <mxGeometry as="geometry" x="810" y="140" width="750" height="230" />
+        </mxCell>
+        <mxCell id="qa" parent="1" vertex="1" value="③ QA · 구역 진입 / 복귀&#xa;/qa → qa_decision (deviation_id, decision, operator_id)&#xa;/interlock → interlock (ENTER / EXIT)&#xa;ENTER: SafePose 도달 확인 후 granted&#xa;EXIT: RestoreGrip 성공·안전 상태 확인 후 재개&#xa;carry 중단은 재개 거부 → 배치 취소 후 복구" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=19;align=left;verticalAlign=middle;spacing=10;fillColor=#EFF5FF;strokeColor=#B7C5D6;fontColor=#243248;">
+          <mxGeometry as="geometry" x="40" y="395" width="740" height="210" />
+        </mxCell>
+        <mxCell id="interlock" parent="1" vertex="1" value="④ 소프트웨어 정지 · 복구 · 안전 자세&#xa;HMI → A emergency_stop: Trigger → success,message&#xa;HMI → C request_safety_recovery → A recover_safety&#xa;원인 제거·작업자 확인 / 복구 성공 ≠ 배치 재개&#xa;복구 후 HMI → A safe_pose(reason=HMI_SAFE_POSE)&#xa;진행·일시정지 배치 중 수동 안전 자세 요청 거부" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=19;align=left;verticalAlign=middle;spacing=10;fillColor=#FFF4DF;strokeColor=#B7C5D6;fontColor=#243248;">
+          <mxGeometry as="geometry" x="810" y="395" width="750" height="210" />
+        </mxCell>
+        <mxCell id="topics" parent="1" vertex="1" value="⑤ 실시간 표시 · 계량 기준&#xa;C: state / weight / dispense_result / deviation&#xa;C: scoop_cycle / event, A: gripper_state / event&#xa;스쿱·용기 구분, valid=false는 판정 제외&#xa;Pour 성공 뒤 붓기 전 순량을 추정 누적(POUR_ESTIMATE)&#xa;post 미측정·valid=false, delivered_g=0&#xa;최종 용기 VERIFY가 총량 판정 / INVALID 구분&#xa;DIO 폭 -1은 미측정, 안전 스위치 false는 실측 보증 아님" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=19;align=left;verticalAlign=middle;spacing=10;fillColor=#F2ECF8;strokeColor=#B7C5D6;fontColor=#243248;">
+          <mxGeometry as="geometry" x="40" y="630" width="740" height="270" />
+        </mxCell>
+        <mxCell id="change" parent="1" vertex="1" value="⑥ 인증 · 레시피 · 회수&#xa;viewer / operator / qa / admin · 서버 권한 검증&#xa;계정 저장과 배치 SQLite 기록은 별도&#xa;운영 recipes_dir · 시험 사본은 운영 레시피와 대조&#xa;회수 확인 API·카운터는 폐지&#xa;NUDGE_WAIT에서 회수 후 넛지 → SafePose → 종료&#xa;운영 재고와 시험·데모 잔량을 구분&#xa;물리 비상정지는 소프트웨어 버튼으로 대체하지 않음" style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=19;align=left;verticalAlign=middle;spacing=10;fillColor=#EBF7EF;strokeColor=#B7C5D6;fontColor=#243248;">
+          <mxGeometry as="geometry" x="810" y="630" width="750" height="270" />
+        </mxCell>
+        <mxCell id="execution" parent="1" vertex="1" value="⑦ 재기동 기록 조회 / 자동 이어하기와 구분&#xa;record_node → state_checkpoints·batch_recipes → /restart-state 조회&#xa;저장 기록은 현재 로봇 자세·파지·원료 상태를 보증하지 않습니다. 과거 Goal을 임의 취소·재개하지 않습니다.&#xa;실제 재개 조건·FSM 복원·재계량 검증 없이 자동 이어하기로 표시하지 않습니다." style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=19;align=left;verticalAlign=middle;spacing=10;fillColor=#FFF4DF;strokeColor=#B7C5D6;fontColor=#243248;">
+          <mxGeometry as="geometry" x="40" y="925" width="1520" height="160" />
+        </mxCell>
+        <mxCell id="persist" parent="1" vertex="1" value="⑧ 저장 · 조회 · 결과 해석&#xa;record_node: 배치 DB 단일 기록자 / HMI: 배치 기록 조회·HMI_* 이벤트 발행&#xa;weights 무효값·scoop_cycles 실패도 보존, events append-only, audit는 사람 조작&#xa;DONE과 DONE_UNMEASURED 구분 / DB가 원본, 종료 JSON·CSV는 사본&#xa;시험 통과 수치·현장 성능은 이 그림이 아니라 날짜·커밋이 명시된 해당 일지를 근거로 합니다." style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=19;align=left;verticalAlign=middle;spacing=10;fillColor=#EFF5FF;strokeColor=#B7C5D6;fontColor=#243248;">
+          <mxGeometry as="geometry" x="40" y="1110" width="1520" height="160" />
+        </mxCell>
+        <mxCell id="source" parent="1" vertex="1" value="근거: docs/interfaces.md v1.11 · docs/SOT.md D-38~43 · gmp_hmi/nodes/{hmi_web_node,record_node}.py · config/schema.sql&#xa;제공 HMI_DB_Flow_20260921.drawio의 페이지·배치·스타일을 보존하고 현재 브랜치의 경로로 갱신했습니다." style="rounded=1;whiteSpace=wrap;html=0;fontFamily=Noto Sans CJK KR;fontSize=17;align=left;verticalAlign=middle;spacing=10;fillColor=#F5F7FA;strokeColor=#B7C5D6;fontColor=#243248;">
+          <mxGeometry as="geometry" x="40" y="1295" width="1520" height="75" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

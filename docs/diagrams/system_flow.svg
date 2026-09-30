@@ -1,215 +1,167 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" width="1400" height="900" font-family="IBM Plex Sans KR, Noto Sans CJK KR, NanumSquare, Apple SD Gothic Neo, Malgun Gothic, sans-serif">
-  <defs>
-    <marker id="a-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#7B8497"/></marker>
-    <marker id="a-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3A4258"/></marker>
-    <marker id="a-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#C0392B"/></marker>
-    <marker id="a-warm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#D9782A"/></marker>
-    <marker id="a-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#2E86C1"/></marker>
-    <marker id="a-ind" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3451D1"/></marker>
-    <style>
-      .box { fill:#FFFFFF; stroke:#3A4258; stroke-width:1.6; }
-      .panel { fill:#F3F5FA; stroke:#C3CADB; stroke-width:1.4; }
-      .t { fill:#161B2A; font-size:17px; font-weight:700; }
-      .s { fill:#5F6980; font-size:12.5px; }
-      .s2 { fill:#3A4258; font-size:13px; }
-      .lbl { fill:#3A4258; font-size:13px; font-weight:600; }
-      .mono { font-family: IBM Plex Mono, NanumGothicCoding, Menlo, monospace; }
-      .ico { font-size:30px; }
-      .step { fill:#161B2A; font-size:13.5px; font-weight:600; }
-      .num { fill:#FFFFFF; font-size:12px; font-weight:700; font-family: IBM Plex Mono, Menlo, monospace; }
-      .chip { fill:#FBEBDD; stroke:#D9782A; stroke-width:1; }
-      .chipt { fill:#A85717; font-size:11.5px; font-weight:600; font-family: IBM Plex Mono, Menlo, monospace; }
-      .ln { stroke:#7B8497; stroke-width:2; fill:none; }
-      .ln2 { stroke:#3A4258; stroke-width:2.4; fill:none; }
-    </style>
-  </defs>
-
-  <!-- ─── 바깥 (사람 · 웹 · 기록) ─── -->
-  <g>
-    <rect class="box" x="40" y="40" width="180" height="130" rx="12"/>
-    <text class="ico" x="130" y="88" text-anchor="middle">🧑‍🔬</text>
-    <text class="t" x="130" y="120" text-anchor="middle" font-size="16">QA · 작업자</text>
-    <text class="s" x="130" y="142" text-anchor="middle">셀 밖 — 상주하지 않는다</text>
-
-    <rect class="box" x="290" y="40" width="270" height="130" rx="12"/>
-    <text class="ico" x="330" y="90">🖥️</text>
-    <text class="t" x="365" y="78">웹 HMI (브라우저)</text>
-    <text class="s2" x="365" y="102">주문 제출 · 상태·계량 그래프</text>
-    <text class="s2" x="365" y="122">QA 승인 / 폐기 · 인터락 요청</text>
-    <text class="s2" x="365" y="142">이력 · KPI · 감사 추적 조회</text>
-
-    <rect class="box" x="630" y="40" width="240" height="130" rx="12"/>
-    <text class="ico" x="665" y="90">🌐</text>
-    <text class="t" x="700" y="78" font-size="16">hmi_web_node</text>
-    <text class="s2 mono" x="700" y="100">Flask :5000</text>
-    <text class="s" x="700" y="122">rclpy 클라이언트 스레드</text>
-    <text class="s" x="700" y="142">DB 는 읽기만</text>
-
-    <!-- DB cylinder -->
-    <g>
-      <path class="box" d="M950 62 a95 14 0 0 1 190 0 v86 a95 14 0 0 1 -190 0 z"/>
-      <ellipse cx="1045" cy="62" rx="95" ry="14" fill="#E4E9FB" stroke="#3A4258" stroke-width="1.6"/>
-      <text class="ico" x="1045" y="104" text-anchor="middle" font-size="26">🗄️</text>
-      <text class="t" x="1045" y="128" text-anchor="middle" font-size="15">SQLite 배치 기록</text>
-      <text class="s mono" x="1045" y="146" text-anchor="middle">cell.db · events · audit</text>
-    </g>
-
-    <rect class="box" x="1200" y="40" width="170" height="130" rx="12"/>
-    <text class="ico" x="1285" y="88" text-anchor="middle">📋</text>
-    <text class="t" x="1285" y="120" text-anchor="middle" font-size="16">레시피 YAML</text>
-    <text class="s" x="1285" y="142" text-anchor="middle">원료 · 목표 g · 허용 오차</text>
-
-    <!-- 연결: 사용자 ↔ 웹 -->
-    <line class="ln" x1="222" y1="105" x2="288" y2="105" marker-start="url(#a-gray)" marker-end="url(#a-gray)"/>
-    <!-- 웹 ↔ flask -->
-    <line class="ln" x1="562" y1="105" x2="628" y2="105" marker-start="url(#a-gray)" marker-end="url(#a-gray)"/>
-    <text class="s" x="595" y="92" text-anchor="middle">요청 / 응답</text>
-    <text class="s" x="595" y="128" text-anchor="middle">0.5 s 폴링</text>
-    <!-- flask → DB 읽기 -->
-    <line class="ln" x1="872" y1="105" x2="948" y2="105" marker-start="url(#a-gray)"/>
-    <text class="s" x="910" y="92" text-anchor="middle">읽기</text>
-  </g>
-
-  <!-- ─── ROS 2 경계 ─── -->
-  <rect x="30" y="240" width="1110" height="480" rx="26" fill="#FFF6F5" stroke="#E8746A" stroke-width="7"/>
-  <text x="56" y="282" font-size="24" font-weight="800" fill="#161B2A">ROS 2</text>
-  <text class="s mono" x="140" y="282" font-size="13">ns /cell  ·  PC 1대</text>
-
-  <!-- 세로 연결: flask ↔ process (명령/상태) -->
-  <line class="ln2" x1="720" y1="172" x2="720" y2="300" marker-start="url(#a-ink)" marker-end="url(#a-ink)"/>
-  <text class="lbl" x="732" y="208">주문 · QA 판정 · 인터락 (Service)</text>
-  <text class="lbl" x="732" y="228">상태 · 계량 · 일탈 (Topic)</text>
-  <!-- record → DB -->
-  <line class="ln2" x1="1045" y1="573" x2="1045" y2="176" marker-end="url(#a-ink)" stroke-dasharray="6 4"/>
-  <text class="lbl" x="1058" y="212">기록</text>
-  <text class="lbl" x="1058" y="230">(단일 기록자)</text>
-  <!-- 레시피 → process -->
-  <path class="ln2" d="M1285 172 V186 H760 V174" fill="none" marker-end="url(#a-ink)"/>
-  <text class="s" x="1180" y="182" text-anchor="middle" font-size="12">레시피 목록 → 주문에 실음</text>
-
-  <!-- 동작 시퀀스 패널 -->
-  <rect class="panel" x="50" y="332" width="640" height="213" rx="14"/>
-  <text class="lbl" x="70" y="356" font-size="15">동작 시퀀스</text>
-  <g transform="translate(60,372)">
-    <!-- 8 steps, pitch 78 -->
-    <g transform="translate(0,0)"><circle cx="12" cy="12" r="11" fill="#161B2A"/><text class="num" x="12" y="16" text-anchor="middle">1</text><text class="ico" x="39" y="58" text-anchor="middle">🧴</text><text class="step" x="39" y="86" text-anchor="middle">약통 반송</text><text class="s" x="39" y="102" text-anchor="middle">매거진→칭량</text></g>
-    <g transform="translate(78,0)"><circle cx="12" cy="12" r="11" fill="#161B2A"/><text class="num" x="12" y="16" text-anchor="middle">2</text><text class="ico" x="39" y="58" text-anchor="middle">⚖️</text><text class="step" x="39" y="86" text-anchor="middle">풍량 측정</text><text class="s" x="39" y="102" text-anchor="middle">tare</text></g>
-    <g transform="translate(156,0)"><circle cx="12" cy="12" r="11" fill="#3451D1"/><text class="num" x="12" y="16" text-anchor="middle">3</text><text class="ico" x="39" y="58" text-anchor="middle">🥄</text><text class="step" x="39" y="86" text-anchor="middle">스쿱 픽업</text><text class="s" x="39" y="102" text-anchor="middle">원료별 전용</text></g>
-    <g transform="translate(234,0)"><circle cx="12" cy="12" r="11" fill="#3451D1"/><text class="num" x="12" y="16" text-anchor="middle">4</text><text class="ico" x="39" y="58" text-anchor="middle">🫙</text><text class="step" x="39" y="86" text-anchor="middle">퍼올리기</text><text class="s" x="39" y="102" text-anchor="middle">힘제어 접촉</text></g>
-    <g transform="translate(312,0)"><circle cx="12" cy="12" r="11" fill="#3451D1"/><text class="num" x="12" y="16" text-anchor="middle">5</text><text class="ico" x="39" y="58" text-anchor="middle">🫗</text><text class="step" x="39" y="86" text-anchor="middle">투입</text><text class="s" x="39" y="102" text-anchor="middle">털어내기</text></g>
-    <g transform="translate(390,0)"><circle cx="12" cy="12" r="11" fill="#3451D1"/><text class="num" x="12" y="16" text-anchor="middle">6</text><text class="ico" x="39" y="58" text-anchor="middle">🧮</text><text class="step" x="39" y="86" text-anchor="middle">무게 검증</text><text class="s" x="39" y="102" text-anchor="middle">OK/UNDER/OVER</text></g>
-    <g transform="translate(468,0)"><circle cx="12" cy="12" r="11" fill="#3451D1"/><text class="num" x="12" y="16" text-anchor="middle">7</text><text class="ico" x="39" y="58" text-anchor="middle">↩️</text><text class="step" x="39" y="86" text-anchor="middle">스쿱 반납</text><text class="s" x="39" y="102" text-anchor="middle">다음 원료</text></g>
-    <g transform="translate(546,0)"><circle cx="12" cy="12" r="11" fill="#161B2A"/><text class="num" x="12" y="16" text-anchor="middle">8</text><text class="ico" x="39" y="58" text-anchor="middle">📦</text><text class="step" x="39" y="86" text-anchor="middle">완료품 적재</text><text class="s" x="39" y="102" text-anchor="middle">용기째 트레이</text></g>
-    <!-- 반복 괄호 3~7 -->
-    <path d="M160 110 v8 h468 v-8" fill="none" stroke="#3451D1" stroke-width="1.8"/>
-    <text x="394" y="134" text-anchor="middle" font-size="12.5" font-weight="600" fill="#3451D1">원료별 반복 (3 → 7)</text>
-    <!-- 보정 루프 6→4 -->
-    <path d="M429 142 v6 q0 8 -8 8 h-90 q-8 0 -8 -8 v-6" fill="none" stroke="#D9782A" stroke-width="1.8" marker-end="url(#a-warm)" stroke-dasharray="4 3"/>
-    <text x="376" y="168" text-anchor="middle" font-size="11.5" font-weight="600" fill="#A85717">6 UNDER → 4 보정 투입 (≤3회)</text>
-  </g>
-
-  <!-- 일탈 처리 (Deviation Shield) -->
-  <rect class="box" x="700" y="332" width="315" height="213" rx="14" fill="#FFFFFF"/>
-  <text class="ico" x="714" y="366" font-size="24">🛡️</text>
-  <text class="t" x="746" y="358" font-size="15">일탈 처리 (Deviation Shield)</text>
-  <text class="s" x="746" y="376" font-size="11.5">감지 → 재시도 → 우회 → 폴백 → 사람 호출</text>
-  <g transform="translate(714,388)">
-    <rect class="chip" x="0" y="0" width="82" height="22" rx="6"/><text class="chipt" x="41" y="15" text-anchor="middle">GRIP_FAIL</text>
-    <rect class="chip" x="88" y="0" width="102" height="22" rx="6"/><text class="chipt" x="139" y="15" text-anchor="middle">SCOOP_EMPTY</text>
-    <rect class="chip" x="196" y="0" width="50" height="22" rx="6"/><text class="chipt" x="221" y="15" text-anchor="middle">SLIP</text>
-    <rect class="chip" x="0" y="28" width="122" height="22" rx="6"/><text class="chipt" x="61" y="43" text-anchor="middle">MATERIAL_EMPTY</text>
-    <rect class="chip" x="128" y="28" width="78" height="22" rx="6"/><text class="chipt" x="167" y="43" text-anchor="middle">OVERFILL</text>
-    <rect class="chip" x="212" y="28" width="74" height="22" rx="6"/><text class="chipt" x="249" y="43" text-anchor="middle">TIMEOUT</text>
-  </g>
-  <line x1="714" y1="448" x2="1000" y2="448" stroke="#C3CADB" stroke-width="1"/>
-  <text class="s2" x="714" y="468" font-size="12.5"><tspan font-weight="700" fill="#3451D1">재시도</tspan>  파지·퍼올리기 각 3회</text>
-  <text class="s2" x="714" y="488" font-size="12.5"><tspan font-weight="700" fill="#3451D1">우회·폴백</tspan>  파지력 ↑ · 투입 비율 ↓ · dio 백엔드</text>
-  <text class="s2" x="714" y="508" font-size="12.5"><tspan font-weight="700" fill="#D9782A">사람 호출</tspan>  QA 원격 판정 · 인터락 보충</text>
-  <text class="s2" x="714" y="528" font-size="12.5"><tspan font-weight="700" fill="#C0392B">안전 정지</tspan>  충돌·통신 두절 → SafePose</text>
-
-  <!-- process_node 라벨 (시퀀스+실드 묶음) -->
-  <text class="ico" x="56" y="322" font-size="24">🧠</text>
-  <text class="t" x="88" y="318" font-size="17">process_node</text>
-  <text class="s" x="215" y="318" font-size="12.5">메인 컨트롤러 · 레시피 실행 상태기계 (RunBatch) — 동작 시퀀스 + 일탈 처리</text>
-
-  <!-- skill_node -->
-  <rect class="box" x="50" y="575" width="730" height="120" rx="12"/>
-  <text class="ico" x="72" y="618" font-size="26">🦾</text>
-  <text class="t" x="108" y="610" font-size="16">skill_node — 로봇 스킬 서버</text>
-  <text class="s2" x="108" y="632"><tspan class="mono">MoveToStation · SetGripper · Scoop · Pour · WeighContainer · SafePose · MeasureForce</tspan></text>
-  <text class="s2" x="108" y="654">로봇을 만지는 <tspan font-weight="700">유일한</tspan> 노드 · DSR 워커 스레드 1개 = 명령은 항상 직렬</text>
-  <text class="s" x="108" y="676">파지 판정 = 폭 추론 · 계량 = get_workpiece_weight · 접촉 = check_force_condition</text>
-  <!-- process ↔ skill -->
-  <line class="ln2" x1="370" y1="547" x2="370" y2="573" marker-start="url(#a-ink)" marker-end="url(#a-ink)"/>
-  <text class="lbl" x="382" y="566">Action / Service</text>
-
-  <!-- record_node -->
-  <rect class="box" x="810" y="575" width="310" height="120" rx="12"/>
-  <text class="ico" x="828" y="618" font-size="26">📝</text>
-  <text class="t" x="864" y="610" font-size="16">record_node</text>
-  <text class="s2" x="864" y="632" font-size="12.5">단일 기록자 — 상태·계량·판정·일탈·이벤트</text>
-  <text class="s2" x="864" y="652" font-size="12.5">HMI 조작(승인·폐기·인터락) → 감사 테이블</text>
-  <text class="s" x="864" y="672">배치 종료 시 JSON 사본 내보내기</text>
-  <!-- process → record (토픽 구독) -->
-  <line class="ln" x1="900" y1="547" x2="900" y2="573" marker-end="url(#a-gray)"/>
-  <text class="s" x="912" y="565">Topic</text>
-
-  <!-- ─── 외부 이벤트 (오른쪽) ─── -->
-  <g>
-    <rect class="box" x="1170" y="300" width="200" height="78" rx="12" stroke="#C0392B" stroke-width="2"/>
-    <text class="ico" x="1200" y="348">🛑</text>
-    <text class="t" x="1240" y="333" font-size="16">비상정지</text>
-    <text class="s" x="1240" y="356">E-stop · 컨트롤러 직결</text>
-
-    <rect class="box" x="1170" y="392" width="200" height="78" rx="12" stroke="#D9782A" stroke-width="2"/>
-    <text class="ico" x="1200" y="440">💥</text>
-    <text class="t" x="1240" y="425" font-size="16">충돌 감지</text>
-    <text class="s" x="1240" y="448">PFL · 관절 토크</text>
-
-    <rect class="box" x="1170" y="484" width="200" height="78" rx="12" stroke="#2E86C1" stroke-width="2"/>
-    <text class="ico" x="1200" y="532">📡</text>
-    <text class="t" x="1240" y="517" font-size="16">통신 두절</text>
-    <text class="s" x="1240" y="540">하트비트 · 타임아웃</text>
-
-    <rect class="box" x="1170" y="576" width="200" height="78" rx="12" stroke="#3451D1" stroke-width="2"/>
-    <text class="ico" x="1200" y="624">🚪</text>
-    <text class="t" x="1240" y="609" font-size="16">인터락 (패스박스)</text>
-    <text class="s" x="1240" y="632">사람 반입 요청</text>
-
-    <!-- 화살표 -->
-    <path d="M1168 339 H1154 V800 H1124" fill="none" stroke="#C0392B" stroke-width="2.2" marker-end="url(#a-red)"/>
-        <text font-size="12" font-weight="600" fill="#C0392B" x="1130" y="826">EMERGENCY_STOP</text>
-
-    <line x1="1168" y1="431" x2="1123" y2="431" stroke="#D9782A" stroke-width="2.2" marker-end="url(#a-warm)"/>
-    <text font-size="12" font-weight="600" fill="#A85717" x="1145" y="422" text-anchor="middle">SAFE_STOP</text>
-
-    <line x1="1168" y1="523" x2="1123" y2="523" stroke="#2E86C1" stroke-width="2.2" marker-end="url(#a-blue)"/>
-    <text font-size="12" font-weight="600" fill="#2E86C1" x="1145" y="514" text-anchor="middle">STOP</text>
-
-    <line x1="1168" y1="615" x2="1123" y2="615" stroke="#3451D1" stroke-width="2.2" marker-end="url(#a-ind)"/>
-    <text font-size="12" font-weight="600" fill="#3451D1" x="1145" y="606" text-anchor="middle">PAUSE</text>
-  </g>
-
-  <!-- ─── 로봇 시스템 ─── -->
-  <rect class="box" x="400" y="750" width="720" height="120" rx="12"/>
-  <text class="ico" x="422" y="796" font-size="30">🤖</text>
-  <text class="t" x="466" y="782" font-size="16">로봇 시스템 — Doosan M0609</text>
-  <text class="s2 mono" x="466" y="802">dsr_controller2 · ns /dsr01 · DSR_ROBOT2 API</text>
-  <rect x="466" y="816" width="330" height="40" rx="8" fill="#F3F5FA" stroke="#3A4258" stroke-width="1.4"/>
-  <text class="s2" x="631" y="841" text-anchor="middle"><tspan font-weight="700">RG2 그리퍼</tspan>  Modbus TCP · <tspan class="mono">/onrobot/sendCommand</tspan></text>
-  <text class="s" x="820" y="830">센서: 관절 토크(JTS) → 무게·힘</text>
-  <text class="s" x="820" y="850">그리퍼 폭 50 Hz · 카메라 없음</text>
-
-  <!-- skill ↔ robot -->
-  <line class="ln2" x1="520" y1="697" x2="520" y2="748" marker-end="url(#a-ink)"/>
-  <text class="lbl" x="508" y="728" text-anchor="end">로봇 제어 (movel · 힘제어 · IO)</text>
-  <line class="ln2" x1="640" y1="748" x2="640" y2="697" marker-end="url(#a-ink)"/>
-  <text class="lbl" x="652" y="728">관절 토크 · 무게 · 그리퍼 폭</text>
-
-  <!-- 왼쪽 아래 메모 -->
-  <rect x="50" y="750" width="300" height="120" rx="12" fill="#E4E9FB" stroke="#C9D3F7" stroke-width="1.4"/>
-  <text class="t" x="70" y="782" font-size="15" fill="#2A42AD">비전 없이 판단</text>
-  <text class="s2" x="70" y="806">파지 — 정지 폭 &gt; 목표 + 2 mm</text>
-  <text class="s2" x="70" y="826">무게 — get_workpiece_weight 평균</text>
-  <text class="s2" x="70" y="846">접촉 — Z 힘 조건 · 깊이 상한</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1630" viewBox="0 0 2400 1630" font-family="Noto Sans CJK KR, Noto Sans CJK, sans-serif">
+<defs>
+<marker id="arrow-blue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1 1 L11 6 L1 11 Z" fill="#285fb3"/></marker>
+<marker id="arrow-teal" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1 1 L11 6 L1 11 Z" fill="#007f83"/></marker>
+<marker id="arrow-purple" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1 1 L11 6 L1 11 Z" fill="#6a4eb1"/></marker>
+<marker id="arrow-red" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1 1 L11 6 L1 11 Z" fill="#ad3d45"/></marker>
+<marker id="arrow-orange" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M1 1 L11 6 L1 11 Z" fill="#b86110"/></marker>
+</defs>
+<rect x="0" y="0" width="2400" height="1630" rx="0" fill="#f7f9fc" stroke="#f7f9fc" stroke-width="0"/>
+<text x="65" y="85" font-size="49" fill="#152238" font-weight="700">제약 조제 칭량 셀 · 시스템 흐름도</text>
+<text x="68" y="129" font-size="26" fill="#53647a" font-weight="400">현행 실물 구성 · 작업 PC 1대 · ROS 2 Jazzy · 계약 v1.11 (2026-09-30)</text>
+<path d="M65 155 H2335" fill="none" stroke="#285fb3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"   />
+<rect x="385" y="195" width="1590" height="590" rx="30" fill="#ffffff" stroke="#d5dfeb" stroke-width="3"/>
+<text x="420" y="237" font-size="28" fill="#152238" font-weight="700">작업 PC 1대   /cell 앱 노드 + /dsr01 드라이버 · SQLite 로컬 파일</text>
+<rect x="55" y="325" width="275" height="150" rx="20" fill="#f0edff" stroke="#6a4eb1" stroke-width="2"/>
+<text x="75" y="367" font-size="29" fill="#6a4eb1" font-weight="700">작업자 · QA</text>
+<text x="75" y="409" font-size="20" fill="#53647a" font-weight="400">브라우저</text>
+<text x="75" y="439" font-size="20" fill="#53647a" font-weight="400">주문 · 원격 QA 승인</text>
+<rect x="430" y="325" width="285" height="150" rx="20" fill="#e8f1ff" stroke="#285fb3" stroke-width="2"/>
+<text x="450" y="367" font-size="29" fill="#285fb3" font-weight="700">웹 HMI</text>
+<text x="450" y="409" font-size="20" fill="#53647a" font-weight="400">Flask :5000</text>
+<text x="450" y="439" font-size="20" fill="#53647a" font-weight="400">hmi_web_node</text>
+<rect x="810" y="325" width="300" height="150" rx="20" fill="#e5f7f5" stroke="#007f83" stroke-width="2"/>
+<text x="830" y="367" font-size="29" fill="#007f83" font-weight="700">공정 FSM</text>
+<text x="830" y="409" font-size="20" fill="#53647a" font-weight="400">process_node</text>
+<text x="830" y="439" font-size="20" fill="#53647a" font-weight="400">배치 순서 · 일탈 분기</text>
+<rect x="1205" y="325" width="300" height="150" rx="20" fill="#fff3e5" stroke="#b86110" stroke-width="2"/>
+<text x="1225" y="367" font-size="29" fill="#b86110" font-weight="700">로봇 스킬</text>
+<text x="1225" y="409" font-size="20" fill="#53647a" font-weight="400">skill_node</text>
+<text x="1225" y="439" font-size="20" fill="#53647a" font-weight="400">단일 워커 · 장치 제어</text>
+<rect x="1600" y="325" width="300" height="150" rx="20" fill="#e8f1ff" stroke="#285fb3" stroke-width="2"/>
+<text x="1620" y="367" font-size="29" fill="#285fb3" font-weight="700">두산 ROS 2 드라이버</text>
+<text x="1620" y="409" font-size="20" fill="#53647a" font-weight="400">/dsr01 · DSR_ROBOT2</text>
+<text x="1620" y="439" font-size="20" fill="#53647a" font-weight="400">로봇 서비스 · 상태</text>
+<rect x="2045" y="325" width="300" height="150" rx="20" fill="#fff3e5" stroke="#b86110" stroke-width="2"/>
+<text x="2065" y="367" font-size="29" fill="#b86110" font-weight="700">두산 컨트롤러</text>
+<text x="2065" y="409" font-size="20" fill="#53647a" font-weight="400">192.168.1.100</text>
+<text x="2065" y="439" font-size="20" fill="#53647a" font-weight="400">M0609 + RG2(DIO)</text>
+<path d="M330 400 H430" fill="none" stroke="#6a4eb1" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-purple)" marker-start="url(#arrow-purple)"/>
+<text x="380" y="385" font-size="18" fill="#6a4eb1" font-weight="700" text-anchor="middle">HTTP</text>
+<path d="M715 400 H810" fill="none" stroke="#285fb3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-blue)" marker-start="url(#arrow-blue)"/>
+<text x="762" y="385" font-size="18" fill="#285fb3" font-weight="700" text-anchor="middle">ROS 2</text>
+<path d="M1110 400 H1205" fill="none" stroke="#007f83" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-teal)" marker-start="url(#arrow-teal)"/>
+<text x="1157" y="385" font-size="18" fill="#007f83" font-weight="700" text-anchor="middle">Action</text>
+<path d="M1505 400 H1600" fill="none" stroke="#285fb3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-blue)" marker-start="url(#arrow-blue)"/>
+<text x="1552" y="385" font-size="18" fill="#285fb3" font-weight="700" text-anchor="middle">DSR</text>
+<path d="M1900 400 H2045" fill="none" stroke="#285fb3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-blue)" marker-start="url(#arrow-blue)"/>
+<text x="1972" y="385" font-size="18" fill="#285fb3" font-weight="700" text-anchor="middle">Ethernet</text>
+<polygon points="345,393 334,400 345,407" fill="#6a4eb1"/>
+<polygon points="415,393 426,400 415,407" fill="#6a4eb1"/>
+<polygon points="730,393 719,400 730,407" fill="#285fb3"/>
+<polygon points="795,393 806,400 795,407" fill="#285fb3"/>
+<polygon points="1125,393 1114,400 1125,407" fill="#007f83"/>
+<polygon points="1190,393 1201,400 1190,407" fill="#007f83"/>
+<polygon points="1520,393 1509,400 1520,407" fill="#285fb3"/>
+<polygon points="1585,393 1596,400 1585,407" fill="#285fb3"/>
+<polygon points="1915,393 1904,400 1915,407" fill="#285fb3"/>
+<polygon points="2030,393 2041,400 2030,407" fill="#285fb3"/>
+<path d="M565 325 V288 H1355 V325" fill="none" stroke="#ad3d45" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-red)" />
+<text x="952" y="278" font-size="21" fill="#ad3d45" font-weight="700">HMI → skill: 비상정지 · 안전 자세</text>
+<polygon points="1348,312 1355,323 1362,312" fill="#ad3d45"/>
+<path d="M570 475 V550 M960 475 V550 M1355 475 V550 M570 550 H1355" fill="none" stroke="#6a4eb1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"   />
+<text x="835" y="541" font-size="21" fill="#6a4eb1" font-weight="700">ROS 2 Topic: 상태 · 계량 · 결과 · 일탈 · 이벤트</text>
+<rect x="430" y="605" width="285" height="150" rx="20" fill="#f0edff" stroke="#6a4eb1" stroke-width="2"/>
+<text x="450" y="647" font-size="29" fill="#6a4eb1" font-weight="700">배치 기록</text>
+<text x="450" y="689" font-size="20" fill="#53647a" font-weight="400">record_node · 단일 기록자</text>
+<text x="450" y="719" font-size="20" fill="#53647a" font-weight="400">토픽 → DB · JSON 사본</text>
+<rect x="810" y="605" width="300" height="150" rx="20" fill="#e5f7f5" stroke="#007f83" stroke-width="2"/>
+<text x="830" y="647" font-size="29" fill="#007f83" font-weight="700">계량 · 도징</text>
+<text x="830" y="689" font-size="20" fill="#53647a" font-weight="400">gmp_dosing · 라이브러리</text>
+<text x="830" y="719" font-size="20" fill="#53647a" font-weight="400">힘→g · 다음 행동 판정</text>
+<rect x="1205" y="605" width="300" height="150" rx="20" fill="#f0edff" stroke="#6a4eb1" stroke-width="2"/>
+<text x="1225" y="647" font-size="29" fill="#6a4eb1" font-weight="700">SQLite · cell.db</text>
+<text x="1225" y="689" font-size="20" fill="#53647a" font-weight="400">배치 · 계량 · 일탈 · 감사</text>
+<text x="1225" y="719" font-size="20" fill="#53647a" font-weight="400">HMI는 읽기만</text>
+<rect x="1600" y="605" width="300" height="150" rx="20" fill="#fff0f1" stroke="#ad3d45" stroke-width="2"/>
+<text x="1620" y="647" font-size="29" fill="#ad3d45" font-weight="700">안전 계층</text>
+<text x="1620" y="689" font-size="20" fill="#53647a" font-weight="400">skill_node + 컨트롤러</text>
+<text x="1620" y="719" font-size="20" fill="#53647a" font-weight="400">힘 제한 · 충돌 감지</text>
+<path d="M570 550 V605" fill="none" stroke="#6a4eb1" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-purple)" />
+<path d="M960 475 V605" fill="none" stroke="#007f83" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-teal)" />
+<path d="M715 678 H760 V580 H1355 V605" fill="none" stroke="#6a4eb1" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-purple)" />
+<text x="1110" y="572" font-size="21" fill="#6a4eb1" font-weight="700">기록 쓰기</text>
+<text x="69" y="839" font-size="35" fill="#152238" font-weight="700">노드 사이에서 주고받는 내용</text>
+<rect x="60" y="866" width="540" height="185" rx="18" fill="#ffffff" stroke="#d5dfeb" stroke-width="2"/>
+<text x="80" y="904" font-size="27" fill="#6a4eb1" font-weight="700">① 브라우저 ↔ HMI</text>
+<text x="80" y="943" font-size="20" fill="#53647a" font-weight="400">→ HTTP 주문 · QA 판정 · 인터락</text>
+<text x="80" y="972" font-size="20" fill="#53647a" font-weight="400">← 상태 화면 · 계량 그래프 · 이력</text>
+<rect x="640" y="866" width="540" height="185" rx="18" fill="#ffffff" stroke="#d5dfeb" stroke-width="2"/>
+<text x="660" y="904" font-size="27" fill="#285fb3" font-weight="700">② HMI ↔ 공정</text>
+<text x="660" y="943" font-size="20" fill="#53647a" font-weight="400">→ RunBatch · QaDecision</text>
+<text x="660" y="972" font-size="20" fill="#53647a" font-weight="400">→ InterlockRequest · RecoverSafety</text>
+<text x="660" y="1001" font-size="20" fill="#53647a" font-weight="400">← 상태 · 계량 · 결과 · 일탈</text>
+<rect x="1220" y="866" width="540" height="185" rx="18" fill="#ffffff" stroke="#d5dfeb" stroke-width="2"/>
+<text x="1240" y="904" font-size="27" fill="#007f83" font-weight="700">③ 공정 ↔ 스킬</text>
+<text x="1240" y="943" font-size="20" fill="#53647a" font-weight="400">→ MoveToStation · Scoop · Pour</text>
+<text x="1240" y="972" font-size="20" fill="#53647a" font-weight="400">→ WeighHeld/Container · SetGripper</text>
+<text x="1240" y="1001" font-size="20" fill="#53647a" font-weight="400">← 성공/실패 · 중량 · 힘 · 파지</text>
+<rect x="1800" y="866" width="540" height="185" rx="18" fill="#ffffff" stroke="#d5dfeb" stroke-width="2"/>
+<text x="1820" y="904" font-size="27" fill="#b86110" font-weight="700">④ 장치 · 기록</text>
+<text x="1820" y="943" font-size="20" fill="#53647a" font-weight="400">스킬↔드라이버: 이동·힘 조회 / 상태·Fz</text>
+<text x="1820" y="972" font-size="20" fill="#53647a" font-weight="400">노드→record: 상태·계량·이벤트</text>
+<text x="1820" y="1001" font-size="20" fill="#53647a" font-weight="400">record→SQLite 저장; HMI는 조회</text>
+<text x="68" y="1120" font-size="35" fill="#152238" font-weight="700">배치 동작 순서</text>
+<text x="69" y="1158" font-size="23" fill="#53647a" font-weight="400">원료마다 ③~⑤ 반복 · 반환은 붓기 전 · 붓기 후 잔량 계량은 수행하지 않음</text>
+<rect x="55" y="1200" width="280" height="174" rx="20" fill="#ffffff" stroke="#cbd8e8" stroke-width="2"/>
+<rect x="70" y="1218" width="42" height="42" rx="13" fill="#285fb3" stroke="#285fb3" stroke-width="1"/>
+<text x="91" y="1248" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">1</text>
+<text x="125" y="1247" font-size="26" fill="#152238" font-weight="700">SELF_CHECK</text>
+<text x="75" y="1294" font-size="19" fill="#53647a" font-weight="400">안전 자세 · 상태 확인</text>
+<text x="75" y="1322" font-size="19" fill="#53647a" font-weight="400">힘 측정</text>
+<rect x="390" y="1200" width="280" height="174" rx="20" fill="#ffffff" stroke="#cbd8e8" stroke-width="2"/>
+<rect x="405" y="1218" width="42" height="42" rx="13" fill="#285fb3" stroke="#285fb3" stroke-width="1"/>
+<text x="426" y="1248" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">2</text>
+<text x="460" y="1247" font-size="26" fill="#152238" font-weight="700">약통 반송 · TARE</text>
+<text x="410" y="1294" font-size="19" fill="#53647a" font-weight="400">passbox_empty →</text>
+<text x="410" y="1322" font-size="19" fill="#53647a" font-weight="400">workbench · 빈 용기 계량</text>
+<rect x="725" y="1200" width="280" height="174" rx="20" fill="#ffffff" stroke="#cbd8e8" stroke-width="2"/>
+<rect x="740" y="1218" width="42" height="42" rx="13" fill="#285fb3" stroke="#285fb3" stroke-width="1"/>
+<text x="761" y="1248" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">3</text>
+<text x="795" y="1247" font-size="26" fill="#152238" font-weight="700">전용 스쿱 준비</text>
+<text x="745" y="1294" font-size="19" fill="#53647a" font-weight="400">PICK_SCOOP</text>
+<text x="745" y="1322" font-size="19" fill="#53647a" font-weight="400">SCOOP_TARE</text>
+<rect x="1060" y="1200" width="280" height="174" rx="20" fill="#ffffff" stroke="#cbd8e8" stroke-width="2"/>
+<rect x="1075" y="1218" width="42" height="42" rx="13" fill="#285fb3" stroke="#285fb3" stroke-width="1"/>
+<text x="1096" y="1248" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">4</text>
+<text x="1130" y="1247" font-size="26" fill="#152238" font-weight="700">스쿠핑 · 계량</text>
+<text x="1080" y="1294" font-size="19" fill="#53647a" font-weight="400">SCOOP → WEIGH_SCOOP</text>
+<text x="1080" y="1322" font-size="19" fill="#53647a" font-weight="400">붓기 전 스쿱 순량</text>
+<rect x="1395" y="1200" width="280" height="174" rx="20" fill="#ffffff" stroke="#cbd8e8" stroke-width="2"/>
+<rect x="1410" y="1218" width="42" height="42" rx="13" fill="#285fb3" stroke="#285fb3" stroke-width="1"/>
+<text x="1431" y="1248" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">5</text>
+<text x="1465" y="1247" font-size="26" fill="#152238" font-weight="700">판정 · 전량 붓기</text>
+<text x="1415" y="1294" font-size="19" fill="#53647a" font-weight="400">초과 → RETURN_MATERIAL</text>
+<text x="1415" y="1322" font-size="19" fill="#53647a" font-weight="400">→ 재스쿱 / 가능 → POUR</text>
+<text x="1415" y="1350" font-size="19" fill="#53647a" font-weight="400">투입량 = 붓기 전 추정치</text>
+<rect x="1730" y="1200" width="280" height="174" rx="20" fill="#ffffff" stroke="#cbd8e8" stroke-width="2"/>
+<rect x="1745" y="1218" width="42" height="42" rx="13" fill="#285fb3" stroke="#285fb3" stroke-width="1"/>
+<text x="1766" y="1248" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">6</text>
+<text x="1800" y="1247" font-size="26" fill="#152238" font-weight="700">최종 VERIFY</text>
+<text x="1750" y="1294" font-size="19" fill="#53647a" font-weight="400">같은 자세 영점 재확인</text>
+<text x="1750" y="1322" font-size="19" fill="#53647a" font-weight="400">용기 순량 vs 목표 합</text>
+<rect x="2065" y="1200" width="280" height="174" rx="20" fill="#ffffff" stroke="#cbd8e8" stroke-width="2"/>
+<rect x="2080" y="1218" width="42" height="42" rx="13" fill="#285fb3" stroke="#285fb3" stroke-width="1"/>
+<text x="2101" y="1248" font-size="24" fill="#ffffff" font-weight="700" text-anchor="middle">7</text>
+<text x="2135" y="1247" font-size="26" fill="#152238" font-weight="700">완료 · 회수 대기</text>
+<text x="2085" y="1294" font-size="19" fill="#53647a" font-weight="400">passbox_done / reject_bin</text>
+<text x="2085" y="1322" font-size="19" fill="#53647a" font-weight="400">NUDGE_WAIT · 회수 후</text>
+<text x="2085" y="1350" font-size="19" fill="#53647a" font-weight="400">NUDGE → SafePose</text>
+<path d="M335 1290 H390" fill="none" stroke="#285fb3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-blue)" />
+<polygon points="375,1283 386,1290 375,1297" fill="#285fb3"/>
+<path d="M670 1290 H725" fill="none" stroke="#285fb3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-blue)" />
+<polygon points="710,1283 721,1290 710,1297" fill="#285fb3"/>
+<path d="M1005 1290 H1060" fill="none" stroke="#285fb3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-blue)" />
+<polygon points="1045,1283 1056,1290 1045,1297" fill="#285fb3"/>
+<path d="M1340 1290 H1395" fill="none" stroke="#285fb3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-blue)" />
+<polygon points="1380,1283 1391,1290 1380,1297" fill="#285fb3"/>
+<path d="M1675 1290 H1730" fill="none" stroke="#285fb3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-blue)" />
+<polygon points="1715,1283 1726,1290 1715,1297" fill="#285fb3"/>
+<path d="M2010 1290 H2065" fill="none" stroke="#285fb3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"  marker-end="url(#arrow-blue)" />
+<polygon points="2050,1283 2061,1290 2050,1297" fill="#285fb3"/>
+<rect x="55" y="1422" width="2290" height="150" rx="22" fill="#fff0f1" stroke="#d9858b" stroke-width="2"/>
+<text x="82" y="1462" font-size="29" fill="#ad3d45" font-weight="700">예외 · 안전 경로</text>
+<text x="82" y="1501" font-size="23" fill="#53647a" font-weight="400">빈 스쿱 → 재시도/보충    ·    초과 스쿱 → 원료 반환·재스쿱    ·    규격 이탈 → QA 판정</text>
+<text x="82" y="1538" font-size="22" fill="#53647a" font-weight="400">인터락 ENTER → 안전 자세 도달 후 허가    ·    소프트웨어 비상정지 → skill_node 정지·안전 잠금 (물리 비상정지 별개)</text>
+<text x="58" y="1605" font-size="20" fill="#53647a" font-weight="400">근거: docs/process_flow.md · docs/interfaces.md v1.11 · common.yaml (tool_force / DIO) · stations.yaml</text>
 </svg>

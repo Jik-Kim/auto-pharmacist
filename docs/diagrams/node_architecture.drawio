@@ -1,0 +1,354 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net">
+  <diagram name="노드 구성과 인터페이스" id="node-architecture">
+    <mxGraphModel page="1" pageWidth="2600" pageHeight="2380" grid="1" gridSize="10">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=49;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="조제 칭량 셀 · 노드 구성 및 통신 인터페이스">
+          <mxGeometry x="80" y="35" width="2440" height="81" as="geometry" />
+        </mxCell>
+        <mxCell id="3" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=25;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="현재 브랜치 구현 · 계약 v1.11 · 2026.09.30 · 실물 DIO 구성">
+          <mxGeometry x="82" y="112" width="2440" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="4" parent="1" style="rounded=1;arcSize=10;fillColor=#F7F9FC;strokeColor=#C7D4E3;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="55" y="185" width="2490" height="1145" as="geometry" />
+        </mxCell>
+        <mxCell id="5" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=27;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="작업 PC 1대  /  ROS 2 애플리케이션 네임스페이스: /cell">
+          <mxGeometry x="85" y="199" width="1500" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="6" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=22;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="화살표: 요청 / 발행 방향   ·   Service 응답, Action 피드백·결과는 역방향">
+          <mxGeometry x="85" y="246" width="1500" height="41" as="geometry" />
+        </mxCell>
+        <mxCell id="7" parent="1" style="edgeStyle=none;rounded=0;endArrow=block;endFill=1;strokeColor=#315DCF;strokeWidth=3;" edge="1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="570" y="430" as="sourcePoint" />
+            <mxPoint x="1000" y="430" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="8" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#FFFFFF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="650" y="375" width="300" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="9" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#315DCF;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="① 주문 · QA · 인터락">
+          <mxGeometry x="658" y="378" width="284" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="10" parent="1" style="edgeStyle=none;rounded=0;endArrow=block;endFill=1;strokeColor=#315DCF;strokeWidth=3;" edge="1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1480" y="430" as="sourcePoint" />
+            <mxPoint x="1900" y="430" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="11" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#FFFFFF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="1530" y="375" width="340" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="12" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#315DCF;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="② 스킬 실행 · 안전복구">
+          <mxGeometry x="1538" y="378" width="324" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="13" parent="1" style="edgeStyle=none;rounded=0;endArrow=block;endFill=1;strokeColor=#C04452;strokeWidth=3;" edge="1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="360" y="350" as="sourcePoint" />
+            <mxPoint x="2150" y="350" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="360" y="315" />
+              <mxPoint x="2150" y="315" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="14" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#FFFFFF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="1000" y="287" width="660" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="15" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#C04452;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="③ HMI → A 직접 안전 요청">
+          <mxGeometry x="1008" y="290" width="644" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="16" parent="1" style="edgeStyle=none;rounded=0;endArrow=block;endFill=1;strokeColor=#087C80;strokeWidth=3;startArrow=block;startFill=1;" edge="1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="570" y="490" as="sourcePoint" />
+            <mxPoint x="1000" y="735" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="720" y="490" />
+              <mxPoint x="720" y="735" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="17" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#FFFFFF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="735" y="635" width="255" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="18" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#087C80;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="구독 ④⑤⑥">
+          <mxGeometry x="743" y="638" width="239" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="19" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#FFFFFF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="735" y="680" width="255" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="20" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#087C80;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="발행 ⑥">
+          <mxGeometry x="743" y="683" width="239" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="21" parent="1" style="edgeStyle=none;rounded=0;endArrow=block;endFill=1;strokeColor=#087C80;strokeWidth=3;startArrow=block;startFill=1;" edge="1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1230" y="520" as="sourcePoint" />
+            <mxPoint x="1230" y="680" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="22" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#FFFFFF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="1250" y="545" width="340" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="23" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#087C80;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="발행 ④⑥ / 구독 ⑥">
+          <mxGeometry x="1258" y="548" width="324" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="24" parent="1" style="edgeStyle=none;rounded=0;endArrow=block;endFill=1;strokeColor=#087C80;strokeWidth=3;" edge="1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1900" y="490" as="sourcePoint" />
+            <mxPoint x="1480" y="755" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1730" y="490" />
+              <mxPoint x="1730" y="755" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="25" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#FFFFFF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="1745" y="610" width="340" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="26" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#087C80;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="발행 ⑤⑥">
+          <mxGeometry x="1753" y="613" width="324" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="27" parent="1" style="edgeStyle=none;rounded=0;endArrow=block;endFill=1;strokeColor=#087C80;strokeWidth=3;" edge="1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1000" y="815" as="sourcePoint" />
+            <mxPoint x="570" y="815" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="28" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#FFFFFF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="640" y="760" width="320" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="29" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#087C80;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="구독 ④⑥">
+          <mxGeometry x="648" y="763" width="304" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="30" parent="1" style="edgeStyle=none;rounded=0;endArrow=block;endFill=1;strokeColor=#778596;strokeWidth=3;" edge="1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="335" y="910" as="sourcePoint" />
+            <mxPoint x="335" y="1040" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="31" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#FFFFFF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="350" y="935" width="320" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="32" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#778596;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="배치 DB 단일 기록">
+          <mxGeometry x="358" y="938" width="304" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="33" parent="1" style="edgeStyle=none;rounded=0;endArrow=block;endFill=1;strokeColor=#778596;strokeWidth=3;dashed=1;" edge="1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="115" y="1100" as="sourcePoint" />
+            <mxPoint x="115" y="445" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="85" y="1100" />
+              <mxPoint x="85" y="445" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="34" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=20;fontColor=#778596;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="읽기 전용">
+          <mxGeometry x="93" y="980" width="190" height="38" as="geometry" />
+        </mxCell>
+        <mxCell id="35" parent="1" style="edgeStyle=none;rounded=0;endArrow=block;endFill=1;strokeColor=#778596;strokeWidth=3;startArrow=block;startFill=1;" edge="1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="2150" y="520" as="sourcePoint" />
+            <mxPoint x="2380" y="910" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="2465" y="520" />
+              <mxPoint x="2465" y="910" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="36" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#FFFFFF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="2050" y="610" width="400" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="37" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#778596;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="DSR API / ROS Service">
+          <mxGeometry x="2058" y="613" width="384" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="38" parent="1" style="edgeStyle=none;rounded=0;endArrow=block;endFill=1;strokeColor=#778596;strokeWidth=3;startArrow=block;startFill=1;" edge="1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="2380" y="965" as="sourcePoint" />
+            <mxPoint x="2150" y="1365" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="2505" y="965" />
+              <mxPoint x="2505" y="1340" />
+              <mxPoint x="2150" y="1340" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="39" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#FFFFFF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="2170" y="1240" width="325" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="40" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#778596;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="Ethernet / DRFL SDK">
+          <mxGeometry x="2178" y="1243" width="309" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="41" parent="1" style="rounded=1;arcSize=10;fillColor=#EFF4FF;strokeColor=#315DCF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="115" y="350" width="455" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="42" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=33;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="hmi_web_node">
+          <mxGeometry x="139" y="366" width="407" height="57" as="geometry" />
+        </mxCell>
+        <mxCell id="43" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=22;fontColor=#315DCF;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="gmp_hmi  ·  D">
+          <mxGeometry x="139" y="418" width="407" height="41" as="geometry" />
+        </mxCell>
+        <mxCell id="44" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=23;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="주문 · QA · 모니터링 · 감사">
+          <mxGeometry x="139" y="459" width="407" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="45" parent="1" style="rounded=1;arcSize=10;fillColor=#EFF4FF;strokeColor=#315DCF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="1000" y="350" width="480" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="46" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=33;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="process_node">
+          <mxGeometry x="1024" y="366" width="432" height="57" as="geometry" />
+        </mxCell>
+        <mxCell id="47" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=22;fontColor=#315DCF;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="gmp_process  ·  C">
+          <mxGeometry x="1024" y="418" width="432" height="41" as="geometry" />
+        </mxCell>
+        <mxCell id="48" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=23;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="배치 FSM · 스킬 호출 · 판정">
+          <mxGeometry x="1024" y="459" width="432" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="49" parent="1" style="rounded=1;arcSize=10;fillColor=#EFF4FF;strokeColor=#315DCF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="1900" y="350" width="500" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="50" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=33;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="skill_node">
+          <mxGeometry x="1924" y="366" width="452" height="57" as="geometry" />
+        </mxCell>
+        <mxCell id="51" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=22;fontColor=#315DCF;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="gmp_skills  ·  A">
+          <mxGeometry x="1924" y="418" width="452" height="41" as="geometry" />
+        </mxCell>
+        <mxCell id="52" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=23;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="단일 워커 · 로봇 제어 · 계량">
+          <mxGeometry x="1924" y="459" width="452" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="53" parent="1" style="rounded=1;arcSize=10;fillColor=#EAF7F5;strokeColor=#087C80;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="1000" y="680" width="480" height="215" as="geometry" />
+        </mxCell>
+        <mxCell id="54" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=32;fontColor=#087C80;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="ROS 2 Topic 채널">
+          <mxGeometry x="1024" y="700" width="432" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="55" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=23;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="④ 공정 데이터  ⑤ 파지 상태&#10;⑥ 공통 이벤트&#10;통신 경로 묶음 · 별도 노드 아님">
+          <mxGeometry x="1024" y="751" width="432" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="56" parent="1" style="rounded=1;arcSize=10;fillColor=#EFF4FF;strokeColor=#315DCF;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="115" y="740" width="455" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="57" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=33;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="record_node">
+          <mxGeometry x="139" y="756" width="407" height="57" as="geometry" />
+        </mxCell>
+        <mxCell id="58" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=22;fontColor=#315DCF;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="gmp_hmi  ·  D">
+          <mxGeometry x="139" y="808" width="407" height="41" as="geometry" />
+        </mxCell>
+        <mxCell id="59" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=23;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="토픽 기록 · 배치 JSON 내보내기">
+          <mxGeometry x="139" y="849" width="407" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="60" parent="1" style="rounded=1;arcSize=10;fillColor=#F0F3F7;strokeColor=#778596;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="115" y="1040" width="455" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="61" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=31;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="SQLite  /  cell.db">
+          <mxGeometry x="140" y="1058" width="400" height="54" as="geometry" />
+        </mxCell>
+        <mxCell id="62" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=22;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="배치 · 계량 · 일탈 · 이벤트&#10;events: append-only">
+          <mxGeometry x="140" y="1110" width="400" height="74" as="geometry" />
+        </mxCell>
+        <mxCell id="63" parent="1" style="rounded=1;arcSize=10;fillColor=#F2EFF9;strokeColor=#8976AC;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="1000" y="1000" width="640" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="64" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=31;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="gmp_dosing  ·  B">
+          <mxGeometry x="1025" y="1018" width="590" height="54" as="geometry" />
+        </mxCell>
+        <mxCell id="65" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="Python 라이브러리 · 독립 노드 아님&#10;C: dosing.decide()  /  A: WeightModel&#10;프로세스 내부 import · ROS 통신 없음">
+          <mxGeometry x="1025" y="1070" width="590" height="116" as="geometry" />
+        </mxCell>
+        <mxCell id="66" parent="1" style="rounded=1;arcSize=10;fillColor=#F0F3F7;strokeColor=#778596;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="1900" y="830" width="480" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="67" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=33;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="DSR ROS 드라이버">
+          <mxGeometry x="1924" y="846" width="432" height="57" as="geometry" />
+        </mxCell>
+        <mxCell id="68" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=22;fontColor=#778596;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="/dsr01  ·  dsr_controller2">
+          <mxGeometry x="1924" y="898" width="432" height="41" as="geometry" />
+        </mxCell>
+        <mxCell id="69" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=23;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="ROS 2 control + gmp_dsr_controller">
+          <mxGeometry x="1924" y="939" width="432" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="70" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=22;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="skill_node의 DSR 클라이언트 사용&#10;error Topic: RobotError → A&#10;감도 조회: GetCollisionSensitivity&#10;이동·외력·DIO: DSR_ROBOT2">
+          <mxGeometry x="1900" y="1035" width="505" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="71" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=25;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="웹 브라우저 ↔ HMI: HTTP :5000  |  PC 내부 노드 간: ROS 2 DDS">
+          <mxGeometry x="640" y="1238" width="1200" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="72" parent="1" style="rounded=1;arcSize=10;fillColor=#F0F3F7;strokeColor=#778596;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="1800" y="1365" width="680" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="73" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=29;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="두산 제어기 · M0609 · RG2">
+          <mxGeometry x="1830" y="1380" width="620" height="51" as="geometry" />
+        </mxCell>
+        <mxCell id="74" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=22;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="컨트롤러 DIO 개폐·완료 신호 / 힘·상태">
+          <mxGeometry x="1830" y="1427" width="620" height="41" as="geometry" />
+        </mxCell>
+        <mxCell id="75" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=32;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="통신 상세  /  아래 이름은 모두 /cell/ 접두사">
+          <mxGeometry x="80" y="1380" width="1620" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="76" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=22;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="기본 타입: gmp_interfaces/{action, srv, msg}/타입명  ·  예외는 별도 표기">
+          <mxGeometry x="80" y="1434" width="1600" height="41" as="geometry" />
+        </mxCell>
+        <mxCell id="77" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#D5DFE9;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="80" y="1510" width="790" height="350" as="geometry" />
+        </mxCell>
+        <mxCell id="78" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=29;fontColor=#315DCF;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="① HMI → 공정  |  Action · Service">
+          <mxGeometry x="104" y="1524" width="742" height="51" as="geometry" />
+        </mxCell>
+        <mxCell id="79" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=23;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="A  run_batch : RunBatch&#10;S  qa_decision : QaDecision&#10;S  interlock : InterlockRequest&#10;S  request_safety_recovery : RecoverSafety&#10;Goal recipe → Feedback state / last_result → Result&#10;submit_order : SubmitOrder는 별도 클라이언트용&#10;HMI 운영 주문은 RunBatch 사용">
+          <mxGeometry x="104" y="1576" width="742" height="246" as="geometry" />
+        </mxCell>
+        <mxCell id="80" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#D5DFE9;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="905" y="1510" width="790" height="350" as="geometry" />
+        </mxCell>
+        <mxCell id="81" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=29;fontColor=#315DCF;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="② 공정 → 스킬  |  Action 6종">
+          <mxGeometry x="929" y="1524" width="742" height="51" as="geometry" />
+        </mxCell>
+        <mxCell id="82" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=23;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="A  move_to_station : MoveToStation&#10;A  scoop : Scoop&#10;A  pour : Pour&#10;A  return_material : ReturnMaterial&#10;A  weigh_container : WeighContainer&#10;A  weigh_held : WeighHeld&#10;Goal → Feedback / Result · 취소 지원">
+          <mxGeometry x="929" y="1576" width="742" height="246" as="geometry" />
+        </mxCell>
+        <mxCell id="83" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#D5DFE9;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="1730" y="1510" width="790" height="350" as="geometry" />
+        </mxCell>
+        <mxCell id="84" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=29;fontColor=#C04452;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="② · ③ 스킬 Service">
+          <mxGeometry x="1754" y="1524" width="742" height="51" as="geometry" />
+        </mxCell>
+        <mxCell id="85" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=23;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="② set_gripper : SetGripper&#10;② measure_force : MeasureForce&#10;② restore_grip : RestoreGrip&#10;② recover_safety : RecoverSafety&#10;②③ safe_pose : SafePose&#10;③ emergency_stop : std_srvs/srv/Trigger&#10;③ HMI 직접 요청 / 복구는 ① → ② 중계">
+          <mxGeometry x="1754" y="1576" width="742" height="246" as="geometry" />
+        </mxCell>
+        <mxCell id="86" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#D5DFE9;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="80" y="1890" width="790" height="350" as="geometry" />
+        </mxCell>
+        <mxCell id="87" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=29;fontColor=#087C80;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="④ 공정 → HMI · 기록  |  Topic">
+          <mxGeometry x="104" y="1904" width="742" height="51" as="geometry" />
+        </mxCell>
+        <mxCell id="88" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=23;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="state : CellState&#10;weight : WeightReading&#10;scoop_cycle : ScoopCycle&#10;dispense_result : DispenseResult&#10;deviation : Deviation&#10;상태 · 계량 · 스쿱 시도 · 원료 결과 · 일탈&#10;공정 이벤트는 공통 event 채널 ⑥ 사용">
+          <mxGeometry x="104" y="1956" width="742" height="246" as="geometry" />
+        </mxCell>
+        <mxCell id="89" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#D5DFE9;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="905" y="1890" width="790" height="350" as="geometry" />
+        </mxCell>
+        <mxCell id="90" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=29;fontColor=#087C80;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="⑤ 스킬 → HMI  |  Topic">
+          <mxGeometry x="929" y="1904" width="742" height="51" as="geometry" />
+        </mxCell>
+        <mxCell id="91" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=23;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="gripper_state : GripperState&#10;busy / grip_inferred / safety_triggered 등&#10;현행 DIO: 폭 -1 = 미측정&#10;파지력 명령 없음 / force_cmd_n = 0&#10;공정·기록 노드는 이 Topic을 구독하지 않음&#10;공정의 파지 판정은 스킬 응답으로 전달&#10;QoS: BEST_EFFORT · depth 1">
+          <mxGeometry x="929" y="1956" width="742" height="246" as="geometry" />
+        </mxCell>
+        <mxCell id="92" parent="1" style="rounded=1;arcSize=10;fillColor=#FFFFFF;strokeColor=#D5DFE9;strokeWidth=2;" vertex="1" value="">
+          <mxGeometry x="1730" y="1890" width="790" height="350" as="geometry" />
+        </mxCell>
+        <mxCell id="93" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=29;fontColor=#087C80;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="⑥ 공통 이벤트  |  Topic">
+          <mxGeometry x="1754" y="1904" width="742" height="51" as="geometry" />
+        </mxCell>
+        <mxCell id="94" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=23;fontColor=#152B45;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="event : CellEvent&#10;발행: HMI · 공정 · 스킬&#10;구독: HMI · 공정 · 기록&#10;HMI: HMI_* 조작 감사&#10;공정: 배치 / 단계 / 일탈 처리 / 예약&#10;스킬: NUDGE / ROBOT_SAFETY_STOP&#10;         ROBOT_SAFETY_RECOVERY 등">
+          <mxGeometry x="1754" y="1956" width="742" height="246" as="geometry" />
+        </mxCell>
+        <mxCell id="95" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=24;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="운영 기준: 모든 노드는 한 PC에서 실행 · 현재 gripper.backend=dio · Modbus/가상 시험 전용 경로는 생략">
+          <mxGeometry x="80" y="2274" width="2440" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="96" parent="1" style="text;html=0;whiteSpace=wrap;align=left;verticalAlign=top;fontFamily=Noto Sans CJK KR;fontSize=22;fontColor=#526579;spacing=0;strokeColor=none;fillColor=none;" vertex="1" value="근거: cell.launch.py · robot.launch.py · 각 nodes/*.py · common.yaml · docs/interfaces.md v1.11">
+          <mxGeometry x="80" y="2320" width="2440" height="41" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
