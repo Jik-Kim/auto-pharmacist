@@ -1,7 +1,9 @@
 # 2026-09-29 사용자 지정: A/B/C 모두 69 g, 허용오차 ±15 % (58.65~79.35 g).
+# 9/30 시연 설정(사용자 결정): 허용오차 ±50 % (34.5~103.5 g) — 스쿱 계량 산포(±8~15 g)와
+# 스쿱 1회량 편차 때문에 ±15 % 에서 QA 정지가 잦았다. 판정 로직은 그대로다.
 # 운영 레시피와 HMI 시험 사본은 같은 값을 유지한다.
 product: "레시피 1"
 items:
-  - {material_id: A, target_g: 69.0, tol_pct: 15.0}
-  - {material_id: B, target_g: 69.0, tol_pct: 15.0}
-  - {material_id: C, target_g: 69.0, tol_pct: 15.0}
+  - {material_id: A, target_g: 69.0, tol_pct: 50.0}
+  - {material_id: B, target_g: 69.0, tol_pct: 50.0}
+  - {material_id: C, target_g: 69.0, tol_pct: 50.0}

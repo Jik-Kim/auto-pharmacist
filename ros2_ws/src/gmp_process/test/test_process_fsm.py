@@ -971,6 +971,13 @@ def _scoops(target, nominal):
 TARGETS = _recipe_targets()
 ONE_SCOOP = [t for t in TARGETS if _scoops(t[0], t[2]) == 1]
 TWO_SCOOP = [t for t in TARGETS if _scoops(t[0], t[2]) == 2]
+# 허용 폭이 스쿱 1회량보다 좁아 **보충 한 스쿱이 곧 초과**인 1스쿱 목표 — 「보충 불가」 시나리오의 전제.
+# 9/30 시연 설정으로 레시피 1 이 ±50 % 가 되자 69 g 은 첫 스쿱이 모자라면 보충으로 합격한다(아래 WIDE_ONE).
+NO_TOPUP = [t for t in ONE_SCOOP if (t[0] * (1 - t[1] / 100) - 5.0 - 2.0) + t[2] > t[0] * (1 + t[1] / 100)]
+WIDE_ONE = [t for t in ONE_SCOOP if t not in NO_TOPUP]
+# 임계 아래로 스쿱 수만큼 부은 뒤 한 스쿱 더가 상한을 넘는 목표 — 「임계 아래는 TIMEOUT」의 전제
+TIGHT = [t for t in TARGETS
+         if (_scoops(t[0], t[2]) + 1) * t[0] * (1 - t[1] / 100) / _scoops(t[0], t[2]) > t[0] * (1 + t[1] / 100)]
 
 
 def _tid(t):
@@ -1003,7 +1010,7 @@ def _short_first(target, tol, nominal):
     return first
 
 
-@pytest.mark.parametrize('target,tol,nominal', ONE_SCOOP, ids=[_tid(t) for t in ONE_SCOOP])
+@pytest.mark.parametrize('target,tol,nominal', NO_TOPUP, ids=[_tid(t) for t in NO_TOPUP])
 def test_고정스쿱_첫_스쿱_미달은_반환만_반복하다_TIMEOUT_으로_끝난다(target, tol, nominal):
     """보충 요청이 **항상 초과**가 되어 스쿱↔반환을 돌다 반환 한도에서 멈춘다.
 
@@ -1023,7 +1030,7 @@ def test_고정스쿱_첫_스쿱_미달은_반환만_반복하다_TIMEOUT_으로
     assert r.attempts == 2, r.attempts                        # 반환 뒤 재스쿱은 붓기 시도를 올리지 않는다
 
 
-@pytest.mark.parametrize('target,tol,nominal', TARGETS, ids=[_tid(t) for t in TARGETS])
+@pytest.mark.parametrize('target,tol,nominal', TIGHT, ids=[_tid(t) for t in TIGHT])
 def test_고정스쿱_임계는_스쿱_1회량으로_정해진다(target, tol, nominal):
     """잔량 0인 대역에서 추정량 판정 하한은 목표 허용 하한을 스쿱 수로 나눈 값이다."""
     scoops = _scoops(target, nominal)
@@ -1066,7 +1073,7 @@ def test_고정스쿱_2스쿱_목표는_첫_스쿱이_미달이어도_보충으�
     assert abs(r.actual_g - target) <= target * tol / 100, r.actual_g
 
 
-@pytest.mark.parametrize('target,tol,nominal', ONE_SCOOP, ids=[_tid(t) for t in ONE_SCOOP])
+@pytest.mark.parametrize('target,tol,nominal', NO_TOPUP, ids=[_tid(t) for t in NO_TOPUP])
 def test_fixed_scoop_플래그는_반환_루프를_없애지만_QA_횟수는_그대로다(target, tol, nominal):
     """`DosingConfig.fixed_scoop` 를 켜면 **헛도는 반환이 사라진다** — 그게 전부다.
 
@@ -1307,3 +1314,13 @@ def test_가벼움_문턱이_0_이면_종전처럼_빈_스쿱으로_본다():
     run(fsm, cell)
     assert [d['kind'] for d in fsm.deviations][:1] == ['SCOOP_EMPTY']
     assert not any(d['kind'] == 'WEIGH_INVALID' for d in fsm.deviations)
+
+
+@pytest.mark.parametrize('target,tol,nominal', WIDE_ONE, ids=[_tid(t) for t in WIDE_ONE])
+def test_넓은_허용폭의_1스쿱_목표는_첫_스쿱이_모자라면_보충으로_합격한다(target, tol, nominal):
+    """9/30 시연 설정(레시피 1 ±50 %): 첫 스쿱이 하한 아래여도 한 스쿱 더가 상한 안이라 보충해서 끝난다."""
+    first = target * (1 - tol / 100) - 5.0
+    r, kinds, devs = _fixed_scoop_run(target, tol, nominal, first=first, flag=True, nominal=nominal)
+    assert kinds == [], devs
+    assert r.attempts == 2 and r.returns == 0
+    assert abs(r.actual_g - target) <= target * tol / 100, r.actual_g
