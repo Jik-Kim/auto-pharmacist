@@ -1015,10 +1015,12 @@ def test_고정스쿱_첫_스쿱_미달은_반환만_반복하다_TIMEOUT_으로
     """
     r, kinds, _devs = _fixed_scoop_run(target, tol, nominal, first=_short_first(target, tol, nominal),
                                        nominal=nominal)
-    assert kinds == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], kinds
+    assert kinds[0] == 'TIMEOUT', kinds
     assert r.returns == 3, r.returns                          # max_returns 를 소진한다
-    assert r.attempts == 2, r.attempts                        # 반환은 붓기 시도를 소모하지 않는다
-    assert r.actual_g < target * (1 - tol / 100), r.actual_g  # 허용 하한에도 못 미친 채 끝난다
+    # 9/30: TIMEOUT 승인은 「한 스쿱 그대로」— 한 번 더 퍼서 초과여도 붓고 원료를 끝낸다(QA 를 다시
+    # 부르지 않는다). 초과분은 VERIFY ① 이 판정한다. 종전에는 미달인 채 끝나 VERIFY 에서 또 QA 였다.
+    assert r.accepted and r.verdict == 'OVER', (r.accepted, r.verdict)
+    assert r.attempts == 2, r.attempts                        # 반환 뒤 재스쿱은 붓기 시도를 올리지 않는다
 
 
 @pytest.mark.parametrize('target,tol,nominal', TARGETS, ids=[_tid(t) for t in TARGETS])
@@ -1111,7 +1113,8 @@ def test_fixed_scoop_첫_스쿱과_반환_뒤에도_전량_깊이만_요청한�
                      WeightModel(ScaleConfig()), max_returns=3)
     cell = DepthCell(nominal=40.0, residual=0.0)
     run(fsm, cell)
-    assert depths(cell, 'A') == [1.0, 1.0, 1.0], depths(cell, 'A')
+    # 반환 한도 뒤 QA 승인의 「한 번 더」까지 모두 1.0 (9/30 승인 = 한 스쿱 그대로)
+    assert depths(cell, 'A') == [1.0, 1.0, 1.0, 1.0], depths(cell, 'A')
 
 
 @pytest.mark.parametrize('target,tol,nominal', TARGETS, ids=[_tid(t) for t in TARGETS])
@@ -1232,3 +1235,16 @@ def test_영점_오염_QA_승인_뒤에는_용기_계량으로_이어간다():
     i = trace.index(('DEVIATION', 'wait_qa'))
     assert trace[i + 1] == ('VERIFY', 'weigh'), trace[i:i + 3]      # 승인 뒤 곧바로 용기 계량
     assert fsm.verify_net_g != 0.0 and '①규격' in fsm.verify_detail, fsm.verify_detail
+
+
+def test_반환_한도_QA_승인은_한_번_더_퍼서_그대로_붓는다():
+    """9/30 실물: C 가 88·83·93 g(상한 79.35)으로 세 번 반환 → TIMEOUT → QA 승인 → 종전에는 0 g 인 채
+    다음 원료로 넘어갔다. 승인은 「한 스쿱 그대로 넣어도 된다」— 다시 퍼서 초과여도 붓고 다음으로 간다."""
+    cell = Cell(yields=[130, 130, 130, 130, 50], qa='APPROVED', residual=0.0)
+    fsm = _fsm()
+    trace = run(fsm, cell)
+    assert [(d['kind'], d['step']) for d in fsm.deviations][0] == ('TIMEOUT', 'RETURN_MATERIAL'), fsm.deviations
+    i = trace.index(('DEVIATION', 'wait_qa'))
+    assert [k for _, k in trace[i + 1:i + 4]] == ['scoop', 'weigh_scoop', 'pour'], trace[i:i + 5]
+    a = fsm.results[0]
+    assert a.material_id == 'A' and a.actual_g == 130.0 and not a.accept_next

@@ -62,6 +62,8 @@ class ItemRun:
     invalid_step: str = ''       # 위 카운터가 세고 있는 단계 (#213 결정 2)
     scoop_tare_g: float = 0.0    # 빈 스쿱 (SCOOP_TARE)
     scooped_g: float = 0.0       # 붓기 전 스쿱 안의 원료 (WEIGH_SCOOP)
+    accept_next: bool = False    # 반환 한도 QA 승인 — 다음 스쿱은 초과·미달이어도 붓는다 (9/30 사용자 결정)
+    accepted: bool = False       # 위 승인으로 부었다 — 붓기 뒤 판정은 기록만 하고 원료를 끝낸다(QA 를 다시 부르지 않는다)
     actual_g: float = 0.0        # 전량 붓기 가정의 누적 추정 투입량 = Σ(scooped)
     unmeasured: int = 0          # 계량 무효로 투입량을 모르는 채 넘어간 사이클 수 (#213).
                                  # actual_g 에는 안 들어간다 — 그래서 actual_g 가 실제보다 작다
@@ -376,6 +378,11 @@ class ProcessFSM:
                                          or self._scoop(self.cur.last_fraction, after_return=True),
                                          by_weight=True)
             remaining = max(0.0, self.cur.target_g - self.cur.actual_g)
+            if self.cur.accept_next:
+                # 반환 한도 QA 를 승인했다 = 「이 원료는 한 스쿱 그대로 넣어도 된다」. 규격은 VERIFY ① 가 본다
+                self.cur.accept_next, self.cur.accepted = False, True
+                self.state = 'POUR'
+                return {'kind': 'pour', 'station': 'workbench', 'fraction': 1.0}
             if self._short_without_remedy():
                 # 부으면 하한 미달인데 한 스쿱 더 뜨면 상한 초과 — 붓고 나서 「보충 불가」로 QA 에 서는 대신
                 # 붓기 전에 반환하고 다시 푼다(9/30 사용자 결정). 판정식은 decide() 의 보충 불가와 같다.
@@ -411,6 +418,12 @@ class ProcessFSM:
             d = decide(self.cur.target_g, self.cur.actual_g, self.cur.tol_pct, self.cur.attempts,
                        True, self.cur.invalid, self._cfg())
             self.cur.verdict = d.verdict
+            if self.cur.accepted and d.action != 'DONE':
+                # QA 가 이미 「한 스쿱 그대로」를 승인했다 — 초과·미달이어도 같은 사실로 QA 를 다시 부르지 않는다.
+                # 판정(verdict)은 남기고, 제품 규격은 VERIFY ① 이 본다.
+                self.results.append(self.cur)
+                self.state = 'RETURN_SCOOP'
+                return {'kind': 'move', 'station': 'scoop', 'material_id': self.cur.material_id, 'approach': 'AT'}
             if d.action == 'DONE':
                 self.results.append(self.cur)
                 self.state = 'RETURN_SCOOP'
@@ -663,6 +676,13 @@ class ProcessFSM:
                 self._zero_qa = False
                 self.state, self.mode = 'VERIFY', 'RUNNING'
                 return self._weigh_cup(self.tare_g)
+            if self._qa_step == 'RETURN_MATERIAL':
+                # 반환 한도(TIMEOUT) 승인 — 종전에는 투입 0 g 인 채 원료를 끝내 다음 원료로 넘어갔다(9/30 실물 C,
+                # 사용자 지적 「모순」). 고정 스쿱은 매번 비슷한 양이 퍼지므로 더 반환해도 같다 — 한 번 더 퍼서
+                # 그대로 붓는다. 로봇은 반환 끝에 서 있어 반환 → 재스쿱 연결(#64)로 잇는다.
+                self.cur.accept_next = True
+                self.state, self.mode = 'SCOOP', 'RUNNING'
+                return self._scoop(self._rescoop_fraction(), after_return=True)
             if not holding_scoop:                      # 규격 이탈·최종 계량 무효를 QA 가 승인 → 그대로 완료품으로
                 self.state, self.mode = 'FINISH', 'RUNNING'
                 return self._carry('workbench', 'passbox_done')
