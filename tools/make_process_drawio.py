@@ -138,17 +138,17 @@ p2.edge(wres, scoop, 'UNDER → 원료통 AT 복귀 → scoop(attempt+1)', color
 def rew(node, c, then='QA'):
     p2.edge(node, node, f'INVALID ≤2 → 재계량\n3회 WEIGH_INVALID → {then}', color=GRAY, exit=(0.3, 1), entry=(0.7, 1),
             points=((cx(c, 0.3), Y[1] + H + 35), (cx(c, 0.7), Y[1] + H + 35)), lpos=(0, 22))
-rew(stare, 1, 'CLEANUP → ERROR'); rew(wscoop, 3, 'CLEANUP → ERROR'); p2._id()   # 투입 전은 되돌린다 (#213 결정 3)
+rew(stare, 1, 'CLEANUP → ERROR'); rew(wscoop, 3, '반환 → 재스쿱 (RETRY)'); p2._id()   # SCOOP_TARE 는 정리, WEIGH_SCOOP 은 9/30 부터 반환 (D-42)
 p2.edge(verify, verify, 'INVALID ≤2 → 재계량', color=GRAY, exit=(0.3, 0), entry=(0.7, 0),
         points=((cx(3, 0.3), Y[2] - 30), (cx(3, 0.7), Y[2] - 30)), lpos=(0, -12))
 # ── 일탈 → DEVIATION (주황) — 오른쪽 복도 x=1690, 2·3행 사이 복도 y=840
 p2.edge(wres, dev, 'UNDER max_attempts(8) 초과 → TIMEOUT', color=WARM,
         exit=(1, 0.6), entry=(0.7, 0), points=((X[5] + W + 60, Y[1] + 38), (X[5] + W + 60, 840), (cx(4, 0.7), 840)), lpos=(-0.5, -60))
-p2.edge(wscoop, wreturn, 'OVER → return_material(material_id)', color=WARM,
+p2.edge(wscoop, wreturn, 'OVER · 부으면 하한 미달+한 스쿱 더면 상한 초과 · 3회 무효\n→ return_material(material_id) — 붓기 전 (D-42)', color=WARM,
         exit=(0.5, 1), entry=(0.5, 0), points=((cx(3), 860), (cx(3), Y[3] - 20)), lpos=(0.5, 10))
 p2.edge(wreturn, scoop, '반환 성공 · returns<max → 같은 원료를 재스쿱\n(깊이 보정 모드는 더 얕게 · 고정 모드는 1.0 · attempts 소모 안 함)', color=OK,
         exit=(0, 0.5), entry=(1, 0.75), points=((X[2] - 40, Y[3] + 36), (X[2] - 40, Y[1] + 54)), lpos=(-0.4, -10))
-p2.edge(wreturn, dev, '반환 좌표 없음/실패 · 반환 한도 초과 → TIMEOUT', color=RED,
+p2.edge(wreturn, dev, '반환 좌표 없음/실패 · 반환 한도 초과 → TIMEOUT\n(한도 초과를 QA 승인 → 한 스쿱 더 퍼 그대로 붓기)', color=RED,
         exit=(1, 0.5), entry=(0, 0.7), lpos=(0, -18))
 p2.edge(verify, dev, '① 규격 이탈 → BATCH_OUT_OF_SPEC', color=WARM,
         exit=(0.7, 1), entry=(0.5, 0), points=((cx(3, 0.7), 870), (cx(4, 0.5), 870)), lpos=(0, 14))
@@ -247,20 +247,20 @@ ROWS = [
  ('PICK_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT)\nSetGripper srv (close, scoop_width, force)\n→ grip_inferred, final_width_mm', None, 'state\ndeviation(GRIP_FAIL · WRONG_TOOL[v1.2])', False),
  ('SCOOP_TARE', 'n', None, 'WeighHeld act [v1.2] (빈 스쿱, 든 채)\n→ gross, std, valid', None, 'weight(스쿱 풍량, subject=scoop) · state', False),
  ('SCOOP', 'n', None, 'Scoop act\nmaterial_id, attempt, depth_fraction → contact_detected\n(fixed_scoop 이면 안 보고 WEIGH_SCOOP 무게로)', None, 'state\ndeviation(SCOOP_EMPTY · MATERIAL_EMPTY)', False),
- ('WEIGH_SCOOP', 'n', None, 'WeighHeld act (material_N.posx, 붓기 전)\n→ gross, valid', 'scooped ≤ empty_scoop_g → SCOOP_EMPTY\nscooped > max(0, need)+target×tol%\n→ RETURN_MATERIAL, 아니면 fraction=1', 'weight(퍼낸 양) · state', False),
+ ('WEIGH_SCOOP', 'n', None, 'WeighHeld act (material_N.posx, 붓기 전)\n→ gross, valid', 'scooped ≤ empty_scoop_g → SCOOP_EMPTY\nscooped > max(0, need)+target×tol% · 부으면 하한 미달+보충 불가 · 3회 무효\n→ RETURN_MATERIAL(붓기 전, 9/30 D-42), 아니면 fraction=1', 'weight(퍼낸 양) · state', False),
  ('RETURN_MATERIAL', 'p', None, 'ReturnMaterial act\nmaterial_id → 원료통 start→end 직선→주기 운동\n좌표·털기 설정 미입력이면 success=false', None, 'scoop_cycle RETURNED/RETURN_FAILED\ndelivered=0 · valid=false', False),
  ('POUR', 'n', None, 'Pour act (fraction=1)\nmiddle→붓기 경로→middle (상세 3쪽)', None, 'state', False),
  ('POUR 내부 판정', 'n', None, '추가 계량 없음 — 붓기 성공 후 붓기 전 순량 누적', 'decide(target, actual, tol, attempts,\nvalid, invalid, cfg)\n→ DONE / SCOOP / DEVIATION(kind)',
   'scoop_cycle(post 미측정 · valid=false) · POUR_ESTIMATE · state\ndispense_result (DONE·DEVIATION 시)\ndeviation(OVERFILL · TIMEOUT)', False),
  ('RETURN_SCOOP', 'n', None, 'MoveToStation act (scoop_N, AT — 원료통 아래)\nSetGripper srv (open)', None, 'state', False),
- ('VERIFY', 'n', None, 'MoveToStation(workbench, ABOVE) → MeasureForce (영점 재확인 — TARE 와 같은 자세)\nWeighContainer act — tare_g → reading(net, subject=container)', '영점 이동 > scale.zero_drift_limit_n → 재계량 → WEIGH_INVALID\n① Σ(target×tol) — 레시피 총량 대조\n(② 회계 대조는 9/22 폐지 — 관측만)', 'weight(net) · state\nevent(VERIFY, ①② 수치)', False),
+ ('VERIFY', 'n', None, 'MoveToStation(workbench, ABOVE) → MeasureForce (영점 재확인 — TARE 와 같은 자세)\nWeighContainer act — tare_g → reading(net, subject=container)', '영점 이동 > scale.zero_drift_limit_n → 재계량 → WEIGH_INVALID\n(영점 오염 QA 승인 → 용기 계량으로 이어간다, 9/30)\n① Σ(target×tol) — 레시피 총량 대조\n(② 회계 대조는 9/22 폐지 — 관측만)', 'weight(net) · state\nevent(VERIFY, ①② 수치)', False),
  ('FINISH', 'n', None, 'carry workbench → passbox_done(slot)', None, 'state', False),
  ('NUDGE_WAIT', 'p', None, 'MoveToStation act (nudge_wait, AT)\n폐기면 그 앞에 SafePose srv (DISCARD_PARK) → safe→nudge_wait 이송 (D-40)\nevent NUDGE ← skill_node (D-21) — 여기서는\n정지가 아니라 「다음 세트」 신호 (D-23)', None, 'event SET_DONE (대기 진입) · SET_NEXT (건드림)\nstate PAUSED(note NUDGE_WAIT) — RunBatch 주문 1건 예약\nORDER_QUEUED · 넛지 없이 끝나면 ORDER_DROPPED', True),
  ('DONE', 'd', None, None, None, 'state DONE · event BATCH_END\n(record_node 가 JSON 내보내기 — HMI 는 DB 를 읽어 이력·KPI 표시)', False),
  ('DEVIATION', 'p', 'QaDecision srv\nAPPROVE / DISCARD, operator_id\nevent HMI_QA_APPROVE/DISCARD → audit', '(로봇 대기 — 호출 없음)', None, 'deviation 재발행\n(decision, operator_id, 같은 id) · state', False),
  ('PAUSED (REFILL)', 'p', 'InterlockRequest srv\nENTER(reason) → granted / EXIT\nevent HMI_INTERLOCK_ENTER/EXIT → audit', 'SafePose srv (ENTER 시)\n진행 중 Action 은 cancel_goal 먼저 (I-004)', None, 'event INTERLOCK_ENTER/EXIT\nstate PAUSED', False),
  ('PAUSED (NUDGE)', 'p', None, 'event NUDGE ← skill_node 발행\n(get_tool_force 폴링, D-21)\nprocess 는 구독 → 루프 게이트 토글', None, 'state PAUSED(note NUDGE)\nevent NUDGE (skill 이 낸 것을 record 가 저장)', True),
- ('CLEANUP', 'p', None, 'ReturnMaterial act (WEIGH_SCOOP 만)\nMoveToStation act (SCOOP_TARE 는 material_N, AT → scoop_N, AT · 반환 뒤는 scoop_N, AT 만) · SetGripper srv (open)', '투입 전 계량 무효 — 손에 든 것을 정리한 뒤 멈춘다 (#213)\nTARE 정리 없음 · SCOOP_TARE 반환 없이 · WEIGH_SCOOP 반환부터. 정리 중 재스쿱 없음', 'deviation(WEIGH_INVALID/FORCED, 정리 시작 전 기록)\n정리 중 반환 실패 → FORCE_LIMIT/FORCED 별건 · state', False),
+ ('CLEANUP', 'p', None, 'MoveToStation act (material_N, AT → scoop_N, AT) · SetGripper srv (open)', '빈 스쿱 계량 무효 — 스쿱을 반납한 뒤 멈춘다 (#213)\nTARE 정리 없음 · SCOOP_TARE 반환 없이 반납. WEIGH_SCOOP 3회 무효는 9/30 부터 정리가 아니라 반환 → 재스쿱(D-42)', 'deviation(WEIGH_INVALID/FORCED, 정리 시작 전 기록)\n정리 중 반환 실패 → FORCE_LIMIT/FORCED 별건 · state', False),
  ('ERROR', 'e', None, 'SafePose srv (then None)', None, 'event INTERVENTION_FORCED\nstate ERROR', False),
  ('DISCARDED', 'e', None, 'MoveToStation + SetGripper(open) (스쿱 반납)\ncarry workbench → reject_bin → NUDGE_WAIT 로\n(폐기함에서 곧장 못 가 안전 자세를 거친다, D-40)', None, 'state DISCARDED(mode RUNNING — 반송 중)\nmode DONE 은 넛지 뒤 한 번 · event BATCH_END', False),
 ]
