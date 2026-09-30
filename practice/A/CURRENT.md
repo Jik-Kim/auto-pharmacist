@@ -137,3 +137,6 @@ BASE 기준 진폭 X=14/Y=15 mm, 주기 X=0.3/Y=0.5초, 가속 0.5초, 3회 턴�
 
 ## 플로우차트 현행화 (9/30)
 - 현재 브랜치 기준 공정 4쪽·A 3쪽·HMI 2쪽을 갱신했다. HMI 제공본의 저장소 정본은 [HMI_DB_Flow.drawio](../../docs/diagrams/HMI_DB_Flow.drawio)다. 실행 코드·운영값은 변경하지 않았다. [변경·검증 일지](2026-09-30_플로우차트_현행화.md).
+
+## 노드 구성도 (9/30)
+- PC 1대·DIO 기준 노드/인터페이스 [PNG](../../docs/diagrams/node_architecture.png)와 [drawio](../../docs/diagrams/node_architecture.drawio) 추가. 생성기·근거·검증은 [일지](2026-09-30_노드_구성도.md)를 참조합니다.
