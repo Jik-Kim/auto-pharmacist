@@ -582,3 +582,16 @@ def test_safe_elsewhere_keeps_direct_joint_move(motion):
     node._station_id, node.arm.pose = 'scoop_1', list(st.posx)
     assert node._do_safe(module.Job('safe', {'reason': 'RECOVERY'}))
     assert calls == [('J', node.stations.get('safe').extra['posj'])], calls
+
+
+def test_safe_from_mid_scoop_inside_bin_lifts_then_goes_to_material_pose(motion):
+    """9/30: 비상정지로 스쿠핑 도중(통 안)에서 멈춘 뒤 SafePose movej 가 원료통을 쳤다.
+    계량 자세 높이까지 수직 상승 → 계량 자세 → 안전 자세."""
+    node, _, calls, _, module = motion
+    node.arm.compliance_off = lambda: None
+    st = node.stations.get('material_2')
+    dip = [395.0, -341.0, 124.0, 90.0, 171.59, -90.0]           # 고정 경로 4번째 점 — 통 안
+    node._station_id, node.arm.pose = 'material_2', list(dip)
+    assert node._do_safe(module.Job('safe', {'reason': 'RECOVERY'}))
+    up = list(dip); up[2] = st.posx[2]
+    assert calls[:3] == [('L', up), ('L', list(st.posx)), ('J', node.stations.get('safe').extra['posj'])], calls
