@@ -1400,6 +1400,12 @@ class ProcessNode(Node):
                 m.note = '구역 진입 요청 유지 — 인터락 EXIT 확인 후 새 주문 가능'
             elif self._nudge_paused:
                 m.note = 'NUDGE 일시 정지 — 다시 건드리면 해제, 이후 새 주문 가능'
+            elif self.fsm and self.fsm.mode in ('DONE', 'ERROR'):
+                # 배치가 끝났고 막는 것이 없으면 대기로 보인다(9/30 — 안전 복구 뒤에도 「공정 오류」가 남아
+                # 멈춘 것처럼 보였다). 종료 결과(DONE/ERROR)는 실행 루프가 끝나며 한 번 나가 기록이 닫힌다.
+                last = self.fsm.mode
+                m.mode, m.step = CellState.IDLE, 'IDLE'
+                m.note = ('직전 배치 오류 종료 — 새 주문 가능' if last == 'ERROR' else '대기 — 새 주문 가능')
         self.pub_state.publish(m)
         handle = getattr(self, '_batch_handle', None)
         if handle is not None and handle.is_active and not self._batch_done.is_set():
