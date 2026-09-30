@@ -6,7 +6,7 @@ M0609 + RG2 조제 셀. 평상시 무인, 사람은 패스박스와 HMI 로만 �
 ## 기준 문서
 
 - [docs/SOT.md](docs/SOT.md) 확정 결정 · [docs/interfaces.md](docs/interfaces.md) **계약 v1.11** (버전별 변경·확정 상태는 문서 머리) · [docs/architecture.md](docs/architecture.md) 데이터 흐름
-- [docs/setup.md](docs/setup.md) 환경 구축·실행 · [docs/demo_run_procedure.md](docs/demo_run_procedure.md) 시연 절차 (명령 정본)
+- [docs/setup.md](docs/setup.md) 환경 구축·실행 · [docs/demo_run_procedure.md](docs/demo_run_procedure.md) 시연 절차 (명령 정본) · [docs/trial_and_error_0929-0930.md](docs/trial_and_error_0929-0930.md) 9/29~30 시행착오 (발표용)
 - [docs/responsibilities.md](docs/responsibilities.md) 영역별 책임 · 할 일·이슈는 **[GitHub Issues](https://github.com/Jik-Kim/auto-pharmacist/issues)** (9/21 부터 정본 — `docs/todo.md`·`docs/issues.md` 는 동결 스냅샷)
 - [PROJECT.md](PROJECT.md) 개요·역할 · [AGENTS.md](AGENTS.md) 작업 규칙 · [docs/spec/](docs/spec/README.md) BRD·SDD
 
