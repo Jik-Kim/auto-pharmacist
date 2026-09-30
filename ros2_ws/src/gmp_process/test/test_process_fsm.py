@@ -1219,3 +1219,16 @@ def test_failed_pour_does_not_accumulate_prepour_estimate():
     assert fsm.cur.actual_g == 0.0
     assert next_request is not None
     assert fsm.deviations[-1]['kind'] == 'FORCE_LIMIT'
+
+
+def test_영점_오염_QA_승인_뒤에는_용기_계량으로_이어간다():
+    """9/30 실물: VERIFY 직전 영점 이동이 3회 한계를 넘어 QA → 승인 → 계량 없이 FINISH → DONE 이었다.
+    승인은 「이 영점으로 재도 된다」이므로 용기 계량(① 판정)으로 이어야 한다."""
+    cell = Cell(yields=[100, 50], zero_drift_n=2.0, qa='APPROVED')
+    fsm = _fsm()
+    trace = run(fsm, cell)
+    kinds = [(d['kind'], d['step']) for d in fsm.deviations]
+    assert kinds[0] == ('WEIGH_INVALID', 'VERIFY'), kinds
+    i = trace.index(('DEVIATION', 'wait_qa'))
+    assert trace[i + 1] == ('VERIFY', 'weigh'), trace[i:i + 3]      # 승인 뒤 곧바로 용기 계량
+    assert fsm.verify_net_g != 0.0 and '①규격' in fsm.verify_detail, fsm.verify_detail

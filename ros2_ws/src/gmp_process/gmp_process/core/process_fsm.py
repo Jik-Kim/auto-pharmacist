@@ -111,6 +111,7 @@ class ProcessFSM:
     _last_scoop: dict | None = None   # 마지막으로 보낸 scoop 요청 — 빈 스쿱 재시도에 그대로 쓴다
     _qa_step: str = ''           # QA 판정을 기다리는 일탈이 난 스텝 — APPROVED/DISCARDED 뒤 경로를 가른다
     _zero_recheck: int = 0       # VERIFY 직전 영점 재확인 재측정 횟수
+    _zero_qa: bool = False       # VERIFY QA 가 **용기 계량 전** 영점 오염에서 났는가 — 승인하면 계량으로 이어간다
     _tare_invalid: int = 0       # 빈 용기 계량 무효 횟수 — TARE 시점엔 self.cur 가 없어 _invalid_or 를 못 쓴다
     _verify_invalid: int = 0
     _final: str = 'DONE'         # NUDGE_WAIT 뒤 끝나는 상태 — DONE(완성품) | DISCARDED(폐기)
@@ -443,6 +444,8 @@ class ProcessFSM:
             if self.zero_drift_limit_n > 0 and abs(drift_n) > self.zero_drift_limit_n:
                 self._zero_recheck += 1
                 if self._zero_recheck > self.dosing_cfg.max_invalid_retries:
+                    self._zero_qa = True               # 아직 용기를 안 쟀다 — 승인 뒤 계량이 남았다
+                    self.verify_zero_drift_n = drift_n
                     return self._deviate('WEIGH_INVALID', 'VERIFY',
                                          detail=f'빈 그리퍼 영점 이동 {drift_n:+.3f} N '
                                                 f'(한계 {self.zero_drift_limit_n:.3f}) — 계량 오염 의심')
@@ -654,7 +657,13 @@ class ProcessFSM:
                 # (A 리뷰, PR #165 — 예전엔 빈 ItemRun 을 결과로 남기고 원료를 건너뛰었다).
                 self.state = 'SCOOP_TARE'
                 return self._weigh_scoop()
-            if not holding_scoop:                      # 대조 불일치를 QA 가 승인 → 그대로 완료품으로
+            if self._qa_step == 'VERIFY' and self._zero_qa:
+                # 영점 오염 의심을 QA 가 승인 = 「이 영점으로 재도 된다」— 용기 계량(① 판정)을 건너뛰면
+                # 안 된다. 9/30 실물: 승인 뒤 계량 없이 FINISH → DONE 으로 나갔다.
+                self._zero_qa = False
+                self.state, self.mode = 'VERIFY', 'RUNNING'
+                return self._weigh_cup(self.tare_g)
+            if not holding_scoop:                      # 규격 이탈·최종 계량 무효를 QA 가 승인 → 그대로 완료품으로
                 self.state, self.mode = 'FINISH', 'RUNNING'
                 return self._carry('workbench', 'passbox_done')
             self.results.append(self.cur)              # 원료 단위 일탈 승인 → 결과에 남기고 스쿱 반납
