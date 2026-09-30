@@ -40,7 +40,7 @@
     robot:
       id: dsr01
       model: m0609
-      tool_name: tool_weight        # 컨트롤러 등록명 (R7: 1.320 kg, CoG 1.96/-32.76/19.14)
+      tool_name: tool_weight        # 컨트롤러 등록명 (R7 최초 1.320 kg → 9/23 1.36 kg → 9/30 13시경부터 1.41 kg · CoG 13.07/-32.10/-6.79, SOT D-10)
       tcp_name: GripperDA_v1        # 실물 컨트롤러에 등록된 TCP
       virtual_tcp_name: GripperDA_v1 # 가상에서도 실물과 같은 이름으로 아래 오프셋을 등록
       tcp_offset_mm_deg: [0.0, 0.0, 208.0, 0.0, 0.0, 0.0]  # 툴 좌표계 +Z 208 mm
@@ -93,7 +93,9 @@
       # skill_node(execution/weighing.py)가 계량 subject 로 골라 읽는다. 공통 gain/offset_g/max_std_g 는 없다 —
       # 옛 키를 남기면 누가 읽어도 조용히 틀린 값이 된다.
       # ~~gain 0.8859 · offset_g 247.091~~ (9/19 우드락 공구) → 이 값이면 용기 순량 237 g 이 193 g(−19 %)으로 읽혔다.
-      # ⚠️ 전제: 공구 등록 tool_weight 1.36 kg 동결(실물은 PLA 부착물 ≈ 60 g 제거로 ≈ 1.30 kg).
+      # ⚠️ 전제: 공구 등록 tool_weight — 9/23~9/30 13시 1.36 kg(아래 offset_g·용기 gain 0.873 은 이 상태에서 잼),
+      #    **9/30 13시경부터 1.41 kg · CoG [13.07, -32.10, -6.79] mm** (SOT D-10). 순중량은 같은 자세 두 계량의 차라 등록값이
+      #    지워지고 총량 절대값만 움직인다(변경 때 같은 자세 빈 용기 Fz +0.68 N). 실물은 PLA 부착물 ≈ 60 g 제거로 ≈ 1.30 kg(9/29 일지).
       #    공구를 재등록하면 offset_g 를 다시 잰다(gain 은 그대로).
       container:                    # TARE·VERIFY — workbench AT 파지 → ABOVE(z 180) 계량
         gain: 0.873                 #   [9/30 케이블 정리 뒤] 실제 205 g 이 1.0975 로 257.7 g(+26 %) → 0.873. 9/19 값 0.8859 와 1.5 % 차이.
