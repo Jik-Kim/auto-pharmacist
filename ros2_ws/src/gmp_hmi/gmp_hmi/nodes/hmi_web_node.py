@@ -199,6 +199,12 @@ class HmiRosNode(Node):
         self.cli_recovery = self.create_client(RecoverSafety, 'request_safety_recovery') if RecoverSafety else None
         from std_srvs.srv import Trigger as _Trigger
         self.cli_estop = self.create_client(_Trigger, 'emergency_stop')   # skill_node 소프트웨어 비상정지 (9/30)
+        try:
+            from gmp_interfaces.srv import SafePose as _SafePose
+        except ImportError:                     # 시험용 가짜 인터페이스에는 없을 수 있다
+            _SafePose = None
+        self._SafePose = _SafePose
+        self.cli_safe = self.create_client(_SafePose, 'safe_pose') if _SafePose else None   # 복구 뒤 안전 자세 이동 (9/30)
         self.pub_event = self.create_publisher(CellEvent, 'event', 100)
         if self.test_inventory_enabled:
             from std_msgs.msg import String
@@ -440,6 +446,20 @@ class HmiRosNode(Node):
         from std_srvs.srv import Trigger
         response = self._call(self.cli_estop, Trigger.Request(), timeout_s=2.0)
         self.audit('EMERGENCY_STOP', actor, 'success=' + ('unknown' if response is None else str(bool(response.success)).lower()))
+        return response
+
+    def move_safe(self, actor):
+        """안전 복구 뒤 로봇을 안전 자세로 보낸다(9/30). 배치 진행·일시 정지 중에는 보내지 않는다 —
+        그때는 공정이 SafePose 를 소유한다(ENTER). 안전 잠금 중이면 skill_node 가 거부한다."""
+        if self.cli_safe is None:
+            raise CommandUnavailable('안전 자세 서비스가 없는 빌드입니다')
+        self._guard_command(self.cli_safe)
+        with self.lock:
+            mode = (self.snap.get('state') or {}).get('mode')
+        if mode in ('RUNNING', 'PAUSED'):
+            raise CommandUnavailable('배치 진행·일시 정지 중에는 안전 자세 이동을 따로 보내지 않습니다 — 진입 요청(ENTER)을 쓰세요')
+        response = self._call(self.cli_safe, self._SafePose.Request(reason='HMI_SAFE_POSE'), timeout_s=90.0)
+        self.audit('SAFE_POSE', actor, 'success=' + ('unknown' if response is None else str(bool(response.success)).lower()))
         return response
 
     def audit(self, action, actor, detail='', batch_id=None):
@@ -1126,6 +1146,11 @@ def build_app(node: HmiRosNode, db: CellDB, admin_store=None):
         finally:
             command_lock.release()
         return jsonify(ok=True, request_id=request_id, message='복구 요청 접수 · 결과는 상태창에서 확인하세요. 배치 재개 아님'), 202
+
+    @app.post('/safe')
+    @requires('operator', 'admin')
+    def safe_pose():
+        return command(lambda: node.move_safe(g.user['username']))
 
     @app.post('/estop')
     @requires('operator', 'qa', 'admin')
