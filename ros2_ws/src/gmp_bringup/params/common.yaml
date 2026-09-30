@@ -137,7 +137,7 @@
         C: 69.0                     #   높이 조정 전 실측은 gmp_dosing/calibration/scoop_sigma_0929_mat{A,B,C}.csv
                                     #   process_node 가 이 값을 DosingConfig.scoop_nominal_by_material 로 넘긴다(C).
                                     #   원료가 빠지면 for_material() 이 KeyError — 공통값으로 조용히 떨어지지 않는다
-      tare_agree_g: 0.0             # [9/30] 빈 스쿱 두 번 계량 허용 차 [g]. 0 = 한 번. [11시 10 s 시절로 되돌림 ~~8.0~~]
+      tare_agree_g: 8.0             # [9/30] 빈 스쿱 두 번 계량 허용 차 [g]. 0 = 한 번. [11시 0 으로 되돌렸다가 12시 다시 8 — 적합이 빈 스쿱을 +27 g 민 B 재현]
       scoop_tare_bias:              # [9/29] 원료별 빈 스쿱(SCOOP_TARE) 계량 편향 [g] — 공정이 빈 스쿱 총량에서 빼서 tare 로 쓴다.
         A: 13.0                     #   퍼내기 전 빈 스쿱이 무겁게 읽혀 순량이 낮았다(외부 저울 대조). 경험 보정, 0 = 보정 없음.
         B: 10.0                     #   9/29 로봇 − 저울 [g]: A −10.0 −9.5 −18.3 −10.8 −16.4 (평균 −13.0, σ 4.1)
