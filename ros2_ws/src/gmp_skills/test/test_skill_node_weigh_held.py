@@ -911,3 +911,46 @@ def test_pour_cancel_at_above_prevents_descent(monkeypatch):
         skill_node.SkillNode._do_pour(node, job)
     assert moves == [[420., 220., 298., 90., 180., -90.]]
     assert holds == []
+
+
+def _weigh_after_return_node(skill_node, moves, returned):
+    material = SimpleNamespace(
+        station_id='material_1', posx=[400.0, -298.0, 200.0, 90.0, -180.0, -90.0])
+    return SimpleNamespace(
+        gripper=SimpleNamespace(state=lambda _: {'grip_inferred': True}),
+        arm=SimpleNamespace(current_posx=lambda: [0.0] * 6,
+                            movel=lambda target, scale: moves.append(list(target))),
+        stations=SimpleNamespace(for_material=lambda material_id: material),
+        vel_scale=0.3,
+        _pending_scoop_extract=False,
+        _scoop_extract_uncertain=False,
+        _station_id='material_1',
+        _held_payload='scoop',
+        _held_material_id='A',
+        _return_rescoop_blocked=True,
+        _returned_material=returned,
+        _returned_scoop_stowed='',
+        _now_s=lambda: 0.0,
+        _measure_weight_reading=lambda tare_g, subject, station_id: 'reading',
+    ), material
+
+
+def test_weigh_held_after_return_rejoins_weigh_pose_and_clears_guard(monkeypatch):
+    """9/30: 퍼낸 뒤가 빈 스쿱보다 가벼우면 반환 뒤 빈 스쿱을 다시 잰다. 그 계량이 반환 끝 → 계량 자세
+    연결을 겸하고 재스쿱 차단을 푼다 — 안 풀면 다음 스쿱이 「재스쿱 연결 경로 미구현」으로 거부된다."""
+    skill_node = _load_skill_node(monkeypatch)
+    moves = []
+    node, material = _weigh_after_return_node(skill_node, moves, 'A')
+    assert skill_node.SkillNode._do_weigh_held(node, skill_node.Job('weigh_held', {'tare_g': 0.0})) == 'reading'
+    assert moves == [material.posx]
+    assert node._return_rescoop_blocked is False and node._returned_material == ''
+
+
+@pytest.mark.parametrize('returned', ['', 'B'])
+def test_weigh_held_after_unconfirmed_return_refuses_before_motion(monkeypatch, returned):
+    skill_node = _load_skill_node(monkeypatch)
+    moves = []
+    node, _ = _weigh_after_return_node(skill_node, moves, returned)
+    with pytest.raises(RuntimeError, match='반환 성공'):
+        skill_node.SkillNode._do_weigh_held(node, skill_node.Job('weigh_held', {'tare_g': 0.0}))
+    assert moves == [] and node._return_rescoop_blocked is True

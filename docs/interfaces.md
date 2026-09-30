@@ -1,4 +1,4 @@
-# Interfaces — 계약 v1.11 (2026-09-30)
+# Interfaces — 계약 v1.11.1 (2026-09-30)
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
@@ -32,6 +32,8 @@
 > **v1.10.1 (9/30 동작 설명 정정 — 메시지 필드·전송 형식 변경 없음):** ① **반환 뒤 재스쿱 연결** — v1.5.1 의 「검증된 재스쿱 연결 전까지 후속 Scoop 차단」을 고정 경로(`taught_fixed`)에서 푼다. 그 원료의 `ReturnMaterial` 이 성공했고 로봇이 반환 끝에 있으면 skill 이 원료 계량 자세로 movel 한 뒤 `Scoop` 을 잇는다(#325·#327, SOT D-39). 실패·취소·다른 원료·수동 이동·깊이 보정 모드는 여전히 이동 전에 거부한다. ② **붓기 후 계량 삭제**(9/29, SOT D-38) — `WEIGH_RESIDUAL` 단계가 없다. `ScoopCycle` 정상 시도는 `post_pour` 가 비고 `delivered_g`=0 · `valid=false` 이며, 추정 투입량은 `DispenseResult.actual_g` 와 `CellEvent` `POUR_ESTIMATE` 에 있다. 기록·화면(D)에서 `scoop_cycles.delivered_g` 를 투입량으로 읽지 않는다. 실물: 반환 성공은 확인, 재스쿱 연결은 미관측(9/30).
 
 > **v1.11 (9/30 통합 담당 추가 — 사용자 결정, `gmp_interfaces` 무변경):** ① **소프트웨어 비상정지** `/cell/emergency_stop` (`std_srvs/Trigger`, HMI → skill) — skill 이 안전 잠금을 걸고 현재 Job 취소·대기 Job 비우기·진행 이동 MoveStop, `ROBOT_SAFETY_STOP` 이벤트로 공정 배치가 멈춘다. 해제는 기존 안전 복구(`RecoverSafety`). **물리 비상정지를 대신하지 않는다.** HMI `POST /estop`(operator·qa·admin, 확인 창 없음), 감사 `EMERGENCY_STOP`. ② **`SafePose` 호출자에 HMI 추가** — 안전 복구 뒤 「안전 자세로 이동」(`reason=HMI_SAFE_POSE`, `POST /safe`). 배치 진행·일시 정지 중에는 HMI 가 거부한다(그때는 공정이 SafePose 를 소유). ③ **SafePose 는 걸릴 자리에서 먼저 빠진다** — 용기 자리 놓는 자세에서 용기를 쥐고 있으면 열고 이탈 높이로 상승, 원료통 자리(반환 끝·스쿠핑 중)면 원료 계량 자세로 빠진 뒤 movej (SOT D-43). 새 이동은 실물 첫 실행을 지켜본다.
+
+> **v1.11.1 (9/30 동작 설명 정정 — 메시지 필드·전송 형식·일탈 종류 변경 없음):** **계량 불일치 반환 뒤 빈 스쿱 재측정** — 퍼낸 뒤 순중량이 빈 스쿱보다 `dosing.scoop_negative_limit_g`(운영 15 g) 넘게 가벼우면 빈 스쿱(`SCOOP_EMPTY`)으로 보지 않고 `Deviation(WEIGH_INVALID, step=WEIGH_SCOOP, action=RETRY)` → `ReturnMaterial` → 빈 스쿱을 다시 재(`WeighHeld`, 편향 빼지 않음) 새 tare 로 쓴 뒤 재스쿱한다. 아래 반환 문단의 「반환 후 기존 tare 유지」의 **유일한 예외**다 — 빈 스쿱 무게 자체를 못 믿는 경우라서다. 대가로 반환 뒤 스쿱에 남은 잔량은 새 tare 에 들어가 다음 투입 추정에서 빠진다(과소 추정 쪽, 총량은 VERIFY ① 이 본다). skill 은 반환 직후의 `WeighHeld` 가 반환 끝 → 계량 자세 연결을 겸하고 재스쿱 차단을 푼다 — 그 원료의 반환 성공이 없으면 이동 전에 거부한다. 반복되면 반환 한도(`max_returns`) `TIMEOUT` → QA (SOT D-42 ⑤). 실물: 이 분기는 미발생(9/30).
 
 ## 1. 메시지·서비스·액션 (gmp_interfaces)
 
@@ -92,7 +94,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 
 ### 초과 스쿱 반환 규칙 (v1.3)
 
-`순 스쿱량 > max(0, target_g - actual_g) + target_g × tol_pct / 100`이면 `Pour` 대신 `ReturnMaterial`을 요청한다. 경계값 이하는 전량 붓는다. 반환 성공 후 반환 한도 안에서 재스쿱하며, 실패 시 재스쿱으로 진행하지 않는다. 반환은 붓기 시도 횟수를 소모하지 않는다 — 약통에 아무것도 넣지 않았으므로 같은 시도의 연장이다. 재스쿱 깊이는 `직전 fraction × (남은 목표량 / 방금 잰 초과 스쿱량)` 이며 `min_fraction` 을 하한으로 둔다 — 비율 자체를 쓰면 이미 얕게 판 경우 깊이가 한 값에 멈춰 수렴하지 않는다. 반환은 `actual_g`에 더하지 않고 `ScoopCycle.delivered_g=0`, `valid=false`로 기록한다. 반환 후 잔량은 새로운 빈 스쿱 영점으로 숨기지 않고 기존 tare를 유지해 다음 계량에 포함한다.
+`순 스쿱량 > max(0, target_g - actual_g) + target_g × tol_pct / 100`이면 `Pour` 대신 `ReturnMaterial`을 요청한다. 경계값 이하는 전량 붓는다. 반환 성공 후 반환 한도 안에서 재스쿱하며, 실패 시 재스쿱으로 진행하지 않는다. 반환은 붓기 시도 횟수를 소모하지 않는다 — 약통에 아무것도 넣지 않았으므로 같은 시도의 연장이다. 재스쿱 깊이는 `직전 fraction × (남은 목표량 / 방금 잰 초과 스쿱량)` 이며 `min_fraction` 을 하한으로 둔다 — 비율 자체를 쓰면 이미 얕게 판 경우 깊이가 한 값에 멈춰 수렴하지 않는다. 반환은 `actual_g`에 더하지 않고 `ScoopCycle.delivered_g=0`, `valid=false`로 기록한다. 반환 후 잔량은 새로운 빈 스쿱 영점으로 숨기지 않고 기존 tare를 유지해 다음 계량에 포함한다. **예외(v1.11.1): 퍼낸 뒤가 빈 스쿱보다 `scoop_negative_limit_g` 넘게 가벼워 반환한 경우만 반환 뒤 빈 스쿱을 다시 재 새 tare 로 쓴다.**
 
 ### 1.2 인터페이스별 방향과 필드
 

@@ -47,6 +47,13 @@ class DosingConfig:
     무겁게 잡혔고, 그 원료 순량이 전부 틀어졌다. 두 번 재서 이 차 안이면 평균, 넘으면 세 번째를 재 가운데 값.
     """
 
+    scoop_negative_limit_g: float = field(default=0.0, kw_only=True)
+    """퍼낸 뒤 순중량(총량 − 빈 스쿱)이 이 값보다 더 음수면 빈 스쿱이 아니라 계량 불일치로 본다 [g]. 0 이면 끔(종전).
+
+    9/30 빈 원료통 시험: 아무것도 안 퍼졌는데 −32 ~ −49 g 이 읽혔다 — 빈 스쿱 무게를 못 믿는다는 신호다.
+    공정은 원료통에 반환하고 빈 스쿱을 다시 잰 뒤 재스쿱한다.
+    """
+
     scoop_tare_bias_by_material: dict = field(default_factory=dict, kw_only=True)
     """원료별 빈 스쿱(SCOOP_TARE) 계량 편향 [g] — 공정은 빈 스쿱 총량에서 이 값을 빼서 tare 로 쓴다.
 
@@ -56,6 +63,10 @@ class DosingConfig:
     """
 
     def __post_init__(self):
+        if isinstance(self.scoop_negative_limit_g, bool) \
+                or not isinstance(self.scoop_negative_limit_g, (int, float)) \
+                or not 0.0 <= self.scoop_negative_limit_g < float('inf'):
+            raise ValueError(f'scoop_negative_limit_g 는 0 이상 유한한 값이어야 한다: {self.scoop_negative_limit_g!r}')
         if isinstance(self.tare_agree_g, bool) or not isinstance(self.tare_agree_g, (int, float)) \
                 or not 0.0 <= self.tare_agree_g < float('inf'):
             raise ValueError(f'tare_agree_g 는 0 이상 유한한 값이어야 한다: {self.tare_agree_g!r}')
