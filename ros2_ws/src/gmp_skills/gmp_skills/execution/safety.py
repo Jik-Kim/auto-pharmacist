@@ -9,7 +9,7 @@ import math
 import time
 
 from .context import Job
-from gmp_skills.core.transfer import MotionAnchor, joints_match
+from gmp_skills.core.transfer import MotionAnchor, joints_match, pose_matches
 from gmp_skills.core.recovery import recovery_step, STANDBY
 
 
@@ -195,6 +195,7 @@ class SafetyController:
         # 안전 자세 요청이 시작되면 이전 스테이션에서 검증한 TCP/관절 출발 이력은 더는
         # 유효하지 않다. 이동이 실패해도 중간 자세일 수 있으므로 성공 뒤까지 보존하지 않는다.
         self.ctx.state.motion_anchor = None
+        self._retreat_before_safe(job)
         # MOVEJ · 관절각 목표: posj
         self.ctx.arm.movej_cancellable(posj, 0.3, lambda: job.cancel, self.ctx.config.motion_timeout_s)
         self.ctx.state.station_id = 'safe'
@@ -212,6 +213,56 @@ class SafetyController:
         self.ctx.state.empty_scoop_baseline_pending = False
         self.ctx.state.resume_grip_ready = True
         return True
+
+    # 용기를 놓는 자리 — 놓는 자세(AT)에서 안전 자세로 곧장 관절 이동하면 팔이 걸린다(9/30 폐기함)
+    CUP_PLACE_STATIONS = ('reject_bin', 'passbox_done', 'passbox_empty', 'workbench')
+    RETREAT_VEL_SCALE = 0.3
+
+    def _retreat_before_safe(self, job: Job):
+        """SafePose 의 movej 전에 걸릴 자리에서 먼저 빠진다 (9/30 실물 충돌 2건).
+
+        A. 용기 자리의 놓는 자세(AT)에서 용기를 쥐고 있으면 → 열어서 놓고 → 그 자리의 이탈 높이로 수직 상승.
+           9/30: 폐기함 놓는 자세에서 ENTER → SafePose movej → 팔이 폐기함에 걸려 다시 안전 정지.
+        B. 원료통 자리(반환 끝·스쿠핑 도중)면 → 통 안이면 계량 자세 높이로 수직 상승 → 원료 계량 자세로 직선 이동.
+           9/30: 반환 끝·비상정지로 멈춘 스쿠핑 자세에서 SafePose movej → 원료통을 쳤다.
+        그 밖(스쿱 거치대 안 포함 — 옆으로 빠져야 해 수직 상승이면 걸린다)은 종전대로 곧장 movej.
+        """
+        try:
+            station = self.ctx.stations.get(self.ctx.state.station_id)
+            pose = list(self.ctx.arm.current_posx())
+        except Exception:  # noqa: BLE001 — 위치를 모르면 추측해 움직이지 않는다
+            return
+        if len(pose) != 6:
+            return
+        cancel = lambda: job.cancel
+        timeout = self.ctx.config.motion_timeout_s
+        if station.station_id in self.CUP_PLACE_STATIONS and 'exit_mm' in station.extra:
+            if not pose_matches(pose, station.posx, 5.0, 3.0):
+                return
+            state = self.ctx.gripper.state(self.ctx.now()) if self.ctx.gripper else {}
+            if state.get('grip_inferred', False):
+                if not self.ctx.gripper.release(3.0):
+                    raise RuntimeError('안전 자세 전 용기 놓기(그리퍼 열기) 미확인 — 현장 확인 필요')
+                self.ctx.state.held_payload = 'empty'
+            target = list(pose)
+            target[2] = station.exit()[2]
+            # MOVEL · TCP 직선 이동: target (놓는 자세 → 이탈 높이, 수직)
+            self.ctx.arm.movel_cancellable(target, self.RETREAT_VEL_SCALE, cancel, timeout)
+            return
+        if station.station_id.startswith('material_'):
+            # 원료통 자리 — 반환 끝(스쿱 기운 자세)·스쿠핑 도중(통 안) 어디서 멈췄든 계량 자세로 먼저 빠진다.
+            # 9/30: 비상정지로 스쿠핑 자세에서 멈춘 뒤 SafePose movej 가 원료통을 쳤다.
+            posx = list(station.posx)
+            near = max(abs(pose[0] - posx[0]), abs(pose[1] - posx[1])) <= 100.0   # 그 원료통 위·안
+            if not near or pose_matches(pose, posx, 5.0, 3.0):
+                return
+            if pose[2] < posx[2] - 1.0:
+                # MOVEL · TCP 직선 이동: 통 안 → 계량 자세 높이까지 수직 상승(자세 유지)
+                up = list(pose)
+                up[2] = posx[2]
+                self.ctx.arm.movel_cancellable(up, self.RETREAT_VEL_SCALE, cancel, timeout)
+            # MOVEL · TCP 직선 이동: posx (→ 원료 계량 자세, 스쿠핑 LIFT·수납 연결 첫 구간과 같다)
+            self.ctx.arm.movel_cancellable(posx, self.RETREAT_VEL_SCALE, cancel, timeout)
 
     def _do_restore_grip(self, job: Job):
         """안전 자세에서 개폐 없이 파지 이력을 복구한다. 불명확한 물체는 거부한다."""

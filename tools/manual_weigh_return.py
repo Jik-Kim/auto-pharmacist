@@ -83,8 +83,10 @@ def main():
         response = node.wait(node.params_client.call_async(GetParameters.Request(
             names=['robot.vel_scale', 'scale.settle_s'])))
         values = list(map(parameter_value_to_python, response.values))
-        if values != [1.0, 10.0]:
+        # 속도는 운영값 1.0 고정. 안정화는 운영 설정(common.yaml)을 그대로 따른다 — 9/30 10 → 5 s.
+        if values[0] != 1.0 or not values[1] > 0:
             raise RuntimeError(f'운영 설정 불일치: {values}')
+        print(f'SETTLE {values[1]} s', flush=True)
         if not measure.wait_for_service(timeout_sec=10):
             raise RuntimeError('외력 측정 서비스 없음')
         node.grip(False, node.values['gripper.open_width_mm'])

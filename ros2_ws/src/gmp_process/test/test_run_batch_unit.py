@@ -590,7 +590,7 @@ def test_원료별_1회량이_빠진_원료의_주문은_접수_때_거부한다
 
 
 @pytest.mark.parametrize('material_id', ['A', 'B', 'C'])
-@pytest.mark.parametrize('step', ['SCOOP_TARE', 'WEIGH_SCOOP'])
+@pytest.mark.parametrize('step', ['SCOOP_TARE'])   # WEIGH_SCOOP 은 9/30 부터 정리가 아니라 반환 → 재스쿱
 def test_invalid_weigh_cleanup_dispatch_returns_scoop_before_safe(node, module, monkeypatch, material_id, step):
     """3회 무효 뒤 실제 dispatch가 원료별 스테이션을 전달하고 반납 후 안전 자세로 간다."""
     from gmp_process.core.process_fsm import ProcessFSM, ItemRun

@@ -205,7 +205,11 @@ $('recoveryForm').onsubmit=async e=>{e.preventDefault();renderRecovery(snapshot)
 $('retryRecovery').onclick=async()=>{if($('retryRecovery').disabled)return;await command('/recover',{request_id:snapshot.safety_recovery?.request_id},'recoveryMsg');renderRecovery(snapshot);};
 function renderSafetyPopup(s){
  const popup=$('safetyModePopup'),st=s.state||{},r=s.safety_recovery||{},triggered=s.gripper?.safety_triggered===true,paused=fresh&&st.mode==='PAUSED';
- popup.hidden=!r.active&&r.phase!=='recovered'&&!triggered&&!paused;
+ const recoveredKey=String(r.generation??r.request_id??'');window.__recoveredKey=recoveredKey;window.__recoveredDismissed=window.__recoveredDismissed||new Set();
+ // 9/30: 「로봇 복구 확인」 안내는 닫기를 눌렀거나 새 배치가 돌기 시작하면 숨긴다(끝난 뒤에도 남아 있었다)
+ const recoveredShown=r.phase==='recovered'&&!window.__recoveredDismissed.has(recoveredKey)&&!['RUNNING','DONE'].includes(st.mode);
+ popup.hidden=!r.active&&!recoveredShown&&!triggered&&!paused;
+ {const show=recoveredShown&&!r.active&&!triggered&&!paused;const c=$('safetyModeClose');if(c)c.hidden=!show;const sp=$('safetyModeSafe');if(sp)sp.hidden=!show;}
  renderRecovery(s);if(popup.hidden)return;
  popup.classList.toggle('critical',Boolean(r.active||triggered));
  $('safetyModeTitle').textContent=r.active?'로봇 안전정지 · 복구 확인 필요':r.phase==='recovered'?'로봇 복구 확인 · 배치 재개 아님':triggered?'그리퍼 안전 입력 감지':s.interlock?.entry_granted===true?'인터락 진입 허가 응답 수신':st.step==='NUDGE_WAIT'?(String(st.note||'').includes('예약')?'세트 완료 · 로봇을 건드리면 예약 주문 시작 · 진입 허가 아님':'세트 완료 · 로봇을 건드리면 다음 세트 · 진입 허가 아님'):st.pause_reason==='NUDGE'?'접촉 감지 정지 · 다시 건드리면 재개 · 진입 허가 아님':st.pause_reason==='REFILL'?'원료 보충 대기 · 보충 후 EXIT · 진입 허가 아님':'공정 일시 정지 · 진입 허가 아님';
@@ -285,3 +289,12 @@ $('downloadBatch').onclick=()=>{if(!detailData)return;if(source.demo)saveFile(de
 
 window.addEventListener('resize',()=>draw(lastWeights));gate();initialize();tick();setInterval(()=>{if(page==='records')refreshRecords();if(page==='operation')refreshAlarms();},5000);
 $('completion').addEventListener('click',e=>{if(!e.target.closest('.completion-close'))return;completionClosed=completionKey;$('completion').hidden=true;});
+
+// 9/30 HMI 비상정지 — 확인 창 없이 곧바로 보낸다(다른 요청 대기·화면 신선도와 무관). 소프트웨어 정지다.
+(()=>{const b=document.getElementById('estopButton');if(!b)return;b.onclick=async()=>{b.disabled=true;const t=b.textContent;b.textContent='정지 요청 중…';try{const r=await source.post('/estop',{});alert((r&&r.ok?'비상정지 요청 수락 · ':'비상정지 거부/응답 없음 · ')+((r&&r.message)||'물리 비상정지를 누르세요'));}catch(err){alert('비상정지 요청 실패 — 물리 비상정지를 누르세요');}finally{b.disabled=false;b.textContent=t;}};})();
+
+// 9/30 「로봇 복구 확인」 안내 닫기
+(()=>{const c=document.getElementById('safetyModeClose');if(!c)return;c.onclick=()=>{(window.__recoveredDismissed=window.__recoveredDismissed||new Set()).add(window.__recoveredKey||'');document.getElementById('safetyModePopup').hidden=true;};})();
+
+// 9/30 복구 뒤 「안전 자세로 이동」 — 로봇이 움직이므로 확인을 받는다
+(()=>{const b=document.getElementById('safetyModeSafe');if(!b)return;b.onclick=async()=>{if(!confirm('로봇이 안전 자세로 움직입니다. 작업 구역에서 나오셨습니까?\n(스쿱에 원료가 있으면 이동 중 흘릴 수 있습니다)'))return;b.disabled=true;const t=b.textContent;b.textContent='이동 중…';try{const r=await source.post('/safe',{});alert((r&&r.ok?'안전 자세 이동 완료 · ':'이동 거부/미확인 · ')+((r&&r.message)||''));}catch(err){alert('안전 자세 요청 실패');}finally{b.disabled=false;b.textContent=t;}};})();

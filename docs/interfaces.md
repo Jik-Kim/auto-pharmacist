@@ -1,4 +1,4 @@
-# Interfaces — 계약 v1.10.1 (2026-09-30)
+# Interfaces — 계약 v1.11 (2026-09-30)
 
 > **v1.2 (9/18 확정):** `WeighHeld` Action 신설, `Deviation.kind` 에 `VERIFY_MISMATCH`·`BATCH_OUT_OF_SPEC`·`WRONG_TOOL` 추가 (I-007 해소). 그 외 — 불필요한 `RecipeItem.grade/scoop_id`, `Pour.target_station`, `WeighContainer.container_station`, `QaDecision.batch_id`를 제거하고, `Grip` → `SetGripper`, `Scoop` 실행 관측 필드와 `ScoopCycle` 학습 기록을 추가한다.
 > **v1.2.1 (9/18 팀 채널 승인):** `Deviation.decision` 에 `FORCED=4` 추가 — 강제 개입으로 끝난 일탈이 `AUTO_RECOVERED` 로 집계되던 것을 가른다. 전송 형식 불변, 새 값만 추가.
@@ -31,6 +31,8 @@
 
 > **v1.10.1 (9/30 동작 설명 정정 — 메시지 필드·전송 형식 변경 없음):** ① **반환 뒤 재스쿱 연결** — v1.5.1 의 「검증된 재스쿱 연결 전까지 후속 Scoop 차단」을 고정 경로(`taught_fixed`)에서 푼다. 그 원료의 `ReturnMaterial` 이 성공했고 로봇이 반환 끝에 있으면 skill 이 원료 계량 자세로 movel 한 뒤 `Scoop` 을 잇는다(#325·#327, SOT D-39). 실패·취소·다른 원료·수동 이동·깊이 보정 모드는 여전히 이동 전에 거부한다. ② **붓기 후 계량 삭제**(9/29, SOT D-38) — `WEIGH_RESIDUAL` 단계가 없다. `ScoopCycle` 정상 시도는 `post_pour` 가 비고 `delivered_g`=0 · `valid=false` 이며, 추정 투입량은 `DispenseResult.actual_g` 와 `CellEvent` `POUR_ESTIMATE` 에 있다. 기록·화면(D)에서 `scoop_cycles.delivered_g` 를 투입량으로 읽지 않는다. 실물: 반환 성공은 확인, 재스쿱 연결은 미관측(9/30).
 
+> **v1.11 (9/30 통합 담당 추가 — 사용자 결정, `gmp_interfaces` 무변경):** ① **소프트웨어 비상정지** `/cell/emergency_stop` (`std_srvs/Trigger`, HMI → skill) — skill 이 안전 잠금을 걸고 현재 Job 취소·대기 Job 비우기·진행 이동 MoveStop, `ROBOT_SAFETY_STOP` 이벤트로 공정 배치가 멈춘다. 해제는 기존 안전 복구(`RecoverSafety`). **물리 비상정지를 대신하지 않는다.** HMI `POST /estop`(operator·qa·admin, 확인 창 없음), 감사 `EMERGENCY_STOP`. ② **`SafePose` 호출자에 HMI 추가** — 안전 복구 뒤 「안전 자세로 이동」(`reason=HMI_SAFE_POSE`, `POST /safe`). 배치 진행·일시 정지 중에는 HMI 가 거부한다(그때는 공정이 SafePose 를 소유). ③ **SafePose 는 걸릴 자리에서 먼저 빠진다** — 용기 자리 놓는 자세에서 용기를 쥐고 있으면 열고 이탈 높이로 상승, 원료통 자리(반환 끝·스쿠핑 중)면 원료 계량 자세로 빠진 뒤 movej (SOT D-43). 새 이동은 실물 첫 실행을 지켜본다.
+
 ## 1. 메시지·서비스·액션 (gmp_interfaces)
 
 | 타입 | 용도 | 비고 |
@@ -50,8 +52,9 @@
 | `srv/SetGripper` | process → skill. 열기/닫기와 폭·힘 설정 | `/cell/set_gripper`. 응답에 정지 폭과 파지 추론 |
 | `srv/MeasureForce` | process → skill. 정지 상태 외력 평균 | 로봇이 움직이는 중이면 `valid=false` |
 | `srv/RestoreGrip` | process → skill. `/cell/restore_grip` | `expected_payload`, `expected_material_id` → `success`, `payload`, `material_id`, `scoop_extracted`, `message`. 센서 확인 후 상태만 복구 |
-| `srv/SafePose` | process → skill. 안전 자세로 후퇴 | 인터락·에러 공통 |
+| `srv/SafePose` | process·HMI → skill. 안전 자세로 후퇴 (HMI 는 v1.11, 안전 복구 뒤만) | 인터락·에러 공통 |
 | `srv/RecoverSafety` | HMI → process → skill. 안전 정지 복구 | A `/cell/recover_safety`. C 중계 서비스 `/cell/request_safety_recovery` 구현 완료(process_node, 9/20). D의 단일 복구 요청 버튼도 구현됐으며 실제 C/A·실물 연동 검증은 별도 |
+| `std_srvs/Trigger` `emergency_stop` | HMI → skill. `/cell/emergency_stop` 소프트웨어 비상정지 (v1.11) | 안전 잠금 → 진행 이동 정지·Job 비우기. 해제는 `RecoverSafety`. 물리 비상정지 대체 아님 |
 | `action/MoveToStation` | 스테이션 이동 (`ABOVE` 접근점 / `AT` 작업점) | 좌표는 `stations.yaml` 단일 출처 |
 | `action/Scoop` | 원료통에서 퍼올리기 | Goal `depth_fraction`(v1.5)이 담그기 깊이 비율. Feedback은 단계·접촉력·삽입 깊이, Result는 최종 접촉 여부·최대 힘·깊이. 수동 `height_measure_only` 모드는 높이만 `message`로 보고하고 `success=false`로 종료하므로 자동 공정과 병용하지 않는다 |
 | `action/Pour` | workbench의 용기에 전량 붓기 (`fraction=1.0`만 허용) | 목적지는 skill 설정의 `workbench`; `target_station`은 제거 |
@@ -159,7 +162,7 @@ JTS에서 계산한 `delivered_g`만 정답으로 다시 학습하면 같은 계
 | `/cell/gripper_state` | skill_node | hmi, process | GripperState | BEST_EFFORT, depth 1 | 10 Hz |
 | ~~`/cell/record_summary`~~ | — | — | — | — | **v1.1 폐지.** HMI 가 DB 를 읽는다 (7절) |
 
-**서비스·액션 이름** (전부 `/cell/` 아래): `submit_order`, `qa_decision`, `interlock`, `set_gripper`, `measure_force`, `safe_pose`, `move_to_station`, `scoop`, `pour`, `weigh_container`, `run_batch`.
+**서비스·액션 이름** (전부 `/cell/` 아래): `submit_order`, `qa_decision`, `interlock`, `set_gripper`, `measure_force`, `safe_pose`, `restore_grip`, `emergency_stop`, `move_to_station`, `scoop`, `pour`, `weigh_container`, `run_batch`.
 
 **외부 계약 (우리가 정하지 않는다)**
 

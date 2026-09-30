@@ -178,3 +178,10 @@ body:has(#loginOverlay:not([hidden]))>.safety-banner{visibility:hidden}.login-ca
 .item-progress{margin-bottom:6px}.progress-item{padding:3px 4px;font-size:10px;line-height:1.4}.progress-item strong{display:inline;font-size:11px;margin:0 4px 0 0}
 /* 잔량 경고가 뜨면 설명문 대신 경고를 보인다 · 분주 결과 칸이 모자라면 안내문·진행 표시를 접는다 — 지금 배치 A·B·C 가 가려지지 않게 */
 .inventory-card:has(#stockWarning:not([hidden])) .hint{display:none}.card.tight>.hint,.card.tighter>.item-progress{display:none}.card.tighter #results td{padding-top:2px;padding-bottom:2px}
+
+/* 9/30 HMI 비상정지 버튼 — 상단 메뉴 기록·통계 오른쪽 */
+nav .estop-button{background:#c62828;color:#fff;border:2px solid #8e0000;font-weight:800;margin-left:12px}
+nav .estop-button:hover{background:#b71c1c}
+nav .estop-button:disabled{opacity:.7}
+/* 9/30 「로봇 복구 확인」 안내 닫기 버튼 */
+.safety-mode-close{margin-top:8px;padding:6px 14px;border-radius:6px;border:1px solid currentColor;background:transparent;font-weight:700;cursor:pointer}

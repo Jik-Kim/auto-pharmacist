@@ -104,6 +104,7 @@ class ProcessNode(Node):
             # 빈 스쿱 문턱 [g] — 순중량이 이 이하면 「아무것도 안 퍼졌다」로 본다 (#282 ④).
             # **잠정값**이고 런타임 값은 common.yaml 이다. 빈 스쿱 계량 산포를 재면 바뀐다.
             ('dosing.empty_scoop_g', 2.0),
+            ('dosing.tare_agree_g', 0.0),     # 빈 스쿱 두 번 계량 허용 차 [g] — 0 = 한 번(종전). 운영값은 common.yaml
             ('gripper.cup_width_mm', 60.0),
             ('gripper.open_width_mm', 100.0), ('gripper.force_n', 20.0),
             ('gripper.fingerprint_tolerance_mm', 0.0),   # [추가 1] WRONG_TOOL 폭 지문 margin. 0 이면 검사 꺼짐
@@ -124,6 +125,7 @@ class ProcessNode(Node):
                                        scoop_nominal_g=p('dosing.scoop_nominal_g'),
                                        min_fraction=p('dosing.min_fraction'),
                                        fixed_scoop=p('dosing.fixed_scoop'),
+                                       tare_agree_g=float(p('dosing.tare_agree_g')),
                                        scoop_nominal_by_material=self._scoop_nominals(),
                                        scoop_tare_bias_by_material=self._scoop_tare_biases())
 
@@ -1400,6 +1402,12 @@ class ProcessNode(Node):
                 m.note = '구역 진입 요청 유지 — 인터락 EXIT 확인 후 새 주문 가능'
             elif self._nudge_paused:
                 m.note = 'NUDGE 일시 정지 — 다시 건드리면 해제, 이후 새 주문 가능'
+            elif self.fsm and self.fsm.mode in ('DONE', 'ERROR'):
+                # 배치가 끝났고 막는 것이 없으면 대기로 보인다(9/30 — 안전 복구 뒤에도 「공정 오류」가 남아
+                # 멈춘 것처럼 보였다). 종료 결과(DONE/ERROR)는 실행 루프가 끝나며 한 번 나가 기록이 닫힌다.
+                last = self.fsm.mode
+                m.mode, m.step = CellState.IDLE, 'IDLE'
+                m.note = ('직전 배치 오류 종료 — 새 주문 가능' if last == 'ERROR' else '대기 — 새 주문 가능')
         self.pub_state.publish(m)
         handle = getattr(self, '_batch_handle', None)
         if handle is not None and handle.is_active and not self._batch_done.is_set():

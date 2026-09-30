@@ -22,6 +22,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
+from std_srvs.srv import Trigger
 from dsr_msgs2.msg import RobotError
 from onrobot_rg_msgs.srv import SetCommand
 from onrobot_rg_msgs.msg import OnRobotRGInput
@@ -177,6 +178,8 @@ class SkillNode(Node):
         self.create_subscription(RobotError, f"/{g('robot.id')}/dsr_controller2/error",
                                  self._on_robot_alarm, 100, callback_group=self.cb)
         self.create_service(SafePose, 'safe_pose', self._srv_safe, callback_group=self.cb)
+        # HMI 비상정지(9/30) — 소프트웨어 정지. 물리 비상정지 버튼을 대신하지 않는다
+        self.create_service(Trigger, 'emergency_stop', self._srv_emergency_stop, callback_group=self.cb)
         self.create_service(RestoreGrip, 'restore_grip', self._srv_restore_grip, callback_group=self.cb)
 
 
@@ -473,6 +476,14 @@ class SkillNode(Node):
         self.event('WARN', 'SAFE_POSE', req.reason)
         return res
 
+
+    def _srv_emergency_stop(self, req, res):
+        # 안전 잠금만 건다 — 현재 Job 에 취소를 표시하고 대기 Job 을 비우면, DSR 워커가 진행 중 이동을
+        # MoveStop 으로 끊는다(DSR 호출은 워커 한 곳에서만, AGENTS). ROBOT_SAFETY_STOP 이벤트로 공정 배치가
+        # 멈추고, 풀 때는 기존 안전 복구(recover_safety)를 쓴다. 로봇이 STANDBY 면 복구는 잠금만 푼다.
+        self.execution.safety._latch_safety('HMI 비상정지 요청')
+        res.success, res.message = True, '비상정지 — 현재 동작 취소·안전 정지. 원인 확인 뒤 안전 복구'
+        return res
 
     def _srv_restore_grip(self, req, res):
         # 센서 조회와 이력 갱신은 DSR 단일 워커에서만 실행한다.
