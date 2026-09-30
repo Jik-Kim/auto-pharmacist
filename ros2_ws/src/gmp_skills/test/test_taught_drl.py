@@ -545,3 +545,40 @@ def test_stow_does_not_clear_guard_on_incomplete_release(motion, failure):
     with pytest.raises(RuntimeError):
         node._do_grip(release)
     assert node._return_rescoop_blocked
+
+
+def test_safe_from_reject_bin_place_pose_releases_and_lifts_first(motion):
+    """9/30: 폐기함 놓는 자세(AT)에서 SafePose 가 곧장 movej 해 팔이 폐기함에 걸렸다.
+    용기를 쥐고 있으면 열어 놓고, 이탈 높이로 수직 상승한 뒤 안전 자세로 간다."""
+    node, _, calls, _, module = motion
+    node.arm.compliance_off = lambda: None
+    st = node.stations.get('reject_bin')
+    node._station_id, node.arm.pose = 'reject_bin', list(st.posx)
+    released = []
+    grip = dict(busy=False, width_mm=-1, grip_inferred=True)
+    node.gripper = SimpleNamespace(state=lambda _: grip, release=lambda t: released.append(t) or True,
+                                   open_width_mm=100, grip_margin_mm=2)
+    assert node._do_safe(module.Job('safe', {'reason': 'INTERLOCK'}))
+    assert released == [3.0]
+    lift = list(st.posx); lift[2] = st.exit()[2]
+    assert calls[:2] == [('L', lift), ('J', node.stations.get('safe').extra['posj'])], calls
+
+
+def test_safe_from_return_end_goes_to_material_pose_first(motion):
+    """9/30: 원료통 반환 끝에서 SafePose movej 가 원료통을 쳤다 — 원료 계량 자세로 먼저 빠진다."""
+    node, _, calls, _, module = motion
+    node.arm.compliance_off = lambda: None
+    st = node.stations.get('material_3')
+    node._station_id, node.arm.pose = 'material_3', list(st.extra['return_end_posx'])
+    assert node._do_safe(module.Job('safe', {'reason': 'RECOVERY'}))
+    assert calls[:2] == [('L', list(st.posx)), ('J', node.stations.get('safe').extra['posj'])], calls
+
+
+def test_safe_elsewhere_keeps_direct_joint_move(motion):
+    """스쿱 거치대 안 등은 수직 상승이면 걸리므로 종전대로 곧장 movej."""
+    node, _, calls, _, module = motion
+    node.arm.compliance_off = lambda: None
+    st = node.stations.get('scoop_1')
+    node._station_id, node.arm.pose = 'scoop_1', list(st.posx)
+    assert node._do_safe(module.Job('safe', {'reason': 'RECOVERY'}))
+    assert calls == [('J', node.stations.get('safe').extra['posj'])], calls
