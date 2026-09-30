@@ -1,4 +1,6 @@
-# B 도징·계량 현행 상태 (갱신: 2026-09-29)
+# B 도징·계량 현행 상태 (갱신: 2026-09-30)
+
+> **9/30 시연 운영값의 정본은 SOT D-37(경로별 보정)·D-38(운영값)이다** — 아래 표는 그 가운데 B 몫만 옮겼다. 9/30 에 바뀐 값: 용기 gain 0.873, 영점 한계 0.5 N, 빈 스쿱 두 번 재기(8 g), 계량 불일치 문턱(15 g).
 
 **담당**: nomal-npc + Jik-Kim (대행 — 사유: 담당자 토큰 소진, 기간: 9/23~ 원 담당자 복귀 시까지. 표시는 원 담당자가 복귀해 지운다, 규칙 8)
 
@@ -9,8 +11,8 @@
 | 항목 | 값 | 근거 |
 |---|---|---|
 | 공구 설정 `tool_weight` (펜던트, **동결**) | A 소관 동결값 — 숫자는 원본에서 본다 | [`practice/A/CURRENT.md`](../A/CURRENT.md) · `gmp_dosing/config/scale_reference.yaml` retracted_0923 · PR #235 |
-| 런타임 계량 — **경로별** `scale.{container,scoop}.{gain,offset_g,max_std_g}` (#307) | **container 1.0975 / 229.0 / 10.0 · scoop 0.983 / 103.5 / 10.0** — `execution/weighing.py` 가 subject 로 고른다. 공통 키 없음. ~~공통 0.8859 / 247.091 / 10.0 (9/19 우드락)~~ → 용기 순량 −19 % 로 읽던 값 | `common.yaml` `scale`, PR(#307) |
-| **용기 경로** gain / offset_g (9/29, #187) | **1.0975 ± 0.6 % / 229.0** — 79·154·229·316 g 한 파지, 최대 잔차 1.95 g. ~~≈ 1.076 (9/23 2점)~~ | `calibration/g1_0929_gain3pt.csv`, 일지 2026-09-29 |
+| 런타임 계량 — **경로별** `scale.{container,scoop}.{gain,offset_g,max_std_g}` (#307) | **container 0.873 / 229.0 / 10.0 · scoop 0.983 / 103.5 / 10.0** (9/30 케이블 정리 뒤 용기 gain, ~~1.0975~~) — `execution/weighing.py` 가 subject 로 고른다. 공통 키 없음. ~~공통 0.8859 / 247.091 / 10.0 (9/19 우드락)~~ → 용기 순량 −19 % 로 읽던 값 | `common.yaml` `scale`, PR(#307) |
+| **용기 경로** gain / offset_g (9/29, #187) | **9/30 0.873 / 229.0** — 그리퍼 케이블이 공구를 당겨 최종 무게 +26 % → 케이블 정리 뒤 재보정(SOT D-37). ~~1.0975 ± 0.6 % (9/29, 79·154·229·316 g 한 파지, 최대 잔차 1.95 g)~~ ~~≈ 1.076 (9/23 2점)~~ | SOT D-37, `calibration/g1_0929_gain3pt.csv`(9/29 값) |
 | **스쿱 경로** gain / offset_g (9/29) | **0.983 ± 1.0 %(A·C 합산) / 103.5(material_1)** — 스테이션별 gain 불필요(A 0.980 · B 0.968 · C 0.983). offset 은 스테이션마다 다름(순량엔 무관). ~~0.980 ± 4.2 % 미확정~~ | `calibration/g1_0929_scoop_gain3pt.csv` |
 | 계량 전제 — 공구 등록 | 등록 1.36 kg 동결, 실물은 부착물(≈ 60 g) 제거로 ≈ 1.30 kg. **위 offset 은 이 상태 전제 — 공구를 재등록하면 offset 재측정** | 일지 2026-09-29 |
 | 로봇 재파지 σ (용기 229 g, 8파지 12분, 추세 제거) | **6.99 g** — 한 파지 유지는 0.85 g. TARE·VERIFY 두 파지라 σ_순량 **9.9 g** → 3σ **29.7 g** | #187 9/23 정정 코멘트 |
@@ -21,7 +23,9 @@
 | 스쿱 1회 **과거 실측** (#272, **B 높이 조정 전** — 세 스쿱 마찰테이프, 손잡이 폭 16.5/17.5/18.5 mm, `vel_scale` 1.0) | **A 69.3 g (σ 6.2, n 10) · B 57.4 g (σ 3.2, n 5) · C 67.4 g (σ 3.9, n 5) · A·C 묶음 68.7 g (n 15)**. B 57.4 g은 현행 69 g 설정의 근거가 아니다. ~~A 78.9 g · σ 3.90 (9/23)~~ → 마찰테이프 없이 잰 값 | `calibration/scoop_sigma_0929_mat{A,B,C}.csv`, 일지 2026-09-29 |
 | 깊이 비율 하한 `min_fraction` | **0.10** (종전 0.15). `stations.yaml scooping.A` 와 같아야 함 | common.yaml `dosing`, `stations.yaml:126` |
 | 교착 여유 | 최소 채취 **7.9 g** (= 0.10 × 79). 한계 2×target×tol 은 레시피 값이라 여기 안 적는다 — 성립 여부는 시험이 레시피 파일을 읽어 단언한다 | `test_dosing.py::test_min_scoop_cannot_overshoot_tolerance` |
-| 영점 이동 한계 `zero_drift_limit_n` | 0.1 N | `common.yaml:94` |
+| 영점 이동 한계 `zero_drift_limit_n` | **0.5 N** (9/30 시연 설정, ~~0.1 N~~) — 한 배치 JTS 드리프트 −0.384 N 으로 QA 정지. 0.5 N ≈ 51 g 은 가장 엄격한 운영 레시피의 배치 허용보다 클 수 있다 — 레시피를 바꾸면 다시 본다 | `common.yaml` `scale.zero_drift_limit_n`, SOT D-38 |
+| 빈 스쿱 두 번 재기 `tare_agree_g` | **8 g** — 두 값이 8 g 안이면 평균, 넘으면 세 번째 → 가운데 값 | `common.yaml` `dosing.tare_agree_g`, SOT D-38 |
+| 계량 불일치 문턱 `scoop_negative_limit_g` | **15 g** — 퍼낸 뒤가 빈 스쿱보다 이만큼 넘게 가벼우면 반환 → 빈 스쿱 재측정(편향 빼지 않음) → 재스쿱. 0 = 끔 | `common.yaml` `dosing.scoop_negative_limit_g`, SOT D-42 ⑤ |
 | 진동 적합 상대 가드 `fit_oscillation.apply_ratio` 기본값 | **0.50** (기존 0.20). 상대 잔차 가드는 유지. | `gmp_dosing/core/scale.py`, 2026-09-29 일지 |
 
 ## 열린 과제 (이슈 번호)

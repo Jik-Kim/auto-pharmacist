@@ -104,6 +104,7 @@ class ProcessNode(Node):
             # 빈 스쿱 문턱 [g] — 순중량이 이 이하면 「아무것도 안 퍼졌다」로 본다 (#282 ④).
             # **잠정값**이고 런타임 값은 common.yaml 이다. 빈 스쿱 계량 산포를 재면 바뀐다.
             ('dosing.empty_scoop_g', 2.0),
+            ('dosing.scoop_negative_limit_g', 0.0),   # 퍼낸 뒤가 빈 스쿱보다 이만큼 넘게 가벼우면 계량 불일치 [g] — 0 = 끔
             ('dosing.tare_agree_g', 0.0),     # 빈 스쿱 두 번 계량 허용 차 [g] — 0 = 한 번(종전). 운영값은 common.yaml
             ('gripper.cup_width_mm', 60.0),
             ('gripper.open_width_mm', 100.0), ('gripper.force_n', 20.0),
@@ -126,6 +127,7 @@ class ProcessNode(Node):
                                        min_fraction=p('dosing.min_fraction'),
                                        fixed_scoop=p('dosing.fixed_scoop'),
                                        tare_agree_g=float(p('dosing.tare_agree_g')),
+                                       scoop_negative_limit_g=float(p('dosing.scoop_negative_limit_g')),
                                        scoop_nominal_by_material=self._scoop_nominals(),
                                        scoop_tare_bias_by_material=self._scoop_tare_biases())
 
