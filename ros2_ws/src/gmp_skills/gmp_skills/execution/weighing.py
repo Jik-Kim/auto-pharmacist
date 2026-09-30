@@ -199,6 +199,13 @@ class WeighingSkills:
             raise RuntimeError('스쿱 인출 상태가 불확실하다. SafePose 후 수동 확인이 필요하다')
         self.motion._require_held_scoop()
         material = self.ctx.stations.for_material(self.ctx.state.held_material_id)
+        # 반환 직후의 계량(빈 스쿱 재측정, 9/30)은 반환 끝 → 계량 자세 연결을 겸한다. 그 원료의 반환이
+        # 성공했을 때만 잇는다 — 실패·다른 원료면 재스쿱 연결(_connect_after_return)과 같이 거부한다.
+        rejoin = getattr(self.ctx.state, 'return_rescoop_blocked', False)
+        if rejoin and getattr(self.ctx.state, 'returned_material', '') != self.ctx.state.held_material_id:
+            raise RuntimeError('원료 반환 성공이 확인되지 않아 반환 뒤 계량을 차단한다')
+        self.ctx.state.returned_material = ''
+        self.ctx.state.returned_scoop_stowed = ''
         if job.cancel:
             raise RuntimeError('cancelled')
 
@@ -235,6 +242,8 @@ class WeighingSkills:
         self.ctx.arm.movel(material.posx, self.ctx.config.vel_scale)
         if job.cancel:
             raise RuntimeError('cancelled')
+        if rejoin:
+            self.ctx.state.return_rescoop_blocked = False   # 계량 자세에 왔다 — 다음 스쿱은 여기서 시작한다
         self.ctx.state.station_id = material.station_id
         job.feedback and job.feedback('SETTLE')
         reading = self._measure_weight_reading(float(job.args['tare_g']), 'scoop', material.station_id)

@@ -1272,3 +1272,38 @@ def test_빈_스쿱은_두_번_재서_어긋나면_세_번째_가운데_값을_�
     assert kinds_for(trace, 'SCOOP_TARE').count('weigh_scoop') == 3 + 2   # A 3번(어긋남) + B 2번(일치)
     assert b.scoop_tare_g == SCOOP_TARE                          # B 는 두 번이 맞아 평균
     assert len(b.tare_readings) == 2
+
+
+def test_퍼낸_뒤가_빈_스쿱보다_뚜렷이_가벼우면_반환하고_빈_스쿱을_다시_잰다():
+    """9/30 빈 원료통 시험: 아무것도 안 퍼졌는데 −32 ~ −49 g 이 읽혔고 0 으로 올려 「빈 스쿱」이 됐다.
+    scoop_negative_limit_g 를 넘는 음수는 계량 불일치(WEIGH_INVALID, RETRY) — 반환 → 빈 스쿱 재측정 → 재스쿱."""
+    cell = Cell(yields=[5, 100, 50], residual=0.0)
+    fsm = _fsm()
+    # 빈 스쿱이 30 g 무겁게 잡힌 상황 — 5 g 을 퍼도 순량 −25 g
+    fsm.dosing_cfg = replace(fsm.dosing_cfg, scoop_tare_bias_by_material={'A': -30.0},
+                             scoop_negative_limit_g=15.0)
+    scoops = []
+
+    def tap(req):
+        if req['kind'] == 'scoop':
+            scoops.append(req['after_return'])
+        return cell(req)
+    trace = run(fsm, tap)
+    assert fsm.state == 'DONE'
+    dev = [d for d in fsm.deviations if d['kind'] == 'WEIGH_INVALID']
+    assert len(dev) == 1 and dev[0]['action'] == 'RETRY' and '25.0 g 가벼움' in dev[0]['detail']
+    a, b = fsm.results
+    # 반환 뒤 빈 스쿱을 다시 재서 편향 없이 쓴다 — 그 뒤 100 g 이 그대로 읽힌다
+    assert a.returns == 1 and a.scoop_tare_g == SCOOP_TARE and a.scooped_g == 100.0 and a.actual_g == 100.0
+    assert kinds_for(trace, 'SCOOP_TARE').count('weigh_scoop') == 3        # A 처음 1 + 재측정 1 + B 1
+    assert scoops[:2] == [False, True]                                    # 재측정 뒤 재스쿱은 반환 연장이다
+    assert a.attempts == 1
+
+
+def test_가벼움_문턱이_0_이면_종전처럼_빈_스쿱으로_본다():
+    cell = Cell(yields=[5, 100, 50], residual=0.0)
+    fsm = _fsm()
+    fsm.dosing_cfg = replace(fsm.dosing_cfg, scoop_tare_bias_by_material={'A': -30.0})
+    run(fsm, cell)
+    assert [d['kind'] for d in fsm.deviations][:1] == ['SCOOP_EMPTY']
+    assert not any(d['kind'] == 'WEIGH_INVALID' for d in fsm.deviations)

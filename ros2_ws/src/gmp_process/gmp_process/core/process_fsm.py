@@ -63,6 +63,8 @@ class ItemRun:
     scoop_tare_g: float = 0.0    # 빈 스쿱 (SCOOP_TARE)
     tare_readings: list = field(default_factory=list)   # 빈 스쿱 유효 계량 총량들 — 2회 일치 확인(tare_agree_g)
     scooped_g: float = 0.0       # 붓기 전 스쿱 안의 원료 (WEIGH_SCOOP)
+    retare: bool = False         # 반환 뒤 빈 스쿱을 다시 잰다 — 퍼낸 뒤가 빈 스쿱보다 뚜렷이 가벼웠다(9/30)
+    retaring: bool = False       # 지금 SCOOP_TARE 가 그 재측정이다 — 편향을 빼지 않고 반환 뒤 재스쿱으로 잇는다
     accept_next: bool = False    # 반환 한도 QA 승인 — 다음 스쿱은 초과·미달이어도 붓는다 (9/30 사용자 결정)
     accepted: bool = False       # 위 승인으로 부었다 — 붓기 뒤 판정은 기록만 하고 원료를 끝낸다(QA 를 다시 부르지 않는다)
     actual_g: float = 0.0        # 전량 붓기 가정의 누적 추정 투입량 = Σ(scooped)
@@ -171,6 +173,23 @@ class ProcessFSM:
                 return (rs[0] + rs[1]) / 2.0
             return None
         return sorted(rs)[len(rs) // 2]
+
+    def _lighter_than_tare(self, net: float) -> dict:
+        """퍼낸 뒤 총량이 빈 스쿱보다 `scoop_negative_limit_g` 넘게 가볍다 — 빈 스쿱이 아니라 계량 불일치다.
+
+        빈 원료통 시험(9/30)에서 아무것도 안 퍼졌는데 −32 ~ −49 g 이 읽혔다. 종전에는 0 으로 올려
+        「빈 스쿱」으로 처리해 기록에 「순중량 0.0 g」이 남았다. 빈 스쿱 무게를 못 믿으므로 원료통에
+        반환하고 빈 스쿱을 다시 잰 뒤 재스쿱한다. 반복되면 반환 상한(max_returns)의 TIMEOUT → QA 로 간다.
+        """
+        key = (self.idx, 'WEIGH_SCOOP', 'WEIGH_INVALID')
+        self._counts[key] = self._counts.get(key, 0) + 1
+        self.deviations.append({'kind': 'WEIGH_INVALID', 'step': 'WEIGH_SCOOP', 'count': self._counts[key],
+                                'action': 'RETRY', 'material_id': self.cur.material_id,
+                                'detail': f'계량 불일치 — 퍼낸 뒤가 빈 스쿱보다 {-net:.1f} g 가벼움 '
+                                          f'— 원료통 반환 후 빈 스쿱 다시 재기'})
+        self.cur.scooped_g, self.cur.retare = 0.0, True
+        self.state = 'RETURN_MATERIAL'
+        return self._return_material()
 
     def _short_without_remedy(self) -> bool:
         """이 스쿱을 부으면 하한 미달이고, 가능한 최소 보충(고정 스쿱이면 1회량 전체)을 더하면 상한 초과인가.
@@ -368,9 +387,14 @@ class ProcessFSM:
             gross = self._agreed_tare(res.get('gross_g', 0.0))
             if gross is None:
                 return req                             # 빈 스쿱을 한 번 더 잰다 — 이동 없이 같은 자세
+            self.state = 'SCOOP'
+            if self.cur.retaring:
+                # 반환 뒤 재측정은 이미 한 번 퍼낸 뒤의 빈 스쿱이다 — 「퍼낸 뒤보다 무겁다」 편향을 빼지 않는다
+                self.cur.retaring = False
+                self.cur.scoop_tare_g = gross
+                return self._scoop(self._rescoop_fraction(), after_return=True)
             # 빈 스쿱은 퍼낸 뒤보다 무겁게 읽힌다(9/29 실측) — 원료별 경험 편향을 빼서 tare 로 쓴다
             self.cur.scoop_tare_g = gross - self.dosing_cfg.scoop_tare_bias(self.cur.material_id)
-            self.state = 'SCOOP'
             return self._scoop(self._first_fraction())
         if k == 'scoop' and st == 'SCOOP':
             self._last_scoop = req                     # 무게 판정은 WEIGH_SCOOP 에서 나므로 그때까지 들고 있는다
@@ -387,7 +411,11 @@ class ProcessFSM:
             r = self._invalid_or(res, 'WEIGH_SCOOP', req)
             if r is not None:
                 return r
-            self.cur.scooped_g = max(0.0, res.get('gross_g', 0.0) - self.cur.scoop_tare_g)
+            net = res.get('gross_g', 0.0) - self.cur.scoop_tare_g
+            lighter = self.dosing_cfg.scoop_negative_limit_g
+            if lighter > 0 and net < -lighter:
+                return self._lighter_than_tare(net)
+            self.cur.scooped_g = max(0.0, net)
             # **모드와 무관하게** 여기서 한 번 더 거른다. 순중량 0 g 도 아래 초과량 검사를 통과해
             # 그대로 POUR 로 가던 구멍이 있었다 (A #269 방침 3) — 고정 모드에서는 이게 유일한
             # 그물이고, 깊이 보정 모드에서도 접촉이 참인데 안 퍼진 경우를 여기서 잡는다.
@@ -424,7 +452,14 @@ class ProcessFSM:
             # 약통 투입량을 분리한 뒤 TIMEOUT 일탈로 멈춘다.
             self.cur.returns += 1
             if self.cur.returns >= self.max_returns:
+                self.cur.retare = False                # QA 로 넘긴다 — 재측정 예약을 남겨 두지 않는다
                 return self._deviate('TIMEOUT', 'RETURN_MATERIAL')
+            if self.cur.retare:
+                # 빈 스쿱 무게를 못 믿는다 — 원료통 위 계량 자세에서 빈 스쿱부터 다시 잰다
+                self.cur.retare, self.cur.retaring = False, True
+                self.cur.tare_readings = []
+                self.state = 'SCOOP_TARE'
+                return self._weigh_scoop()
             self.state = 'SCOOP'
             # 같은 깊이로 다시 푸면 초과가 그대로 재현된다. 직전 깊이를 남은 목표량과
             # 실제 퍼올린 양의 비로 줄여서 다시 푼다 (min_fraction 하한 유지).
