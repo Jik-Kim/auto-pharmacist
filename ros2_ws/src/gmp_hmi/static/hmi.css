@@ -183,3 +183,5 @@ body:has(#loginOverlay:not([hidden]))>.safety-banner{visibility:hidden}.login-ca
 nav .estop-button{background:#c62828;color:#fff;border:2px solid #8e0000;font-weight:800;margin-left:12px}
 nav .estop-button:hover{background:#b71c1c}
 nav .estop-button:disabled{opacity:.7}
+/* 9/30 「로봇 복구 확인」 안내 닫기 버튼 */
+.safety-mode-close{margin-top:8px;padding:6px 14px;border-radius:6px;border:1px solid currentColor;background:transparent;font-weight:700;cursor:pointer}
