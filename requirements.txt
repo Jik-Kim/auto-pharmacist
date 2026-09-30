@@ -1,0 +1,31 @@
+# auto-pharmacist 전체 의존성 안내 (Ubuntu 24.04 / Python 3.12)
+# 이 파일의 주석이 아닌 항목은 Python 패키지 목록입니다. 아래 ROS·벤더 항목은
+# pip로 설치할 수 없으며, 정확한 패키지별 선언은 ros2_ws/src/gmp_*/package.xml이 원본입니다.
+# 현장 ROS 환경에서는 pip보다 apt와 기존 벤더 워크스페이스를 사용합니다.
+
+# 1. 운영체제·ROS 2: Ubuntu 24.04, ROS 2 Jazzy
+#    ROS 런타임/빌드: rclpy, rclcpp, rclcpp_lifecycle, launch, launch_ros,
+#    ament_index_python, rosidl_default_runtime, rosidl_runtime_py, pluginlib,
+#    controller_interface, std_msgs, sensor_msgs, std_srvs, action_msgs, colcon.
+#    먼저 /opt/ros/jazzy/setup.bash를 source합니다.
+
+# 2. 두산·그리퍼 언더레이 (별도 ws_dsr에서 빌드·source):
+#    doosan-robot2 (dsr_common2, dsr_msgs2, dsr_controller2),
+#    onrobot-ros2 (onrobot_rg_control, onrobot_rg_msgs), m0609_rg2_bringup.
+#    가상 모드는 두산 DRCF 에뮬레이터도 필요합니다.
+
+# 3. 이 저장소에서 colcon으로 빌드하는 패키지:
+#    gmp_interfaces, gmp_dsr_controller, gmp_skills, gmp_dosing,
+#    gmp_process, gmp_hmi, gmp_bringup.
+
+# 4. Python 직접 의존성. 현장 Ubuntu에서는
+#    sudo apt install python3-flask python3-yaml python3-pytest
+#    로 설치합니다. setuptools는 각 ament_python 패키지의 setup.py 의존성입니다.
+Flask
+PyYAML
+setuptools
+pytest
+
+# 5. 선택 사항: Modbus 그리퍼 백엔드 사용 시 pymodbus==3.6.9.
+#    현행 실물 백엔드는 DIO라 기본 설치 목록에서 제외합니다.
+#    SQLite는 Python 표준 라이브러리 sqlite3을 사용하므로 별도 pip 패키지가 없습니다.
