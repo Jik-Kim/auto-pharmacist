@@ -36,7 +36,7 @@ def _solve3(a, b):
     return [m[i][3] / m[i][i] for i in range(3)]
 
 
-def fit_oscillation(samples, period_s, *, apply_ratio=0.20,
+def fit_oscillation(samples, period_s, *, apply_ratio=0.50,
                     min_period_s=8.0, max_period_s=30.0, step_s=0.5):
     """표본열에서 저주파 진동을 빼고 **상수항**을 얻는다 — 그것이 하중 추정값이다.
 
@@ -51,10 +51,8 @@ def fit_oscillation(samples, period_s, *, apply_ratio=0.20,
     ⚠️ **가드가 핵심이다 (apply_ratio).** 진동이 없는 표본에 사인 3개 파라미터를 맞추면 잡음을 진동으로
       오인해 상수항이 오염된다. 9/22 전체 회귀(측정 17건·회차 171개)에서 무조건 적용하면 **25 % 악화**하고
       17건 중 10건이 나빠졌다 (용기 한 파지 0.85 → 3.85). 그래서 **적합이 표본 분산의 대부분을 설명할 때만**
-      쓴다 — residual_std ≤ apply_ratio × 표본 σ. ~~9/29 기본 가드 0.20 → 0.50 완화~~ → **9/30 0.20 으로 되돌림**:
-      0.50 에서는 적합이 값을 크게 미는 일이 잦았다(9/29~30 스쿱 계량 244건 중 적합값−단순평균 10 g 초과
-      11건·20 g 초과 6건, 0.20 이면 2건·1건). 9/30 B 빈 스쿱이 +26.8 g 밀려 순량이 음수가 됐다.
-      0.50 완화의 계기(빈 스쿱 σ 48 g 무효)는 안정화 1 s 때였고 지금은 10 s 다.
+      쓴다 — residual_std ≤ apply_ratio × 표본 σ. 9/29 사용자 결정으로 기본 가드를 0.20 에서 0.50 으로
+      완화했다. 상대 가드는 유지한다. 이 변경은 최종 valid 기준(max_std_g·max_hf_std_g)을 바꾸지 않는다.
       apply_ratio=0 이면 가드를 끄고 항상 단순 평균을 쓴다.
     반환값 쓰임:
       · offset       → raw_mean 대신 쓴다 (진동이 빠진 하중)
