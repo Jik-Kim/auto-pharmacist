@@ -115,307 +115,313 @@
     </mxGraphModel>
   </diagram>
   <diagram id="2 상태 전이도" name="2 상태 전이도">
-    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1400">
+    <mxGraphModel dx="3396" dy="961" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1400" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="c2" value="ProcessFSM 상태 전이도 — core/process_fsm.py (상태 이름 = CellState.step)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;fontColor=#161B2A;fontSize=18;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="20" width="1860" height="40" as="geometry" />
+        <mxCell id="c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=none;fontColor=#161B2A;fontSize=18;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="ProcessFSM 상태 전이도 — core/process_fsm.py (상태 이름 = CellState.step)" vertex="1">
+          <mxGeometry height="40" width="1860" x="40" y="20" as="geometry" />
         </mxCell>
-        <mxCell id="c3" value="IDLE&lt;br&gt;RunBatch / SubmitOrder 대기" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="120" width="190" height="110" as="geometry" />
+        <mxCell id="c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3F5FA;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="IDLE&lt;br&gt;RunBatch / SubmitOrder 대기" vertex="1">
+          <mxGeometry height="110" width="190" x="40" y="120" as="geometry" />
         </mxCell>
-        <mxCell id="c4" value="SELF_CHECK&lt;br&gt;req: safe → 빈 그리퍼 확인 → measure&lt;br&gt;(영점·센서 확인, 용기 아님)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="320" y="120" width="190" height="110" as="geometry" />
+        <mxCell id="c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="SELF_CHECK&lt;br&gt;req: safe → 빈 그리퍼 확인 → measure&lt;br&gt;(영점·센서 확인, 용기 아님)" vertex="1">
+          <mxGeometry height="110" width="190" x="320" y="120" as="geometry" />
         </mxCell>
-        <mxCell id="c5" value="PICK_CONTAINER&lt;br&gt;req: carry passbox_empty→workbench" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="600" y="120" width="190" height="110" as="geometry" />
+        <mxCell id="c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="PICK_CONTAINER&lt;br&gt;req: carry passbox_empty→workbench" vertex="1">
+          <mxGeometry height="110" width="190" x="600" y="120" as="geometry" />
         </mxCell>
-        <mxCell id="c6" value="TARE&lt;br&gt;req: measure(영점 기준) → weigh&lt;br&gt;빈 용기 무게 (배치 1회)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="880" y="120" width="190" height="110" as="geometry" />
+        <mxCell id="c6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="TARE&lt;br&gt;req: measure(영점 기준) → weigh&lt;br&gt;빈 용기 무게 (배치 1회)" vertex="1">
+          <mxGeometry height="110" width="190" x="880" y="120" as="geometry" />
         </mxCell>
-        <mxCell id="c7" value="PICK_SCOOP&lt;br&gt;req: move(scoop_N) → grip&lt;br&gt;스쿱은 원료통 아래 (D-24)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="400" width="190" height="110" as="geometry" />
+        <mxCell id="c7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="PICK_SCOOP&lt;br&gt;req: move(scoop_N) → grip&lt;br&gt;스쿱은 원료통 아래 (D-24)" vertex="1">
+          <mxGeometry height="110" width="190" x="40" y="400" as="geometry" />
         </mxCell>
-        <mxCell id="c8" value="SCOOP_TARE&lt;br&gt;req: weigh_scoop — 현행 빈 스쿱 1회&lt;br&gt;tare_agree_g&gt;0일 때만 2~3회 확인" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="320" y="400" width="190" height="110" as="geometry" />
+        <mxCell id="c8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="SCOOP_TARE&lt;br&gt;req: weigh_scoop — 현행 빈 스쿱 1회&lt;br&gt;tare_agree_g&gt;0일 때만 2~3회 확인" vertex="1">
+          <mxGeometry height="110" width="190" x="320" y="400" as="geometry" />
         </mxCell>
-        <mxCell id="c9" value="SCOOP&lt;br&gt;Scoop(material, attempt, depth_fraction)&lt;br&gt;고정 경로·털기 / fraction=1&lt;br&gt;접촉 미측정 → 다음 순량으로 판정" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="600" y="400" width="190" height="110" as="geometry" />
+        <mxCell id="c9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="SCOOP&lt;br&gt;Scoop(material, attempt, depth_fraction)&lt;br&gt;고정 경로·털기 / fraction=1&lt;br&gt;접촉 미측정 → 다음 순량으로 판정" vertex="1">
+          <mxGeometry height="110" width="190" x="600" y="400" as="geometry" />
         </mxCell>
-        <mxCell id="c10" value="WEIGH_SCOOP&lt;br&gt;req: weigh_scoop — 붓기 전&lt;br&gt;퍼낸 양 → 빈 스쿱 / 반환 / 전량 붓기" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="880" y="400" width="190" height="110" as="geometry" />
+        <mxCell id="c10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="WEIGH_SCOOP&lt;br&gt;req: weigh_scoop — 붓기 전&lt;br&gt;퍼낸 양 → 빈 스쿱 / 반환 / 전량 붓기" vertex="1">
+          <mxGeometry height="110" width="190" x="880" y="400" as="geometry" />
         </mxCell>
-        <mxCell id="c11" value="POUR&lt;br&gt;req: pour(fraction=1)&lt;br&gt;middle→ABOVE→start→end&lt;br&gt;→ABOVE→Z+50→middle" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1160" y="400" width="190" height="110" as="geometry" />
+        <mxCell id="c11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="POUR&lt;br&gt;req: pour(fraction=1)&lt;br&gt;middle→ABOVE→start→end&lt;br&gt;→ABOVE→Z+50→middle" vertex="1">
+          <mxGeometry height="110" width="190" x="1175" y="400" as="geometry" />
         </mxCell>
-        <mxCell id="c12" value="RETURN_MATERIAL&lt;br&gt;ReturnMaterial(material_id)&lt;br&gt;성공 → 끝 자세 유지&lt;br&gt;고정 경로: material 계량 자세&lt;br&gt;경유 후 재스쿱 (tare 유지)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="880" y="960" width="190" height="110" as="geometry" />
+        <mxCell id="c12" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="RETURN_MATERIAL&lt;br&gt;ReturnMaterial(material_id)&lt;br&gt;성공 → 끝 자세 유지&lt;br&gt;고정 경로: material 계량 자세&lt;br&gt;경유 후 재스쿱 (tare 유지)" vertex="1">
+          <mxGeometry height="110" width="190" x="880" y="960" as="geometry" />
         </mxCell>
-        <mxCell id="c13" value="POUR 내부 판정&lt;br&gt;추가 계량 없음&lt;br&gt;추정 투입량 += 붓기 전 순량 → decide()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1440" y="400" width="190" height="110" as="geometry" />
+        <mxCell id="c13" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="POUR 내부 판정&lt;br&gt;추가 계량 없음&lt;br&gt;추정 투입량 += 붓기 전 순량 → decide()" vertex="1">
+          <mxGeometry height="110" width="190" x="1470" y="400" as="geometry" />
         </mxCell>
-        <mxCell id="c14" value="RETURN_SCOOP&lt;br&gt;req: move(scoop_N) → grip(open)&lt;br&gt;전용 스쿱 = 교차오염 방지" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="320" y="680" width="190" height="110" as="geometry" />
+        <mxCell id="c14" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="RETURN_SCOOP&lt;br&gt;req: move(scoop_N) → grip(open)&lt;br&gt;전용 스쿱 = 교차오염 방지" vertex="1">
+          <mxGeometry height="110" width="190" x="320" y="680" as="geometry" />
         </mxCell>
-        <mxCell id="c15" value="VERIFY&lt;br&gt;req: move(workbench ABOVE) → measure(영점 재확인) → weigh&lt;br&gt;배치 끝 1회. 판정은 ① 레시피 총량 하나 (② 는 관측)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="880" y="680" width="190" height="110" as="geometry" />
+        <mxCell id="c15" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="VERIFY&lt;br&gt;req: move(workbench ABOVE) → measure(영점 재확인) → weigh&lt;br&gt;배치 끝 1회. 판정은 ① 레시피 총량 하나 (② 는 관측)" vertex="1">
+          <mxGeometry height="110" width="190" x="880" y="680" as="geometry" />
         </mxCell>
-        <mxCell id="c16" value="FINISH&lt;br&gt;req: carry workbench→passbox_done" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1160" y="680" width="190" height="110" as="geometry" />
+        <mxCell id="c16" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#3451D1;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="FINISH&lt;br&gt;req: carry workbench→passbox_done" vertex="1">
+          <mxGeometry height="110" width="190" x="1160" y="680" as="geometry" />
         </mxCell>
-        <mxCell id="c17" value="NUDGE_WAIT&lt;br&gt;req: move(nudge_wait) → wait_nudge → safe&lt;br&gt;세트 끝 — 건드릴 때까지 PAUSED · 주문은 1건 예약 (D-23, v1.9)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1440" y="680" width="190" height="110" as="geometry" />
+        <mxCell id="c17" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="NUDGE_WAIT&lt;br&gt;req: move(nudge_wait) → wait_nudge → safe&lt;br&gt;세트 끝 — 건드릴 때까지 PAUSED · 주문은 1건 예약 (D-23, v1.9)" vertex="1">
+          <mxGeometry height="110" width="190" x="1440" y="680" as="geometry" />
         </mxCell>
-        <mxCell id="c18" value="DONE&lt;br&gt;event BATCH_END" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1700" y="680" width="190" height="110" as="geometry" />
+        <mxCell id="c18" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDEFF3;strokeColor=#1F7A8C;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="DONE&lt;br&gt;event BATCH_END" vertex="1">
+          <mxGeometry height="110" width="190" x="1700" y="680" as="geometry" />
         </mxCell>
-        <mxCell id="c19" value="ERROR&lt;br&gt;req: safe(then None)&lt;br&gt;event INTERVENTION_FORCED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="960" width="190" height="110" as="geometry" />
+        <mxCell id="c19" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="ERROR&lt;br&gt;req: safe(then None)&lt;br&gt;event INTERVENTION_FORCED" vertex="1">
+          <mxGeometry height="110" width="190" x="40" y="960" as="geometry" />
         </mxCell>
-        <mxCell id="c20" value="PAUSED&lt;br&gt;req: safe → wait_interlock" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="600" y="960" width="190" height="110" as="geometry" />
+        <mxCell id="c20" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="PAUSED&lt;br&gt;req: safe → wait_interlock" vertex="1">
+          <mxGeometry height="110" width="190" x="600" y="960" as="geometry" />
         </mxCell>
-        <mxCell id="c21" value="DEVIATION&lt;br&gt;req: wait_qa (QA 원격 판정)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1160" y="960" width="190" height="110" as="geometry" />
+        <mxCell id="c21" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#D9782A;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="DEVIATION&lt;br&gt;req: wait_qa (QA 원격 판정)" vertex="1">
+          <mxGeometry height="110" width="190" x="1160" y="960" as="geometry" />
         </mxCell>
-        <mxCell id="c22" value="DISCARDED&lt;br&gt;req: (스쿱 반납 →) carry workbench→reject_bin" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="1440" y="960" width="190" height="110" as="geometry" />
+        <mxCell id="c22" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FADBD8;strokeColor=#C0392B;fontColor=#161B2A;fontSize=11;align=center;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" value="DISCARDED&lt;br&gt;req: (스쿱 반납 →) carry workbench→reject_bin" vertex="1">
+          <mxGeometry height="110" width="190" x="1440" y="960" as="geometry" />
         </mxCell>
-        <mxCell id="c23" value="RunBatch / SubmitOrder 수락&lt;br&gt;batch_id 발급 · event BATCH_START" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c3" target="c4">
-          <mxGeometry x="0" y="-22" relative="1" as="geometry" />
+        <mxCell id="c23" edge="1" parent="1" source="c3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c4" value="RunBatch / SubmitOrder 수락&lt;br&gt;batch_id 발급 · event BATCH_START">
+          <mxGeometry relative="1" y="-22" as="geometry" />
         </mxCell>
-        <mxCell id="c24" value="SafePose·빈 파지 확인 성공 / 외력 응답" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c4" target="c5">
-          <mxGeometry x="0" y="-14" relative="1" as="geometry" />
+        <mxCell id="c24" edge="1" parent="1" source="c4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c5" value="SafePose·빈 파지 확인 성공 / 외력 응답">
+          <mxGeometry relative="1" y="-14" as="geometry" />
         </mxCell>
-        <mxCell id="c25" value="carry grip_inferred=true" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c5" target="c6">
-          <mxGeometry x="0" y="-14" relative="1" as="geometry" />
+        <mxCell id="c25" edge="1" parent="1" source="c5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c6" value="carry grip_inferred=true">
+          <mxGeometry relative="1" y="-14" as="geometry" />
         </mxCell>
-        <mxCell id="c26" value="tare_g 저장 · cur = 원료 0 · weight 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c6" target="c7">
-          <mxGeometry x="0" y="-14" relative="1" as="geometry">
+        <mxCell id="c26" edge="1" parent="1" source="c6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="c7" value="tare_g 저장 · cur = 원료 0 · weight 발행">
+          <mxGeometry relative="1" y="-14" as="geometry">
             <Array as="points">
-              <mxPoint x="975.0" y="300" />
-              <mxPoint x="135.0" y="300" />
+              <mxPoint x="975" y="300" />
+              <mxPoint x="135" y="300" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c27" value="grip_inferred=true" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c7" target="c8">
-          <mxGeometry x="0" y="16" relative="1" as="geometry" />
+        <mxCell id="c27" edge="1" parent="1" source="c7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c8" value="grip_inferred=true">
+          <mxGeometry relative="1" y="16" as="geometry" />
         </mxCell>
-        <mxCell id="c28" value="기준 확정·편향 차감 → tare 저장&lt;br&gt;현행 tare_agree_g=0: 1회" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c8" target="c9">
-          <mxGeometry x="0" y="22" relative="1" as="geometry" />
+        <mxCell id="c28" edge="1" parent="1" source="c8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c9" value="기준 확정·편향 차감 → tare 저장&lt;br&gt;현행 tare_agree_g=0: 1회">
+          <mxGeometry relative="1" y="22" as="geometry" />
         </mxCell>
-        <mxCell id="c29" value="contact_detected=true&lt;br&gt;(고정 모드: 경로 성공이면 무조건 → 무게로 판정)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c9" target="c10">
-          <mxGeometry x="0" y="16" relative="1" as="geometry" />
+        <mxCell id="c29" edge="1" parent="1" source="c9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c10" value="contact_detected=true&lt;br&gt;(고정 모드: 경로 성공이면 무조건 → 무게로 판정)">
+          <mxGeometry relative="1" x="1" y="99" as="geometry">
+            <mxPoint x="50" y="14" as="offset" />
+          </mxGeometry>
         </mxCell>
-        <mxCell id="c30" value="유효·빈 스쿱 아님·반환 조건 없음&lt;br&gt;또는 accept_next → 전량 pour(fraction=1)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c10" target="c11">
-          <mxGeometry x="0" y="22" relative="1" as="geometry" />
+        <mxCell id="c30" edge="1" parent="1" source="c10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c11" value="유효·빈 스쿱 아님·반환 조건 없음&lt;br&gt;또는 accept_next → 전량 pour(fraction=1)">
+          <mxGeometry relative="1" x="0.1429" y="65" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
         </mxCell>
-        <mxCell id="c31" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c11" target="c13">
+        <mxCell id="c31" edge="1" parent="1" source="c11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c13" value="">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="c32" value="OK (|err| ≤ tol) · actual += scooped (전량 붓기 추정) → dispense_result 발행" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.7;entryDx=0;entryDy=0;" edge="1" parent="1" source="c13" target="c14">
-          <mxGeometry x="-0.25" y="-14" relative="1" as="geometry">
+        <mxCell id="c32" edge="1" parent="1" source="c13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="c14" value="OK (|err| ≤ tol) · actual += scooped (전량 붓기 추정) → dispense_result 발행">
+          <mxGeometry relative="1" x="-0.25" y="-14" as="geometry">
             <Array as="points">
               <mxPoint x="1468.5" y="600" />
               <mxPoint x="550" y="600" />
-              <mxPoint x="550" y="725" />
+              <mxPoint x="550" y="735" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c33" value="grip(open) · idx+1 · 다음 원료 있음" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c14" target="c7">
-          <mxGeometry x="0" y="-14" relative="1" as="geometry">
+        <mxCell id="c33" edge="1" parent="1" source="c14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="c7" value="grip(open) · idx+1 · 다음 원료 있음">
+          <mxGeometry relative="1" y="-14" as="geometry">
             <Array as="points">
-              <mxPoint x="415.0" y="640" />
-              <mxPoint x="135.0" y="640" />
+              <mxPoint x="415" y="640" />
+              <mxPoint x="135" y="640" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c34" value="마지막 원료였음 (그리퍼 비어 있음)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="c14" target="c15">
-          <mxGeometry x="0" y="-14" relative="1" as="geometry" />
+        <mxCell id="c34" edge="1" parent="1" source="c14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3451D1;strokeWidth=1.5;fontColor=#3451D1;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" target="c15" value="마지막 원료였음 (그리퍼 비어 있음)">
+          <mxGeometry relative="1" y="-14" as="geometry" />
         </mxCell>
-        <mxCell id="c35" value="① |net − Σtarget| ≤ Σ(target×tol)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c15" target="c16">
-          <mxGeometry x="0" y="-22" relative="1" as="geometry" />
+        <mxCell id="c35" edge="1" parent="1" source="c15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c16" value="① |net − Σtarget| ≤ Σ(target×tol)">
+          <mxGeometry relative="1" y="-22" as="geometry" />
         </mxCell>
-        <mxCell id="c36" value="carry ok" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c16" target="c17">
-          <mxGeometry x="0" y="-14" relative="1" as="geometry" />
+        <mxCell id="c36" edge="1" parent="1" source="c16" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c17" value="carry ok">
+          <mxGeometry relative="1" y="-14" as="geometry" />
         </mxCell>
-        <mxCell id="c37" value="NUDGE → SafePose 성공&lt;br&gt;→ DONE · 폐기면 DISCARDED" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c17" target="c18">
-          <mxGeometry x="0" y="-22" relative="1" as="geometry" />
+        <mxCell id="c37" edge="1" parent="1" source="c17" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c18" value="NUDGE → SafePose 성공&lt;br&gt;→ DONE · 폐기면 DISCARDED">
+          <mxGeometry relative="1" y="-22" as="geometry" />
         </mxCell>
-        <mxCell id="c38" value="carry ok — 폐기도 세트의 끝&lt;br&gt;안전 자세를 거쳐 같은 자리에서 기다린다" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c22" target="c17">
-          <mxGeometry x="0.2" y="0" relative="1" as="geometry" />
+        <mxCell id="c38" edge="1" parent="1" source="c22" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="c17" value="carry ok — 폐기도 세트의 끝&lt;br&gt;안전 자세를 거쳐 같은 자리에서 기다린다">
+          <mxGeometry relative="1" x="0.2" as="geometry" />
         </mxCell>
-        <mxCell id="c39" value="UNDER → 원료통 AT 복귀 → scoop(attempt+1)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c13" target="c9">
-          <mxGeometry x="0" y="-14" relative="1" as="geometry">
+        <mxCell id="c39" edge="1" parent="1" source="c13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" target="c9" value="UNDER → 원료통 AT 복귀 → scoop(attempt+1)">
+          <mxGeometry relative="1" y="-14" as="geometry">
             <Array as="points">
-              <mxPoint x="1497.0" y="340" />
+              <mxPoint x="1497" y="340" />
               <mxPoint x="742.5" y="340" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c40" value="INVALID ≤2 → 재계량&lt;br&gt;3회 WEIGH_INVALID → CLEANUP → ERROR" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c8" target="c8">
-          <mxGeometry x="0" y="22" relative="1" as="geometry">
+        <mxCell id="c40" edge="1" parent="1" source="c8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=1;entryDx=0;entryDy=0;" target="c8" value="INVALID ≤2 → 재계량&lt;br&gt;3회 WEIGH_INVALID → CLEANUP → ERROR">
+          <mxGeometry relative="1" y="22" as="geometry">
             <Array as="points">
-              <mxPoint x="377.0" y="545" />
-              <mxPoint x="453.0" y="545" />
+              <mxPoint x="377" y="545" />
+              <mxPoint x="453" y="545" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c41" value="INVALID ≤2 → 재계량&lt;br&gt;3회 WEIGH_INVALID → 반환 → 재스쿱 (RETRY)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c10" target="c10">
-          <mxGeometry x="0" y="22" relative="1" as="geometry">
+        <mxCell id="c41" edge="1" parent="1" source="c10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=1;entryDx=0;entryDy=0;" target="c10" value="INVALID ≤2 → 재계량&lt;br&gt;3회 WEIGH_INVALID → 반환 → 재스쿱 (RETRY)">
+          <mxGeometry relative="1" y="22" as="geometry">
             <Array as="points">
-              <mxPoint x="937.0" y="545" />
-              <mxPoint x="1013.0" y="545" />
+              <mxPoint x="937" y="545" />
+              <mxPoint x="1013" y="545" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c43" value="INVALID ≤2 → 재계량" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c15" target="c15">
-          <mxGeometry x="0" y="-12" relative="1" as="geometry">
+        <mxCell id="c43" edge="1" parent="1" source="c15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" target="c15" value="INVALID ≤2 → 재계량">
+          <mxGeometry relative="1" y="-12" as="geometry">
             <Array as="points">
-              <mxPoint x="937.0" y="650" />
-              <mxPoint x="1013.0" y="650" />
+              <mxPoint x="937" y="650" />
+              <mxPoint x="1013" y="650" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c44" value="UNDER max_attempts(8) 초과 → TIMEOUT" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c13" target="c21">
-          <mxGeometry x="-0.5" y="-60" relative="1" as="geometry">
+        <mxCell id="c44" edge="1" parent="1" source="c13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" target="c21" value="UNDER max_attempts(8) 초과 → TIMEOUT">
+          <mxGeometry relative="1" x="-0.5" y="-60" as="geometry">
             <Array as="points">
               <mxPoint x="1690" y="438" />
               <mxPoint x="1690" y="840" />
-              <mxPoint x="1293.0" y="840" />
+              <mxPoint x="1293" y="840" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c45" value="OVER · 부으면 하한 미달+한 스쿱 더면 상한 초과 · 3회 무효&lt;br&gt;→ return_material(material_id) — 붓기 전 (D-42)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c10" target="c12">
-          <mxGeometry x="0.5" y="10" relative="1" as="geometry">
+        <mxCell id="c45" edge="1" parent="1" source="c10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="c12" value="OVER · 부으면 하한 미달+한 스쿱 더면 상한 초과 · 3회 무효&lt;br&gt;→ return_material(material_id) — 붓기 전 (D-42)">
+          <mxGeometry relative="1" x="0.5" y="10" as="geometry">
             <Array as="points">
-              <mxPoint x="975.0" y="860" />
-              <mxPoint x="975.0" y="940" />
+              <mxPoint x="975" y="860" />
+              <mxPoint x="975" y="940" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c46" value="반환 성공 · returns&lt;max → 같은 원료를 재스쿱&lt;br&gt;(깊이 보정 모드는 더 얕게 · 고정 모드는 1.0 · attempts 소모 안 함)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="c12" target="c9">
-          <mxGeometry x="-0.4" y="-10" relative="1" as="geometry">
+        <mxCell id="c46" edge="1" parent="1" source="c12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="c9" value="반환 성공 · returns&lt;max → 같은 원료를 재스쿱&lt;br&gt;(깊이 보정 모드는 더 얕게 · 고정 모드는 1.0 · attempts 소모 안 함)">
+          <mxGeometry relative="1" x="-0.4" y="-10" as="geometry">
             <Array as="points">
-              <mxPoint x="560" y="996" />
-              <mxPoint x="560" y="454" />
+              <mxPoint x="840" y="1015" />
+              <mxPoint x="840" y="1090" />
+              <mxPoint x="560" y="1090" />
+              <mxPoint x="560" y="455" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c47" value="반환 성공·returns ≥ max_returns → TIMEOUT&lt;br&gt;QA 승인 → accept_next · 한 스쿱 더 퍼 붓기" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" edge="1" parent="1" source="c12" target="c21">
-          <mxGeometry x="0" y="-18" relative="1" as="geometry" />
+        <mxCell id="c47" edge="1" parent="1" source="c12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" target="c21" value="반환 성공·returns ≥ max_returns → TIMEOUT&lt;br&gt;QA 승인 → accept_next · 한 스쿱 더 퍼 붓기">
+          <mxGeometry relative="1" y="-18" as="geometry" />
         </mxCell>
-        <mxCell id="c48" value="① 규격 이탈 → BATCH_OUT_OF_SPEC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c15" target="c21">
-          <mxGeometry x="0" y="14" relative="1" as="geometry">
+        <mxCell id="c48" edge="1" parent="1" source="c15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="c21" value="① 규격 이탈 → BATCH_OUT_OF_SPEC">
+          <mxGeometry relative="1" y="14" as="geometry">
             <Array as="points">
-              <mxPoint x="1013.0" y="870" />
-              <mxPoint x="1255.0" y="870" />
+              <mxPoint x="1013" y="870" />
+              <mxPoint x="1255" y="870" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c49" value="GRIP_FAIL ≤3 → 같은 carry 재시도" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.35;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c5" target="c5">
-          <mxGeometry x="0" y="-14" relative="1" as="geometry">
+        <mxCell id="c49" edge="1" parent="1" source="c5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.35;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" target="c5" value="GRIP_FAIL ≤3 → 같은 carry 재시도">
+          <mxGeometry relative="1" y="-14" as="geometry">
             <Array as="points">
               <mxPoint x="666.5" y="85" />
               <mxPoint x="742.5" y="85" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c50" value="GRIP_FAIL ≤3 → grip 재시도&lt;br&gt;폭 지문 현행 비활성 (DIO)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.35;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c7" target="c7">
-          <mxGeometry x="0" y="-22" relative="1" as="geometry">
+        <mxCell id="c50" edge="1" parent="1" source="c7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.35;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" target="c7" value="GRIP_FAIL ≤3 → grip 재시도&lt;br&gt;폭 지문 현행 비활성 (DIO)">
+          <mxGeometry relative="1" y="-22" as="geometry">
             <Array as="points">
               <mxPoint x="106.5" y="365" />
               <mxPoint x="182.5" y="365" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c51" value="SCOOP_EMPTY ≤3 → scoop 재시도&lt;br&gt;(접촉 false · 또는 WEIGH_SCOOP 순중량 ≤ empty_scoop_g)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.2;exitY=0;exitDx=0;exitDy=0;entryX=0.55;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c9" target="c9">
-          <mxGeometry x="0" y="-22" relative="1" as="geometry">
+        <mxCell id="c51" edge="1" parent="1" source="c9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.2;exitY=0;exitDx=0;exitDy=0;entryX=0.55;entryY=0;entryDx=0;entryDy=0;" target="c9" value="SCOOP_EMPTY ≤3 → scoop 재시도&lt;br&gt;(접촉 false · 또는 WEIGH_SCOOP 순중량 ≤ empty_scoop_g)">
+          <mxGeometry relative="1" y="-22" as="geometry">
             <Array as="points">
-              <mxPoint x="638.0" y="365" />
+              <mxPoint x="638" y="365" />
               <mxPoint x="704.5" y="365" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c52" value="GRIP_FAIL ≤3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c16" target="c16">
-          <mxGeometry x="0" y="-12" relative="1" as="geometry">
+        <mxCell id="c52" edge="1" parent="1" source="c16" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" target="c16" value="GRIP_FAIL ≤3">
+          <mxGeometry relative="1" y="-12" as="geometry">
             <Array as="points">
-              <mxPoint x="1217.0" y="650" />
-              <mxPoint x="1293.0" y="650" />
+              <mxPoint x="1217" y="650" />
+              <mxPoint x="1293" y="650" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c53" value="scooped ≤ empty_scoop_g → SCOOP_EMPTY (모드 무관)&lt;br&gt;같은 scoop 재시도 · 4회째 MATERIAL_EMPTY → REFILL" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.1;exitY=1;exitDx=0;exitDy=0;entryX=0.65;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c10" target="c9">
-          <mxGeometry x="0" y="16" relative="1" as="geometry">
+        <mxCell id="c53" edge="1" parent="1" source="c10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.1;exitY=1;exitDx=0;exitDy=0;entryX=0.65;entryY=1;entryDx=0;entryDy=0;" target="c9" value="scooped ≤ empty_scoop_g → SCOOP_EMPTY (모드 무관)&lt;br&gt;같은 scoop 재시도 · 4회째 MATERIAL_EMPTY → REFILL">
+          <mxGeometry relative="1" y="16" as="geometry">
             <Array as="points">
-              <mxPoint x="899.0" y="600" />
-              <mxPoint x="723.5" y="600" />
+              <mxPoint x="899" y="540" />
+              <mxPoint x="723.5" y="540" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c54" value="SCOOP_EMPTY 4회 = MATERIAL_EMPTY → REFILL&lt;br&gt;_resume = 이 scoop 요청" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c9" target="c20">
-          <mxGeometry x="0.65" y="0" relative="1" as="geometry">
+        <mxCell id="c54" edge="1" parent="1" source="c9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#D9782A;strokeWidth=1.5;fontColor=#D9782A;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" target="c20" value="SCOOP_EMPTY 4회 = MATERIAL_EMPTY → REFILL&lt;br&gt;_resume = 이 scoop 요청">
+          <mxGeometry relative="1" x="0.65" as="geometry">
             <Array as="points">
               <mxPoint x="628.5" y="940" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c55" value="EXIT: restore_grip 성공 → _resume 재실행&lt;br&gt;(REFILL 은 개입으로 세지 않는다)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.85;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c20" target="c9">
-          <mxGeometry x="0.65" y="0" relative="1" as="geometry">
+        <mxCell id="c55" edge="1" parent="1" source="c20" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.85;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" target="c9" value="EXIT: restore_grip 성공 → _resume 재실행&lt;br&gt;(REFILL 은 개입으로 세지 않는다)">
+          <mxGeometry relative="1" x="0.65" as="geometry">
             <Array as="points">
               <mxPoint x="761.5" y="940" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c56" value="APPROVED (일반 원료 일탈) → 결과·반납&lt;br&gt;반환 한도/WRONG_TOOL은 별도 분기" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c21" target="c14">
-          <mxGeometry x="0.2" y="14" relative="1" as="geometry">
+        <mxCell id="c56" edge="1" parent="1" source="c21" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" target="c14" value="APPROVED (일반 원료 일탈) → 결과·반납&lt;br&gt;반환 한도/WRONG_TOOL은 별도 분기">
+          <mxGeometry relative="1" x="0.2" y="14" as="geometry">
             <Array as="points">
-              <mxPoint x="1217.0" y="900" />
+              <mxPoint x="1217" y="900" />
               <mxPoint x="481.5" y="900" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c57" value="APPROVED&lt;br&gt;(VERIFY 불일치)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.9;exitY=0;exitDx=0;exitDy=0;entryX=0.9;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c21" target="c16">
-          <mxGeometry x="0" y="30" relative="1" as="geometry" />
+        <mxCell id="c57" edge="1" parent="1" source="c21" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.9;exitY=0;exitDx=0;exitDy=0;entryX=0.9;entryY=1;entryDx=0;entryDy=0;" target="c16" value="APPROVED&lt;br&gt;(VERIFY 불일치)">
+          <mxGeometry relative="1" y="30" as="geometry" />
         </mxCell>
-        <mxCell id="c58" value="DISCARDED&lt;br&gt;스쿱 든 채면 먼저 반납" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="c21" target="c22">
-          <mxGeometry x="0" y="-22" relative="1" as="geometry" />
+        <mxCell id="c58" edge="1" parent="1" source="c21" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;" target="c22" value="DISCARDED&lt;br&gt;스쿱 든 채면 먼저 반납">
+          <mxGeometry relative="1" y="-22" as="geometry" />
         </mxCell>
-        <mxCell id="c59" value="GRIP_FAIL 4회 (FORCED)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.3;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c5" target="c19">
-          <mxGeometry x="-0.6" y="-14" relative="1" as="geometry">
+        <mxCell id="c59" edge="1" parent="1" source="c5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.3;entryY=0;entryDx=0;entryDy=0;" target="c19" value="GRIP_FAIL 4회 (FORCED)">
+          <mxGeometry relative="1" x="-0.6" y="-14" as="geometry">
             <Array as="points">
               <mxPoint x="628.5" y="230" />
               <mxPoint x="15" y="230" />
               <mxPoint x="15" y="930" />
-              <mxPoint x="97.0" y="930" />
+              <mxPoint x="97" y="930" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c60" value="GRIP_FAIL 4회 (FORCED)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c7" target="c19">
-          <mxGeometry x="0.3" y="-40" relative="1" as="geometry">
+        <mxCell id="c60" edge="1" parent="1" source="c7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" target="c19" value="GRIP_FAIL 4회 (FORCED)">
+          <mxGeometry relative="1" x="0.3" y="-40" as="geometry">
             <Array as="points">
               <mxPoint x="68.5" y="900" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c61" value="준비 스킬 실패 → ERROR" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c4" target="c19">
-          <mxGeometry x="0.5" y="-14" relative="1" as="geometry">
+        <mxCell id="c61" edge="1" parent="1" source="c4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" target="c19" value="준비 스킬 실패 → ERROR">
+          <mxGeometry relative="1" x="0.5" y="-14" as="geometry">
             <Array as="points">
-              <mxPoint x="173.0" y="165" />
+              <mxPoint x="173" y="165" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c62" value="루프 게이트 (FSM 밖, D-21 추가 7)&lt;br&gt;&lt;br&gt;skill_node 가 event NUDGE 를 쏘면 run_loop 가 다음 요청 전에 멈추고&lt;br&gt;state.mode = PAUSED(note=&quot;NUDGE&quot;) 발행, 두 번째 NUDGE 로 재개.&lt;br&gt;워커 유휴·계량·붓기 대기에서 관측한다 (블로킹 movel 중은 두산 충돌 감지 담당)&lt;br&gt;&lt;br&gt;세트 끝 NUDGE_WAIT (D-23, 9/19): 그때의 NUDGE 는 정지가 아니라&lt;br&gt;「다음 세트」 신호 — _nudge_go 를 세워 wait_nudge 를 푼다. 이벤트 SET_DONE / SET_NEXT" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="1440" y="120" width="380" height="175" as="geometry" />
+        <mxCell id="c62" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="루프 게이트 (FSM 밖, D-21 추가 7)&lt;br&gt;&lt;br&gt;skill_node 가 event NUDGE 를 쏘면 run_loop 가 다음 요청 전에 멈추고&lt;br&gt;state.mode = PAUSED(note=&quot;NUDGE&quot;) 발행, 두 번째 NUDGE 로 재개.&lt;br&gt;워커 유휴·계량·붓기 대기에서 관측한다 (블로킹 movel 중은 두산 충돌 감지 담당)&lt;br&gt;&lt;br&gt;세트 끝 NUDGE_WAIT (D-23, 9/19): 그때의 NUDGE 는 정지가 아니라&lt;br&gt;「다음 세트」 신호 — _nudge_go 를 세워 wait_nudge 를 푼다. 이벤트 SET_DONE / SET_NEXT" vertex="1">
+          <mxGeometry height="175" width="380" x="1440" y="120" as="geometry" />
         </mxCell>
-        <mxCell id="c63" value="일탈 정책 (deviation.py)&lt;br&gt;&lt;br&gt;GRIP_FAIL  3회 RETRY → FORCED&lt;br&gt;SCOOP_EMPTY  3회 RETRY → REFILL&lt;br&gt;MATERIAL_EMPTY  즉시 REFILL&lt;br&gt;OVERFILL / TIMEOUT  즉시 QA&lt;br&gt;WEIGH_INVALID: 2회 재측정 뒤 단계별 처리&lt;br&gt;빈 스쿱: 정리·ERROR / 붓기 전: 반환&lt;br&gt;VERIFY: QA&lt;br&gt;VERIFY_MISMATCH  9/22 폐지 — 발생 안 함&lt;br&gt;BATCH_OUT_OF_SPEC [v1.2]  즉시 QA (규격)&lt;br&gt;SLIP 2 · SAFETY_SWITCH 1 · FORCE_LIMIT 1 → FORCED&lt;br&gt;WRONG_TOOL [v1.2]  즉시 QA&lt;br&gt;&lt;br&gt;count = 같은 배치·같은 스텝·같은 kind" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="1660" y="880" width="240" height="270" as="geometry" />
+        <mxCell id="c63" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="일탈 정책 (deviation.py)&lt;br&gt;&lt;br&gt;GRIP_FAIL  3회 RETRY → FORCED&lt;br&gt;SCOOP_EMPTY  3회 RETRY → REFILL&lt;br&gt;MATERIAL_EMPTY  즉시 REFILL&lt;br&gt;OVERFILL / TIMEOUT  즉시 QA&lt;br&gt;WEIGH_INVALID: 2회 재측정 뒤 단계별 처리&lt;br&gt;빈 스쿱: 정리·ERROR / 붓기 전: 반환&lt;br&gt;VERIFY: QA&lt;br&gt;VERIFY_MISMATCH  9/22 폐지 — 발생 안 함&lt;br&gt;BATCH_OUT_OF_SPEC [v1.2]  즉시 QA (규격)&lt;br&gt;SLIP 2 · SAFETY_SWITCH 1 · FORCE_LIMIT 1 → FORCED&lt;br&gt;WRONG_TOOL [v1.2]  즉시 QA&lt;br&gt;&lt;br&gt;count = 같은 배치·같은 스텝·같은 kind" vertex="1">
+          <mxGeometry height="270" width="240" x="1660" y="880" as="geometry" />
         </mxCell>
-        <mxCell id="c64" value="현행 원료 공정: 빈 스쿱 계량 → 퍼올림 → 붓기 전 계량(퍼낸 양 → 빈 스쿱·초과 반환 가름, 초과 예방) → 붓기 성공 → 붓기 전 순량 누적·판정 → 반납 (부족하면 원료통 AT 복귀 후 추가 스쿱). 로봇이 저울이라 스쿱을 든 채 재는 것이 가장 싸고, 용기 계량(들어 올림)은 그리퍼가 비어야 해서 배치 끝 VERIFY 한 번.&lt;br&gt;범례   파랑 = 정상 경로   주황 = 일탈·재시도   청록 = 복구·완료   빨강 = 강제 개입·폐기(종료)   회색 = 대기·재계량&lt;br&gt;전이표 밖 조합은 on_result 가 RuntimeError(&quot;전이 없음&quot;) 를 던진다 — 새 상태·kind 를 넣으면 전이와 테스트(test_process_fsm.py)를 같이 넣는다" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
-          <mxGeometry x="40" y="1180" width="1860" height="90" as="geometry" />
+        <mxCell id="c64" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#5F6980;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" value="현행 원료 공정: 빈 스쿱 계량 → 퍼올림 → 붓기 전 계량(퍼낸 양 → 빈 스쿱·초과 반환 가름, 초과 예방) → 붓기 성공 → 붓기 전 순량 누적·판정 → 반납 (부족하면 원료통 AT 복귀 후 추가 스쿱). 로봇이 저울이라 스쿱을 든 채 재는 것이 가장 싸고, 용기 계량(들어 올림)은 그리퍼가 비어야 해서 배치 끝 VERIFY 한 번.&lt;br&gt;범례   파랑 = 정상 경로   주황 = 일탈·재시도   청록 = 복구·완료   빨강 = 강제 개입·폐기(종료)   회색 = 대기·재계량&lt;br&gt;전이표 밖 조합은 on_result 가 RuntimeError(&quot;전이 없음&quot;) 를 던진다 — 새 상태·kind 를 넣으면 전이와 테스트(test_process_fsm.py)를 같이 넣는다" vertex="1">
+          <mxGeometry height="90" width="1860" x="40" y="1180" as="geometry" />
         </mxCell>
-        <mxCell id="c65" value="tare_agree_g&gt;0 · 미확정 → 추가 측정" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="c8" target="c8">
+        <mxCell id="c65" edge="1" parent="1" source="c8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#5F6980;strokeWidth=1.5;fontColor=#5F6980;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" target="c8" value="tare_agree_g&gt;0 · 미확정 → 추가 측정">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="367.5" y="310" />
@@ -423,15 +429,15 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c66" value="반환 실패 → 강제 종료" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c12" target="c19">
+        <mxCell id="c66" edge="1" parent="1" source="c12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#C0392B;strokeWidth=1.5;fontColor=#C0392B;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="c19" value="반환 실패 → 강제 종료">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="975.0" y="1130" />
-              <mxPoint x="135.0" y="1130" />
+              <mxPoint x="975" y="1130" />
+              <mxPoint x="135" y="1130" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c67" value="반환 한도 승인 → accept_next" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=1;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="c21" target="c9">
+        <mxCell id="c67" edge="1" parent="1" source="c21" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=1;entryY=0.3;entryDx=0;entryDy=0;" target="c9" value="반환 한도 승인 → accept_next">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="1375" y="993" />
@@ -441,8 +447,25 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="c68" value="영점 QA 승인 → 용기 계량" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.2;exitY=0;exitDx=0;exitDy=0;entryX=0.2;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="c21" target="c15">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="c68" edge="1" parent="1" source="c21" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#1F7A8C;strokeWidth=1.5;fontColor=#1F7A8C;fontSize=10;labelBackgroundColor=#FFFFFF;exitX=0.2;exitY=0;exitDx=0;exitDy=0;entryX=0.2;entryY=1;entryDx=0;entryDy=0;" target="c15" value="영점 QA 승인 → 용기 계량">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1198" y="880" />
+              <mxPoint x="918" y="880" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="oHft2eBSPFz-l5_cmgAu-1" edge="1" parent="1" style="endArrow=none;dashed=1;html=1;rounded=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="1120" y="450" as="sourcePoint" />
+            <mxPoint x="1120" y="400" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="oHft2eBSPFz-l5_cmgAu-3" edge="1" parent="1" style="endArrow=none;dashed=1;html=1;rounded=0;" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="830" y="454" as="sourcePoint" />
+            <mxPoint x="870" y="390" as="targetPoint" />
+          </mxGeometry>
         </mxCell>
       </root>
     </mxGraphModel>
@@ -476,7 +499,7 @@
         <mxCell id="c9" value="measure_force(scale.samples, scale.settle_s)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="460" y="120" width="760" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="c10" value="{'valid', 'fz_mean_n', 'fz_std_n'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c10" value="{&#39;valid&#39;, &#39;fz_mean_n&#39;, &#39;fz_std_n&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1220" y="120" width="380" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c11" value="carry" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -488,7 +511,7 @@
         <mxCell id="c13" value="move(src,ABOVE) → move(src,AT) → set_gripper(close, cup_width) →&lt;br&gt;move(src,ABOVE) → move(dst,ABOVE) → move(dst,AT) → set_gripper(open) → move(dst,ABOVE)&lt;br&gt;파지 실패면 src ABOVE 후 열고 결과 반환" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="460" y="164" width="760" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="c14" value="{'grip_inferred'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c14" value="{&#39;grip_inferred&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E4E9FB;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1220" y="164" width="380" height="70" as="geometry" />
         </mxCell>
         <mxCell id="c15" value="weigh" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -500,7 +523,7 @@
         <mxCell id="c17" value="WeighContainer act(tare_g) — 고정 workbench의 용기를 들어 잰다 (TARE · VERIFY). 그리퍼가 비어 있어야 한다 + weight 토픽 발행" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="460" y="234" width="760" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="c18" value="{'gross_g','net_g','std_g','valid','subject=container'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c18" value="{&#39;gross_g&#39;,&#39;net_g&#39;,&#39;std_g&#39;,&#39;valid&#39;,&#39;subject=container&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1220" y="234" width="380" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c19" value="weigh_scoop" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -512,7 +535,7 @@
         <mxCell id="c21" value="WeighHeld act — 해당 material_N.posx에서 들고 있는 스쿱을 계량 (SCOOP_TARE · WEIGH_SCOOP)&lt;br&gt;계량 후 계량 자세에 머문다 · 빈 그리퍼면 success=false" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="460" y="278" width="760" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="c22" value="{'gross_g','net_g','std_g','valid','subject=scoop'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c22" value="{&#39;gross_g&#39;,&#39;net_g&#39;,&#39;std_g&#39;,&#39;valid&#39;,&#39;subject=scoop&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1220" y="278" width="380" height="70" as="geometry" />
         </mxCell>
         <mxCell id="c23" value="move" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -524,7 +547,7 @@
         <mxCell id="c25" value="move_to_station(station, ABOVE/AT)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="460" y="348" width="760" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="c26" value="{'success','reached'} → state.station" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c26" value="{&#39;success&#39;,&#39;reached&#39;} → state.station" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1220" y="348" width="380" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c27" value="grip" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -536,7 +559,7 @@
         <mxCell id="c29" value="set_gripper(close, width = scoop_width | cup_width, force)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="460" y="392" width="760" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="c30" value="{'grip_inferred','final_width_mm'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c30" value="{&#39;grip_inferred&#39;,&#39;final_width_mm&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1220" y="392" width="380" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c31" value="scoop" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -548,7 +571,7 @@
         <mxCell id="c33" value="고정 full(fraction=1), 높이 보정 비활성. 접촉 미측정(false/TAUGHT_FIXED) → fixed_scoop 이면 FSM 이 접촉 대신 순중량으로 판정" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="460" y="436" width="760" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="c34" value="{'contact_detected'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c34" value="{&#39;contact_detected&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1220" y="436" width="380" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c35" value="pour" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -560,7 +583,7 @@
         <mxCell id="c37" value="pour(1): middle → ABOVE → start → end → ABOVE → Z+50 → middle" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="460" y="480" width="760" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="c38" value="{'success'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c38" value="{&#39;success&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1220" y="480" width="380" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c39" value="return_material" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -572,7 +595,7 @@
         <mxCell id="c41" value="return_material(material_id)   start→end TCP 직선 이동→BASE 주기 운동&lt;br&gt;좌표·털기 설정 미입력이면 이동 전에 실패" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="460" y="524" width="760" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="c42" value="{'success','message'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c42" value="{&#39;success&#39;,&#39;message&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1220" y="524" width="380" height="70" as="geometry" />
         </mxCell>
         <mxCell id="c43" value="safe" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -584,7 +607,7 @@
         <mxCell id="c45" value="safe_pose(reason) → 성공 확인&lt;br&gt;BATCH_START이면 restore_grip(expected_payload=empty) 확인" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="460" y="594" width="760" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="c46" value="{'success'}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c46" value="{&#39;success&#39;}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1220" y="594" width="380" height="70" as="geometry" />
         </mxCell>
         <mxCell id="c47" value="wait_qa" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
@@ -596,7 +619,7 @@
         <mxCell id="c49" value="스킬 없음 — _qa.clear(); _qa.wait()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="460" y="664" width="760" height="44" as="geometry" />
         </mxCell>
-        <mxCell id="c50" value="{'decision': APPROVED|DISCARDED}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
+        <mxCell id="c50" value="{&#39;decision&#39;: APPROVED|DISCARDED}" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=11;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;" vertex="1" parent="1">
           <mxGeometry x="1220" y="664" width="380" height="44" as="geometry" />
         </mxCell>
         <mxCell id="c51" value="wait_interlock" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FBEBDD;strokeColor=#5F6980;fontColor=#161B2A;fontSize=12;align=left;verticalAlign=top;spacingTop=4;spacingLeft=6;spacingRight=6;fontStyle=1;" vertex="1" parent="1">
