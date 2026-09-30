@@ -40,6 +40,13 @@ class DosingConfig:
     `for_material()` 이 그 원료 값으로 바꾼 설정을 낸다 — `decide()` 는 설정만 받으므로 손대지 않는다.
     """
 
+    tare_agree_g: float = field(default=0.0, kw_only=True)
+    """빈 스쿱(SCOOP_TARE) 두 번 계량의 허용 차 [g]. 0 이면 한 번만 잰다(종전).
+
+    9/30 실물: B 빈 스쿱 계량이 팔 출렁임(표본 9~87 g)에도 사인 적합으로 유효 처리돼 기준값이 약 40 g
+    무겁게 잡혔고, 그 원료 순량이 전부 틀어졌다. 두 번 재서 이 차 안이면 평균, 넘으면 세 번째를 재 가운데 값.
+    """
+
     scoop_tare_bias_by_material: dict = field(default_factory=dict, kw_only=True)
     """원료별 빈 스쿱(SCOOP_TARE) 계량 편향 [g] — 공정은 빈 스쿱 총량에서 이 값을 빼서 tare 로 쓴다.
 
@@ -49,6 +56,9 @@ class DosingConfig:
     """
 
     def __post_init__(self):
+        if isinstance(self.tare_agree_g, bool) or not isinstance(self.tare_agree_g, (int, float)) \
+                or not 0.0 <= self.tare_agree_g < float('inf'):
+            raise ValueError(f'tare_agree_g 는 0 이상 유한한 값이어야 한다: {self.tare_agree_g!r}')
         for mid, g in self.scoop_tare_bias_by_material.items():
             if not isinstance(mid, str) or not mid or isinstance(g, bool) or not isinstance(g, (int, float)) \
                     or g != g or abs(g) == float('inf'):

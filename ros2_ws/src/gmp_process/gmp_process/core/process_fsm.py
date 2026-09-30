@@ -61,6 +61,7 @@ class ItemRun:
     invalid: int = 0             # **지금 단계**의 무효 횟수. 유효하거나 단계가 바뀌면 0 으로 돌아간다
     invalid_step: str = ''       # 위 카운터가 세고 있는 단계 (#213 결정 2)
     scoop_tare_g: float = 0.0    # 빈 스쿱 (SCOOP_TARE)
+    tare_readings: list = field(default_factory=list)   # 빈 스쿱 유효 계량 총량들 — 2회 일치 확인(tare_agree_g)
     scooped_g: float = 0.0       # 붓기 전 스쿱 안의 원료 (WEIGH_SCOOP)
     accept_next: bool = False    # 반환 한도 QA 승인 — 다음 스쿱은 초과·미달이어도 붓는다 (9/30 사용자 결정)
     accepted: bool = False       # 위 승인으로 부었다 — 붓기 뒤 판정은 기록만 하고 원료를 끝낸다(QA 를 다시 부르지 않는다)
@@ -152,6 +153,24 @@ class ProcessFSM:
         """초과 스쿱을 약통에 붓지 않고 원래 원료통으로 되돌린다."""
         return {'kind': 'return_material', 'material_id': self.cur.material_id,
                 'attempt': self.cur.attempts, 'scooped_g': self.cur.scooped_g}
+
+    def _agreed_tare(self, gross: float):
+        """빈 스쿱 총량을 모아 믿을 만한 값이 되면 돌려준다. 더 재야 하면 None.
+
+        tare_agree_g 가 0 이면 첫 값. 두 값이 그 차 안이면 평균, 넘으면 세 번째를 재 가운데 값(9/30).
+        """
+        agree = self.dosing_cfg.tare_agree_g
+        if agree <= 0:
+            return gross
+        rs = self.cur.tare_readings
+        rs.append(gross)
+        if len(rs) == 1:
+            return None
+        if len(rs) == 2:
+            if abs(rs[0] - rs[1]) <= agree:
+                return (rs[0] + rs[1]) / 2.0
+            return None
+        return sorted(rs)[len(rs) // 2]
 
     def _short_without_remedy(self) -> bool:
         """이 스쿱을 부으면 하한 미달이고, 가능한 최소 보충(고정 스쿱이면 1회량 전체)을 더하면 상한 초과인가.
@@ -346,8 +365,11 @@ class ProcessFSM:
             r = self._invalid_or(res, 'SCOOP_TARE', req)
             if r is not None:
                 return r
+            gross = self._agreed_tare(res.get('gross_g', 0.0))
+            if gross is None:
+                return req                             # 빈 스쿱을 한 번 더 잰다 — 이동 없이 같은 자세
             # 빈 스쿱은 퍼낸 뒤보다 무겁게 읽힌다(9/29 실측) — 원료별 경험 편향을 빼서 tare 로 쓴다
-            self.cur.scoop_tare_g = res.get('gross_g', 0.0) - self.dosing_cfg.scoop_tare_bias(self.cur.material_id)
+            self.cur.scoop_tare_g = gross - self.dosing_cfg.scoop_tare_bias(self.cur.material_id)
             self.state = 'SCOOP'
             return self._scoop(self._first_fraction())
         if k == 'scoop' and st == 'SCOOP':

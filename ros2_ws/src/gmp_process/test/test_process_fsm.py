@@ -1248,3 +1248,27 @@ def test_반환_한도_QA_승인은_한_번_더_퍼서_그대로_붓는다():
     assert [k for _, k in trace[i + 1:i + 4]] == ['scoop', 'weigh_scoop', 'pour'], trace[i:i + 5]
     a = fsm.results[0]
     assert a.material_id == 'A' and a.actual_g == 130.0 and not a.accept_next
+
+
+def test_빈_스쿱은_두_번_재서_어긋나면_세_번째_가운데_값을_쓴다():
+    """9/30 실물: B 빈 스쿱이 출렁임으로 약 40 g 무겁게 잡혀 그 원료 순량이 전부 틀어졌다.
+    두 번 재서 tare_agree_g 안이면 평균, 넘으면 세 번째를 재 가운데 값을 쓴다."""
+    cell = Cell(yields=[100, 50])
+    fsm = _fsm()
+    fsm.dosing_cfg = replace(fsm.dosing_cfg, tare_agree_g=8.0)
+    n = [0]
+
+    def tap(req):
+        res = cell(req)
+        if req['kind'] == 'weigh_scoop' and fsm.state == 'SCOOP_TARE' and fsm.cur.material_id == 'A':
+            n[0] += 1
+            if n[0] == 1:
+                res = dict(res, gross_g=res['gross_g'] + 40.0)    # 출렁임으로 튄 첫 값
+        return res
+    trace = run(fsm, tap)
+    assert n[0] == 3                                             # 어긋나서 세 번째까지
+    a, b = fsm.results
+    assert a.scoop_tare_g == SCOOP_TARE and a.scooped_g == 100.0  # 가운데 값 = 정상값
+    assert kinds_for(trace, 'SCOOP_TARE').count('weigh_scoop') == 3 + 2   # A 3번(어긋남) + B 2번(일치)
+    assert b.scoop_tare_g == SCOOP_TARE                          # B 는 두 번이 맞아 평균
+    assert len(b.tare_readings) == 2
