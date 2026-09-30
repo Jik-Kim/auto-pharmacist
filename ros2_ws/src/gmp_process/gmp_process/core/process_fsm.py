@@ -150,6 +150,18 @@ class ProcessFSM:
         return {'kind': 'return_material', 'material_id': self.cur.material_id,
                 'attempt': self.cur.attempts, 'scooped_g': self.cur.scooped_g}
 
+    def _short_without_remedy(self) -> bool:
+        """이 스쿱을 부으면 하한 미달이고, 가능한 최소 보충(고정 스쿱이면 1회량 전체)을 더하면 상한 초과인가.
+
+        `decide()` 의 「보충 불가」(TIMEOUT) 술어를 **붓기 전**에 미리 본다 — 붓고 나면 되돌릴 수 없다.
+        """
+        cfg = self._cfg()
+        projected = self.cur.actual_g + self.cur.scooped_g
+        lower = self.cur.target_g * (1.0 - self.cur.tol_pct / 100.0)
+        upper = self.cur.target_g * (1.0 + self.cur.tol_pct / 100.0)
+        min_add = cfg.scoop_nominal_g if cfg.fixed_scoop else cfg.min_fraction * cfg.scoop_nominal_g
+        return projected < lower and projected + min_add > upper
+
     def _rescoop_fraction(self) -> float:
         """반환 뒤 다시 풀 깊이. 비율 자체가 아니라 **직전 깊이에 대한 보정**이다 —
         이미 얕게 펐는데 또 초과했다면 그 얕은 깊이에서 더 줄여야 수렴한다.
@@ -223,6 +235,18 @@ class ProcessFSM:
             self.cur.invalid, self.cur.invalid_step = 0, step
         self.cur.invalid += 1
         if self.cur.invalid > self.dosing_cfg.max_invalid_retries:
+            if step == 'WEIGH_SCOOP':
+                # 붓기 전이라 되돌릴 수 있다 — 못 믿는 스쿱은 원료통에 반환하고 다시 푼다(9/30 사용자 결정).
+                # 9/30 수북한 C(≈85 g)가 std 20~24 g 로 3회 무효 → 정리 → ERROR 로 시연이 끊겼다.
+                # 반환 상한(max_returns)을 넘으면 반환 분기가 TIMEOUT → QA 로 보낸다.
+                self.cur.invalid, self.cur.invalid_step = 0, ''
+                key = (self.idx, step, 'WEIGH_INVALID')
+                self._counts[key] = self._counts.get(key, 0) + 1
+                self.deviations.append({'kind': 'WEIGH_INVALID', 'step': step, 'count': self._counts[key],
+                                        'action': 'RETRY', 'detail': '붓기 전 계량 반복 무효 — 원료통 반환 후 재스쿱',
+                                        'material_id': self.cur.material_id})
+                self.state = 'RETURN_MATERIAL'
+                return self._return_material()
             return self._cleanup_then_error('WEIGH_INVALID', step)
         return retry
 
@@ -351,6 +375,11 @@ class ProcessFSM:
                                          or self._scoop(self.cur.last_fraction, after_return=True),
                                          by_weight=True)
             remaining = max(0.0, self.cur.target_g - self.cur.actual_g)
+            if self._short_without_remedy():
+                # 부으면 하한 미달인데 한 스쿱 더 뜨면 상한 초과 — 붓고 나서 「보충 불가」로 QA 에 서는 대신
+                # 붓기 전에 반환하고 다시 푼다(9/30 사용자 결정). 판정식은 decide() 의 보충 불가와 같다.
+                self.state = 'RETURN_MATERIAL'
+                return self._return_material()
             # 스쿱량이 남은 목표량과 절대 허용오차의 합보다 크면 부분 투입으로 맞추지 않는다.
             # 원료통에 되돌린 뒤 다시 스쿱해야 실제 투입량과 반환량이 섞이지 않는다.
             if self.cur.scooped_g > remaining + self._scoop_allowance_g():

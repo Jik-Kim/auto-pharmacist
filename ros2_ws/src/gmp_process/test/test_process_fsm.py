@@ -883,40 +883,26 @@ def test_213_cleanup_투입전_세_단계의_요청_순서를_고정한다():
     assert fsm.state == 'ERROR'
 
 
-def test_213_cleanup_weigh_scoop_은_원료를_먼저_반환한다():
-    """#213 4번 — `WEIGH_SCOOP` 은 스쿱에 원료가 있으므로 반환이 맨 앞에 온다."""
-    cell = Cell(yields=[100, 50], invalid_first=3)
-    cell.invalid_left = 0                       # SCOOP_TARE 는 통과시키고
+def test_붓기_전_계량_3회_무효는_반환하고_다시_푼다():
+    """9/30 사용자 결정 — 붓기 전이라 되돌릴 수 있으니 정리·ERROR 대신 원료통 반환 → 재스쿱.
+    일탈은 WEIGH_INVALID·RETRY(자동 복구)로 남기고, 다시 푼 스쿱으로 정상 완료한다."""
+    cell = Cell(yields=[100, 100, 50])
     fsm = _fsm()
-    trace = []
-    orig = cell.__call__
 
     def tap(req):
-        # WEIGH_SCOOP 두 번을 무효로 돌려준다
         if req['kind'] == 'weigh_scoop' and fsm.state == 'WEIGH_SCOOP':
             tap.n += 1
             if tap.n <= 3:
                 return {'gross_g': 0.0, 'valid': False}
-        return orig(req)
+        return cell(req)
     tap.n = 0
-    stations = []
-    orig_tap = tap
-
-    def record(req):
-        if fsm.state == 'CLEANUP' and req['kind'] == 'move':
-            stations.append(req['station'])
-        return orig_tap(req)
-    for st, k in run(fsm, record):
-        if st == 'CLEANUP':
-            trace.append(k)
-    # 반환 뒤에는 material AT 를 끼우지 않는다 — skill 수납 연결이 반환 끝 관절을 확인하고
-    # 반환 끝 → material_N.posx → 반환 진입점으로 잇는다 (9/29, 끼우면 수납이 거부됐다)
-    assert trace == ['return_material', 'move', 'grip'], trace
-    assert stations == ['scoop'], stations
-    d = fsm.deviations[-1]
-    assert (d['kind'], d['step'], d['action']) == ('WEIGH_INVALID', 'WEIGH_SCOOP', 'FORCED')
-    assert 'return_material' in d['detail'], d['detail']
-    assert fsm.state == 'ERROR'
+    trace = run(fsm, tap)
+    assert fsm.state == 'DONE', fsm.deviations
+    assert [k for s_, k in trace if s_ == 'RETURN_MATERIAL'] == ['return_material']
+    assert not any(s_ == 'CLEANUP' for s_, _ in trace)
+    d = [x for x in fsm.deviations if x['kind'] == 'WEIGH_INVALID']
+    assert len(d) == 1 and d[0]['action'] == 'RETRY' and d[0]['step'] == 'WEIGH_SCOOP', fsm.deviations
+    assert fsm.results[0].returns == 1
 
 
 def test_invalid_tare_up_to_limit_raises_weigh_invalid():
@@ -1093,14 +1079,12 @@ def test_fixed_scoop_플래그는_반환_루프를_없애지만_QA_횟수는_그
     off_r, off_kinds, _ = _fixed_scoop_run(target, tol, nominal, first=first, flag=False, nominal=nominal)
     on_r, on_kinds, on_devs = _fixed_scoop_run(target, tol, nominal, first=first, flag=True, nominal=nominal)
 
-    assert off_kinds == on_kinds == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], (off_kinds, on_kinds)
-    assert off_r.actual_g == on_r.actual_g, (off_r.actual_g, on_r.actual_g)   # 결과는 같다
-    assert (off_r.returns, on_r.returns) == (3, 0), (off_r.returns, on_r.returns)
-
-    # 사유가 기록에 남는다 — 같은 kind 를 가르는 유일한 근거다
-    timeout = next(d for d in on_devs if d['kind'] == 'TIMEOUT')
-    upper = f'{target * (1 + tol / 100):.1f}'
-    assert '보충 불가' in timeout['detail'] and upper in timeout['detail'], timeout['detail']
+    assert off_kinds == ['TIMEOUT', 'BATCH_OUT_OF_SPEC'], off_kinds
+    assert off_r.returns == 3, off_r.returns
+    # 9/30: 고정 스쿱에서 하한 미달 스쿱은 **붓기 전에** 반환하고 다시 푼다 — 부은 뒤 「보충 불가」로
+    # QA 에 서지 않는다. 다시 푼 정상 스쿱으로 규격 안에서 끝난다.
+    assert on_kinds == [], on_devs
+    assert on_r.returns == 1 and abs(on_r.actual_g - nominal) < 1e-6, (on_r.returns, on_r.actual_g)
 
 
 def test_fixed_scoop_플래그를_켜도_맞출_수_있는_배치는_안_죽인다():
@@ -1171,18 +1155,19 @@ def _two_materials(target_a, target_b):
 
 def test_원료별_1회량은_그_원료의_보충_불가_판정에_쓰인다():
     """고정 스쿱의 「보충하면 상한 초과」 문턱(최소 채취 = 1회량)이 **원료마다** 그 원료 값이어야 한다.
-
-    두 원료 모두 첫 스쿱이 허용 하한에 못 미치게 두면 보충 불가 TIMEOUT 이 난다. 그 detail 의
-    최소 채취가 A 는 69 g, B 는 57 g 이어야 한다 — 배선 전에는 둘 다 공통값 69 g 이었다.
-    """
+    9/30 부터 이 판정은 붓기 전(_short_without_remedy)에 한다. B(57 g, 69 ±10 % 아님 — 57 ±10 %)에
+    5 g 이 퍼졌으면 57 g 을 더해도 상한 62.7 g 안이라 붓는다 — 공통값 69 g 으로 보면 반환이 된다."""
     cfg = DosingConfig(scoop_nominal_g=69.0, min_fraction=0.10, fixed_scoop=True,
                        scoop_nominal_by_material=PER_AB)
     fsm = ProcessFSM(_two_materials(69, 57), cfg, WeightModel(ScaleConfig()), fingerprint=ToolFingerprint())
-    run(fsm, Cell(yields=[55.0, 40.0] + [0.0] * 10))       # A 투입 53 g · B 38 g — 둘 다 하한 아래
-    timeouts = [d['detail'] for d in fsm.deviations if d['kind'] == 'TIMEOUT']
-    assert len(timeouts) == 2, fsm.deviations
-    assert '최소 채취 69.0 g' in timeouts[0] and '최소 채취 57.0 g' in timeouts[1], timeouts
-
+    fsm.idx = 0
+    fsm.cur = fsm._item()
+    fsm.cur.scooped_g = 10.0                               # A: 10 + 69 = 79 > 75.9 → 붓기 전 반환
+    assert fsm._short_without_remedy()
+    fsm.idx = 1
+    fsm.cur = fsm._item()
+    fsm.cur.scooped_g = 5.0                                # B: 5 + 57 = 62 ≤ 62.7 → 붓고 보충
+    assert not fsm._short_without_remedy()
 
 def test_원료별_1회량은_깊이_제어의_첫_깊이에도_쓰인다():
     """깊이 제어 모드의 첫 깊이 = 목표 ÷ 그 원료의 1회량. 같은 30 g 이라도 B 가 더 깊다."""

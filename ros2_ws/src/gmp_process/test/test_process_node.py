@@ -580,19 +580,18 @@ def test_scoop_cycle_attempt_numbers_are_unique_per_material(cell):
 # 거기 있었다. `fake.weigh_invalid` 로 스킬이 `valid=false` 를 돌려주게 해 전 구간을 태운다.
 
 
-def test_213_붓기_전_계량_무효는_원료를_되돌리고_ERROR_로_끝난다(cell):
-    """#213 결정 3 — 아직 약통에 넣지 않았으므로 **되돌릴 수 있다**. QA 로 가지 않는다."""
+def test_213_붓기_전_계량_무효는_원료를_되돌리고_다시_푼다(cell):
+    """#213 결정 3 → 9/30 사용자 결정: 붓기 전 3회 무효는 원료통 반환 뒤 재스쿱. QA 도 ERROR 도 아니다."""
     proc, fake, col = cell
     fake.weigh_invalid = {'WEIGH_SCOOP': 3}          # 최초 1 + 재시도 2
     _submit(col, [('A', 40.0, 5.0)])
 
-    assert _wait_done(proc) == 'ERROR', _why(proc)
+    assert _wait_done(proc) == 'DONE', _why(proc)
     assert 'return_material:A' in fake.calls, fake.calls   # 원료를 원료통에 되돌린다
     devs = [d for d in col.devs if d.kind == Deviation.WEIGH_INVALID]
     assert devs, [d.kind for d in col.devs]
-    assert devs[-1].decision == Deviation.FORCED, devs[-1].decision
-    # 되돌렸으므로 그 원료는 결과에 남지 않는다 — 「0 g 넣었다」가 아니라 「안 넣었다」다
-    assert not [r for r in col.results if r.material_id == 'A'], col.results
+    assert not devs[-1].requires_decision and devs[-1].decision != Deviation.FORCED, devs[-1]
+    assert [r for r in col.results if r.material_id == 'A'], col.results
 
 
 def test_pour_completion_skips_residual_and_records_estimate(cell):
