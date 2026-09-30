@@ -285,3 +285,6 @@ $('downloadBatch').onclick=()=>{if(!detailData)return;if(source.demo)saveFile(de
 
 window.addEventListener('resize',()=>draw(lastWeights));gate();initialize();tick();setInterval(()=>{if(page==='records')refreshRecords();if(page==='operation')refreshAlarms();},5000);
 $('completion').addEventListener('click',e=>{if(!e.target.closest('.completion-close'))return;completionClosed=completionKey;$('completion').hidden=true;});
+
+// 9/30 HMI 비상정지 — 확인 창 없이 곧바로 보낸다(다른 요청 대기·화면 신선도와 무관). 소프트웨어 정지다.
+(()=>{const b=document.getElementById('estopButton');if(!b)return;b.onclick=async()=>{b.disabled=true;const t=b.textContent;b.textContent='정지 요청 중…';try{const r=await source.post('/estop',{});alert((r&&r.ok?'비상정지 요청 수락 · ':'비상정지 거부/응답 없음 · ')+((r&&r.message)||'물리 비상정지를 누르세요'));}catch(err){alert('비상정지 요청 실패 — 물리 비상정지를 누르세요');}finally{b.disabled=false;b.textContent=t;}};})();

@@ -13,6 +13,7 @@
   <depend>sensor_msgs</depend>
   <depend>onrobot_rg_msgs</depend>
   <depend>dsr_msgs2</depend>
+  <exec_depend>std_srvs</exec_depend>  <!-- HMI 비상정지 emergency_stop (9/30) -->
   <exec_depend>dsr_common2</exec_depend>
   <exec_depend>onrobot_rg_control</exec_depend>
   <test_depend>ament_flake8</test_depend>

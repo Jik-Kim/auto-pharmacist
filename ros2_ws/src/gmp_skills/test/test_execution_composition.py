@@ -70,7 +70,7 @@ def test_node_constructs_same_ros_endpoints_and_one_worker(monkeypatch):
     monkeypatch.setattr(module.threading, 'Thread', FakeThread)
     node = module.RealSkillNode()
     assert [name for name, _ in actions] == ['move_to_station', 'scoop', 'pour', 'return_material', 'weigh_container', 'weigh_held']
-    assert [name for name, _ in services] == ['set_gripper', 'measure_force', 'recover_safety', 'safe_pose', 'restore_grip']
+    assert [name for name, _ in services] == ['set_gripper', 'measure_force', 'recover_safety', 'safe_pose', 'emergency_stop', 'restore_grip']
     assert len(threads) == 1 and threads[0].started
     assert threads[0].target == node.execution.runtime._worker
     assert node.ctx.arm.cancel_requested == node.execution.runtime._cancel_requested
