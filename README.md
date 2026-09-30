@@ -3,9 +3,54 @@
 배치 레시피에 따라 원료를 스쿱으로 퍼서 **정밀 칭량·분주**하고, 허용 오차를 **로봇 외력으로 스스로 검증**하며, 일탈이 나면 **셀 밖 QA 가 웹 HMI 로 판정**하고 **모든 기록이 SQLite 배치 기록·감사 추적으로 남는**
 M0609 + RG2 조제 셀. 평상시 무인, 사람은 패스박스와 HMI 로만 셀과 만난다. 요구·제약의 원장: **[PROJECT_RULES.md](PROJECT_RULES.md)**.
 
+## 제출용 한눈에 보기
+
+- **운영 환경:** Ubuntu 24.04 · ROS 2 Jazzy · Python 3.12, 작업 PC 1대에서 셀 노드·웹 HMI·SQLite 실행
+- **주요 장비:** 두산 M0609 협동로봇, OnRobot RG2 그리퍼, 원료 A/B/C 통과 전용 스쿱, 약통·Pass Box·작업대. 계량은 외부 저울이 아닌 로봇 외력(`get_tool_force`)을 사용
+- **의존성:** [requirements.md](requirements.md)에 ROS/벤더 언더레이와 시스템 패키지를 구분해 설명하고, 제출용 Python 목록은 [requirements.txt](requirements.txt)에 기재
+- **실행 순서:** ROS 2와 벤더 언더레이 source → 이 저장소 빌드·source → `cell.launch.py` 실행 → 노드/Action 확인 → HMI에서 주문. 아래 명령과 [시연 절차](docs/demo_run_procedure.md)를 참조
+
+### 시스템 설계와 동작 순서
+
+![시스템 구성 및 데이터 흐름](docs/diagrams/system_flow.png)
+
+그림은 9/30 제작된 v1.11 구성 요약입니다. 이후 v1.11.1의 계량 불일치 처리 상세는 [현행 인터페이스 계약](docs/interfaces.md)을 우선합니다.
+
+작업자는 웹 HMI로 주문·QA 판정을 하고, `process_node`가 공정을 결정합니다. `skill_node`만 로봇을 제어하며, `record_node`만 SQLite 배치 기록을 씁니다. [ROS 2 노드 구성도](docs/diagrams/node_architecture.png)와 [구성 설명](docs/architecture.md)에 역할과 통신 경로가 있습니다.
+
+```mermaid
+flowchart LR
+  A[레시피 주문] --> B[자가진단·안전 자세]
+  B --> C[빈 약통 반입·계량]
+  C --> D[원료별 스쿱·계량·투입]
+  D --> E[완성품 최종 계량]
+  E --> F[Pass Box 반송]
+  F --> G[회수 확인 넛지·배치 종료]
+  D -->|무효·초과·실패| H[재시도·반환·QA 또는 안전 정지]
+  E -->|규격 이탈| H
+```
+
+상세 상태·예외 분기는 [공정 순서 설명](docs/process_flow.md)과 [draw.io 흐름도](docs/diagrams/process_flow.drawio)에 있습니다. 가상 모드는 호출·상태 흐름을 확인하지만, 실제 힘·파지력·간섭·안전 정지 성능을 입증하지는 않습니다.
+
+### 산출물 안내
+
+[최종 산출물 정리](https://app.notion.com/p/3e7d1a852505808f8ac1c880d49721a5)의 9개 항목을 아래 저장소 원본과 연결했습니다. 노션은 설명·화면 자료를 모은 사본이며, 실행값과 계약은 저장소의 현행 코드·설정을 기준으로 확인합니다.
+
+| 항목 | 저장소 원본 | 상세 산출물 |
+|---|---|---|
+| 01 시스템 아키텍처 | [시스템 구성도](docs/diagrams/system_flow.png) · [구성 설명](docs/architecture.md) | [노션](https://app.notion.com/p/3ead1a8525058141928be68dfefe26d0) |
+| 02 네트워크 구성 | [환경·실행 절차](docs/setup.md) · [런치 설정](ros2_ws/src/gmp_bringup/launch/cell.launch.py) | [노션 구성도](https://app.notion.com/p/3ead1a85250581a88493f6ed8ec912f1) |
+| 03 동작 순서도 | [공정 흐름도](docs/diagrams/process_flow.drawio) · [상태·예외 설명](docs/process_flow.md) | [노션](https://app.notion.com/p/3ead1a85250581e88633feeae9748709) |
+| 04 하드웨어·환경·배치 | [작업공간 배치도](docs/diagrams/workcell_layout.png) · [스테이션 설정](ros2_ws/src/gmp_bringup/params/stations.yaml) | [노션](https://app.notion.com/p/3ead1a852505818a89bacbe5e07e21e9) |
+| 05 토픽·서비스·액션 | [인터페이스 계약](docs/interfaces.md) · [메시지 정의](ros2_ws/src/gmp_interfaces) | [노션](https://app.notion.com/p/3ead1a85250581b790e4cf722bf82f87) |
+| 06 ROS 2 노드·데이터 흐름 | [노드 구성도](docs/diagrams/node_architecture.png) · [구성 설명](docs/architecture.md) | [노션](https://app.notion.com/p/3ead1a85250581ed9552d90cb4b4481f) |
+| 07 HMI·대시보드 | [HMI 기능 설명](ros2_ws/src/gmp_hmi/README.md) | [노션 화면 자료](https://app.notion.com/p/3ead1a852505817a900bffcd230f41d6) |
+| 08 예외·오류 처리 | [공정 흐름](docs/process_flow.md) · [확정 정책](docs/SOT.md) | [노션](https://app.notion.com/p/3ead1a8525058194b5acee4b04958f5f) |
+| 09 위험요소·안전대책 | [안전 결정](docs/SOT.md) · [실행·복구 주의사항](docs/setup.md) | [노션](https://app.notion.com/p/3ead1a85250581eea10ef85c7b12972a) |
+
 ## 기준 문서
 
-- [docs/SOT.md](docs/SOT.md) 확정 결정 · [docs/interfaces.md](docs/interfaces.md) **계약 v1.11** (버전별 변경·확정 상태는 문서 머리) · [docs/architecture.md](docs/architecture.md) 데이터 흐름
+- [docs/SOT.md](docs/SOT.md) 확정 결정 · [docs/interfaces.md](docs/interfaces.md) **계약 v1.11.1** (버전별 변경·확정 상태는 문서 머리) · [docs/architecture.md](docs/architecture.md) 데이터 흐름
 - [docs/setup.md](docs/setup.md) 환경 구축·실행 · [docs/demo_run_procedure.md](docs/demo_run_procedure.md) 시연 절차 (명령 정본) · [docs/trial_and_error_0929-0930.md](docs/trial_and_error_0929-0930.md) 9/29~30 시행착오 (발표용)
 - [docs/responsibilities.md](docs/responsibilities.md) 영역별 책임 · 할 일·이슈는 **[GitHub Issues](https://github.com/Jik-Kim/auto-pharmacist/issues)** (9/21 부터 정본 — `docs/todo.md`·`docs/issues.md` 는 동결 스냅샷)
 - [PROJECT.md](PROJECT.md) 개요·역할 · [AGENTS.md](AGENTS.md) 작업 규칙 · [docs/spec/](docs/spec/README.md) BRD·SDD
@@ -15,6 +60,7 @@ M0609 + RG2 조제 셀. 평상시 무인, 사람은 패스박스와 HMI 로만 �
 ```text
 ros2_ws/src/
 ├── gmp_interfaces/   # msg/srv/action 계약 (ament_cmake + rosidl)                  [조장]
+├── gmp_dsr_controller/ # 두산 컨트롤러 충돌 감도 조회 플러그인                         [A 스킬]
 ├── gmp_skills/       # DSR_ROBOT2·RG2 어댑터, 스킬 Action/Service — 로봇을 만지는 유일한 노드  [A 스킬]
 ├── gmp_dosing/       # 힘→그램 환산·영점·보정, 이중 폐루프 도징 정책 (ROS 비의존 라이브러리)   [B 도징]
 ├── gmp_process/      # 레시피 실행 상태기계, 일탈·인터락, RunBatch Action 서버            [C 공정]
@@ -138,7 +184,7 @@ ros2 run gmp_hmi hmi_web_node --ros-args -r __ns:=/cell \
 
 ## 상태
 
-**9/30 시연일 기준.** 계약 **v1.11.1**(`RestoreGrip` v1.10, 반환 뒤 재스쿱 연결·붓기 후 계량 삭제 설명 v1.10.1, 소프트웨어 비상정지·HMI 안전 자세 요청 v1.11, 계량 불일치 반환 뒤 빈 스쿱 재측정 v1.11.1). 패키지 6개 구현·통합 시험 완료, main 시험 기준선(9/30, ROS 소싱·`ROS_DOMAIN_ID` 격리)은 process 266 · skills 592 · dosing 91 · hmi 149 · tools 6 — 파트별 값은 `practice/<파트>/CURRENT.md`.
+**9/30 시연일 기준.** 계약 **v1.11.1**(`RestoreGrip` v1.10, 반환 뒤 재스쿱 연결·붓기 후 계량 삭제 설명 v1.10.1, 소프트웨어 비상정지·HMI 안전 자세 요청 v1.11, 계량 불일치 반환 뒤 빈 스쿱 재측정 v1.11.1). ROS 패키지 7개가 있으며, main 시험 기준선(9/30, ROS 소싱·`ROS_DOMAIN_ID` 격리)은 process 266 · skills 592 · dosing 91 · hmi 149 · tools 6 — 파트별 값은 `practice/<파트>/CURRENT.md`.
 
 - **레시피·1회량** — 전 원료 한 스쿱 69 g · 허용오차 ±15 %(`recipe-01` A·B·C 69 / `recipe-02` A 138·B 69 / `recipe-03` A 69·B 69·C 138), 스쿱 기준값 A·B·C 69 g (SOT D-36, D-35 의 79 g 대체). **9/30 시연 설정: `recipe-01` 만 ±50 %**(34.5~103.5 g — ±15 % 에서 QA 정지가 잦았다).
 - **계량** — 용기·스쿱 경로별 gain·offset(D-37, 용기 gain 0.873 은 9/30 케이블 정리 뒤), 안정화 10 s·스쿱 무효 기준 std 10·고주파 9.5 g·원료별 빈 스쿱 편향 A 13·B 10·C 0 g·빈 스쿱 두 번 재기(8 g), 붓기 후 잔량 계량 없음 — 투입량은 붓기 전 순량(D-38). 빈 그리퍼 영점 이동 한계 0.5 N(9/30 시연 설정). 붓기 전에 되돌릴 수 있는 스쿱(초과·하한 미달·3회 무효·빈 스쿱보다 15 g 넘게 가벼운 계량 불일치)은 반환 → 재스쿱(D-42, 계량 불일치는 빈 스쿱부터 다시 잰다).
@@ -148,3 +194,7 @@ ros2 run gmp_hmi hmi_web_node --ros-args -r __ns:=/cell \
 - **시연 절차** — [docs/demo_run_procedure.md](docs/demo_run_procedure.md). 실물 검증 항목은 `needs:physical` 라벨 이슈.
 
 현황은 [GitHub Issues](https://github.com/Jik-Kim/auto-pharmacist/issues), 확정 결정은 `docs/SOT.md`, 파트별 현행값은 `practice/<파트>/CURRENT.md`.
+
+## 제출 소스 ZIP
+
+가이드라인에 따라 프로젝트 관련 소스 패키지만 압축하고 `build/`, `install/`, `log/`, 로컬 `records/` 등 생성물은 제외합니다. 저장소에 커밋된 설정·보정 자료는 해당 패키지와 함께 유지합니다. ZIP 안에는 이 `README.md`와 `requirements.txt`를 포함합니다. 영상·발표자료·ZIP의 최종 파일명과 제출 경로는 제공된 제출 가이드라인에 맞춰 조장이 확인합니다.
