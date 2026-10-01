@@ -106,12 +106,13 @@ ros2 action list -t
 
 명령·순서·게이트는 [docs/demo_run_procedure.md](docs/demo_run_procedure.md) 가 정본이다.
 
-### 실물 로봇 bringup과 스킬 개별 실행
+### 각 노드 개별 실행
 
-저장소 루트에서 실행한다. 기존 스킬을 먼저 종료하고 bringup 종료까지 확인한 뒤 재시작한다.
-`cell.launch.py`와 아래 개별 실행을 동시에 띄우지 않는다.
+아래는 실물 모드 예시입니다. 저장소 루트에서 실행하며, `cell.launch.py`와 동시에 띄우지 않습니다.
+기존 스킬을 먼저 종료하고 bringup 종료까지 확인한 뒤 재시작합니다.
+로봇 bringup으로 컨트롤러 활성화를 확인한 다음, 서로 다른 터미널에서 스킬·공정·기록·HMI를 한 개씩 실행합니다.
 
-터미널 1 — 로봇 연결·제어권 및 RG2 상태 드라이버:
+터미널 1 — 로봇 연결·제어권:
 
 ```bash
 source tools/env.sh
@@ -125,7 +126,8 @@ ros2 launch gmp_bringup robot.launch.py mode:=real host:=192.168.1.100 gui:=fals
 `ROS_HOME`은 다른 도메인의 컨트롤러 spawner 잠금과 분리한다.
 `PYTHONPATH`는 현 언더레이의 RG2 Python 모듈 위치를 보완한다.
 
-터미널 2 — 컨트롤러 활성화 확인 후 스킬 실행:
+터미널 2 — 컨트롤러 활성화 확인 후 스킬 노드 실행:
+`skill.launch.py`가 공통 설정과 스테이션 파일을 전달합니다.
 
 ```bash
 source tools/env.sh
@@ -137,23 +139,12 @@ ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=0.2
 [파지 상태 복원 절차](docs/setup.md#인출-완료-스쿱의-기동-시-복원)를 따르며,
 복원 확인 인자를 상시 실행 명령에 넣지 않는다.
 
-### 각 노드 개별 실행
-
-아래는 실물 모드 예시입니다. `cell.launch.py`와 동시에 실행하면 같은 노드가 중복됩니다.
-위의 `robot.launch.py`를 먼저 실행하고 컨트롤러 활성화를 확인한 뒤,
-서로 다른 터미널에서 스킬·공정·기록·HMI를 한 개씩 실행합니다.
-**각 터미널에서 먼저** 저장소 루트로 이동해 다음 환경을 설정합니다.
+터미널 3~5 — 공정·기록·HMI 노드를 실행합니다. **각 터미널에서 먼저** 저장소 루트로 이동해 다음 환경을 설정합니다.
 
 ```bash
 source tools/env.sh
 GMP_PARAMS="$(ros2 pkg prefix gmp_bringup)/share/gmp_bringup/params"
 GMP_DB="$HOME/auto-pharmacist/records/cell.db"
-```
-
-스킬 노드 — 위의 `skill.launch.py`가 공통 설정과 스테이션 파일을 전달합니다.
-
-```bash
-ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=0.2
 ```
 
 공정 노드:
