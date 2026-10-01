@@ -49,6 +49,73 @@ ros2 launch gmp_bringup skill.launch.py
 
 속도를 바꿀 때만 `vel_scale:=0.1`처럼 덧붙인다.
 
+### 각 노드 개별 실행
+
+아래는 실물 모드 예시입니다. 저장소 루트에서 실행하며, `cell.launch.py`와 동시에 띄우지 않습니다.
+기존 스킬을 먼저 종료하고 bringup 종료까지 확인한 뒤 재시작합니다.
+로봇 bringup으로 컨트롤러 활성화를 확인한 다음, 서로 다른 터미널에서 스킬·공정·기록·HMI를 한 개씩 실행합니다.
+
+터미널 1 — 로봇 연결·제어권:
+
+```bash
+source tools/env.sh
+export ROS_HOME=/tmp/gmp-ros-domain70
+export ROS_LOG_DIR=/tmp/gmp-g2-ros-log
+GMP_DSR_WS="$(dirname "$(dirname "$WS_DSR_SETUP")")"
+export PYTHONPATH="$GMP_DSR_WS/build/onrobot_rg_control${PYTHONPATH:+:$PYTHONPATH}"
+ros2 launch gmp_bringup robot.launch.py mode:=real host:=192.168.1.100 gui:=false
+```
+
+`ROS_HOME`은 다른 도메인의 컨트롤러 spawner 잠금과 분리한다.
+`PYTHONPATH`는 현 언더레이의 RG2 Python 모듈 위치를 보완한다.
+
+터미널 2 — 컨트롤러 활성화 확인 후 스킬 노드 실행:
+`skill.launch.py`가 공통 설정과 스테이션 파일을 전달합니다.
+
+```bash
+source tools/env.sh
+export ROS_LOG_DIR=/tmp/gmp-g2-ros-log
+ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=0.2
+```
+
+검증된 속도를 지정하려면 `vel_scale`을 변경한다. 스쿱을 잡은 채 재기동할 때는
+[파지 상태 복원 절차](#인출-완료-스쿱의-기동-시-복원)를 따르며,
+복원 확인 인자를 상시 실행 명령에 넣지 않는다.
+
+터미널 3~5 — 공정·기록·HMI 노드를 실행합니다. **각 터미널에서 먼저** 저장소 루트로 이동해 다음 환경을 설정합니다.
+
+```bash
+source tools/env.sh
+GMP_PARAMS="$(ros2 pkg prefix gmp_bringup)/share/gmp_bringup/params"
+GMP_DB="$HOME/auto-pharmacist/records/cell.db"
+```
+
+공정 노드:
+
+```bash
+ros2 run gmp_process process_node --ros-args -r __ns:=/cell \
+  --params-file "$GMP_PARAMS/common.yaml" -p stations_file:="$GMP_PARAMS/stations.yaml"
+```
+
+기록 노드:
+
+```bash
+ros2 run gmp_hmi record_node --ros-args -r __ns:=/cell \
+  --params-file "$GMP_PARAMS/common.yaml" \
+  -p db_path:="$GMP_DB" -p export_dir:="$(dirname "$GMP_DB")"
+```
+
+웹 HMI 노드:
+
+```bash
+ros2 run gmp_hmi hmi_web_node --ros-args -r __ns:=/cell \
+  --params-file "$GMP_PARAMS/common.yaml" \
+  -p db_path:="$GMP_DB" -p recipes_dir:="$GMP_PARAMS/recipes" -p port:=5000
+```
+
+실물에서 RG2 Modbus 백엔드를 쓰면 `robot.launch.py`가 상태 드라이버를 함께 띄웁니다.
+위 개별 명령은 전체 런치와 같은 `/cell` 네임스페이스와 공통 설정을 사용합니다.
+
 ## 단위 테스트 (로봇 없이)
 
 ```bash
