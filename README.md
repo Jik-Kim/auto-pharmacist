@@ -17,7 +17,7 @@
 - **붓기 전에 판단** — 퍼낸 양이 넘치거나 모자라거나 계량을 못 믿으면 붓지 않고 원료통에 되돌린 뒤 다시 풉니다.
 - **셀 밖 원격 QA** — 일탈이 나면 공정이 멈추고, QA 가 웹 HMI 에서 승인·폐기를 정합니다.
 - **배치 기록·감사 추적** — 기록 노드 하나만 SQLite 에 쓰고, 이벤트는 덧붙이기만 합니다.
-- **안전 계층** — 로봇을 움직이는 노드는 하나뿐이고, 사람 감지는 비전 없이 힘(PFL)으로만 합니다. 소프트웨어 비상정지와 안전 자세 복귀를 갖췄습니다.
+- **안전 계층** — 로봇을 움직이는 노드는 하나뿐이고, 비전 없이 힘 기반으로 접촉·충돌을 감지합니다(PFL). 소프트웨어 비상정지와 안전 자세 복귀를 갖췄습니다.
 
 ## 팀과 역할
 
@@ -30,7 +30,7 @@
 
 PM 없이 패키지마다 다른 팀원이 교차 검토했습니다([AGENTS.md](AGENTS.md)). 영역별 책임은 [docs/responsibilities.md](docs/responsibilities.md)에 있습니다.
 
-## 시스템 구성과 공정 흐름
+## 시스템 설계와 플로우 차트
 
 ![시스템 구성 및 데이터 흐름](docs/diagrams/system_flow.png)
 
@@ -54,7 +54,7 @@ flowchart LR
 
 | 항목 | 결과 |
 |---|---|
-| 레시피 1 실물 배치 (A·B·C 각 69 g) | 원료마다 한 스쿱, 일탈 없이 완료 |
+| 레시피 1 실물 배치 (A·B·C 각 69 g) | 원료 투입은 원료마다 한 스쿱으로 일탈 없이 완료. 최종 계량 직전 영점 이동(−0.384 N)으로 QA 승인을 거쳐 종료 |
 | 원료별 로봇 계산치 vs 외부 저울 | A 65.3 / 57 · B 87.0 / 95 · C 81.6 / 76 g — 차이 ±8.3 g 이내 |
 | 최종 순량 (목표 207 g) | 로봇 계량 207.7 g · 외부 저울 원료 합 228 g |
 | 실물로 확인한 예외 경로 | 초과·하한 미달 스쿱 반환 → 재스쿱, QA 원격 판정, 폐기 → 안전 자세 → 넛지 대기 |
@@ -72,9 +72,23 @@ flowchart LR
 
 시행착오와 해결 과정은 [docs/trial_and_error_0929-0930.md](docs/trial_and_error_0929-0930.md)에 정리했습니다.
 
-## 빠른 실행
+## 운영체제 환경
 
-Ubuntu 24.04 · ROS 2 Jazzy · Python 3.12. 두산·OnRobot 벤더 워크스페이스(`~/ws_cobot_pjt/ws_dsr`)를 언더레이로 먼저 source 합니다.
+Ubuntu 24.04 · ROS 2 Jazzy · Python 3.12를 사용합니다. 작업 PC 1대에서 셀 노드·웹 HMI·SQLite를 실행합니다.
+
+## 사용 장비
+
+- 두산 M0609 협동로봇과 컨트롤러, OnRobot RG2 그리퍼
+- 원료 A/B/C 통, 원료별 전용 스쿱, 약통, Pass Box, 작업대
+- 계량은 외부 저울 대신 로봇 외력(`get_tool_force`)을 사용
+
+## 의존성
+
+Python 패키지 목록은 [requirements.txt](requirements.txt)에 있습니다. [requirements.md](requirements.md)는 ROS 2·시스템 패키지·벤더 언더레이와 선택 의존성을 구분해 설명합니다.
+
+## 빌드 — 언더레이 위에 오버레이
+
+`~/ws_cobot_pjt/ws_dsr`(doosan-robot2 · onrobot-ros2 · m0609_rg2_bringup, 9/16 실기 확인) 를 **먼저 source** 하고 이 저장소를 얹는다.
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -82,23 +96,98 @@ source ~/ws_cobot_pjt/ws_dsr/install/setup.bash
 cd ~/auto-pharmacist/ros2_ws && colcon build --symlink-install && source install/setup.bash
 ```
 
+## 실행 순서
+
+ROS 2와 벤더 언더레이 source → 이 저장소 빌드·source → `cell.launch.py` 실행 → 노드/Action 확인 → HMI에서 주문합니다. 명령·순서·게이트는 [시연 절차](docs/demo_run_procedure.md)를 따릅니다.
+
+기본 `cell.launch.py` 한 번으로 로봇 bringup과 셀 앱 노드 4개가 모두 시작됩니다.
+로봇 bringup은 두산 컨트롤러·에뮬레이터/실물 연결과 설정에 따른 RG2 드라이버를 포함합니다.
+약 12초 뒤 `/cell/skill_node`(로봇 스킬), `/cell/process_node`(공정),
+`/cell/record_node`(기록), `/cell/hmi_web_node`(웹 HMI)를 시작합니다.
+`hmi:=false`는 웹 HMI만 빼고 기록 노드는 유지하며, `gui:=false`는 RViz만 끕니다.
+`gmp_dosing`은 공정에서 가져다 쓰는 라이브러리이고 `gmp_interfaces`는 메시지 정의라 별도 노드가 없습니다.
+런치가 시작됐어도 노드 준비가 끝났다는 뜻은 아니므로 아래 확인 명령으로 실제 기동을 확인합니다.
+
 ```bash
-ros2 launch gmp_bringup cell.launch.py mode:=virtual                                  # 에뮬레이터 + RViz (랜선 없이)
+ros2 launch gmp_bringup cell.launch.py mode:=virtual              # 에뮬레이터 + RViz (랜선 없이)
 ```
 ```bash
-ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100 vel_scale:=0.2  # 실물 첫 기동
+ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100 vel_scale:=0.2  # 첫 기동
 ```
 
-런치 한 번으로 로봇 bringup 과 셀 노드 4개(`skill_node`·`process_node`·`record_node`·`hmi_web_node`)가 뜹니다. 브라우저에서 `http://<로봇 PC IP>:5000` 으로 HMI 에 접속해 주문합니다.
-노드 개별 실행·환경 설정·트러블슈팅은 [docs/setup.md](docs/setup.md), 시연 명령의 정본은 [docs/demo_run_procedure.md](docs/demo_run_procedure.md)입니다.
+```bash
+ros2 node list
+ros2 action list -t
+```
 
-## 기술 스택과 장비
+### 각 노드 개별 실행
 
-- **소프트웨어** — ROS 2 Jazzy, Python 3.12(`rclpy`·`rosidl`), Flask 웹 HMI, SQLite, 순수 Python 상태기계. 의존성은 [requirements.txt](requirements.txt)·[requirements.md](requirements.md)
-- **하드웨어** — 두산 M0609 협동로봇·컨트롤러, OnRobot RG2 그리퍼, 원료통 A·B·C 와 전용 스쿱, 약통, Pass Box, 작업대
-- **계량** — 외부 저울 없음. 로봇 외력 `get_tool_force` 를 용기·스쿱 경로별로 보정
+아래는 실물 모드 예시입니다. 저장소 루트에서 실행하며, `cell.launch.py`와 동시에 띄우지 않습니다.
+기존 스킬을 먼저 종료하고 bringup 종료까지 확인한 뒤 재시작합니다.
+로봇 bringup으로 컨트롤러 활성화를 확인한 다음, 서로 다른 터미널에서 스킬·공정·기록·HMI를 한 개씩 실행합니다.
 
-## 저장소 구조
+터미널 1 — 로봇 연결·제어권:
+
+```bash
+source tools/env.sh
+export ROS_HOME=/tmp/gmp-ros-domain70
+export ROS_LOG_DIR=/tmp/gmp-g2-ros-log
+GMP_DSR_WS="$(dirname "$(dirname "$WS_DSR_SETUP")")"
+export PYTHONPATH="$GMP_DSR_WS/build/onrobot_rg_control${PYTHONPATH:+:$PYTHONPATH}"
+ros2 launch gmp_bringup robot.launch.py mode:=real host:=192.168.1.100 gui:=false
+```
+
+`ROS_HOME`은 다른 도메인의 컨트롤러 spawner 잠금과 분리한다.
+`PYTHONPATH`는 현 언더레이의 RG2 Python 모듈 위치를 보완한다.
+
+터미널 2 — 컨트롤러 활성화 확인 후 스킬 노드 실행:
+`skill.launch.py`가 공통 설정과 스테이션 파일을 전달합니다.
+
+```bash
+source tools/env.sh
+export ROS_LOG_DIR=/tmp/gmp-g2-ros-log
+ros2 launch gmp_bringup skill.launch.py mode:=real vel_scale:=0.2
+```
+
+검증된 속도를 지정하려면 `vel_scale`을 변경한다. 스쿱을 잡은 채 재기동할 때는
+[파지 상태 복원 절차](docs/setup.md#인출-완료-스쿱의-기동-시-복원)를 따르며,
+복원 확인 인자를 상시 실행 명령에 넣지 않는다.
+
+터미널 3~5 — 공정·기록·HMI 노드를 실행합니다. **각 터미널에서 먼저** 저장소 루트로 이동해 다음 환경을 설정합니다.
+
+```bash
+source tools/env.sh
+GMP_PARAMS="$(ros2 pkg prefix gmp_bringup)/share/gmp_bringup/params"
+GMP_DB="$HOME/auto-pharmacist/records/cell.db"
+```
+
+공정 노드:
+
+```bash
+ros2 run gmp_process process_node --ros-args -r __ns:=/cell \
+  --params-file "$GMP_PARAMS/common.yaml" -p stations_file:="$GMP_PARAMS/stations.yaml"
+```
+
+기록 노드:
+
+```bash
+ros2 run gmp_hmi record_node --ros-args -r __ns:=/cell \
+  --params-file "$GMP_PARAMS/common.yaml" \
+  -p db_path:="$GMP_DB" -p export_dir:="$(dirname "$GMP_DB")"
+```
+
+웹 HMI 노드:
+
+```bash
+ros2 run gmp_hmi hmi_web_node --ros-args -r __ns:=/cell \
+  --params-file "$GMP_PARAMS/common.yaml" \
+  -p db_path:="$GMP_DB" -p recipes_dir:="$GMP_PARAMS/recipes" -p port:=5000
+```
+
+실물에서 RG2 Modbus 백엔드를 쓰면 `robot.launch.py`가 상태 드라이버를 함께 띄웁니다.
+위 개별 명령은 전체 런치와 같은 `/cell` 네임스페이스와 공통 설정을 사용합니다.
+
+## 구조
 
 ```text
 ros2_ws/src/
@@ -115,9 +204,7 @@ docs/                   # 설계·계약·절차·시행착오
 
 각 앱 패키지는 `nodes/`(ROS 통신) · `core/`(ROS 비의존 로직, 단위 시험 대상) · `adapters/`(장치)로 나뉩니다.
 
-## 문서 안내
-
-### 산출물
+## 산출물 안내
 
 [최종 산출물 정리](https://app.notion.com/p/3e7d1a852505808f8ac1c880d49721a5)의 9개 항목을 저장소 원본과 연결했습니다. 노션은 설명·화면 자료를 모은 사본이며, 실행값과 계약은 저장소 원본이 기준입니다.
 
@@ -133,12 +220,9 @@ docs/                   # 설계·계약·절차·시행착오
 | 08 예외·오류 처리 | [공정 흐름](docs/process_flow.md) · [확정 정책](docs/SOT.md) | [노션](https://app.notion.com/p/3ead1a8525058194b5acee4b04958f5f) |
 | 09 위험요소·안전대책 | [안전 결정](docs/SOT.md) · [실행·복구 주의사항](docs/setup.md) | [노션](https://app.notion.com/p/3ead1a85250581eea10ef85c7b12972a) |
 
-### 설계·기준 문서
+## 기준 문서
 
 - [docs/SOT.md](docs/SOT.md) 확정 결정 · [docs/interfaces.md](docs/interfaces.md) 통신 계약(v1.11.1) · [docs/architecture.md](docs/architecture.md) 데이터 흐름
 - [PROJECT_RULES.md](PROJECT_RULES.md) 요구·제약 원장 · [PROJECT.md](PROJECT.md) 개요 · [docs/spec/](docs/spec/README.md) BRD·SDD
-
-### 개발 과정 문서
-
 - [AGENTS.md](AGENTS.md) 작업·교차검수 규칙 · [GitHub Issues](https://github.com/Jik-Kim/auto-pharmacist/issues) 할 일·이슈(9/21 부터 정본, `docs/todo.md`·`docs/issues.md` 는 동결 스냅샷)
 - `practice/<파트>/CURRENT.md` 파트별 현행값과 작업 일지 · 9/30 시연 당일 운영값은 [SOT D-36~D-43](docs/SOT.md)
