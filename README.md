@@ -185,7 +185,3 @@ ros2 run gmp_hmi hmi_web_node --ros-args -r __ns:=/cell \
 - **시연 절차** — [docs/demo_run_procedure.md](docs/demo_run_procedure.md). 실물 검증 항목은 `needs:physical` 라벨 이슈.
 
 현황은 [GitHub Issues](https://github.com/Jik-Kim/auto-pharmacist/issues), 확정 결정은 `docs/SOT.md`, 파트별 현행값은 `practice/<파트>/CURRENT.md`.
-
-## 제출 소스 ZIP
-
-가이드라인에 따라 프로젝트 관련 소스 패키지만 압축하고 `build/`, `install/`, `log/`, 로컬 `records/` 등 생성물은 제외합니다. 저장소에 커밋된 설정·보정 자료는 해당 패키지와 함께 유지합니다. ZIP 안에는 이 `README.md`와 `requirements.txt`를 포함합니다. 영상·발표자료·ZIP의 최종 파일명과 제출 경로는 제공된 제출 가이드라인에 맞춰 조장이 확인합니다.
