@@ -3,14 +3,7 @@
 배치 레시피에 따라 원료를 스쿱으로 퍼서 **정밀 칭량·분주**하고, 허용 오차를 **로봇 외력으로 스스로 검증**하며, 일탈이 나면 **셀 밖 QA 가 웹 HMI 로 판정**하고 **모든 기록이 SQLite 배치 기록·감사 추적으로 남는**
 M0609 + RG2 조제 셀. 평상시 무인, 사람은 패스박스와 HMI 로만 셀과 만난다. 요구·제약의 원장: **[PROJECT_RULES.md](PROJECT_RULES.md)**.
 
-## 제출용 한눈에 보기
-
-- **운영 환경:** Ubuntu 24.04 · ROS 2 Jazzy · Python 3.12, 작업 PC 1대에서 셀 노드·웹 HMI·SQLite 실행
-- **주요 장비:** 두산 M0609 협동로봇, OnRobot RG2 그리퍼, 원료 A/B/C 통과 전용 스쿱, 약통·Pass Box·작업대. 계량은 외부 저울이 아닌 로봇 외력(`get_tool_force`)을 사용
-- **의존성:** [requirements.md](requirements.md)에 ROS/벤더 언더레이와 시스템 패키지를 구분해 설명하고, 제출용 Python 목록은 [requirements.txt](requirements.txt)에 기재
-- **실행 순서:** ROS 2와 벤더 언더레이 source → 이 저장소 빌드·source → `cell.launch.py` 실행 → 노드/Action 확인 → HMI에서 주문. 아래 명령과 [시연 절차](docs/demo_run_procedure.md)를 참조
-
-### 시스템 설계와 동작 순서
+## 시스템 설계와 플로우 차트
 
 ![시스템 구성 및 데이터 흐름](docs/diagrams/system_flow.png)
 
@@ -32,7 +25,21 @@ flowchart LR
 
 상세 상태·예외 분기는 [공정 순서 설명](docs/process_flow.md)과 [draw.io 흐름도](docs/diagrams/process_flow.drawio)에 있습니다. 가상 모드는 호출·상태 흐름을 확인하지만, 실제 힘·파지력·간섭·안전 정지 성능을 입증하지는 않습니다.
 
-### 산출물 안내
+## 운영체제 환경
+
+Ubuntu 24.04 · ROS 2 Jazzy · Python 3.12를 사용합니다. 작업 PC 1대에서 셀 노드·웹 HMI·SQLite를 실행합니다.
+
+## 사용 장비
+
+- 두산 M0609 협동로봇과 컨트롤러, OnRobot RG2 그리퍼
+- 원료 A/B/C 통, 원료별 전용 스쿱, 약통, Pass Box, 작업대
+- 계량은 외부 저울 대신 로봇 외력(`get_tool_force`)을 사용
+
+## 의존성
+
+Python 패키지 목록은 [requirements.txt](requirements.txt)에 있습니다. [requirements.md](requirements.md)는 ROS 2·시스템 패키지·벤더 언더레이와 선택 의존성을 구분해 설명합니다.
+
+## 산출물 안내
 
 [최종 산출물 정리](https://app.notion.com/p/3e7d1a852505808f8ac1c880d49721a5)의 9개 항목을 아래 저장소 원본과 연결했습니다. 노션은 설명·화면 자료를 모은 사본이며, 실행값과 계약은 저장소의 현행 코드·설정을 기준으로 확인합니다.
 
@@ -82,7 +89,9 @@ source ~/ws_cobot_pjt/ws_dsr/install/setup.bash
 cd ~/auto-pharmacist/ros2_ws && colcon build --symlink-install && source install/setup.bash
 ```
 
-## 실행
+## 실행 순서
+
+ROS 2와 벤더 언더레이 source → 이 저장소 빌드·source → `cell.launch.py` 실행 → 노드/Action 확인 → HMI에서 주문합니다. 명령·순서·게이트는 [시연 절차](docs/demo_run_procedure.md)를 따릅니다.
 
 기본 `cell.launch.py` 한 번으로 로봇 bringup과 셀 앱 노드 4개가 모두 시작됩니다.
 로봇 bringup은 두산 컨트롤러·에뮬레이터/실물 연결과 설정에 따른 RG2 드라이버를 포함합니다.
@@ -103,8 +112,6 @@ ros2 launch gmp_bringup cell.launch.py mode:=real host:=192.168.1.100 vel_scale:
 ros2 node list
 ros2 action list -t
 ```
-
-명령·순서·게이트는 [docs/demo_run_procedure.md](docs/demo_run_procedure.md) 가 정본이다.
 
 ### 각 노드 개별 실행
 
